@@ -611,6 +611,10 @@ admins:
   # Discord admin user ID list (Discord numeric IDs)
   discord_user_ids:
     - "" # example: "123456789012345678"
+  # Only these exact Web user IDs may attest Old Wang's causal judgments.
+  # Other administrators may verify sources but cannot create an Old-Wang label.
+  old_wang_web_user_ids:
+    - "" # example: "web-user-0123456789ab"
   # Optional runtime admin registration passphrase.
   # Prefer setting this through the env var below instead of committing plaintext secrets.
   runtime_admin_registration_passphrase: ""

@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! hone-web-api — Hone 控制台 HTTP 服务库
 //!
 //! 将原 `hone-console-page` 二进制的服务逻辑提取为库，
@@ -748,6 +750,24 @@ pub async fn start_server(
         None => hone_memory::WebAuthStorage::new(&core.config.storage.session_sqlite_db_path)
             .map_err(|e| format!("Web Auth 存储初始化失败: {e}"))?,
     });
+    if deployment_mode.eq_ignore_ascii_case("local")
+        && core
+            .config
+            .cloud
+            .effective_mode()
+            .as_str()
+            .eq_ignore_ascii_case("local")
+    {
+        let dev_admin = crate::routes::public::public_dev_admin_enabled_for(
+            deployment_mode,
+            core.config.cloud.effective_mode().as_str(),
+            std::env::var("HONE_PUBLIC_DEV_LOGIN").ok().as_deref(),
+            std::env::var("HONE_PUBLIC_DEV_ADMIN").ok().as_deref(),
+        );
+        web_auth
+            .set_web_admin_by_phone(crate::routes::public::LOCAL_DEV_LOGIN_PHONE, dev_admin)
+            .map_err(|error| format!("本地测试账号管理员状态启动同步失败: {error}"))?;
+    }
     let billing = Arc::new(match cloud_postgres {
         Some(postgres) => hone_memory::BillingStorage::new_cloud(postgres)
             .map_err(|e| format!("Billing cloud 存储初始化失败: {e}"))?,

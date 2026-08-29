@@ -15,9 +15,11 @@ use hone_event_engine::EventSource;
 use hone_event_engine::pollers::RssNewsPoller;
 use hone_llm::{CreatedLlmProvider, LlmResolver, Message};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
 use super::influencer_digest::{AttributedSourceItem, fetch_attributed_source_items};
+use super::model_analysis_health::{ModelAnalysisHealth, build as model_analysis_health};
 use super::research_library::{ResearchUse, item_published_at, items_for_global_use};
 use crate::state::AppState;
 
@@ -25,12 +27,15 @@ const LOOKBACK_HOURS: i64 = 30 * 24;
 const STALE_HOURS: i64 = 36;
 const REFRESH_HOUR: u32 = 19;
 const REFRESH_MINUTE: u32 = 55;
-const MODEL_VERSION: &str = "hone-key-event-chain-v2";
+const MODEL_VERSION: &str = "hone-key-event-chain-v3-deduplicated";
 const MAX_CONFIRMED_EVENTS_PER_TOPIC: usize = 12;
 const MAX_CLUE_EVENTS_PER_TOPIC: usize = 8;
 const MAX_VALIDATION_QUESTIONS: usize = 12;
 const REVIEW_DAYS: i64 = 10;
 const OUTLOOK_DAYS: i64 = 10;
+const ANALYSIS_TIMEOUT_SECS: u64 = 20;
+const EVENT_IDENTITY_VERSION: &str = "hone-key-event-identity-v1-high-confidence";
+const EVENT_DEDUP_WINDOW_HOURS: i64 = 96;
 
 #[derive(Clone, Copy)]
 struct ValidationQuestionDef {
@@ -454,9 +459,32 @@ const TOPICS: &[TopicDef] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct KeyEventSourceReference {
+    pub source_id: String,
+    pub source_name: String,
+    pub source_url: String,
+    pub published_at: DateTime<Utc>,
+    pub published_at_beijing: String,
+    pub source_tier: String,
+    pub verification_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct KeyEventItem {
     pub id: String,
     pub topic_id: String,
+    #[serde(default = "default_event_identity_version")]
+    pub event_identity_version: String,
+    #[serde(default)]
+    pub event_fingerprint_sha256: String,
+    #[serde(default = "default_source_count")]
+    pub source_count: usize,
+    #[serde(default)]
+    pub supporting_sources: Vec<KeyEventSourceReference>,
+    #[serde(default = "default_deduplication_status")]
+    pub deduplication_status: String,
+    #[serde(default)]
+    pub deduplication_note: String,
     pub published_at: DateTime<Utc>,
     pub published_at_beijing: String,
     pub source_name: String,
@@ -490,6 +518,10 @@ pub(crate) struct KeyEventTopic {
     pub priority: u8,
     pub status: String,
     pub event_count: usize,
+    #[serde(default)]
+    pub source_count: usize,
+    #[serde(default)]
+    pub deduplicated_source_count: usize,
     #[serde(default)]
     pub confirmed_count: usize,
     #[serde(default)]
@@ -551,6 +583,8 @@ pub(crate) struct KeyEventChainSnapshot {
     pub lookback_days: i64,
     pub model_version: String,
     pub status: String,
+    #[serde(default)]
+    pub analysis_health: ModelAnalysisHealth,
     pub summary: String,
     pub topics: Vec<KeyEventTopic>,
     #[serde(default = "empty_ten_day_brief", skip_serializing)]
@@ -563,13 +597,26 @@ struct AnalysisEnvelope {
     items: Vec<AnalysisItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct AnalysisItem {
     id: String,
     change_type: String,
     direction: String,
     impact: String,
     next_watch: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AnalysisBatchResult {
+    analyses: HashMap<String, AnalysisItem>,
+    failure_reasons: HashSet<String>,
+}
+
+#[derive(Debug, Clone)]
+struct TopicSourceCluster {
+    canonical: AttributedSourceItem,
+    sources: Vec<AttributedSourceItem>,
+    event_fingerprint_sha256: String,
 }
 
 pub(crate) async fn handle_get_key_event_chains(
@@ -615,6 +662,7 @@ async fn refresh_and_store(state: &AppState) {
             .map(|topic| topic.event_count)
             .sum::<usize>();
         info!(status = %snapshot.status, events, "key event chain refreshed");
+        super::investment_decisions::refresh_from_key_events(state, &snapshot).await;
     }
 }
 
@@ -648,35 +696,76 @@ async fn generate_snapshot(
     sources.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     let analyzer = resolve_analyzer(state);
     let mut topics = Vec::new();
+    let mut requested_items = 0usize;
+    let mut analyzed_items = 0usize;
+    let mut failure_reasons = HashSet::new();
+    let analysis_deadline =
+        tokio::time::Instant::now() + Duration::from_secs(ANALYSIS_TIMEOUT_SECS);
     for topic in TOPICS {
         let candidates = sources
             .iter()
             .filter(|source| matches_topic(source, topic))
             .cloned()
             .collect::<Vec<_>>();
-        let mut matches = candidates
+        let clusters = deduplicate_topic_sources(topic, candidates);
+        let mut matches = clusters
             .iter()
-            .filter(|source| matches!(source_tier(topic, source), "primary" | "regulatory"))
+            .filter(|cluster| {
+                matches!(
+                    source_tier(topic, &cluster.canonical),
+                    "primary" | "regulatory"
+                )
+            })
             .take(MAX_CONFIRMED_EVENTS_PER_TOPIC)
             .cloned()
             .chain(
-                candidates
+                clusters
                     .iter()
-                    .filter(|source| {
-                        !matches!(source_tier(topic, source), "primary" | "regulatory")
+                    .filter(|cluster| {
+                        !matches!(
+                            source_tier(topic, &cluster.canonical),
+                            "primary" | "regulatory"
+                        )
                     })
                     .take(MAX_CLUE_EVENTS_PER_TOPIC)
                     .cloned(),
             )
             .collect::<Vec<_>>();
-        matches.sort_by(|a, b| b.published_at.cmp(&a.published_at));
-        let analyses = match analyzer.as_ref() {
-            Some(created) if !matches.is_empty() => analyze_events(created, topic, &matches).await,
-            _ => HashMap::new(),
+        matches.sort_by(|a, b| b.canonical.published_at.cmp(&a.canonical.published_at));
+        let analysis_sources = matches
+            .iter()
+            .map(|cluster| cluster.canonical.clone())
+            .collect::<Vec<_>>();
+        requested_items += matches.len();
+        let analysis_result = match analyzer.as_ref() {
+            Some(created) if !matches.is_empty() => {
+                let remaining =
+                    analysis_deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    AnalysisBatchResult {
+                        analyses: HashMap::new(),
+                        failure_reasons: HashSet::from(["analysis_budget_exhausted".to_string()]),
+                    }
+                } else {
+                    analyze_events_with_timeout(created, topic, &analysis_sources, remaining).await
+                }
+            }
+            _ => AnalysisBatchResult::default(),
         };
+        analyzed_items += matches
+            .iter()
+            .filter(|cluster| analysis_result.analyses.contains_key(&cluster.canonical.id))
+            .count();
+        failure_reasons.extend(analysis_result.failure_reasons.iter().cloned());
         let events = matches
             .iter()
-            .map(|source| public_event(topic, source, analyses.get(&source.id)))
+            .map(|cluster| {
+                public_event_from_cluster(
+                    topic,
+                    cluster,
+                    analysis_result.analyses.get(&cluster.canonical.id),
+                )
+            })
             .collect::<Vec<_>>();
         let analyzed = events
             .iter()
@@ -708,6 +797,11 @@ async fn generate_snapshot(
             priority: topic.priority,
             status: status.to_string(),
             event_count: events.len(),
+            source_count: events.iter().map(|event| event.source_count).sum(),
+            deduplicated_source_count: events
+                .iter()
+                .map(|event| event.source_count.saturating_sub(1))
+                .sum(),
             confirmed_count: events
                 .iter()
                 .filter(|event| event.verification_status == "confirmed")
@@ -730,11 +824,31 @@ async fn generate_snapshot(
             events,
         });
     }
+    let health_status = if requested_items == 0 {
+        "not_required"
+    } else if analyzer.is_none() {
+        failure_reasons.insert("analyzer_unconfigured".to_string());
+        "unconfigured"
+    } else if analyzed_items == requested_items {
+        "healthy"
+    } else if analyzed_items == 0 {
+        "unavailable"
+    } else {
+        "partial"
+    };
+    let analysis_health = model_analysis_health(
+        analyzer.as_ref(),
+        requested_items,
+        analyzed_items,
+        failure_reasons.iter().map(String::as_str),
+        health_status,
+    );
     snapshot(
         topics,
         source_batch.configured + official_batch.configured + library_configured,
         source_batch.succeeded + official_batch.succeeded + library_configured,
         previous,
+        analysis_health,
     )
 }
 
@@ -1177,11 +1291,237 @@ fn infer_milestone_type(text: &str) -> &'static str {
         .unwrap_or("unclear")
 }
 
+fn source_rank(topic: &TopicDef, source: &AttributedSourceItem) -> u8 {
+    match source_tier(topic, source) {
+        "regulatory" => 0,
+        "primary" => 1,
+        "secondary" => 2,
+        "research" => 3,
+        "opinion" => 4,
+        _ => 5,
+    }
+}
+
+fn normalized_claim_tokens(value: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "into",
+        "that",
+        "this",
+        "new",
+        "says",
+        "announces",
+        "announced",
+        "introduces",
+        "launches",
+        "company",
+        "update",
+    ];
+    let mut tokens = value
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| token.chars().count() >= 2 && !STOP_WORDS.contains(token))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+fn normalized_claim_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn numeric_anchor_tokens(tokens: &[String]) -> HashSet<&str> {
+    tokens
+        .iter()
+        .filter(|token| token.chars().any(|character| character.is_ascii_digit()))
+        .map(String::as_str)
+        .collect()
+}
+
+fn distinctive_anchor_tokens(tokens: &[String]) -> HashSet<&str> {
+    const GENERIC_EVENT_WORDS: &[&str] = &[
+        "begins",
+        "capacity",
+        "contract",
+        "financial",
+        "first",
+        "launch",
+        "mass",
+        "order",
+        "production",
+        "quarter",
+        "report",
+        "reports",
+        "results",
+        "second",
+        "third",
+        "fourth",
+    ];
+    tokens
+        .iter()
+        .filter(|token| !GENERIC_EVENT_WORDS.contains(&token.as_str()))
+        .map(String::as_str)
+        .collect()
+}
+
+fn high_confidence_duplicate(left: &AttributedSourceItem, right: &AttributedSourceItem) -> bool {
+    if (left.published_at - right.published_at).num_hours().abs() > EVENT_DEDUP_WINDOW_HOURS {
+        return false;
+    }
+    let left_kind = infer_milestone_type(&format!("{} {}", left.title, left.excerpt));
+    let right_kind = infer_milestone_type(&format!("{} {}", right.title, right.excerpt));
+    if left_kind != right_kind || matches!(left_kind, "unclear" | "viewpoint") {
+        return false;
+    }
+    let left_exact = normalized_claim_text(&left.title);
+    let right_exact = normalized_claim_text(&right.title);
+    let left_tokens = normalized_claim_tokens(&left.title);
+    let right_tokens = normalized_claim_tokens(&right.title);
+    let left_distinctive = distinctive_anchor_tokens(&left_tokens);
+    let right_distinctive = distinctive_anchor_tokens(&right_tokens);
+    if left_distinctive.is_disjoint(&right_distinctive) {
+        return false;
+    }
+    if left_exact.chars().count() >= 16 && left_exact == right_exact {
+        return true;
+    }
+    if left_tokens.len() < 4 || right_tokens.len() < 4 {
+        return false;
+    }
+    let left_numeric = numeric_anchor_tokens(&left_tokens);
+    let right_numeric = numeric_anchor_tokens(&right_tokens);
+    if !left_numeric.is_empty()
+        && !right_numeric.is_empty()
+        && left_numeric.is_disjoint(&right_numeric)
+    {
+        return false;
+    }
+    let left_set = left_tokens
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let right_set = right_tokens
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let shared = left_set.intersection(&right_set).count();
+    let union = left_set.union(&right_set).count();
+    shared >= 4 && union > 0 && shared as f64 / union as f64 >= 0.80
+}
+
+fn event_fingerprint(topic: &TopicDef, source: &AttributedSourceItem) -> String {
+    let change_type = infer_milestone_type(&format!("{} {}", source.title, source.excerpt));
+    let signature = normalized_claim_tokens(&source.title).join("|");
+    let mut hasher = Sha256::new();
+    hasher.update(EVENT_IDENTITY_VERSION.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(topic.id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(change_type.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(signature.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn deduplicate_topic_sources(
+    topic: &TopicDef,
+    mut sources: Vec<AttributedSourceItem>,
+) -> Vec<TopicSourceCluster> {
+    sources.sort_by(|left, right| {
+        source_rank(topic, left)
+            .cmp(&source_rank(topic, right))
+            .then_with(|| left.published_at.cmp(&right.published_at))
+            .then_with(|| left.source_url.cmp(&right.source_url))
+    });
+    let mut clusters = Vec::<TopicSourceCluster>::new();
+    for source in sources {
+        if let Some(cluster) = clusters
+            .iter_mut()
+            .find(|cluster| high_confidence_duplicate(&cluster.canonical, &source))
+        {
+            if cluster
+                .sources
+                .iter()
+                .all(|existing| existing.source_url != source.source_url)
+            {
+                cluster.sources.push(source);
+            }
+            continue;
+        }
+        clusters.push(TopicSourceCluster {
+            event_fingerprint_sha256: event_fingerprint(topic, &source),
+            canonical: source.clone(),
+            sources: vec![source],
+        });
+    }
+    for cluster in &mut clusters {
+        cluster.sources.sort_by(|left, right| {
+            source_rank(topic, left)
+                .cmp(&source_rank(topic, right))
+                .then_with(|| left.published_at.cmp(&right.published_at))
+                .then_with(|| left.source_url.cmp(&right.source_url))
+        });
+    }
+    clusters.sort_by(|left, right| {
+        right
+            .canonical
+            .published_at
+            .cmp(&left.canonical.published_at)
+    });
+    clusters
+}
+
+fn source_reference(topic: &TopicDef, source: &AttributedSourceItem) -> KeyEventSourceReference {
+    let tier = source_tier(topic, source);
+    KeyEventSourceReference {
+        source_id: source.id.clone(),
+        source_name: source.source_name.clone(),
+        source_url: source.source_url.clone(),
+        published_at: source.published_at,
+        published_at_beijing: source
+            .published_at
+            .with_timezone(&Shanghai)
+            .format("%m-%d %H:%M")
+            .to_string(),
+        source_tier: tier.to_string(),
+        verification_status: if matches!(tier, "primary" | "regulatory") {
+            "confirmed"
+        } else {
+            "clue"
+        }
+        .to_string(),
+    }
+}
+
 fn public_event(
     topic: &TopicDef,
     source: &AttributedSourceItem,
     analysis: Option<&AnalysisItem>,
 ) -> KeyEventItem {
+    let cluster = TopicSourceCluster {
+        event_fingerprint_sha256: event_fingerprint(topic, source),
+        canonical: source.clone(),
+        sources: vec![source.clone()],
+    };
+    public_event_from_cluster(topic, &cluster, analysis)
+}
+
+fn public_event_from_cluster(
+    topic: &TopicDef,
+    cluster: &TopicSourceCluster,
+    analysis: Option<&AnalysisItem>,
+) -> KeyEventItem {
+    let source = &cluster.canonical;
     let source_tier = source_tier(topic, source);
     let verification_status = if matches!(source_tier, "primary" | "regulatory") {
         "confirmed"
@@ -1226,6 +1566,28 @@ fn public_event(
     KeyEventItem {
         id: format!("{}:{}", topic.id, source.id),
         topic_id: topic.id.to_string(),
+        event_identity_version: EVENT_IDENTITY_VERSION.to_string(),
+        event_fingerprint_sha256: cluster.event_fingerprint_sha256.clone(),
+        source_count: cluster.sources.len(),
+        supporting_sources: cluster
+            .sources
+            .iter()
+            .map(|source| source_reference(topic, source))
+            .collect(),
+        deduplication_status: if cluster.sources.len() > 1 {
+            "merged_high_confidence"
+        } else {
+            "unique_source"
+        }
+        .to_string(),
+        deduplication_note: if cluster.sources.len() > 1 {
+            format!(
+                "按同主题、同里程碑类型、96 小时时间窗和高度相似标题合并 {} 条来源；合并不增加事件权重。",
+                cluster.sources.len()
+            )
+        } else {
+            "当前未发现满足严格确定性条件的同事件转载。".to_string()
+        },
         published_at: source.published_at,
         published_at_beijing: source
             .published_at
@@ -1265,8 +1627,8 @@ async fn analyze_events(
     analyzer: &CreatedLlmProvider,
     topic: &TopicDef,
     sources: &[AttributedSourceItem],
-) -> HashMap<String, AnalysisItem> {
-    let mut result = HashMap::new();
+) -> AnalysisBatchResult {
+    let mut result = AnalysisBatchResult::default();
     for chunk in sources.chunks(10) {
         let input = chunk
             .iter()
@@ -1289,6 +1651,9 @@ async fn analyze_events(
             Ok(response) => response.content,
             Err(error) => {
                 warn!(topic = topic.id, %error, "key event chain model failed");
+                result
+                    .failure_reasons
+                    .insert("upstream_request_failed".to_string());
                 continue;
             }
         };
@@ -1297,9 +1662,12 @@ async fn analyze_events(
                 topic = topic.id,
                 "key event chain model returned invalid contract"
             );
+            result
+                .failure_reasons
+                .insert("invalid_output_contract".to_string());
             continue;
         };
-        result.extend(
+        result.analyses.extend(
             envelope
                 .items
                 .into_iter()
@@ -1307,6 +1675,28 @@ async fn analyze_events(
         );
     }
     result
+}
+
+async fn analyze_events_with_timeout(
+    analyzer: &CreatedLlmProvider,
+    topic: &TopicDef,
+    sources: &[AttributedSourceItem],
+    timeout: Duration,
+) -> AnalysisBatchResult {
+    match tokio::time::timeout(timeout, analyze_events(analyzer, topic, sources)).await {
+        Ok(result) => result,
+        Err(_) => {
+            warn!(
+                topic = topic.id,
+                timeout_seconds = timeout.as_secs_f32(),
+                "key event chain model timed out; keeping source-only facts"
+            );
+            AnalysisBatchResult {
+                analyses: HashMap::new(),
+                failure_reasons: HashSet::from(["analysis_timeout".to_string()]),
+            }
+        }
+    }
 }
 
 fn analysis_messages(topic: &TopicDef, input: &[serde_json::Value]) -> Vec<Message> {
@@ -1387,6 +1777,18 @@ fn default_source_tier() -> String {
     "unclassified".to_string()
 }
 
+fn default_event_identity_version() -> String {
+    "legacy_unassessed".to_string()
+}
+
+fn default_source_count() -> usize {
+    1
+}
+
+fn default_deduplication_status() -> String {
+    "legacy_unassessed".to_string()
+}
+
 fn default_verification_status() -> String {
     "clue".to_string()
 }
@@ -1406,6 +1808,30 @@ fn extract_cashtags(text: &str, max: usize) -> Vec<String> {
         })
         .take(max)
         .collect()
+}
+
+fn same_event_identity(left: &KeyEventItem, right: &KeyEventItem) -> bool {
+    if left.id == right.id
+        || (!left.event_fingerprint_sha256.is_empty()
+            && left.event_fingerprint_sha256 == right.event_fingerprint_sha256)
+    {
+        return true;
+    }
+    let left_urls = std::iter::once(left.source_url.as_str())
+        .chain(
+            left.supporting_sources
+                .iter()
+                .map(|source| source.source_url.as_str()),
+        )
+        .collect::<HashSet<_>>();
+    std::iter::once(right.source_url.as_str())
+        .chain(
+            right
+                .supporting_sources
+                .iter()
+                .map(|source| source.source_url.as_str()),
+        )
+        .any(|url| left_urls.contains(url))
 }
 
 fn build_ten_day_brief(
@@ -1435,19 +1861,18 @@ fn build_ten_day_brief(
             .filter(|event| event.verification_status == "confirmed")
             .collect::<Vec<_>>();
         let clue_count = evidence.len().saturating_sub(confirmed_evidence.len());
-        let previous_ids = previous
+        let previous_events = previous
             .and_then(|snapshot| snapshot.topics.iter().find(|item| item.id == topic.id))
-            .map(|item| {
-                item.events
-                    .iter()
-                    .map(|event| event.id.as_str())
-                    .collect::<HashSet<_>>()
-            })
+            .map(|item| item.events.as_slice())
             .unwrap_or_default();
         let new_since_previous = if previous.is_some() {
             evidence
                 .iter()
-                .filter(|event| !previous_ids.contains(event.id.as_str()))
+                .filter(|event| {
+                    !previous_events
+                        .iter()
+                        .any(|previous| same_event_identity(event, previous))
+                })
                 .count()
         } else {
             0
@@ -1562,7 +1987,7 @@ fn build_ten_day_brief(
         version_summary,
         review,
         questions,
-        methodology_note: "过去十日只统计当前快照内有原链的事件；只有主题相关公司或监管原文才能标为一手确认。未来十日展示开放验证问题和复查截止日，不代表事件必然发生，也不直接生成交易动作。".to_string(),
+        methodology_note: "过去十日只统计当前快照内有原链的独立事件；严格确定为同一里程碑的转载只计一次并保留全部来源。只有主题相关公司或监管原文才能标为一手确认。未来十日展示开放验证问题和复查截止日，不代表事件必然发生，也不直接生成交易动作。".to_string(),
     }
 }
 
@@ -1630,9 +2055,15 @@ fn snapshot(
     configured: usize,
     succeeded: usize,
     previous: Option<&KeyEventChainSnapshot>,
+    analysis_health: ModelAnalysisHealth,
 ) -> KeyEventChainSnapshot {
     let now = Utc::now();
     let event_count = topics.iter().map(|topic| topic.event_count).sum::<usize>();
+    let source_count = topics.iter().map(|topic| topic.source_count).sum::<usize>();
+    let deduplicated_source_count = topics
+        .iter()
+        .map(|topic| topic.deduplicated_source_count)
+        .sum::<usize>();
     let confirmed_count = topics
         .iter()
         .map(|topic| topic.confirmed_count)
@@ -1664,11 +2095,11 @@ fn snapshot(
         "近 30 天当前来源没有命中产业主线事件。".to_string()
     } else if analyzed == 0 {
         format!(
-            "找到 {event_count} 个有原链里程碑：一手确认 {confirmed_count}、待核实 {clue_count}；影响分析暂不可用。"
+            "找到 {event_count} 个有原链里程碑：一手确认 {confirmed_count}、待核实 {clue_count}；来自 {source_count} 条来源，合并 {deduplicated_source_count} 条高置信度重复转载；影响分析暂不可用。"
         )
     } else {
         format!(
-            "近 30 天整理 {event_count} 个产业里程碑：一手确认 {confirmed_count}、待核实 {clue_count}；{analyzed} 个完成条件式影响分析。"
+            "近 30 天整理 {event_count} 个产业里程碑：一手确认 {confirmed_count}、待核实 {clue_count}；来自 {source_count} 条来源，合并 {deduplicated_source_count} 条高置信度重复转载；{analyzed} 个完成条件式影响分析。"
         )
     };
     let ten_day_brief = build_ten_day_brief(&topics, previous, now, status);
@@ -1684,10 +2115,11 @@ fn snapshot(
         lookback_days: LOOKBACK_HOURS / 24,
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
+        analysis_health,
         summary,
         topics,
         ten_day_brief,
-        disclaimer: "事件链按第一性原理整理产业里程碑；只有主题相关公司或监管原文标为一手确认。作者观点、聚合翻译、研究资料和二手报道均保留为待核实线索，不构成投资建议。".to_string(),
+        disclaimer: "事件链按第一性原理整理产业里程碑；只有主题相关公司或监管原文标为一手确认。同主题、同里程碑类型、96 小时内且标题高度相似的转载只计一个事件，并完整保留来源；未达到严格条件的疑似重复不会自动合并。作者观点、聚合翻译、研究资料和二手报道均保留为待核实线索，不构成投资建议。".to_string(),
     }
 }
 
@@ -1704,6 +2136,8 @@ fn empty_snapshot() -> KeyEventChainSnapshot {
                 priority: topic.priority,
                 status: "no_updates".to_string(),
                 event_count: 0,
+                source_count: 0,
+                deduplicated_source_count: 0,
                 confirmed_count: 0,
                 clue_count: 0,
                 last_event_at: None,
@@ -1714,6 +2148,7 @@ fn empty_snapshot() -> KeyEventChainSnapshot {
         0,
         0,
         None,
+        model_analysis_health(None, 0, 0, std::iter::empty(), "not_required"),
     )
 }
 
@@ -1827,6 +2262,11 @@ mod tests {
             }
             .into(),
             event_count: events.len(),
+            source_count: events.iter().map(|event| event.source_count).sum(),
+            deduplicated_source_count: events
+                .iter()
+                .map(|event| event.source_count.saturating_sub(1))
+                .sum(),
             confirmed_count,
             clue_count: events.len().saturating_sub(confirmed_count),
             last_event_at: events.first().map(|event| event.published_at),
@@ -1963,6 +2403,107 @@ mod tests {
     }
 
     #[test]
+    fn high_confidence_reprints_count_as_one_event_and_preserve_every_source() {
+        let now = Utc.with_ymd_and_hms(2026, 8, 11, 4, 0, 0).unwrap();
+        let mut official = source_at(
+            "official",
+            "Micron HBM4 mass production begins",
+            "https://www.micron.com/about/blog/hbm4-production",
+        );
+        official.published_at = now;
+        let mut reprint = source_at(
+            "reprint",
+            "Micron HBM4 mass production begins",
+            "https://example.com/micron-hbm4-production",
+        );
+        reprint.published_at = now + chrono::Duration::hours(3);
+
+        let clusters = deduplicate_topic_sources(topic("hbm"), vec![reprint, official]);
+        assert_eq!(clusters.len(), 1);
+        assert!(clusters[0].canonical.source_url.contains("micron.com"));
+        let event = public_event_from_cluster(topic("hbm"), &clusters[0], None);
+        assert_eq!(event.source_count, 2);
+        assert_eq!(event.supporting_sources.len(), 2);
+        assert_eq!(event.deduplication_status, "merged_high_confidence");
+        assert_eq!(event.verification_status, "confirmed");
+        assert_eq!(event.event_fingerprint_sha256.len(), 64);
+    }
+
+    #[test]
+    fn different_numeric_milestones_are_not_merged() {
+        let left = source_at(
+            "800g",
+            "NVIDIA launches 800G optical platform for AI clusters",
+            "https://example.com/800g",
+        );
+        let right = source_at(
+            "16t",
+            "NVIDIA launches 1.6T optical platform for AI clusters",
+            "https://example.com/16t",
+        );
+        assert!(!high_confidence_duplicate(&left, &right));
+        assert_eq!(
+            deduplicate_topic_sources(topic("optical_800g_16t"), vec![left, right]).len(),
+            2
+        );
+    }
+
+    #[test]
+    fn generic_identical_headlines_without_a_shared_entity_anchor_are_not_merged() {
+        let left = source_at(
+            "left",
+            "Second quarter financial results report",
+            "https://company-a.example/results",
+        );
+        let right = source_at(
+            "right",
+            "Second quarter financial results report",
+            "https://company-b.example/results",
+        );
+        assert!(!high_confidence_duplicate(&left, &right));
+    }
+
+    #[test]
+    fn repeated_titles_outside_the_time_window_remain_distinct() {
+        let now = Utc.with_ymd_and_hms(2026, 8, 11, 4, 0, 0).unwrap();
+        let mut left = source_at(
+            "left",
+            "Micron HBM4 mass production begins",
+            "https://example.com/left",
+        );
+        left.published_at = now;
+        let mut right = source_at(
+            "right",
+            "Micron HBM4 mass production begins",
+            "https://example.com/right",
+        );
+        right.published_at = now + chrono::Duration::hours(EVENT_DEDUP_WINDOW_HOURS + 1);
+        assert!(!high_confidence_duplicate(&left, &right));
+    }
+
+    #[test]
+    fn newly_added_primary_source_does_not_make_the_same_event_new_again() {
+        let secondary = source_at(
+            "secondary",
+            "Micron HBM4 mass production begins",
+            "https://example.com/micron-hbm4-production",
+        );
+        let previous = public_event(topic("hbm"), &secondary, None);
+        let official = source_at(
+            "official",
+            "Micron HBM4 mass production begins",
+            "https://www.micron.com/about/blog/hbm4-production",
+        );
+        let cluster = deduplicate_topic_sources(topic("hbm"), vec![secondary, official])
+            .into_iter()
+            .next()
+            .unwrap();
+        let current = public_event_from_cluster(topic("hbm"), &cluster, None);
+        assert_ne!(previous.id, current.id);
+        assert!(same_event_identity(&previous, &current));
+    }
+
+    #[test]
     fn next_refresh_is_1955_beijing() {
         let next = next_refresh(Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap())
             .with_timezone(&Shanghai);
@@ -2001,7 +2542,13 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 8, 11, 4, 0, 0).unwrap();
         let existing = public_event(topic("hbm"), &source("existing", "HBM4"), None);
         let previous_topic = topic_snapshot(topic("hbm"), vec![existing.clone()]);
-        let previous = snapshot(vec![previous_topic.clone()], 1, 1, None);
+        let previous = snapshot(
+            vec![previous_topic.clone()],
+            1,
+            1,
+            None,
+            model_analysis_health(None, 1, 1, std::iter::empty(), "healthy"),
+        );
         let added = public_event(topic("hbm"), &source("added", "HBM capacity"), None);
         let current_topic = topic_snapshot(topic("hbm"), vec![added, existing]);
 
@@ -2049,6 +2596,12 @@ mod tests {
         let event = KeyEventItem {
             id: "rubin:one".into(),
             topic_id: "rubin".into(),
+            event_identity_version: EVENT_IDENTITY_VERSION.into(),
+            event_fingerprint_sha256: "fingerprint".into(),
+            source_count: 1,
+            supporting_sources: vec![],
+            deduplication_status: "unique_source".into(),
+            deduplication_note: "未合并".into(),
             published_at: Utc::now(),
             published_at_beijing: "08-11 10:00".into(),
             source_name: "source".into(),

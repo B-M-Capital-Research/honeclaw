@@ -25,6 +25,10 @@ const adminWhitelist = readFileSync(
   new URL("../components/public-admin-whitelist-panel.tsx", import.meta.url),
   "utf8",
 );
+const adminDecisionBrain = readFileSync(
+  new URL("../components/public-admin-decision-brain-panel.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("public workspace page contract", () => {
   it("shares one desktop and mobile chrome across 洞察 and 我的", () => {
@@ -67,6 +71,7 @@ describe("public workspace page contract", () => {
   it("shows whitelist management only for server-authoritative administrators", () => {
     expect(me).toContain("<Show when={props.user.is_admin}>");
     expect(me).toContain("<PublicAdminUsagePanel />");
+    expect(me).toContain("<PublicAdminDecisionBrainPanel />");
     expect(me).toContain("<PublicAdminWhitelistPanel />");
     expect(css).toContain(".public-admin-panel");
     expect(css).toContain(".public-admin-live-summary");
@@ -82,6 +87,14 @@ describe("public workspace page contract", () => {
     expect(adminWhitelist).toContain("<details");
     expect(css).toContain(".public-admin-section-summary");
     expect(css).toContain(".public-admin-trend-grid");
+    expect(css).toContain(".public-admin-decision-brain");
+    expect(adminDecisionBrain).toContain("奖励关闭");
+    expect(adminDecisionBrain).toContain("不会提前标注");
+    expect(adminDecisionBrain).toContain("老王单问蒸馏复核");
+    expect(adminDecisionBrain).toContain("未经老王本人确认的内容不能进入监督训练候选");
+    expect(adminDecisionBrain).toContain("关系成立");
+    expect(css).toContain(".public-admin-decision-causal-observation");
+    expect(adminDecisionBrain).toContain("确认复核并写入审计");
     expect(css).toContain("max-height: min(58vh, 540px)");
   });
 

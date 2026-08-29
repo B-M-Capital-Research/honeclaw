@@ -626,6 +626,10 @@ pub struct AdminConfig {
     /// Discord 管理员用户 ID 列表（数字字符串，如 "123456789012345678"）
     #[serde(default)]
     pub discord_user_ids: Vec<String>,
+    /// 唯一允许代表老王本人确认投资因果标签的 Web 用户 ID。
+    /// 普通管理员可以核验来源，但不能通过勾选框自我声明为老王。
+    #[serde(default)]
+    pub old_wang_web_user_ids: Vec<String>,
     /// 运行时管理员注册口令；建议留空并改用环境变量
     #[serde(default)]
     pub runtime_admin_registration_passphrase: String,
@@ -635,6 +639,31 @@ pub struct AdminConfig {
 }
 
 impl AdminConfig {
+    pub fn is_old_wang_web_user_id(&self, user_id: &str) -> bool {
+        let candidate = user_id.trim();
+        !candidate.is_empty()
+            && candidate.len() <= 128
+            && candidate
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "-_.:".contains(character))
+            && self
+                .old_wang_web_user_ids
+                .iter()
+                .map(|configured| configured.trim())
+                .any(|configured| configured == candidate)
+    }
+
+    pub fn has_old_wang_web_user_id(&self) -> bool {
+        self.old_wang_web_user_ids.iter().any(|configured| {
+            let configured = configured.trim();
+            !configured.is_empty()
+                && configured.len() <= 128
+                && configured.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || "-_.:".contains(character)
+                })
+        })
+    }
+
     pub fn resolved_runtime_admin_registration_passphrase(&self) -> String {
         let direct = self.runtime_admin_registration_passphrase.trim();
         if !direct.is_empty() {

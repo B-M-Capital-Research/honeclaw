@@ -1,0 +1,129 @@
+{
+  "schema_version": "hone-operating-kpi-backfill-manifest-v2",
+  "documents": [
+    {
+      "event_id": "operating-kpi-backfill:SNDK:FY2025:10K:source-artifact-v2",
+      "symbol": "SNDK",
+      "occurred_at": "2025-08-21T00:31:19Z",
+      "period": "FY2025",
+      "document_type": "sec_filing_10k",
+      "format": "html",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2023554/000202355425000034/sndk-20250627.htm",
+      "source_sha256": "5c6ccb016447fd9dc3b40c1408496b90b5abcdf1982136d1e11812ee6c93bd7d",
+      "source_time_precision": "exact",
+      "claims": [
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "nand_bit_shipments_growth",
+          "issuer_metric_name": "exabytes sold",
+          "issuer_definition": "153% increase in exabytes sold",
+          "period": "FY2025",
+          "numeric_value": 153.0,
+          "unit": "%",
+          "value_text": "153% increase in exabytes sold due to increased enterprise SSD shipments to data center customers",
+          "measurement_scope": "Sandisk Cloud end market; fiscal 2025 compared with fiscal 2024; exabytes sold",
+          "comparison_basis": "year_over_year",
+          "speaker": "",
+          "evidence_quote": "153% increase in exabytes sold due to increased enterprise SSD shipments to data center customers",
+          "source_locator": "Form 10-K · MD&A · Net Revenue",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    },
+    {
+      "event_id": "operating-kpi-backfill:SNDK:FY2026Q4:8K:source-artifact-v2",
+      "symbol": "SNDK",
+      "occurred_at": "2026-08-05T20:09:06Z",
+      "period": "FY2026 Q4",
+      "document_type": "sec_filing_8k",
+      "format": "html",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2023554/000162828026053346/sndkq4-26ex991xpressrelease.htm",
+      "source_sha256": "67dd03ef1550f96f37fd653947c2ef5a47166676d19c0781333285572d456f42",
+      "source_time_precision": "exact",
+      "claims": [
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "data_center_revenue_growth",
+          "issuer_metric_name": "Datacenter",
+          "issuer_definition": "Datacenter up 437%",
+          "period": "FY2026",
+          "numeric_value": 437.0,
+          "unit": "%",
+          "value_text": "Revenue outperformance was driven by both our mix shift toward higher-value customers, with Datacenter up 437%, and higher pricing.",
+          "measurement_scope": "Sandisk Datacenter revenue; fiscal 2026 compared with fiscal 2025",
+          "comparison_basis": "year_over_year",
+          "speaker": "",
+          "evidence_quote": "Revenue outperformance was driven by both our mix shift toward higher-value customers, with Datacenter up 437%, and higher pricing.",
+          "source_locator": "Form 8-K · Exhibit 99.1 · Fiscal Year 2026 Highlights",
+          "definition_changed": false,
+          "disposition": "active"
+        },
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "signed_storage_supply_agreements",
+          "issuer_metric_name": "New Business Model (“NBM”) agreements",
+          "issuer_definition": "signed five additional agreements",
+          "period": "FY2026 Q4",
+          "numeric_value": 5.0,
+          "unit": "agreements",
+          "value_text": "Since announcing five New Business Model (“NBM”) agreements during our April earnings call, we have signed five additional agreements, including three NBMs with new customers and two deals expanding on previously signed NBMs.",
+          "measurement_scope": "Additional Sandisk NBM agreements signed by the fiscal Q4 2026 earnings release; three new-customer agreements and two expansions",
+          "comparison_basis": "point_in_time",
+          "speaker": "",
+          "evidence_quote": "Since announcing five New Business Model (“NBM”) agreements during our April earnings call, we have signed five additional agreements, including three NBMs with new customers and two deals expanding on previously signed NBMs.",
+          "source_locator": "Form 8-K · Exhibit 99.1 · Fiscal Year 2026 Highlights",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    },
+    {
+      "event_id": "operating-kpi-backfill:SNDK:FY2026:10K:source-artifact-v2",
+      "symbol": "SNDK",
+      "occurred_at": "2026-08-17T20:50:29Z",
+      "period": "FY2026",
+      "document_type": "sec_filing_10k",
+      "format": "html",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2023554/000162828026057406/sndk-20260703.htm",
+      "source_sha256": "d3a07ad05af54962751a21e1eeaa10fdd4420fa4967c9140e2e1f836e6aa66bd",
+      "source_time_precision": "exact",
+      "claims": [
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "storage_nbm_remaining_performance_obligations",
+          "issuer_metric_name": "remaining performance obligations",
+          "issuer_definition": "transaction price allocated to remaining performance obligations",
+          "period": "FY2026",
+          "numeric_value": 59.8,
+          "unit": "USD_billions",
+          "value_text": "As of July 3, 2026, the transaction price allocated to remaining performance obligations was $ 59.8 billion",
+          "measurement_scope": "All Sandisk NBMs with Datacenter and Edge customers at July 3, 2026; includes billed and unbilled consideration; not pure Datacenter revenue, orders or cash; 19% expected within 12 months",
+          "comparison_basis": "point_in_time",
+          "speaker": "",
+          "evidence_quote": "As of July 3, 2026, the transaction price allocated to remaining performance obligations was $ 59.8 billion",
+          "source_locator": "Form 10-K · Notes to Consolidated Financial Statements · Revenue Recognition · Remaining performance obligations",
+          "definition_changed": false,
+          "disposition": "active"
+        },
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "signed_storage_supply_agreements",
+          "issuer_metric_name": "two additional NBMs",
+          "issuer_definition": "entered into two additional NBMs",
+          "period": "Post FY2026 balance sheet date",
+          "numeric_value": 2.0,
+          "unit": "agreements",
+          "value_text": "Subsequent to the balance sheet date, the Company entered into two additional NBMs with an aggregate transaction price of $ 31.3 billion",
+          "measurement_scope": "Two additional Sandisk NBMs entered after July 3, 2026; aggregate transaction price disclosed separately as $31.3 billion; contract-market mix not disclosed in this sentence",
+          "comparison_basis": "point_in_time",
+          "speaker": "",
+          "evidence_quote": "Subsequent to the balance sheet date, the Company entered into two additional NBMs with an aggregate transaction price of $ 31.3 billion",
+          "source_locator": "Form 10-K · Notes to Consolidated Financial Statements · Subsequent Events",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    }
+  ]
+}

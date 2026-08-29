@@ -21,6 +21,7 @@ use hone_llm::{CreatedLlmProvider, LlmResolver, Message};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+use super::model_analysis_health::{ModelAnalysisHealth, build as model_analysis_health};
 use crate::state::AppState;
 
 const LOOKBACK_HOURS: i64 = 36;
@@ -30,6 +31,7 @@ const MODEL_VERSION: &str = "hone-influencer-digest-v1";
 const MAX_ITEMS: usize = 24;
 const MAX_SERENITY_BYTES: usize = 2_000_000;
 const SERENITY_AGGREGATION_URL: &str = "https://aichainmap.com/serenity/";
+const ANALYSIS_TIMEOUT_SECS: u64 = 20;
 
 #[derive(Debug, Clone, Copy)]
 struct AuthorDef {
@@ -119,6 +121,8 @@ pub(crate) struct InfluencerDigestSnapshot {
     pub lookback_hours: i64,
     pub model_version: String,
     pub status: String,
+    #[serde(default)]
+    pub analysis_health: ModelAnalysisHealth,
     pub summary: String,
     pub coverage: InfluencerDigestCoverage,
     pub authors: Vec<InfluencerAuthorStatus>,
@@ -182,7 +186,7 @@ struct AnalysisEnvelope {
     items: Vec<AnalysisItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct AnalysisItem {
     id: String,
     summary: String,
@@ -192,6 +196,12 @@ struct AnalysisItem {
     topics: Vec<String>,
     tickers: Vec<String>,
     counterpoint: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AnalysisBatchResult {
+    analyses: HashMap<String, AnalysisItem>,
+    failure_reasons: HashSet<String>,
 }
 
 pub(crate) async fn handle_get_influencer_digest(
@@ -293,13 +303,18 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
     fetched.truncate(MAX_ITEMS);
 
     let analyzer = resolve_analyzer(state);
-    let analyses = match analyzer.as_ref() {
-        Some(created) if !fetched.is_empty() => analyze_items(created, &fetched).await,
-        _ => HashMap::new(),
+    let mut analysis_result = match analyzer.as_ref() {
+        Some(created) if !fetched.is_empty() => analyze_items_with_timeout(created, &fetched).await,
+        _ => AnalysisBatchResult::default(),
     };
+    if !fetched.is_empty() && analyzer.is_none() {
+        analysis_result
+            .failure_reasons
+            .insert("analyzer_unconfigured".to_string());
+    }
     let items = fetched
         .iter()
-        .map(|item| public_item(item, analyses.get(&item.id)))
+        .map(|item| public_item(item, analysis_result.analyses.get(&item.id)))
         .collect::<Vec<_>>();
     let configured = statuses.iter().filter(|item| item.configured).count();
     let analyzed = items
@@ -319,6 +334,24 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
     } else {
         "live"
     };
+    let health_status = if fetched.is_empty() {
+        "not_required"
+    } else if analyzer.is_none() {
+        "unconfigured"
+    } else if analyzed == fetched.len() {
+        "healthy"
+    } else if analyzed == 0 {
+        "unavailable"
+    } else {
+        "partial"
+    };
+    let analysis_health = model_analysis_health(
+        analyzer.as_ref(),
+        fetched.len(),
+        analyzed,
+        analysis_result.failure_reasons.iter().map(String::as_str),
+        health_status,
+    );
     snapshot(
         status,
         statuses,
@@ -330,6 +363,7 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
             items: fetched.len(),
             analyzed,
         },
+        analysis_health,
     )
 }
 
@@ -555,8 +589,8 @@ fn resolve_analyzer(state: &AppState) -> Option<CreatedLlmProvider> {
 async fn analyze_items(
     analyzer: &CreatedLlmProvider,
     items: &[FetchedItem],
-) -> HashMap<String, AnalysisItem> {
-    let mut result = HashMap::new();
+) -> AnalysisBatchResult {
+    let mut result = AnalysisBatchResult::default();
     for chunk in items.chunks(10) {
         let input = chunk
             .iter()
@@ -579,14 +613,20 @@ async fn analyze_items(
             Ok(response) => response.content,
             Err(error) => {
                 warn!(%error, "influencer digest model failed");
+                result
+                    .failure_reasons
+                    .insert("upstream_request_failed".to_string());
                 continue;
             }
         };
         let Some(envelope) = parse_analysis(&response, chunk) else {
             warn!("influencer digest model returned invalid contract");
+            result
+                .failure_reasons
+                .insert("invalid_output_contract".to_string());
             continue;
         };
-        result.extend(
+        result.analyses.extend(
             envelope
                 .items
                 .into_iter()
@@ -594,6 +634,30 @@ async fn analyze_items(
         );
     }
     result
+}
+
+async fn analyze_items_with_timeout(
+    analyzer: &CreatedLlmProvider,
+    items: &[FetchedItem],
+) -> AnalysisBatchResult {
+    match tokio::time::timeout(
+        Duration::from_secs(ANALYSIS_TIMEOUT_SECS),
+        analyze_items(analyzer, items),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            warn!(
+                timeout_seconds = ANALYSIS_TIMEOUT_SECS,
+                "influencer digest model timed out; keeping source-only posts"
+            );
+            AnalysisBatchResult {
+                analyses: HashMap::new(),
+                failure_reasons: HashSet::from(["analysis_timeout".to_string()]),
+            }
+        }
+    }
 }
 
 fn analysis_messages(input: &[serde_json::Value]) -> Vec<Message> {
@@ -731,6 +795,7 @@ fn snapshot(
     authors: Vec<InfluencerAuthorStatus>,
     items: Vec<InfluencerDigestItem>,
     coverage: InfluencerDigestCoverage,
+    analysis_health: ModelAnalysisHealth,
 ) -> InfluencerDigestSnapshot {
     let now = Utc::now();
     let summary = match status {
@@ -763,6 +828,7 @@ fn snapshot(
         lookback_hours: LOOKBACK_HOURS,
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
+        analysis_health,
         summary,
         coverage,
         authors,
@@ -794,6 +860,7 @@ fn unconfigured_snapshot() -> InfluencerDigestSnapshot {
             authors: AUTHORS.len(),
             ..Default::default()
         },
+        model_analysis_health(None, 0, 0, std::iter::empty(), "not_required"),
     )
 }
 

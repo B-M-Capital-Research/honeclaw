@@ -14,8 +14,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tracing::warn;
 
+use crate::earnings_claim::EarningsClaimInput;
 use crate::earnings_document::{EARNINGS_DOCUMENT_KEY, canonical_earnings_document_key};
 use crate::event::{MarketEvent, Severity};
+use crate::operating_kpi_claim::{
+    OperatingKpiClaimInput, operating_kpi_input_is_supported_for_symbol,
+    operating_kpi_input_is_verbatim_in_source, operating_kpi_prompt_for_symbol,
+};
 
 pub const DEFAULT_EARNINGS_QUALITY_SYSTEM_PROMPT: &str = r#"你是一个面向长期主线投资者的财报质量判断器。你会收到一个 EPS surprise 事件和对应 SEC 8-K / earnings release 的精选摘抄。请只根据摘抄做综合判断，不要补充外部事实。
 
@@ -24,6 +29,10 @@ pub const DEFAULT_EARNINGS_QUALITY_SYSTEM_PROMPT: &str = r#"你是一个面向�
 严格区分：摘抄已经确认的事实、你基于事实做的综合判断、摘抄尚未回答的问题。没有市场共识、用户自己的预期或上季承诺时，不得伪造比较结论。即使综合结论正面，也必须保留最强反向项和仍需核验的问题。
 
 金额与单位是硬约束：优先原样保留摘抄中的 `$8.97B`、`$226.4M` 等 B/M 表示，不得擅自改写成“亿美元/万元”或改变小数点、数量级。若表头说明 `in millions`，裸数字 `13,335` 必须写成 `$13,335M`，绝不能写成 `$13,335B`；若要写 B 也必须先正确换算成 `$13.335B`，但仍优先保留原始 M 单位。只有 Raw EPS payload 同时给出 actual 与 estimate 时，才可对 EPS 使用“超预期/不及预期”；收入、利润率、指引等没有对应共识字段时不得说“全面超预期”。无法确认单位时保留原始写法并把疑问放入 unknowns，不得猜测换算。
+
+claims 最多 12 项；没有明确期间、原始数值/口径和表格/章节位置时不要提取。metric_basis 必须写 GAAP、non-GAAP 或公司明确给出的经营口径。metric_id 只能是 revenue、revenue_growth、gross_margin、operating_margin、free_cash_flow、capital_expenditure、inventory、accounts_receivable、accounts_payable、backlog、rpo、arr、orders、shipments、capacity、utilization、asp、market_share、customer_qualification、customers、retention、usage、tokens、context_length、power_capacity、product_mix、unit_cost、delivery_lead_time。numeric_value 必须逐字出现在 value_text 或 evidence_zh；unit 只能是 %、percentage_points、basis_points、USD、USD_millions、USD_billions、units、customers、days、ratio、MW、GW、GB、TB、PB、EB、tokens。disposition 默认为 active；只有原文明确修正旧口径时用 corrected，明确撤回时用 withdrawn。否则不要填数字或直接不提取该 claim。
+
+operating_kpi_claims 最多 6 项，只能使用本次 Ticker 后附动态目录中的 kpi_id。issuer_metric_name 和 issuer_definition 必须逐字复制摘抄中的公司原始名称/定义，issuer_definition 还必须原样出现在 evidence_quote 或 value_text；找不到定义就不要提取。行业数据不得冒充公司实现值，机会管线不得冒充已签订单，送样/认证/量产必须分开。numeric_value 非空时 unit 只能是 %、percentage_points、basis_points、USD、USD_millions、USD_billions、units、customers、days、weeks、ratio、kW、MW、GW、GB、TB、PB、EB、bits、tokens、calls、modules、ports、wafers、workflows、milestone；不要写 percent。comparison_basis 只能是 year_over_year、sequential_quarter、point_in_time、period_total、period_average、period_end。definition_changed 只有公司明确宣布口径改变时才为 true。
 
 输出必须是单个 JSON object，不要 Markdown，不要解释：
 {
@@ -36,6 +45,8 @@ pub const DEFAULT_EARNINGS_QUALITY_SYSTEM_PROMPT: &str = r#"你是一个面向�
   "risks": ["最多2条短风险"],
   "unknowns": ["最多2条摘抄尚未确认、但会影响判断的问题"],
   "follow_ups": ["最多3条电话会、正式季报或下季必须继续核验的问题"],
+  "claims": [{"claim_kind":"reported_fact|management_guidance|management_commentary","metric_id":"受支持的规范指标ID","metric_basis":"GAAP|non-GAAP|公司定义口径","period":"明确财季/日期范围","numeric_value":null,"unit":"原始规范单位；无数值时为空字符串","value_text":"原始值与口径","speaker":"新闻稿事实可空，管理层主张必填","evidence_zh":"短原文证据","source_locator":"表格/章节/段落","disposition":"active|corrected|withdrawn"}],
+  "operating_kpi_claims": [{"claim_kind":"reported_fact|management_guidance|contract_milestone","kpi_id":"动态目录中的 KPI ID","issuer_metric_name":"公司原始指标名","issuer_definition":"摘抄中逐字定义","period":"明确期间","numeric_value":null,"unit":"原始规范单位","value_text":"原始值与口径","measurement_scope":"产品/分母/客户/期末或平均等边界","comparison_basis":"year_over_year|sequential_quarter|point_in_time|period_total|period_average|period_end","speaker":"管理层主张必填","evidence_quote":"摘抄中的短原文","source_locator":"表格/章节/段落","definition_changed":false,"disposition":"active|corrected|withdrawn"}],
   "override_eps_only": true
 }
 
@@ -63,6 +74,10 @@ pub struct EarningsQualityReview {
     pub unknowns: Vec<String>,
     #[serde(default)]
     pub follow_ups: Vec<String>,
+    #[serde(default)]
+    pub claims: Vec<EarningsClaimInput>,
+    #[serde(default)]
+    pub operating_kpi_claims: Vec<OperatingKpiClaimInput>,
     #[serde(default)]
     pub override_eps_only: bool,
 }
@@ -128,10 +143,58 @@ impl EarningsQualityReviewer for LlmEarningsQualityReviewer {
 
 pub fn apply_earnings_quality_review(
     event: &mut MarketEvent,
+    mut review: EarningsQualityReview,
+    context_url: Option<String>,
+    min_review_confidence: f64,
+    min_immediate_confidence: f64,
+) -> bool {
+    // The legacy call has no bounded source excerpt, so operating KPIs cannot
+    // be independently checked and must not enter the claim corpus.
+    review.operating_kpi_claims.clear();
+    apply_earnings_quality_review_inner(
+        event,
+        review,
+        context_url,
+        min_review_confidence,
+        min_immediate_confidence,
+        false,
+    )
+}
+
+pub fn apply_earnings_quality_review_with_source(
+    event: &mut MarketEvent,
+    mut review: EarningsQualityReview,
+    context_url: Option<String>,
+    source_context: &str,
+    min_review_confidence: f64,
+    min_immediate_confidence: f64,
+) -> bool {
+    let symbol = event
+        .symbols
+        .first()
+        .map(String::as_str)
+        .unwrap_or_default();
+    review.operating_kpi_claims.retain(|claim| {
+        operating_kpi_input_is_supported_for_symbol(symbol, claim)
+            && operating_kpi_input_is_verbatim_in_source(claim, source_context)
+    });
+    apply_earnings_quality_review_inner(
+        event,
+        review,
+        context_url,
+        min_review_confidence,
+        min_immediate_confidence,
+        true,
+    )
+}
+
+fn apply_earnings_quality_review_inner(
+    event: &mut MarketEvent,
     review: EarningsQualityReview,
     context_url: Option<String>,
     min_review_confidence: f64,
     min_immediate_confidence: f64,
+    operating_kpi_source_verified: bool,
 ) -> bool {
     let earnings_document_key = context_url
         .as_deref()
@@ -196,6 +259,10 @@ pub fn apply_earnings_quality_review(
             "earnings_quality_review_confidence".into(),
             Value::from(confidence),
         );
+        obj.insert(
+            "earnings_quality_operating_kpi_source_verified".into(),
+            Value::Bool(applied && operating_kpi_source_verified),
+        );
         if let Some(url) = context_url {
             obj.insert("earnings_quality_context_url".into(), Value::String(url));
         }
@@ -214,19 +281,21 @@ pub fn apply_earnings_quality_review(
 }
 
 fn build_review_messages(system_prompt: &str, event: &MarketEvent, context: &str) -> Vec<Message> {
+    let symbol = event.symbols.first().cloned().unwrap_or_default();
+    let system_prompt = format!(
+        "{}{}",
+        system_prompt,
+        operating_kpi_prompt_for_symbol(&symbol)
+    );
     let payload = serde_json::to_string(&event.payload).unwrap_or_else(|_| "{}".to_string());
     let user = format!(
         "Ticker: {}\nCandidate title: {}\nEPS trigger summary: {}\nRaw EPS payload: {}\n\nSEC earnings-release excerpt:\n{}",
-        event.symbols.first().cloned().unwrap_or_default(),
-        event.title,
-        event.summary,
-        payload,
-        context
+        symbol, event.title, event.summary, payload, context
     );
     vec![
         Message {
             role: "system".into(),
-            content: Some(system_prompt.to_string()),
+            content: Some(system_prompt),
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
@@ -279,6 +348,8 @@ fn normalize_review_shape(mut review: EarningsQualityReview) -> EarningsQualityR
     normalize_review_list(&mut review.risks, 2, 320);
     normalize_review_list(&mut review.unknowns, 2, 320);
     normalize_review_list(&mut review.follow_ups, 3, 320);
+    review.claims.truncate(12);
+    review.operating_kpi_claims.truncate(6);
     review
 }
 
@@ -443,6 +514,15 @@ mod tests {
     }
 
     #[test]
+    fn earnings_quality_prompt_is_scoped_to_the_issuer_model() {
+        let event = sample_aaoi_earnings_event();
+        let messages = build_review_messages("base", &event, "source excerpt");
+        let system = messages[0].content.as_deref().unwrap();
+        assert!(system.contains("high_speed_optical_shipments"));
+        assert!(!system.contains("nand_asp_change"));
+    }
+
+    #[test]
     fn rejects_implausible_comma_billions_units() {
         let mut review = EarningsQualityReview {
             conclusion: "positive".into(),
@@ -454,6 +534,8 @@ mod tests {
             risks: vec![],
             unknowns: vec![],
             follow_ups: vec![],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             override_eps_only: true,
         };
         assert!(has_implausible_billions_unit(&review));
@@ -502,6 +584,8 @@ mod tests {
             risks: vec!["non-GAAP仍亏损".into()],
             unknowns: vec!["增长的量价贡献未披露".into()],
             follow_ups: vec!["电话会核验订单能见度".into()],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             override_eps_only: true,
         };
         let applied = apply_earnings_quality_review(
@@ -549,6 +633,8 @@ mod tests {
             risks: vec![],
             unknowns: vec![],
             follow_ups: vec![],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             override_eps_only: true,
         };
         assert!(apply_earnings_quality_review(
@@ -572,6 +658,8 @@ mod tests {
             risks: vec![],
             unknowns: vec![],
             follow_ups: vec![],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             override_eps_only: false,
         };
         assert!(!apply_earnings_quality_review(
@@ -608,6 +696,8 @@ mod tests {
                 "电话会核验企业级 SSD 客户采用".into(),
                 "下季核验 NAND 供给纪律和毛利持续性".into(),
             ],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             override_eps_only: true,
         };
 

@@ -36,6 +36,10 @@ subtle         = { workspace = true }
 url            = "2"
 base64         = { workspace = true }
 hmac           = { workspace = true }
+aes-gcm        = { workspace = true }
+lopdf          = { workspace = true }
 sha1           = { workspace = true }
 sha2           = { workspace = true }
 percent-encoding = { workspace = true }
+regex           = { workspace = true }
+scraper         = { workspace = true }

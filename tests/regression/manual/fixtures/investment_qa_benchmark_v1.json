@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "suite_id": "hone-investment-qa-v1",
+  "title": "HONE 投资问答五题基准",
+  "timezone": "Asia/Shanghai",
+  "reference_model": {
+    "name": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "role": "独立参考答案，不替代一手来源核验"
+  },
+  "required_hone_skills": [
+    "hari-invest",
+    "company-thesis-ratings"
+  ],
+  "scorecard": {
+    "data_accuracy_and_scope": 30,
+    "source_quality_and_freshness": 15,
+    "decision_orientation": 20,
+    "hari_framework_alignment": 15,
+    "company_research_usage": 10,
+    "overall_reasonableness": 10
+  },
+  "hard_failures": [
+    "返回通用处理失败或要求用户稍后重试",
+    "把未核验数据写成当前事实",
+    "行情、财报或估值数字没有日期或来源口径",
+    "声称加载 Skill，但审计中没有成功的 Skill 调用或等价原生加载证据",
+    "用历史研究目标价冒充当前估值",
+    "没有给出用户要求的明确行动结论"
+  ],
+  "acceptance_gates": {
+    "minimum_case_score": 75,
+    "minimum_average_score": 80,
+    "maximum_hard_failures": 0,
+    "required_skill_success_rate": 1.0,
+    "material_fact_accuracy_rate": 1.0
+  },
+  "execution_protocol": [
+    "在同一北京时间截面、同一 HONE 用户和全新对话中逐题提问",
+    "保存 HONE 最终答案、运行时长、来源链接和工具审计记录",
+    "用独立环境运行 GPT-5.6 Sol 参考答案，禁止读取 HONE 私有 Skill",
+    "事实准确性按一手来源核验，不按两份答案是否一致判定",
+    "Skill 使用只接受成功的运行时调用或等价原生加载证据，不接受答案中的自述",
+    "逐项评分并先检查硬失败；命中任一硬失败则该题不通过"
+  ],
+  "cases": [
+    {
+      "id": "earnings_crwv",
+      "category": "最新财报与行动结论",
+      "symbols": ["CRWV"],
+      "prompt": "请结合可核验的最新一季财报和当前价格，直接判断 CRWV 现在应当是“买入、持有、等待、减仓”中的哪一个。至少核验营收、盈利质量、自由现金流或资本开支、积压订单、债务和估值；先给结论，注明数据日期与来源；最后写最强反方和两项会让你改变判断的证伪条件。",
+      "must_check": [
+        "财报期间和发布日期",
+        "收入与盈利口径",
+        "资本开支或自由现金流",
+        "backlog 与债务风险",
+        "当前价格和估值口径",
+        "结论、反方和证伪条件"
+      ]
+    },
+    {
+      "id": "valuation_sndk",
+      "category": "多方法估值",
+      "symbols": ["SNDK"],
+      "prompt": "请用老王的投资框架和已经沉淀的闪迪公司研究逻辑，复核 SNDK 当前估值。至少交叉使用三类适配方法：悲观/基准/乐观情景估值、反向 DCF 或当前价格隐含增长、同业或自身历史区间；显示当前价格在三种情景中的位置、估值日期和最敏感的三个假设，并明确给出“买入、持有、等待、减仓”之一。缺少真实输入时不要补数，要说明因此结论降到哪一级。",
+      "must_check": [
+        "历史研究仅作长期基线",
+        "至少三种方法或明确披露无法完成",
+        "悲观/基准/乐观及当前价格位置",
+        "估值日期与关键假设",
+        "动作结论与置信度"
+      ]
+    },
+    {
+      "id": "compare_mu_sndk",
+      "category": "同产业公司比较",
+      "symbols": ["MU", "SNDK"],
+      "prompt": "如果 MU 和 SNDK 只能选一只持有未来 12 至 18 个月，你选谁？请统一数据日期，结合最新财报、当前价格、毛利率趋势、现金流、资本开支、HBM 与 NAND/SSD 的供需、产品差异化和估值比较。必须先给唯一选择，再解释另一家公司为什么暂时落后，并列出可能让排序反转的三项证据。",
+      "must_check": [
+        "两家公司实体和同一数据时点",
+        "HBM 与 NAND/SSD 利润池差异",
+        "毛利率、现金流和资本开支",
+        "稀缺性与公司差异化",
+        "唯一选择和排序反转条件"
+      ]
+    },
+    {
+      "id": "moat_avgo",
+      "category": "护城河与财报兑现",
+      "symbols": ["AVGO"],
+      "prompt": "AVGO 最新财报之后，AI ASIC 和网络业务的增长究竟是在加强护城河，还是已经被高估值透支？请结合最新财报、AI 收入或订单、毛利与现金流、客户集中、软件业务和当前估值判断。先给“机会大于风险、持有观察、风险大于机会”三选一结论，再说明商业模式、真正的差异化、最强反方和未来两个季度最应该跟踪的指标。",
+      "must_check": [
+        "最新财报期间和一手来源",
+        "AI 业务兑现与软件现金流",
+        "客户集中和估值风险",
+        "商业模式及护城河变化",
+        "三选一结论和跟踪指标"
+      ]
+    },
+    {
+      "id": "portfolio_action",
+      "category": "组合与未来十日行动",
+      "symbols": ["CRWV", "SNDK", "AVGO"],
+      "prompt": "假设组合目前是 CRWV 25%、SNDK 20%、AVGO 20%、现金 35%，未来十个交易日应该先做什么？请核验最新价格、财报、重大新闻、财报日历和宏观事件；按老王的动态杠铃与板块优先框架，明确给出“优先保留、优先复核、暂不加仓”的排序和每只股票的行动触发条件。不要给无法由数据支持的精确目标仓位，也不要把三只高度相关的 AI 标的当成充分分散。",
+      "must_check": [
+        "真实组合权重与相关性",
+        "未来十个交易日的重要事件",
+        "宏观与公司风险分层",
+        "动态杠铃和板块优先",
+        "行动排序与可验证触发条件"
+      ]
+    }
+  ]
+}

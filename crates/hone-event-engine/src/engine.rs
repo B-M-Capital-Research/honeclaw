@@ -28,6 +28,7 @@ use crate::pollers::{
 };
 use crate::prefs::{FilePrefsStorage, PrefsProvider, PriceAlertPolicyDefaults};
 use crate::router::{LogSink, NotificationRouter, OutboundSink};
+use crate::sec_company_facts::{SecCompanyFactsBackfiller, spawn_sec_company_facts_backfill};
 use crate::source::SourceSchedule;
 use crate::spawner::spawn_event_source;
 use crate::store::EventStore;
@@ -229,10 +230,48 @@ impl EventEngine {
 
     /// 启动事件引擎。非阻塞：内部 spawn 后立即返回 Ok。
     pub async fn start(&self) -> anyhow::Result<()> {
-        if !self.engine_cfg.enabled {
+        let sec_maintenance_enabled = self.engine_cfg.sec_company_facts.enabled;
+        if !self.engine_cfg.enabled && !sec_maintenance_enabled {
             info!("event engine disabled via config");
             return Ok(());
         }
+
+        let task_runs_dir = self.task_runs_dir.clone();
+        if let Some(dir) = task_runs_dir.as_deref() {
+            info!(
+                task_runs = %dir.display(),
+                retention_days = hone_core::TASK_RUNS_RETENTION_DAYS,
+                "task observer enabled"
+            );
+        }
+
+        let mut store_builder = EventStore::open(&self.store_path)?;
+        if let Some(jsonl) = &self.events_jsonl_path {
+            store_builder = store_builder.with_jsonl_path(jsonl);
+            info!(jsonl = %jsonl.display(), "events jsonl mirror enabled");
+        }
+        let store = Arc::new(store_builder);
+        info!(baseline = ?store.baseline_at().ok(), "event store ready");
+
+        // 历史 XBRL 财务事实是独立的数据维护任务，不是消息提醒。即使通知事件
+        // 引擎关闭，只要这个子开关开启，也要按自己的周期幂等回填；它只写研究
+        // 事件库且不经过 router，因此不会连带启动新闻、价格或其它推送渠道。
+        if sec_maintenance_enabled {
+            match SecCompanyFactsBackfiller::new(self.engine_cfg.sec_company_facts.clone()) {
+                Ok(backfiller) => spawn_sec_company_facts_backfill(
+                    backfiller,
+                    store.clone(),
+                    task_runs_dir.clone(),
+                ),
+                Err(error) => warn!("SEC Company Facts backfill disabled: {error:#}"),
+            }
+        }
+
+        if !self.engine_cfg.enabled {
+            info!("event notification engine disabled; SEC financial maintenance remains active");
+            return Ok(());
+        }
+
         info!(
             news_secs = self.engine_cfg.poll_intervals.news_secs,
             price_secs = self.engine_cfg.poll_intervals.price_secs,
@@ -256,15 +295,6 @@ impl EventEngine {
             );
         }
 
-        let task_runs_dir = self.task_runs_dir.clone();
-        if let Some(dir) = task_runs_dir.as_deref() {
-            info!(
-                task_runs = %dir.display(),
-                retention_days = hone_core::TASK_RUNS_RETENTION_DAYS,
-                "task observer enabled"
-            );
-        }
-
         let client = FmpClient::from_config(&self.fmp_cfg);
         let fmp_available = client.has_keys();
         if !fmp_available {
@@ -272,14 +302,6 @@ impl EventEngine {
                 "event engine: FMP key missing — FMP pollers 不会启动,仅非 FMP 源(Telegram/RSS)照常运行"
             );
         }
-
-        let mut store_builder = EventStore::open(&self.store_path)?;
-        if let Some(jsonl) = &self.events_jsonl_path {
-            store_builder = store_builder.with_jsonl_path(jsonl);
-            info!(jsonl = %jsonl.display(), "events jsonl mirror enabled");
-        }
-        let store = Arc::new(store_builder);
-        info!(baseline = ?store.baseline_at().ok(), "event store ready");
 
         // 清理任务：每 24h 扫一次 events / delivery_log。retention_days==0 禁用。
         if self.retention_days > 0 {
@@ -891,6 +913,7 @@ mod tests {
     use hone_llm::provider::ChatResult;
     use hone_llm::{ChatResponse, LlmProvider, Message};
     use serde_json::Value;
+    use tempfile::tempdir;
 
     struct StubProvider;
 
@@ -994,5 +1017,44 @@ mod tests {
             engine.global_digest_event_dedupe_provider.as_ref().unwrap(),
             &dedupe
         ));
+    }
+
+    #[tokio::test]
+    async fn sec_financial_maintenance_is_not_disabled_with_notification_engine() {
+        let temp = tempdir().unwrap();
+        let store_path = temp.path().join("events.sqlite3");
+        let mut config = EventEngineConfig::default();
+        config.enabled = false;
+        config.sec_company_facts.enabled = true;
+        // Prevent a network task in this unit test while still proving that
+        // start() enters the independent maintenance path and opens its store.
+        config.sec_company_facts.user_agent = "invalid-without-contact".into();
+
+        EventEngine::new(config, FmpConfig::default())
+            .with_store_path(&store_path)
+            .with_events_jsonl_path(None)
+            .start()
+            .await
+            .unwrap();
+
+        assert!(store_path.exists());
+    }
+
+    #[tokio::test]
+    async fn fully_disabled_event_engine_does_not_open_an_event_store() {
+        let temp = tempdir().unwrap();
+        let store_path = temp.path().join("events.sqlite3");
+        let mut config = EventEngineConfig::default();
+        config.enabled = false;
+        config.sec_company_facts.enabled = false;
+
+        EventEngine::new(config, FmpConfig::default())
+            .with_store_path(&store_path)
+            .with_events_jsonl_path(None)
+            .start()
+            .await
+            .unwrap();
+
+        assert!(!store_path.exists());
     }
 }

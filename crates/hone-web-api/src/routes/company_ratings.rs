@@ -4,7 +4,7 @@
 //! research baseline when configured; missing upstream data never becomes a
 //! zero and is surfaced through `data_status`, coverage, and confidence.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,13 +13,15 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use chrono::{DateTime, Datelike, TimeZone, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use chrono_tz::Asia::Shanghai;
+use futures::{StreamExt, stream};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{info, warn};
 
+use super::investment_decisions::FinancialSourceClaimTrace;
 use crate::routes::public_finance_calendar::fetch_fmp_json_once;
 use crate::state::AppState;
 
@@ -28,7 +30,29 @@ const CARDS_JSON: &str =
 const REFRESH_HOUR: u32 = 19;
 const REFRESH_MINUTE: u32 = 30;
 const STALE_AFTER_HOURS: i64 = 36;
-const METHODOLOGY_VERSION: &str = "hone-company-rating-v5";
+const METHODOLOGY_VERSION: &str = "hone-company-rating-v9-analyst-consensus-context";
+const MARKET_HISTORY_POLICY_VERSION: &str = "hone-market-history-v1-nasdaq-daily-close";
+const MARKET_HISTORY_LOOKBACK_DAYS: i64 = 430;
+const MARKET_HISTORY_MAX_AGE_DAYS: i64 = 7;
+const MARKET_HISTORY_SPLIT_REVIEW_THRESHOLD_PERCENT: f64 = 45.0;
+pub(crate) const SHORT_INTEREST_POLICY_VERSION: &str = "hone-short-interest-v1-nasdaq-settlement";
+const SHORT_INTEREST_MAX_AGE_DAYS: i64 = 45;
+pub(crate) const OPTIONS_POSITIONING_POLICY_VERSION: &str =
+    "hone-options-positioning-v1-nasdaq-monthly-open-interest";
+const OPTIONS_POSITIONING_MAX_AGE_DAYS: i64 = 5;
+pub(crate) const NEWS_ATTENTION_POLICY_VERSION: &str =
+    "hone-news-attention-v1-nasdaq-syndicated-14d";
+const NEWS_ATTENTION_RESULT_LIMIT: usize = 100;
+const NEWS_ATTENTION_WINDOW_DAYS: i64 = 14;
+const NEWS_ATTENTION_RECENT_DAYS: i64 = 3;
+pub(crate) const INSTITUTIONAL_HOLDINGS_POLICY_VERSION: &str =
+    "hone-institutional-holdings-v1-nasdaq-13f-observation";
+const INSTITUTIONAL_HOLDINGS_RESULT_LIMIT: usize = 50;
+pub(crate) const INSTITUTIONAL_HOLDINGS_MAX_OBSERVATION_AGE_DAYS: i64 = 1;
+pub(crate) const ANALYST_CONSENSUS_POLICY_VERSION: &str =
+    "hone-analyst-consensus-v1-nasdaq-observation";
+pub(crate) const ANALYST_CONSENSUS_MAX_OBSERVATION_AGE_DAYS: i64 = 1;
+static COMPANY_RATING_REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Debug, Clone, Deserialize)]
 struct CardFile {
@@ -90,7 +114,28 @@ pub(crate) struct RatingMetrics {
     pub ebit_margin_percent: Option<f64>,
     pub fcf_margin_percent: Option<f64>,
     pub net_cash_to_revenue_percent: Option<f64>,
+    pub accounts_receivable_growth_percent: Option<f64>,
+    pub accounts_payable_growth_percent: Option<f64>,
+    pub inventory_growth_percent: Option<f64>,
+    pub property_plant_equipment_growth_percent: Option<f64>,
+    pub operating_cash_flow_growth_percent: Option<f64>,
+    pub capital_expenditure_growth_percent: Option<f64>,
+    pub free_cash_flow_growth_percent: Option<f64>,
     pub financial_as_of: Option<String>,
+    #[serde(default)]
+    pub financial_review_status: Option<String>,
+    #[serde(default)]
+    pub financial_score_eligible: bool,
+    #[serde(default)]
+    pub financial_source_claim_ids: Vec<String>,
+    #[serde(default)]
+    pub financial_source_urls: Vec<String>,
+    #[serde(default)]
+    pub financial_calculations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub financial_source_claims: Vec<FinancialSourceClaimTrace>,
+    #[serde(default)]
+    pub financial_quality_warnings: Vec<String>,
     pub forward_metric_label: Option<String>,
     pub forward_metric_value: Option<String>,
     pub forward_metric_growth_percent: Option<f64>,
@@ -151,6 +196,24 @@ struct DailyValuationInput {
     assumptions: Vec<String>,
     sources: Vec<String>,
     review_status: String,
+    #[serde(default)]
+    input_mode: String,
+    #[serde(default)]
+    valuation_review_id: Option<String>,
+    #[serde(default)]
+    valuation_input_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    valuation_financial_evidence_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    valuation_input_as_of: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ValuationAuthorizationBinding {
+    review_id: String,
+    input_fingerprint_sha256: String,
+    financial_evidence_fingerprint_sha256: String,
+    input_as_of: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +229,26 @@ pub(crate) struct CompanyRating {
     pub data_status: String,
     pub price: Option<f64>,
     pub change_percent: Option<f64>,
+    #[serde(default)]
+    pub price_avg50: Option<f64>,
+    #[serde(default)]
+    pub price_avg200: Option<f64>,
+    #[serde(default)]
+    pub year_low: Option<f64>,
+    #[serde(default)]
+    pub year_high: Option<f64>,
+    #[serde(default)]
+    pub market_history: Option<MarketHistorySummary>,
+    #[serde(default)]
+    pub short_interest: Option<ShortInterestSummary>,
+    #[serde(default)]
+    pub options_positioning: Option<OptionsPositioningSummary>,
+    #[serde(default)]
+    pub news_attention: Option<NewsAttentionSummary>,
+    #[serde(default)]
+    pub institutional_holdings: Option<InstitutionalHoldingsSummary>,
+    #[serde(default)]
+    pub analyst_consensus: Option<AnalystConsensusSummary>,
     pub market_as_of: Option<String>,
     pub financial_as_of: Option<String>,
     pub thesis_summary: String,
@@ -190,11 +273,155 @@ pub(crate) struct CompanyRating {
     pub data_sources: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct MarketHistorySummary {
+    pub policy_version: String,
+    pub as_of: String,
+    pub source: String,
+    pub source_url: String,
+    pub price_basis: String,
+    pub session_count: usize,
+    pub latest_close: f64,
+    pub average_close_50: Option<f64>,
+    pub average_close_200: Option<f64>,
+    pub return_20_sessions_percent: Option<f64>,
+    pub return_60_sessions_percent: Option<f64>,
+    pub drawdown_from_60_session_high_percent: Option<f64>,
+    pub recent_5_session_volume_vs_prior_55_percent: Option<f64>,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ShortInterestSummary {
+    pub policy_version: String,
+    pub as_of: String,
+    pub source: String,
+    pub source_url: String,
+    pub current_shares_short: f64,
+    pub previous_shares_short: f64,
+    pub change_percent: f64,
+    pub average_daily_share_volume: f64,
+    pub days_to_cover: f64,
+    pub observation_count: usize,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct OptionsPositioningSummary {
+    pub policy_version: String,
+    pub as_of: String,
+    pub source: String,
+    pub source_url: String,
+    pub expiration_date: String,
+    pub days_to_expiration: i64,
+    pub spot_price: f64,
+    pub call_open_interest: f64,
+    pub put_open_interest: f64,
+    pub put_call_open_interest_ratio: Option<f64>,
+    pub call_volume: f64,
+    pub put_volume: f64,
+    pub put_call_volume_ratio: Option<f64>,
+    pub contract_rows: usize,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct NewsAttentionSummary {
+    pub policy_version: String,
+    pub as_of: String,
+    pub source: String,
+    pub source_url: String,
+    pub window_days: i64,
+    pub recent_window_days: i64,
+    pub recent_article_count: usize,
+    pub prior_article_count: usize,
+    pub recent_daily_rate: f64,
+    pub prior_daily_rate: f64,
+    pub activity_ratio: Option<f64>,
+    pub unique_publishers: usize,
+    pub observed_article_count: usize,
+    pub oldest_observed_date: String,
+    pub result_limit: usize,
+    pub truncated_window: bool,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct InstitutionalHoldingsSummary {
+    pub policy_version: String,
+    pub observed_on: String,
+    pub source: String,
+    pub source_url: String,
+    pub institutional_ownership_percent: f64,
+    pub institutional_holders: usize,
+    pub total_shares_held: f64,
+    pub total_reported_records: usize,
+    pub top_sample_rows: usize,
+    pub holder_table_truncated: bool,
+    pub earliest_report_period: String,
+    pub latest_report_period: String,
+    pub report_period_count: usize,
+    pub latest_period_rows_in_sample: usize,
+    pub increased_positions_holders: usize,
+    pub increased_positions_shares: f64,
+    pub decreased_positions_holders: usize,
+    pub decreased_positions_shares: f64,
+    pub held_positions_holders: usize,
+    pub held_positions_shares: f64,
+    pub new_positions_holders: usize,
+    pub new_positions_shares: f64,
+    pub sold_out_positions_holders: usize,
+    pub sold_out_positions_shares: f64,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+    pub interpretation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AnalystConsensusSummary {
+    pub policy_version: String,
+    pub observed_on: String,
+    pub source: String,
+    pub source_url: String,
+    pub buy_count: usize,
+    pub hold_count: usize,
+    pub sell_count: usize,
+    pub recommendation_count: usize,
+    pub buy_share_percent: f64,
+    pub hold_share_percent: f64,
+    pub sell_share_percent: f64,
+    pub dominant_rating: String,
+    pub dominant_count: usize,
+    pub dominant_share_percent: f64,
+    pub consensus_target_price: f64,
+    pub low_target_price: f64,
+    pub high_target_price: f64,
+    pub target_range_width_percent: f64,
+    pub historical_month_count: usize,
+    pub quality_status: String,
+    pub quality_warnings: Vec<String>,
+    pub interpretation: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct RatingCoverage {
     pub companies: usize,
     pub quotes: usize,
+    /// Financial rows admitted into the dynamic rating factors.
     pub financials: usize,
+    /// Point-in-time financial observations shown with provenance, including
+    /// rows that remain review-only and therefore do not affect the score.
+    #[serde(default)]
+    pub financial_observations: usize,
+    #[serde(default)]
+    pub financials_review_required: usize,
     #[serde(default)]
     pub valuations: usize,
 }
@@ -220,7 +447,24 @@ struct QuoteFact {
     change_percent: Option<f64>,
     avg50: Option<f64>,
     avg200: Option<f64>,
+    year_low: Option<f64>,
+    year_high: Option<f64>,
     timestamp: Option<i64>,
+    as_of: Option<String>,
+    source: String,
+    market_history: Option<MarketHistorySummary>,
+    short_interest: Option<ShortInterestSummary>,
+    options_positioning: Option<OptionsPositioningSummary>,
+    news_attention: Option<NewsAttentionSummary>,
+    institutional_holdings: Option<InstitutionalHoldingsSummary>,
+    analyst_consensus: Option<AnalystConsensusSummary>,
+}
+
+#[derive(Debug, Clone)]
+struct NasdaqDailyBar {
+    date: NaiveDate,
+    close: f64,
+    volume: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -233,6 +477,21 @@ struct FinancialFact {
     ebit_margin_percent: Option<f64>,
     fcf_margin_percent: Option<f64>,
     net_cash_to_revenue_percent: Option<f64>,
+    accounts_receivable_growth_percent: Option<f64>,
+    accounts_payable_growth_percent: Option<f64>,
+    inventory_growth_percent: Option<f64>,
+    property_plant_equipment_growth_percent: Option<f64>,
+    operating_cash_flow_growth_percent: Option<f64>,
+    capital_expenditure_growth_percent: Option<f64>,
+    free_cash_flow_growth_percent: Option<f64>,
+    score_eligible: bool,
+    review_status: String,
+    sources: Vec<String>,
+    source_urls: Vec<String>,
+    source_claim_ids: Vec<String>,
+    source_calculations: Vec<String>,
+    source_claims: Vec<FinancialSourceClaimTrace>,
+    quality_warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,6 +512,20 @@ struct FundamentalInput {
     ebit_margin_percent: Option<f64>,
     fcf_margin_percent: Option<f64>,
     net_cash_to_revenue_percent: Option<f64>,
+    #[serde(default)]
+    accounts_receivable_growth_percent: Option<f64>,
+    #[serde(default)]
+    accounts_payable_growth_percent: Option<f64>,
+    #[serde(default)]
+    inventory_growth_percent: Option<f64>,
+    #[serde(default)]
+    property_plant_equipment_growth_percent: Option<f64>,
+    #[serde(default)]
+    operating_cash_flow_growth_percent: Option<f64>,
+    #[serde(default)]
+    capital_expenditure_growth_percent: Option<f64>,
+    #[serde(default)]
+    free_cash_flow_growth_percent: Option<f64>,
     sources: Vec<String>,
     review_status: String,
 }
@@ -304,6 +577,7 @@ pub(crate) async fn handle_get_company_ratings(
 /// Start an immediate best-effort refresh, then wait for 19:30 Beijing each day.
 pub(crate) async fn company_rating_worker(state: Arc<AppState>) {
     refresh_and_store(&state).await;
+    refresh_position_management(&state).await;
     loop {
         let next = next_refresh(Utc::now());
         let wait = (next - Utc::now())
@@ -312,10 +586,25 @@ pub(crate) async fn company_rating_worker(state: Arc<AppState>) {
         info!(next_refresh = %next, "company rating worker waiting");
         tokio::time::sleep(wait).await;
         refresh_and_store(&state).await;
+        refresh_position_management(&state).await;
+    }
+}
+
+async fn refresh_position_management(state: &AppState) {
+    if let Err(error) = crate::routes::position_management::refresh_all(state).await {
+        warn!(%error, "position management refresh after company ratings failed");
     }
 }
 
 pub(crate) async fn refresh_and_store(state: &AppState) {
+    let requested_at = Utc::now();
+    let _refresh_guard = COMPANY_RATING_REFRESH_LOCK.lock().await;
+    if read_snapshot(state).await.is_some_and(|snapshot| {
+        snapshot_satisfies_refresh_request(snapshot.generated_at, requested_at)
+    }) {
+        info!(%requested_at, "company rating concurrent refresh coalesced");
+        return;
+    }
     let fresh = generate_snapshot(state).await;
     let snapshot = if fresh.data_status == "transcript_only" {
         match read_snapshot(state).await {
@@ -341,6 +630,7 @@ pub(crate) async fn refresh_and_store(state: &AppState) {
     if let Err(error) = write_snapshot(state, &snapshot).await {
         warn!("company rating snapshot write failed: {error}");
     } else {
+        crate::routes::investment_decisions::refresh_from_company_ratings(state, &snapshot).await;
         info!(
             status = %snapshot.data_status,
             quotes = snapshot.coverage.quotes,
@@ -348,6 +638,13 @@ pub(crate) async fn refresh_and_store(state: &AppState) {
             "company rating snapshot refreshed"
         );
     }
+}
+
+fn snapshot_satisfies_refresh_request(
+    snapshot_generated_at: DateTime<Utc>,
+    requested_at: DateTime<Utc>,
+) -> bool {
+    snapshot_generated_at >= requested_at
 }
 
 async fn generate_snapshot(state: &AppState) -> CompanyRatingSnapshot {
@@ -364,30 +661,132 @@ async fn generate_snapshot(state: &AppState) -> CompanyRatingSnapshot {
         );
     }
     let valuations = read_verified_valuations(state).await;
-    let financials = read_verified_fundamentals(state).await;
+    let mut financials = read_verified_fundamentals(state).await;
     let forward_evidence = read_verified_forward_evidence(state).await;
-    let pool = state.core.config.fmp.effective_key_pool();
-    if pool.keys().is_empty() {
-        return snapshot_from_facts(
-            cards,
-            HashMap::new(),
-            financials,
-            valuations,
-            forward_evidence,
-            false,
-        );
-    }
-
     let symbols = cards
         .iter()
         .map(|card| card.symbol.clone())
         .collect::<Vec<_>>();
-    let quotes = fetch_quotes(state, pool.keys(), &symbols)
-        .await
-        .unwrap_or_else(|error| {
-            warn!("company rating quotes unavailable: {error}");
-            HashMap::new()
-        });
+    let sec_financials = read_sec_financial_evidence(state, &symbols).await;
+    for (symbol, fact) in sec_financials {
+        // A fresh, fully reviewed FMP bridge keeps precedence. SEC claim rows
+        // are currently training-only pending human review, so they may fill a
+        // missing observation but must never silently make an existing score
+        // eligible or mix two review policies inside one factor.
+        financials.entry(symbol).or_insert(fact);
+    }
+    let pool = state.core.config.fmp.effective_key_pool();
+    let mut quotes = if pool.keys().is_empty() {
+        HashMap::new()
+    } else {
+        fetch_quotes(state, pool.keys(), &symbols)
+            .await
+            .unwrap_or_else(|error| {
+                warn!("company rating FMP quotes unavailable: {error}");
+                HashMap::new()
+            })
+    };
+    let missing = symbols
+        .iter()
+        .filter(|symbol| !quotes.contains_key(*symbol))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        let fallback = fetch_nasdaq_quotes(state, &missing).await;
+        info!(
+            requested = missing.len(),
+            received = fallback.len(),
+            "company rating Nasdaq quote fallback completed"
+        );
+        for (symbol, quote) in fallback {
+            quotes.entry(symbol).or_insert(quote);
+        }
+    }
+    let (
+        histories,
+        short_interests,
+        options_positioning,
+        news_attention,
+        institutional_holdings,
+        analyst_consensus,
+    ) = tokio::join!(
+        fetch_nasdaq_market_histories(state, &symbols),
+        fetch_nasdaq_short_interests(state, &symbols),
+        fetch_nasdaq_options_positioning(state, &symbols),
+        fetch_nasdaq_news_attention(state, &symbols),
+        fetch_nasdaq_institutional_holdings(state, &symbols),
+        fetch_nasdaq_analyst_consensus(state, &symbols),
+    );
+    info!(
+        requested = symbols.len(),
+        received = histories.len(),
+        "company rating Nasdaq market-history fallback completed"
+    );
+    for (symbol, history) in histories {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        if history.quality_status == "usable" {
+            quote.avg50 = quote.avg50.or(history.average_close_50);
+            quote.avg200 = quote.avg200.or(history.average_close_200);
+        }
+        quote.market_history = Some(history);
+    }
+    info!(
+        requested = symbols.len(),
+        received = short_interests.len(),
+        "company rating Nasdaq short-interest context completed"
+    );
+    for (symbol, short_interest) in short_interests {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        quote.short_interest = Some(short_interest);
+    }
+    info!(
+        requested = symbols.len(),
+        received = options_positioning.len(),
+        "company rating Nasdaq options-positioning context completed"
+    );
+    for (symbol, options) in options_positioning {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        quote.options_positioning = Some(options);
+    }
+    info!(
+        requested = symbols.len(),
+        received = news_attention.len(),
+        "company rating Nasdaq syndicated-news attention completed"
+    );
+    for (symbol, attention) in news_attention {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        quote.news_attention = Some(attention);
+    }
+    info!(
+        requested = symbols.len(),
+        received = institutional_holdings.len(),
+        "company rating Nasdaq institutional-holdings context completed"
+    );
+    for (symbol, holdings) in institutional_holdings {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        quote.institutional_holdings = Some(holdings);
+    }
+    info!(
+        requested = symbols.len(),
+        received = analyst_consensus.len(),
+        "company rating Nasdaq analyst-consensus context completed"
+    );
+    for (symbol, consensus) in analyst_consensus {
+        let Some(quote) = quotes.get_mut(&symbol) else {
+            continue;
+        };
+        quote.analyst_consensus = Some(consensus);
+    }
     snapshot_from_facts(
         cards,
         quotes,
@@ -466,6 +865,21 @@ fn simulation_inputs(
                 ebit_margin_percent: Some(round1(ebit_margin)),
                 fcf_margin_percent: Some(round1(fcf_margin)),
                 net_cash_to_revenue_percent: Some(round1(net_cash)),
+                accounts_receivable_growth_percent: None,
+                accounts_payable_growth_percent: None,
+                inventory_growth_percent: None,
+                property_plant_equipment_growth_percent: None,
+                operating_cash_flow_growth_percent: None,
+                capital_expenditure_growth_percent: None,
+                free_cash_flow_growth_percent: None,
+                score_eligible: true,
+                review_status: "simulation".to_string(),
+                sources: vec!["Codex 本地情景模拟（非真实数据）".to_string()],
+                source_urls: Vec::new(),
+                source_claim_ids: Vec::new(),
+                source_calculations: Vec::new(),
+                source_claims: Vec::new(),
+                quality_warnings: Vec::new(),
             },
         );
         let (kind, label) = if card.theme.contains("AI平台") || card.theme.contains("软件") {
@@ -530,7 +944,13 @@ fn snapshot_from_facts(
     simulation: bool,
 ) -> CompanyRatingSnapshot {
     let quote_count = quotes.len();
-    let financial_count = financials.len();
+    let financial_observation_count = financials.len();
+    let financial_count = financials
+        .values()
+        .filter(|fact| fact.score_eligible)
+        .count();
+    let financial_review_required_count =
+        financial_observation_count.saturating_sub(financial_count);
     let valuation_count = if simulation {
         cards.len()
     } else {
@@ -593,6 +1013,8 @@ fn snapshot_from_facts(
             companies: company_count,
             quotes: quote_count,
             financials: financial_count,
+            financial_observations: financial_observation_count,
+            financials_review_required: financial_review_required_count,
             valuations: valuation_count,
         },
         disclaimer: if simulation {
@@ -614,6 +1036,7 @@ fn rating_from_card(
     themes: &HashMap<String, String>,
     simulation: bool,
 ) -> CompanyRating {
+    let financial_for_score = financial.filter(|fact| fact.score_eligible);
     let mut dimensions = RatingDimensions {
         moat: structural_anchor(card.dimensions_1_to_5.pricing_quality),
         scarcity: structural_anchor(card.dimensions_1_to_5.scarcity),
@@ -626,7 +1049,7 @@ fn rating_from_card(
         market_confirmation: 60.0,
         timing: None,
     };
-    if let Some(fact) = financial {
+    if let Some(fact) = financial_for_score {
         let peers = peer_facts(&card.theme, financials, themes);
         dimensions.growth_quality = growth_quality_score(fact, &peers);
         dimensions.pricing_power = pricing_power_score(fact, &peers);
@@ -671,7 +1094,7 @@ fn rating_from_card(
     } else {
         match (
             quote.is_some(),
-            financial.is_some(),
+            financial_for_score.is_some(),
             valuation.is_some(),
             forward.is_some(),
         ) {
@@ -682,11 +1105,50 @@ fn rating_from_card(
     };
     let confidence = effective_confidence(&card.confidence, item_status);
     let mut data_sources = vec!["内部演讲研究卡（压缩观点）".to_string()];
-    if quote.is_some() {
-        data_sources.push("FMP 行情快照".to_string());
+    if let Some(fact) = quote {
+        data_sources.push(fact.source.clone());
+        if let Some(history) = &fact.market_history {
+            data_sources.push(format!(
+                "{}（{}，{}）",
+                history.source, history.as_of, history.source_url
+            ));
+        }
+        if let Some(short_interest) = &fact.short_interest {
+            data_sources.push(format!(
+                "{}（{}，{}）",
+                short_interest.source, short_interest.as_of, short_interest.source_url
+            ));
+        }
+        if let Some(options) = &fact.options_positioning {
+            data_sources.push(format!(
+                "{}（{}，{}）",
+                options.source, options.as_of, options.source_url
+            ));
+        }
+        if let Some(attention) = &fact.news_attention {
+            data_sources.push(format!(
+                "{}（{}，{}）",
+                attention.source, attention.as_of, attention.source_url
+            ));
+        }
+        if let Some(holdings) = &fact.institutional_holdings {
+            data_sources.push(format!(
+                "{}（观察日 {}，{}）",
+                holdings.source, holdings.observed_on, holdings.source_url
+            ));
+        }
+        if let Some(consensus) = &fact.analyst_consensus {
+            data_sources.push(format!(
+                "{}（观察日 {}，{}）",
+                consensus.source, consensus.observed_on, consensus.source_url
+            ));
+        }
     }
-    if financial.is_some() {
-        data_sources.push("FMP 最近季度财务报表".to_string());
+    if let Some(fact) = financial {
+        data_sources.extend(fact.sources.clone());
+        if !fact.score_eligible {
+            data_sources.push("该财务证据仅供复核，当前不进入评分".to_string());
+        }
     }
     if valuation.is_some() {
         data_sources.push("当日多方法三情景估值快照（来源、概率与方法已校验）".to_string());
@@ -718,6 +1180,16 @@ fn rating_from_card(
         data_status: item_status.to_string(),
         price: quote.map(|fact| round2(fact.price)),
         change_percent: quote.and_then(|fact| fact.change_percent).map(round2),
+        price_avg50: quote.and_then(|fact| fact.avg50).map(round2),
+        price_avg200: quote.and_then(|fact| fact.avg200).map(round2),
+        year_low: quote.and_then(|fact| fact.year_low).map(round2),
+        year_high: quote.and_then(|fact| fact.year_high).map(round2),
+        market_history: quote.and_then(|fact| fact.market_history.clone()),
+        short_interest: quote.and_then(|fact| fact.short_interest.clone()),
+        options_positioning: quote.and_then(|fact| fact.options_positioning.clone()),
+        news_attention: quote.and_then(|fact| fact.news_attention.clone()),
+        institutional_holdings: quote.and_then(|fact| fact.institutional_holdings.clone()),
+        analyst_consensus: quote.and_then(|fact| fact.analyst_consensus.clone()),
         market_as_of: quote.and_then(quote_as_of),
         financial_as_of: financial.and_then(|fact| fact.as_of.clone()),
         thesis_summary: card.thesis_summary,
@@ -728,7 +1200,7 @@ fn rating_from_card(
             "当前展示的是 Codex 模拟估值分，不生成虚构的目标价区间；真实估值仍等待行情与财务链路。"
                 .to_string()
         } else {
-            valuation_unavailable_reason(valuation.as_ref(), quote, financial)
+            valuation_unavailable_reason(valuation.as_ref(), quote, financial_for_score)
         },
         valuation,
         dimensions,
@@ -799,13 +1271,17 @@ fn peer_facts<'a>(
 ) -> Vec<&'a FinancialFact> {
     let themed = financials
         .iter()
+        .filter(|(_, fact)| fact.score_eligible)
         .filter(|(symbol, _)| themes.get(*symbol).is_some_and(|value| value == theme))
         .map(|(_, fact)| fact)
         .collect::<Vec<_>>();
     if themed.len() >= 5 {
         themed
     } else {
-        financials.values().collect()
+        financials
+            .values()
+            .filter(|fact| fact.score_eligible)
+            .collect()
     }
 }
 
@@ -1014,7 +1490,36 @@ fn rating_metrics(fact: Option<&FinancialFact>, forward: Option<&ForwardFact>) -
         ebit_margin_percent: fact.and_then(|value| value.ebit_margin_percent),
         fcf_margin_percent: fact.and_then(|value| value.fcf_margin_percent),
         net_cash_to_revenue_percent: fact.and_then(|value| value.net_cash_to_revenue_percent),
+        accounts_receivable_growth_percent: fact
+            .and_then(|value| value.accounts_receivable_growth_percent),
+        accounts_payable_growth_percent: fact
+            .and_then(|value| value.accounts_payable_growth_percent),
+        inventory_growth_percent: fact.and_then(|value| value.inventory_growth_percent),
+        property_plant_equipment_growth_percent: fact
+            .and_then(|value| value.property_plant_equipment_growth_percent),
+        operating_cash_flow_growth_percent: fact
+            .and_then(|value| value.operating_cash_flow_growth_percent),
+        capital_expenditure_growth_percent: fact
+            .and_then(|value| value.capital_expenditure_growth_percent),
+        free_cash_flow_growth_percent: fact.and_then(|value| value.free_cash_flow_growth_percent),
         financial_as_of: fact.and_then(|value| value.as_of.clone()),
+        financial_review_status: fact.map(|value| value.review_status.clone()),
+        financial_score_eligible: fact.is_some_and(|value| value.score_eligible),
+        financial_source_claim_ids: fact
+            .map(|value| value.source_claim_ids.clone())
+            .unwrap_or_default(),
+        financial_source_urls: fact
+            .map(|value| value.source_urls.clone())
+            .unwrap_or_default(),
+        financial_calculations: fact
+            .map(|value| value.source_calculations.clone())
+            .unwrap_or_default(),
+        financial_source_claims: fact
+            .map(|value| value.source_claims.clone())
+            .unwrap_or_default(),
+        financial_quality_warnings: fact
+            .map(|value| value.quality_warnings.clone())
+            .unwrap_or_default(),
         forward_metric_label: forward.map(|value| value.metric_label.clone()),
         forward_metric_value: forward.map(|value| value.value_display.clone()),
         forward_metric_growth_percent: forward.and_then(|value| value.growth_percent),
@@ -1094,9 +1599,11 @@ fn light_for_score(score: f64) -> &'static str {
 }
 
 fn quote_as_of(fact: &QuoteFact) -> Option<String> {
-    fact.timestamp
-        .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
-        .map(|value| value.to_rfc3339())
+    fact.as_of.clone().or_else(|| {
+        fact.timestamp
+            .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
+            .map(|value| value.to_rfc3339())
+    })
 }
 
 fn round1(value: f64) -> f64 {
@@ -1105,6 +1612,10 @@ fn round1(value: f64) -> f64 {
 
 fn round2(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
+}
+
+fn round4(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
 }
 
 async fn fetch_quotes(
@@ -1145,11 +1656,1287 @@ fn quotes_from_value(value: &Value) -> HashMap<String, QuoteFact> {
                     change_percent: item.get("changesPercentage").and_then(Value::as_f64),
                     avg50: item.get("priceAvg50").and_then(Value::as_f64),
                     avg200: item.get("priceAvg200").and_then(Value::as_f64),
+                    year_low: item.get("yearLow").and_then(Value::as_f64),
+                    year_high: item.get("yearHigh").and_then(Value::as_f64),
                     timestamp: item.get("timestamp").and_then(Value::as_i64),
+                    as_of: None,
+                    source: "FMP 行情快照".to_string(),
+                    market_history: None,
+                    short_interest: None,
+                    options_positioning: None,
+                    news_attention: None,
+                    institutional_holdings: None,
+                    analyst_consensus: None,
                 },
             ))
         })
         .collect()
+}
+
+async fn fetch_nasdaq_quotes(state: &AppState, symbols: &[String]) -> HashMap<String, QuoteFact> {
+    let client = &state.http_client;
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url = format!("https://api.nasdaq.com/api/quote/{encoded}/info?assetclass=stocks");
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(12))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_quote_from_value(&symbol, &value)
+                .ok_or_else(|| "response contained no usable quote".to_string())
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(8)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(quote) => Some((symbol, quote)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq quote fallback failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_quote_from_value(expected_symbol: &str, value: &Value) -> Option<QuoteFact> {
+    let data = value.get("data")?;
+    let symbol = data.get("symbol")?.as_str()?.trim();
+    if !symbol.eq_ignore_ascii_case(expected_symbol) {
+        return None;
+    }
+    let primary = data.get("primaryData")?;
+    let price = parse_display_number(primary.get("lastSalePrice")?.as_str()?)?;
+    let change_percent = primary
+        .get("percentageChange")
+        .and_then(Value::as_str)
+        .and_then(parse_display_number);
+    let as_of = primary
+        .get("lastTradeTimestamp")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("{value} · Nasdaq"));
+    let (year_low, year_high) = data
+        .pointer("/keyStats/fiftyTwoWeekHighLow/value")
+        .and_then(Value::as_str)
+        .and_then(parse_display_range)
+        .unwrap_or((None, None));
+    Some(QuoteFact {
+        price,
+        change_percent,
+        avg50: None,
+        avg200: None,
+        year_low,
+        year_high,
+        timestamp: None,
+        as_of,
+        source: "Nasdaq 官方行情降级快照".to_string(),
+        market_history: None,
+        short_interest: None,
+        options_positioning: None,
+        news_attention: None,
+        institutional_holdings: None,
+        analyst_consensus: None,
+    })
+}
+
+async fn fetch_nasdaq_short_interests(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, ShortInterestSummary> {
+    let client = &state.http_client;
+    let requested_through = Utc::now().date_naive();
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url =
+            format!("https://api.nasdaq.com/api/quote/{encoded}/short-interest?assetclass=stocks");
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(16))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_short_interest_from_value(&value, &url, requested_through)
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(8)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(summary) => Some((symbol, summary)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq short-interest context failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_short_interest_from_value(
+    value: &Value,
+    source_url: &str,
+    requested_through: NaiveDate,
+) -> Result<ShortInterestSummary, String> {
+    let rows = value
+        .pointer("/data/shortInterestTable/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "response contained no Nasdaq short-interest rows".to_string())?;
+    let mut by_date = BTreeMap::new();
+    for row in rows {
+        let Some(date) = row
+            .get("settlementDate")
+            .and_then(Value::as_str)
+            .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%m/%d/%Y").ok())
+        else {
+            continue;
+        };
+        let Some(shares_short) = row
+            .get("interest")
+            .and_then(Value::as_str)
+            .and_then(parse_display_number)
+            .filter(|value| *value > 0.0)
+        else {
+            continue;
+        };
+        let Some(average_daily_share_volume) = row
+            .get("avgDailyShareVolume")
+            .and_then(Value::as_str)
+            .and_then(parse_display_number)
+            .filter(|value| *value > 0.0)
+        else {
+            continue;
+        };
+        let Some(days_to_cover) = row
+            .get("daysToCover")
+            .and_then(|value| {
+                value
+                    .as_f64()
+                    .or_else(|| value.as_str().and_then(parse_display_number))
+            })
+            .filter(|value| *value >= 0.0)
+        else {
+            continue;
+        };
+        by_date.insert(
+            date,
+            (shares_short, average_daily_share_volume, days_to_cover),
+        );
+    }
+    let observations = by_date.into_iter().collect::<Vec<_>>();
+    if observations.len() < 2 {
+        return Err(
+            "response contained fewer than two valid short-interest observations".to_string(),
+        );
+    }
+    let (latest_date, (current_shares_short, average_daily_share_volume, days_to_cover)) =
+        observations[observations.len() - 1];
+    let (_, (previous_shares_short, _, _)) = observations[observations.len() - 2];
+    let change_percent = (current_shares_short / previous_shares_short - 1.0) * 100.0;
+    let mut warnings = Vec::new();
+    if latest_date > requested_through {
+        warnings.push("空头仓位包含请求截止日之后的结算日".to_string());
+    }
+    let age_days = requested_through
+        .signed_duration_since(latest_date)
+        .num_days();
+    if age_days > SHORT_INTEREST_MAX_AGE_DAYS {
+        warnings.push(format!(
+            "最近空头仓位结算日距请求日 {age_days} 天，超过45日新鲜度门槛"
+        ));
+    }
+    Ok(ShortInterestSummary {
+        policy_version: SHORT_INTEREST_POLICY_VERSION.to_string(),
+        as_of: latest_date.to_string(),
+        source: "Nasdaq 官方空头仓位结算表".to_string(),
+        source_url: source_url.to_string(),
+        current_shares_short: round4(current_shares_short),
+        previous_shares_short: round4(previous_shares_short),
+        change_percent: round4(change_percent),
+        average_daily_share_volume: round4(average_daily_share_volume),
+        days_to_cover: round4(days_to_cover),
+        observation_count: observations.len(),
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+        interpretation: "空头股数变化和回补天数反映空头一致性与潜在回补压力；高空头既可能代表负面共识，也可能带来挤压风险，不单独表示恐惧、看空正确或投资动作。".to_string(),
+    })
+}
+
+async fn fetch_nasdaq_options_positioning(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, OptionsPositioningSummary> {
+    let client = &state.http_client;
+    let requested_through = Utc::now().date_naive();
+    let Some(expiration) = monthly_option_expiration(requested_through) else {
+        return HashMap::new();
+    };
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url = format!(
+            "https://api.nasdaq.com/api/quote/{encoded}/option-chain?assetclass=stocks&limit=2000&fromdate={expiration}&todate={expiration}&excode=oprac&callput=callput&money=all&type=all"
+        );
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_options_positioning_from_value(
+                &value,
+                &url,
+                requested_through,
+                expiration,
+            )
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(4)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(summary) => Some((symbol, summary)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq options-positioning context failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn monthly_option_expiration(requested_through: NaiveDate) -> Option<NaiveDate> {
+    let base_month = requested_through.year() * 12 + requested_through.month0() as i32;
+    (0..4).find_map(|offset| {
+        let index = base_month + offset;
+        let year = index.div_euclid(12);
+        let month = index.rem_euclid(12) as u32 + 1;
+        let expiration = (15..=21).find_map(|day| {
+            NaiveDate::from_ymd_opt(year, month, day)
+                .filter(|date| date.weekday() == chrono::Weekday::Fri)
+        })?;
+        let days = expiration
+            .signed_duration_since(requested_through)
+            .num_days();
+        (28..=75).contains(&days).then_some(expiration)
+    })
+}
+
+fn nasdaq_options_positioning_from_value(
+    value: &Value,
+    source_url: &str,
+    requested_through: NaiveDate,
+    expected_expiration: NaiveDate,
+) -> Result<OptionsPositioningSummary, String> {
+    let data = value
+        .get("data")
+        .ok_or_else(|| "response contained no Nasdaq option-chain data".to_string())?;
+    let last_trade = data
+        .get("lastTrade")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "option chain omitted last-trade provenance".to_string())?;
+    let (spot_price, as_of) = parse_nasdaq_last_trade(last_trade)
+        .ok_or_else(|| "option chain last-trade provenance was invalid".to_string())?;
+    let rows = data
+        .pointer("/table/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "response contained no Nasdaq option-chain rows".to_string())?;
+    let total_record = data
+        .get("totalRecord")
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|value| value.parse::<u64>().ok()))
+        })
+        .unwrap_or(rows.len() as u64) as usize;
+    let expected_label = expected_expiration.format("%B %-d, %Y").to_string();
+    let mut saw_expected_group = false;
+    let mut call_open_interest = 0.0;
+    let mut put_open_interest = 0.0;
+    let mut call_volume = 0.0;
+    let mut put_volume = 0.0;
+    let mut contract_rows = 0usize;
+    for row in rows {
+        if let Some(group) = row
+            .get("expirygroup")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            saw_expected_group |= group == expected_label;
+            continue;
+        }
+        if row
+            .get("strike")
+            .and_then(Value::as_str)
+            .and_then(parse_display_number)
+            .is_none()
+        {
+            continue;
+        }
+        contract_rows += 1;
+        call_open_interest += option_display_number(row.get("c_Openinterest"));
+        put_open_interest += option_display_number(row.get("p_Openinterest"));
+        call_volume += option_display_number(row.get("c_Volume"));
+        put_volume += option_display_number(row.get("p_Volume"));
+    }
+    if contract_rows == 0 {
+        return Err("response contained no valid option contracts".to_string());
+    }
+    let mut warnings = Vec::new();
+    if as_of > requested_through {
+        warnings.push("期权链包含请求截止日之后的行情日期".to_string());
+    }
+    let age_days = requested_through.signed_duration_since(as_of).num_days();
+    if age_days > OPTIONS_POSITIONING_MAX_AGE_DAYS {
+        warnings.push(format!(
+            "期权链行情距请求日 {age_days} 天，超过五日新鲜度门槛"
+        ));
+    }
+    if !saw_expected_group {
+        warnings.push("返回链未确认请求的标准月度到期日".to_string());
+    }
+    if total_record > rows.len() {
+        warnings.push(format!(
+            "期权链只返回 {}/{} 行，未平仓量合计可能被截断",
+            rows.len(),
+            total_record
+        ));
+    }
+    if call_open_interest <= 0.0 || put_open_interest <= 0.0 {
+        warnings.push("看涨或看跌未平仓量为空，无法形成双边仓位比".to_string());
+    }
+    let days_to_expiration = expected_expiration.signed_duration_since(as_of).num_days();
+    if !(20..=90).contains(&days_to_expiration) {
+        warnings.push(format!(
+            "到期日距行情日 {days_to_expiration} 天，不在中短期观察窗口"
+        ));
+    }
+    Ok(OptionsPositioningSummary {
+        policy_version: OPTIONS_POSITIONING_POLICY_VERSION.to_string(),
+        as_of: as_of.to_string(),
+        source: "Nasdaq 官方综合期权链".to_string(),
+        source_url: source_url.to_string(),
+        expiration_date: expected_expiration.to_string(),
+        days_to_expiration,
+        spot_price: round4(spot_price),
+        call_open_interest: round4(call_open_interest),
+        put_open_interest: round4(put_open_interest),
+        put_call_open_interest_ratio: (call_open_interest > 0.0)
+            .then(|| round4(put_open_interest / call_open_interest)),
+        call_volume: round4(call_volume),
+        put_volume: round4(put_volume),
+        put_call_volume_ratio: (call_volume > 0.0).then(|| round4(put_volume / call_volume)),
+        contract_rows,
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+        interpretation: "指定标准月到期日的看跌/看涨未平仓量与成交量反映期权仓位结构；交易可能来自保护、备兑、价差或投机，比例不等同方向判断。本源不提供可验证的隐含波动率或偏斜，因此不推算。".to_string(),
+    })
+}
+
+fn option_display_number(value: Option<&Value>) -> f64 {
+    value
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_str().and_then(parse_display_number))
+        })
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(0.0)
+}
+
+fn parse_nasdaq_last_trade(value: &str) -> Option<(f64, NaiveDate)> {
+    let price_text = value.split('$').nth(1)?.split_whitespace().next()?;
+    let price = parse_display_number(price_text)?;
+    let date_text = value
+        .split_once("AS OF")?
+        .1
+        .trim()
+        .trim_end_matches(')')
+        .trim();
+    let normalized_date = date_text
+        .split_whitespace()
+        .enumerate()
+        .map(|(index, part)| {
+            if index == 0 {
+                let mut chars = part.chars();
+                chars
+                    .next()
+                    .map(|first| {
+                        first.to_uppercase().collect::<String>()
+                            + &chars.as_str().to_ascii_lowercase()
+                    })
+                    .unwrap_or_default()
+            } else {
+                part.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let date = NaiveDate::parse_from_str(&normalized_date, "%b %d, %Y").ok()?;
+    Some((price, date))
+}
+
+async fn fetch_nasdaq_news_attention(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, NewsAttentionSummary> {
+    let client = &state.http_client;
+    let requested_through = Utc::now().date_naive();
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let query = utf8_percent_encode(&format!("{symbol}|stocks"), NON_ALPHANUMERIC).to_string();
+        let url = format!(
+            "https://www.nasdaq.com/api/news/topic/articlebysymbol?q={query}&limit={NEWS_ATTENTION_RESULT_LIMIT}"
+        );
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_news_attention_from_value(&symbol, &value, &url, requested_through)
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(4)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(summary) => Some((symbol, summary)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq syndicated-news attention failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_news_attention_from_value(
+    expected_symbol: &str,
+    value: &Value,
+    source_url: &str,
+    requested_through: NaiveDate,
+) -> Result<NewsAttentionSummary, String> {
+    let rows = value
+        .pointer("/data/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "response contained no Nasdaq syndicated-news rows".to_string())?;
+    let expected_relation = format!("{}|stocks", expected_symbol.to_ascii_lowercase());
+    let mut by_identity = BTreeMap::new();
+    for row in rows {
+        let related = row
+            .get("related_symbols")
+            .and_then(Value::as_array)
+            .is_some_and(|symbols| {
+                symbols.iter().any(|symbol| {
+                    symbol
+                        .as_str()
+                        .is_some_and(|symbol| symbol.eq_ignore_ascii_case(&expected_relation))
+                })
+            });
+        let primary = row
+            .get("primarysymbol")
+            .and_then(Value::as_str)
+            .is_some_and(|symbol| symbol.eq_ignore_ascii_case(expected_symbol));
+        if !related && !primary {
+            continue;
+        }
+        let Some(date) = row
+            .get("created")
+            .and_then(Value::as_str)
+            .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%b %d, %Y").ok())
+        else {
+            continue;
+        };
+        let publisher = row
+            .get("publisher")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string();
+        let title = row
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or("");
+        let identity = row
+            .get("id")
+            .filter(|value| !value.is_null())
+            .map(Value::to_string)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("{date}|{publisher}|{title}"));
+        by_identity.insert(identity, (date, publisher));
+    }
+    let observed = by_identity.into_values().collect::<Vec<_>>();
+    let oldest_observed_date = observed
+        .iter()
+        .filter(|(date, _)| *date <= requested_through)
+        .map(|(date, _)| *date)
+        .min();
+    let window_start = requested_through - chrono::Duration::days(NEWS_ATTENTION_WINDOW_DAYS - 1);
+    let recent_start = requested_through - chrono::Duration::days(NEWS_ATTENTION_RECENT_DAYS - 1);
+    let prior_days = NEWS_ATTENTION_WINDOW_DAYS - NEWS_ATTENTION_RECENT_DAYS;
+    let mut recent_article_count = 0usize;
+    let mut prior_article_count = 0usize;
+    let mut publishers = BTreeSet::new();
+    let mut warnings = Vec::new();
+    let mut saw_future_publication = false;
+    for (date, publisher) in &observed {
+        if *date > requested_through {
+            saw_future_publication = true;
+            continue;
+        }
+        if *date < window_start {
+            continue;
+        }
+        if !publisher.is_empty() {
+            publishers.insert(publisher.clone());
+        }
+        if *date >= recent_start {
+            recent_article_count += 1;
+        } else {
+            prior_article_count += 1;
+        }
+    }
+    if saw_future_publication {
+        warnings.push("新闻聚合流包含请求截止日之后的发布日期".to_string());
+    }
+    let truncated_window = rows.len() >= NEWS_ATTENTION_RESULT_LIMIT
+        && oldest_observed_date.is_none_or(|date| date > window_start);
+    if truncated_window {
+        warnings.push("聚合结果达到100条上限但未覆盖完整14日窗口，活跃度只可视为下界".to_string());
+    }
+    let recent_daily_rate = recent_article_count as f64 / NEWS_ATTENTION_RECENT_DAYS as f64;
+    let prior_daily_rate = prior_article_count as f64 / prior_days as f64;
+    Ok(NewsAttentionSummary {
+        policy_version: NEWS_ATTENTION_POLICY_VERSION.to_string(),
+        as_of: requested_through.to_string(),
+        source: "Nasdaq 公司新闻聚合发布流（第三方媒体）".to_string(),
+        source_url: source_url.to_string(),
+        window_days: NEWS_ATTENTION_WINDOW_DAYS,
+        recent_window_days: NEWS_ATTENTION_RECENT_DAYS,
+        recent_article_count,
+        prior_article_count,
+        recent_daily_rate: round4(recent_daily_rate),
+        prior_daily_rate: round4(prior_daily_rate),
+        activity_ratio: (prior_daily_rate > 0.0)
+            .then(|| round4(recent_daily_rate / prior_daily_rate)),
+        unique_publishers: publishers.len(),
+        observed_article_count: observed.len(),
+        oldest_observed_date: oldest_observed_date
+            .map(|date| date.to_string())
+            .unwrap_or_default(),
+        result_limit: NEWS_ATTENTION_RESULT_LIMIT,
+        truncated_window,
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+        interpretation: "该指标只计 Nasdaq 聚合页中的媒体发布活跃度，不代表文章观点、事实正确性、投资者情绪或独立新闻数量；同一事件可能被多家媒体重复覆盖，因此不单独形成方向或动作。".to_string(),
+    })
+}
+
+async fn fetch_nasdaq_institutional_holdings(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, InstitutionalHoldingsSummary> {
+    let client = &state.http_client;
+    let observed_on = Utc::now().date_naive();
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url = format!(
+            "https://api.nasdaq.com/api/company/{encoded}/institutional-holdings?limit={INSTITUTIONAL_HOLDINGS_RESULT_LIMIT}"
+        );
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_institutional_holdings_from_value(&value, &url, observed_on)
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(4)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(summary) => Some((symbol, summary)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq institutional-holdings context failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_institutional_holdings_from_value(
+    value: &Value,
+    source_url: &str,
+    observed_on: NaiveDate,
+) -> Result<InstitutionalHoldingsSummary, String> {
+    let data = value
+        .get("data")
+        .ok_or_else(|| "response contained no Nasdaq institutional-holdings data".to_string())?;
+    let institutional_ownership_percent = data
+        .pointer("/ownershipSummary/SharesOutstandingPCT/value")
+        .and_then(Value::as_str)
+        .and_then(parse_display_number)
+        .filter(|value| *value >= 0.0)
+        .ok_or_else(|| "institutional ownership percentage was unavailable".to_string())?;
+    let transactions = data
+        .get("holdingsTransactions")
+        .ok_or_else(|| "institutional transaction summary was unavailable".to_string())?;
+    let institutional_holders = transactions
+        .get("institutionalHolders")
+        .and_then(Value::as_str)
+        .and_then(parse_leading_display_number)
+        .map(|value| value as usize)
+        .filter(|value| *value > 0)
+        .ok_or_else(|| "institutional holder count was unavailable".to_string())?;
+    let total_shares_held = transactions
+        .get("sharesHeld")
+        .and_then(Value::as_str)
+        .and_then(parse_leading_display_number)
+        .filter(|value| *value > 0.0)
+        .ok_or_else(|| "institutional share total was unavailable".to_string())?;
+    let total_reported_records = transactions
+        .get("totalRecords")
+        .and_then(|value| {
+            value.as_u64().map(|value| value as usize).or_else(|| {
+                value
+                    .as_str()
+                    .and_then(parse_leading_display_number)
+                    .map(|value| value as usize)
+            })
+        })
+        .filter(|value| *value > 0)
+        .ok_or_else(|| "institutional report count was unavailable".to_string())?;
+    let holder_rows = transactions
+        .pointer("/table/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "institutional holder table was unavailable".to_string())?;
+    let mut report_periods = BTreeSet::new();
+    let mut warnings = Vec::new();
+    for row in holder_rows {
+        let Some(period) = row
+            .get("date")
+            .and_then(Value::as_str)
+            .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%m/%d/%Y").ok())
+        else {
+            continue;
+        };
+        if period > observed_on {
+            warnings.push("机构持仓表包含观察日之后的报告期".to_string());
+        }
+        report_periods.insert(period);
+    }
+    let earliest_report_period = report_periods
+        .first()
+        .copied()
+        .ok_or_else(|| "institutional holder rows contained no report period".to_string())?;
+    let latest_report_period = report_periods
+        .last()
+        .copied()
+        .unwrap_or(earliest_report_period);
+    let latest_period_rows_in_sample = holder_rows
+        .iter()
+        .filter(|row| {
+            row.get("date")
+                .and_then(Value::as_str)
+                .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%m/%d/%Y").ok())
+                == Some(latest_report_period)
+        })
+        .count();
+    let active_rows = data
+        .pointer("/activePositions/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "institutional active-position summary was unavailable".to_string())?;
+    let new_sold_rows = data
+        .pointer("/newSoldOutPositions/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "institutional new/sold-out summary was unavailable".to_string())?;
+    let (increased_positions_holders, increased_positions_shares) =
+        institutional_position_row(active_rows, "Increased Positions")?;
+    let (decreased_positions_holders, decreased_positions_shares) =
+        institutional_position_row(active_rows, "Decreased Positions")?;
+    let (held_positions_holders, held_positions_shares) =
+        institutional_position_row(active_rows, "Held Positions")?;
+    let (new_positions_holders, new_positions_shares) =
+        institutional_position_row(new_sold_rows, "New Positions")?;
+    let (sold_out_positions_holders, sold_out_positions_shares) =
+        institutional_position_row(new_sold_rows, "Sold Out Positions")?;
+    let active_holders =
+        increased_positions_holders + decreased_positions_holders + held_positions_holders;
+    let active_shares =
+        increased_positions_shares + decreased_positions_shares + held_positions_shares;
+    if active_holders != institutional_holders {
+        warnings.push("机构持有人总数与增持/减持/持平分类无法对账".to_string());
+    }
+    if (active_shares - total_shares_held).abs() > 1.0 {
+        warnings.push("机构持股总数与增持/减持/持平分类无法对账".to_string());
+    }
+    if total_reported_records < holder_rows.len() {
+        warnings.push("机构记录总数小于返回样本行数".to_string());
+    }
+    warnings.sort();
+    warnings.dedup();
+
+    Ok(InstitutionalHoldingsSummary {
+        policy_version: INSTITUTIONAL_HOLDINGS_POLICY_VERSION.to_string(),
+        observed_on: observed_on.to_string(),
+        source: "Nasdaq 机构持仓聚合表（SEC 13F 报告）".to_string(),
+        source_url: source_url.to_string(),
+        institutional_ownership_percent: round4(institutional_ownership_percent),
+        institutional_holders,
+        total_shares_held: round4(total_shares_held),
+        total_reported_records,
+        top_sample_rows: holder_rows.len(),
+        holder_table_truncated: total_reported_records > holder_rows.len(),
+        earliest_report_period: earliest_report_period.to_string(),
+        latest_report_period: latest_report_period.to_string(),
+        report_period_count: report_periods.len(),
+        latest_period_rows_in_sample,
+        increased_positions_holders,
+        increased_positions_shares: round4(increased_positions_shares),
+        decreased_positions_holders,
+        decreased_positions_shares: round4(decreased_positions_shares),
+        held_positions_holders,
+        held_positions_shares: round4(held_positions_shares),
+        new_positions_holders,
+        new_positions_shares: round4(new_positions_shares),
+        sold_out_positions_holders,
+        sold_out_positions_shares: round4(sold_out_positions_shares),
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+        interpretation: "机构持仓来自SEC 13F季度披露，通常可在季度结束后45天内提交；Nasdaq聚合表会混合不同机构的不同报告期。这里展示观察日看到的所有持有人分类汇总和前50大记录的报告期分布，不代表机构今天买卖，不据此计算完整机构集中度，也不单独形成方向或动作。".to_string(),
+    })
+}
+
+fn institutional_position_row(rows: &[Value], label: &str) -> Result<(usize, f64), String> {
+    let row = rows
+        .iter()
+        .find(|row| {
+            row.get("positions")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.trim() == label)
+        })
+        .ok_or_else(|| format!("institutional position category {label} was unavailable"))?;
+    let holders = row
+        .get("holders")
+        .and_then(Value::as_str)
+        .and_then(parse_display_number)
+        .filter(|value| *value >= 0.0)
+        .map(|value| value as usize)
+        .ok_or_else(|| format!("institutional holder count for {label} was invalid"))?;
+    let shares = row
+        .get("shares")
+        .and_then(Value::as_str)
+        .and_then(parse_display_number)
+        .filter(|value| *value >= 0.0)
+        .ok_or_else(|| format!("institutional share count for {label} was invalid"))?;
+    Ok((holders, shares))
+}
+
+fn parse_leading_display_number(value: &str) -> Option<f64> {
+    value
+        .split_whitespace()
+        .next()
+        .and_then(parse_display_number)
+}
+
+async fn fetch_nasdaq_analyst_consensus(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, AnalystConsensusSummary> {
+    let client = &state.http_client;
+    let observed_on = Utc::now().date_naive();
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url = format!("https://api.nasdaq.com/api/analyst/{encoded}/targetprice");
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_analyst_consensus_from_value(&value, &url, observed_on)
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(4)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(summary) => Some((symbol, summary)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq analyst-consensus context failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_analyst_consensus_from_value(
+    value: &Value,
+    source_url: &str,
+    observed_on: NaiveDate,
+) -> Result<AnalystConsensusSummary, String> {
+    let data = value
+        .get("data")
+        .ok_or_else(|| "response contained no Nasdaq analyst-consensus data".to_string())?;
+    let overview = data
+        .get("consensusOverview")
+        .ok_or_else(|| "analyst consensus overview was unavailable".to_string())?;
+    let buy_count = parse_nonnegative_usize(overview.get("buy"))
+        .ok_or_else(|| "analyst buy count was unavailable".to_string())?;
+    let hold_count = parse_nonnegative_usize(overview.get("hold"))
+        .ok_or_else(|| "analyst hold count was unavailable".to_string())?;
+    let sell_count = parse_nonnegative_usize(overview.get("sell"))
+        .ok_or_else(|| "analyst sell count was unavailable".to_string())?;
+    let recommendation_count = buy_count + hold_count + sell_count;
+    if recommendation_count == 0 {
+        return Err("analyst recommendation sample was empty".to_string());
+    }
+    let consensus_target_price = overview
+        .get("priceTarget")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .ok_or_else(|| "consensus target price was unavailable".to_string())?;
+    let low_target_price = overview
+        .get("lowPriceTarget")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .ok_or_else(|| "low target price was unavailable".to_string())?;
+    let high_target_price = overview
+        .get("highPriceTarget")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .ok_or_else(|| "high target price was unavailable".to_string())?;
+    let historical = data
+        .get("historicalConsensus")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut warnings = Vec::new();
+    if recommendation_count < 3 {
+        warnings.push("分析师建议样本少于3个，不能视为稳定共识".to_string());
+    }
+    if !(low_target_price <= consensus_target_price && consensus_target_price <= high_target_price)
+    {
+        warnings.push("目标价低值、共识值与高值无法按顺序对账".to_string());
+    }
+    if historical.is_empty() {
+        warnings.push("Nasdaq 未返回历史共识序列".to_string());
+    }
+    if historical.iter().any(|entry| {
+        entry
+            .pointer("/z/date")
+            .and_then(Value::as_str)
+            .and_then(|date| NaiveDate::parse_from_str(date.trim(), "%m/%d/%Y").ok())
+            .is_some_and(|date| date > observed_on)
+    }) {
+        warnings.push("历史共识序列包含观察日之后的月份".to_string());
+    }
+    let total = recommendation_count as f64;
+    let (dominant_rating, dominant_count) =
+        dominant_analyst_bucket(buy_count, hold_count, sell_count);
+    warnings.sort();
+    warnings.dedup();
+
+    Ok(AnalystConsensusSummary {
+        policy_version: ANALYST_CONSENSUS_POLICY_VERSION.to_string(),
+        observed_on: observed_on.to_string(),
+        source: "Nasdaq 分析师建议与目标价聚合".to_string(),
+        source_url: source_url.to_string(),
+        buy_count,
+        hold_count,
+        sell_count,
+        recommendation_count,
+        buy_share_percent: round4(buy_count as f64 / total * 100.0),
+        hold_share_percent: round4(hold_count as f64 / total * 100.0),
+        sell_share_percent: round4(sell_count as f64 / total * 100.0),
+        dominant_rating: dominant_rating.to_string(),
+        dominant_count,
+        dominant_share_percent: round4(dominant_count as f64 / total * 100.0),
+        consensus_target_price: round4(consensus_target_price),
+        low_target_price: round4(low_target_price),
+        high_target_price: round4(high_target_price),
+        target_range_width_percent: round4(
+            (high_target_price - low_target_price) / consensus_target_price * 100.0,
+        ),
+        historical_month_count: historical.len(),
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+        interpretation: "该记录是观察日看到的 Nasdaq 聚合快照：买入/持有/卖出分布可用于识别建议是否集中，但不代表独立样本或真实资金仓位；Nasdaq 未披露目标价贡献者数量、更新时间与逐笔明细，因此目标价仅作背景展示，不进入评分，也不单独形成方向或动作。".to_string(),
+    })
+}
+
+fn parse_nonnegative_usize(value: Option<&Value>) -> Option<usize> {
+    value.and_then(|value| {
+        value.as_u64().map(|value| value as usize).or_else(|| {
+            value
+                .as_str()
+                .and_then(parse_display_number)
+                .filter(|value| value.is_finite() && *value >= 0.0 && value.fract() == 0.0)
+                .map(|value| value as usize)
+        })
+    })
+}
+
+fn dominant_analyst_bucket(buy: usize, hold: usize, sell: usize) -> (&'static str, usize) {
+    let maximum = buy.max(hold).max(sell);
+    let ties = [buy, hold, sell]
+        .into_iter()
+        .filter(|count| *count == maximum)
+        .count();
+    if ties > 1 {
+        ("并列", maximum)
+    } else if buy == maximum {
+        ("买入", maximum)
+    } else if hold == maximum {
+        ("持有", maximum)
+    } else {
+        ("卖出", maximum)
+    }
+}
+
+async fn fetch_nasdaq_market_histories(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, MarketHistorySummary> {
+    let client = &state.http_client;
+    let to = Utc::now().date_naive();
+    let from = to - chrono::Duration::days(MARKET_HISTORY_LOOKBACK_DAYS);
+    let attempts = stream::iter(symbols.iter().cloned().map(|symbol| async move {
+        let encoded = utf8_percent_encode(&symbol, NON_ALPHANUMERIC).to_string();
+        let url = format!(
+            "https://api.nasdaq.com/api/quote/{encoded}/historical?assetclass=stocks&fromdate={from}&todate={to}&limit=5000"
+        );
+        let result = async {
+            let response = client
+                .get(&url)
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "Mozilla/5.0 (HONE research dashboard)",
+                )
+                .header(reqwest::header::ACCEPT, "application/json")
+                .timeout(Duration::from_secs(16))
+                .send()
+                .await
+                .map_err(|error| error.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("HTTP {}", response.status()));
+            }
+            let value = response
+                .json::<Value>()
+                .await
+                .map_err(|error| error.to_string())?;
+            nasdaq_market_history_from_value(&value, &url, to)
+        }
+        .await;
+        (symbol, result)
+    }))
+    .buffer_unordered(8)
+    .collect::<Vec<_>>()
+    .await;
+
+    attempts
+        .into_iter()
+        .filter_map(|(symbol, result)| match result {
+            Ok(history) => Some((symbol, history)),
+            Err(error) => {
+                warn!(%symbol, %error, "Nasdaq market history fallback failed");
+                None
+            }
+        })
+        .collect()
+}
+
+fn nasdaq_market_history_from_value(
+    value: &Value,
+    source_url: &str,
+    requested_through: NaiveDate,
+) -> Result<MarketHistorySummary, String> {
+    let rows = value
+        .pointer("/data/tradesTable/rows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "response contained no Nasdaq historical rows".to_string())?;
+    let mut by_date = BTreeMap::new();
+    for row in rows {
+        let Some(date) = row
+            .get("date")
+            .and_then(Value::as_str)
+            .and_then(|value| NaiveDate::parse_from_str(value.trim(), "%m/%d/%Y").ok())
+        else {
+            continue;
+        };
+        let Some(close) = row
+            .get("close")
+            .and_then(Value::as_str)
+            .and_then(parse_display_number)
+            .filter(|value| *value > 0.0)
+        else {
+            continue;
+        };
+        let Some(volume) = row
+            .get("volume")
+            .and_then(Value::as_str)
+            .and_then(parse_display_number)
+            .filter(|value| *value >= 0.0)
+        else {
+            continue;
+        };
+        by_date.insert(
+            date,
+            NasdaqDailyBar {
+                date,
+                close,
+                volume,
+            },
+        );
+    }
+    let bars = by_date.into_values().collect::<Vec<_>>();
+    let Some(latest) = bars.last() else {
+        return Err("response contained no valid Nasdaq daily bars".to_string());
+    };
+    let mut warnings = Vec::new();
+    if latest.date > requested_through {
+        warnings.push("历史行情包含请求截止日之后的交易日".to_string());
+    }
+    let age_days = requested_through
+        .signed_duration_since(latest.date)
+        .num_days();
+    if age_days > MARKET_HISTORY_MAX_AGE_DAYS {
+        warnings.push(format!(
+            "最新完整日线距请求日 {age_days} 天，超过七日新鲜度门槛"
+        ));
+    }
+    if bars.len() < 61 {
+        warnings.push(format!(
+            "只有 {} 个交易日，无法完成 60 日路径验证",
+            bars.len()
+        ));
+    }
+    if let Some((left, right, move_percent)) = bars.windows(2).find_map(|pair| {
+        let move_percent = (pair[1].close / pair[0].close - 1.0) * 100.0;
+        (move_percent.abs() >= MARKET_HISTORY_SPLIT_REVIEW_THRESHOLD_PERCENT).then_some((
+            pair[0].date,
+            pair[1].date,
+            move_percent,
+        ))
+    }) {
+        warnings.push(format!(
+            "{left} 至 {right} 收盘价变化 {move_percent:+.1}%，需核对拆股、复权或重大跳空"
+        ));
+    }
+    let closes = bars.iter().map(|bar| bar.close).collect::<Vec<_>>();
+    let average_close_50 = trailing_average(&closes, 50);
+    let average_close_200 = trailing_average(&closes, 200);
+    let return_20_sessions_percent = trailing_return(&closes, 20);
+    let return_60_sessions_percent = trailing_return(&closes, 60);
+    let drawdown_from_60_session_high_percent = (bars.len() >= 60).then(|| {
+        let high = bars[bars.len() - 60..]
+            .iter()
+            .map(|bar| bar.close)
+            .fold(0.0_f64, f64::max);
+        (latest.close / high - 1.0) * 100.0
+    });
+    let recent_5_session_volume_vs_prior_55_percent = (bars.len() >= 60)
+        .then(|| {
+            let window = &bars[bars.len() - 60..];
+            let recent = window[55..].iter().map(|bar| bar.volume).sum::<f64>() / 5.0;
+            let prior = window[..55].iter().map(|bar| bar.volume).sum::<f64>() / 55.0;
+            (prior > 0.0).then_some(recent / prior * 100.0)
+        })
+        .flatten();
+    Ok(MarketHistorySummary {
+        policy_version: MARKET_HISTORY_POLICY_VERSION.to_string(),
+        as_of: latest.date.to_string(),
+        source: "Nasdaq 官方历史日线表".to_string(),
+        source_url: source_url.to_string(),
+        price_basis: "Nasdaq 展示的日收盘价；接口未声明复权口径，检测到极端单日跳变时强制复核"
+            .to_string(),
+        session_count: bars.len(),
+        latest_close: round4(latest.close),
+        average_close_50: average_close_50.map(round4),
+        average_close_200: average_close_200.map(round4),
+        return_20_sessions_percent: return_20_sessions_percent.map(round4),
+        return_60_sessions_percent: return_60_sessions_percent.map(round4),
+        drawdown_from_60_session_high_percent: drawdown_from_60_session_high_percent.map(round4),
+        recent_5_session_volume_vs_prior_55_percent: recent_5_session_volume_vs_prior_55_percent
+            .map(round4),
+        quality_status: if warnings.is_empty() {
+            "usable"
+        } else {
+            "review_required"
+        }
+        .to_string(),
+        quality_warnings: warnings,
+    })
+}
+
+fn trailing_average(values: &[f64], sessions: usize) -> Option<f64> {
+    (values.len() >= sessions)
+        .then(|| values[values.len() - sessions..].iter().sum::<f64>() / sessions as f64)
+}
+
+fn trailing_return(values: &[f64], sessions: usize) -> Option<f64> {
+    (values.len() > sessions).then(|| {
+        let start = values[values.len() - 1 - sessions];
+        (values.last().copied().unwrap_or(start) / start - 1.0) * 100.0
+    })
+}
+
+fn parse_display_range(value: &str) -> Option<(Option<f64>, Option<f64>)> {
+    let mut values = value
+        .split(['-', '–', '—'])
+        .filter_map(parse_display_number);
+    let first = values.next()?;
+    let second = values.next()?;
+    let low = first.min(second);
+    let high = first.max(second);
+    (high > low && low > 0.0).then_some((Some(low), Some(high)))
+}
+
+fn parse_display_number(value: &str) -> Option<f64> {
+    let normalized = value
+        .trim()
+        .trim_start_matches('$')
+        .trim_end_matches('%')
+        .replace(',', "");
+    normalized
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 #[cfg(test)]
@@ -1184,6 +2971,21 @@ fn financial_from_value(value: &Value) -> Option<FinancialFact> {
             .map(|value| round1(value * 100.0)),
         fcf_margin_percent: None,
         net_cash_to_revenue_percent: None,
+        accounts_receivable_growth_percent: None,
+        accounts_payable_growth_percent: None,
+        inventory_growth_percent: None,
+        property_plant_equipment_growth_percent: None,
+        operating_cash_flow_growth_percent: None,
+        capital_expenditure_growth_percent: None,
+        free_cash_flow_growth_percent: None,
+        score_eligible: true,
+        review_status: "computed".to_string(),
+        sources: vec!["test fixture".to_string()],
+        source_urls: Vec::new(),
+        source_claim_ids: Vec::new(),
+        source_calculations: Vec::new(),
+        source_claims: Vec::new(),
+        quality_warnings: Vec::new(),
     })
 }
 
@@ -1326,10 +3128,108 @@ async fn read_verified_fundamentals(state: &AppState) -> HashMap<String, Financi
                     ebit_margin_percent: item.ebit_margin_percent,
                     fcf_margin_percent: item.fcf_margin_percent,
                     net_cash_to_revenue_percent: item.net_cash_to_revenue_percent,
+                    accounts_receivable_growth_percent: item.accounts_receivable_growth_percent,
+                    accounts_payable_growth_percent: item.accounts_payable_growth_percent,
+                    inventory_growth_percent: item.inventory_growth_percent,
+                    property_plant_equipment_growth_percent: item
+                        .property_plant_equipment_growth_percent,
+                    operating_cash_flow_growth_percent: item.operating_cash_flow_growth_percent,
+                    capital_expenditure_growth_percent: item.capital_expenditure_growth_percent,
+                    free_cash_flow_growth_percent: item.free_cash_flow_growth_percent,
+                    score_eligible: true,
+                    review_status: "computed".to_string(),
+                    sources: item.sources,
+                    source_urls: Vec::new(),
+                    source_claim_ids: Vec::new(),
+                    source_calculations: Vec::new(),
+                    source_claims: Vec::new(),
+                    quality_warnings: Vec::new(),
                 },
             ))
         })
         .collect()
+}
+
+async fn read_sec_financial_evidence(
+    state: &AppState,
+    symbols: &[String],
+) -> HashMap<String, FinancialFact> {
+    let states =
+        super::investment_decisions::current_sec_financial_states(state, symbols, Utc::now()).await;
+    super::financial_evidence_review::review_outcomes_for_states(state, &states)
+        .await
+        .into_iter()
+        .filter_map(|(symbol, review)| {
+            financial_fact_from_sec_state(
+                review.evidence,
+                &review.review_status,
+                review.score_eligible,
+                review.blocking_reasons,
+            )
+            .map(|fact| (symbol, fact))
+        })
+        .collect()
+}
+
+fn financial_fact_from_sec_state(
+    state: super::investment_decisions::FinancialVerificationState,
+    review_status: &str,
+    score_eligible: bool,
+    blocking_reasons: Vec<String>,
+) -> Option<FinancialFact> {
+    let has_metrics = state.revenue_growth_percent.is_some()
+        || state.gross_margin_percent.is_some()
+        || state.gross_margin_change_pp.is_some()
+        || state.ebit_margin_percent.is_some()
+        || state.fcf_margin_percent.is_some()
+        || state.accounts_receivable_growth_percent.is_some()
+        || state.accounts_payable_growth_percent.is_some()
+        || state.inventory_growth_percent.is_some()
+        || state.property_plant_equipment_growth_percent.is_some()
+        || state.operating_cash_flow_growth_percent.is_some()
+        || state.capital_expenditure_growth_percent.is_some()
+        || state.free_cash_flow_growth_percent.is_some();
+    if !has_metrics {
+        return None;
+    }
+    let mut quality_warnings = state.quality_warnings;
+    quality_warnings.extend(blocking_reasons);
+    quality_warnings.push(if score_eligible {
+        "管理员已按当前证据指纹完成独立财务质量复核；原始警告继续保留供审计".to_string()
+    } else {
+        "SEC 结构化主张在完成独立财务质量复核前只展示证据，不进入每日评级分".to_string()
+    });
+    quality_warnings.sort();
+    quality_warnings.dedup();
+    Some(FinancialFact {
+        as_of: state.financial_as_of,
+        revenue_growth_percent: state.revenue_growth_percent,
+        forward_revenue_growth_percent: None,
+        gross_margin_percent: state.gross_margin_percent,
+        gross_margin_change_pp: state.gross_margin_change_pp,
+        ebit_margin_percent: state.ebit_margin_percent,
+        fcf_margin_percent: state.fcf_margin_percent,
+        net_cash_to_revenue_percent: None,
+        accounts_receivable_growth_percent: state.accounts_receivable_growth_percent,
+        accounts_payable_growth_percent: state.accounts_payable_growth_percent,
+        inventory_growth_percent: state.inventory_growth_percent,
+        property_plant_equipment_growth_percent: state.property_plant_equipment_growth_percent,
+        operating_cash_flow_growth_percent: state.operating_cash_flow_growth_percent,
+        capital_expenditure_growth_percent: state.capital_expenditure_growth_percent,
+        free_cash_flow_growth_percent: state.free_cash_flow_growth_percent,
+        score_eligible,
+        review_status: review_status.to_string(),
+        sources: state
+            .source_urls
+            .iter()
+            .map(|url| format!("SEC XBRL 点时事实（{url}）"))
+            .collect(),
+        source_urls: state.source_urls,
+        source_claim_ids: state.source_claim_ids,
+        source_calculations: state.source_calculations,
+        source_claims: state.source_claims,
+        quality_warnings,
+    })
 }
 
 async fn read_verified_valuations(state: &AppState) -> HashMap<String, DailyValuation> {
@@ -1343,10 +3243,11 @@ async fn read_verified_valuations(state: &AppState) -> HashMap<String, DailyValu
     };
     let now = Utc::now();
     let today = now.with_timezone(&Shanghai).date_naive().to_string();
-    let expected_review_status = match file.framework_version.as_str() {
-        "hari-invest-v1" => "verified",
-        "hone-valuation-v2" => "computed",
-        _ => "",
+    let (expected_review_status, strict_input_binding) = match file.framework_version.as_str() {
+        "hari-invest-v1" => ("verified", false),
+        "hone-valuation-v2" => ("computed", false),
+        "hone-valuation-v3-reviewed-input-binding" => ("computed", true),
+        _ => ("", false),
     };
     if expected_review_status.is_empty()
         || file.report_date != today
@@ -1357,10 +3258,52 @@ async fn read_verified_valuations(state: &AppState) -> HashMap<String, DailyValu
         return HashMap::new();
     }
 
+    let reviewed_sec_symbols = file
+        .items
+        .iter()
+        .filter(|item| item.input_mode == "sec_reviewed_supplemental_packet")
+        .map(|item| item.symbol.trim().to_ascii_uppercase())
+        .collect::<Vec<_>>();
+    let authorization_bindings = if reviewed_sec_symbols.is_empty() {
+        HashMap::new()
+    } else {
+        let financial_states = super::investment_decisions::current_sec_financial_states(
+            state,
+            &reviewed_sec_symbols,
+            now,
+        )
+        .await;
+        super::valuation_input_review::review_outcomes_for_states(state, &financial_states)
+            .await
+            .into_iter()
+            .filter_map(|(symbol, candidate)| {
+                let record = candidate.latest_review?;
+                candidate.valuation_authorized.then_some((
+                    symbol,
+                    ValuationAuthorizationBinding {
+                        review_id: record.review_id,
+                        input_fingerprint_sha256: record.input_fingerprint_sha256,
+                        financial_evidence_fingerprint_sha256: record
+                            .financial_evidence_fingerprint_sha256,
+                        input_as_of: record.supplemental_inputs.input_as_of,
+                    },
+                ))
+            })
+            .collect::<HashMap<_, _>>()
+    };
+
     file.items
         .into_iter()
         .filter_map(|item| {
-            validated_daily_valuation(item, file.generated_at, &today, expected_review_status)
+            let symbol = item.symbol.trim().to_ascii_uppercase();
+            validated_daily_valuation(
+                item,
+                file.generated_at,
+                &today,
+                expected_review_status,
+                strict_input_binding,
+                authorization_bindings.get(&symbol),
+            )
         })
         .collect()
 }
@@ -1370,6 +3313,8 @@ fn validated_daily_valuation(
     generated_at: DateTime<Utc>,
     report_date: &str,
     expected_review_status: &str,
+    strict_input_binding: bool,
+    expected_binding: Option<&ValuationAuthorizationBinding>,
 ) -> Option<(String, DailyValuation)> {
     let probability_weighted_value = item.probability_weighted_value.unwrap_or(item.base_case);
     let expected_upside_percent = item
@@ -1384,6 +3329,13 @@ fn validated_daily_valuation(
     ]
     .into_iter()
     .all(|value| value.is_finite() && value > 0.0);
+    let valid_input_binding = valuation_input_binding_is_valid(
+        &item,
+        report_date,
+        expected_review_status,
+        strict_input_binding,
+        expected_binding,
+    );
     if item.review_status != expected_review_status
         || item.as_of != report_date
         || item.symbol.trim().is_empty()
@@ -1393,6 +3345,7 @@ fn validated_daily_valuation(
         || item.sources.len() < 2
         || (expected_review_status == "computed"
             && (item.method_count < 2 || !matches!(item.confidence.as_str(), "high" | "medium")))
+        || !valid_input_binding
         || !valid_numbers
         || !expected_upside_percent.is_finite()
         || !(item.bear_case <= item.base_case && item.base_case <= item.bull_case)
@@ -1440,6 +3393,66 @@ fn validated_daily_valuation(
             sources: item.sources,
         },
     ))
+}
+
+fn valuation_input_binding_is_valid(
+    item: &DailyValuationInput,
+    report_date: &str,
+    expected_review_status: &str,
+    strict_input_binding: bool,
+    expected_binding: Option<&ValuationAuthorizationBinding>,
+) -> bool {
+    if expected_review_status != "computed" {
+        return true;
+    }
+    match item.input_mode.as_str() {
+        "provider_bundle" | "provider_bundle_plus_sec_observation" => true,
+        "sec_reviewed_supplemental_packet" => {
+            let valid_review_id = item
+                .valuation_review_id
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+            let valid_fingerprints = [
+                item.valuation_input_fingerprint_sha256.as_deref(),
+                item.valuation_financial_evidence_fingerprint_sha256
+                    .as_deref(),
+            ]
+            .into_iter()
+            .all(|value| {
+                value.is_some_and(|value| {
+                    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+                })
+            });
+            let fresh_input = NaiveDate::parse_from_str(report_date, "%Y-%m-%d")
+                .ok()
+                .zip(
+                    item.valuation_input_as_of
+                        .as_deref()
+                        .and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()),
+                )
+                .is_some_and(|(report_date, input_as_of)| {
+                    input_as_of <= report_date && (report_date - input_as_of).num_days() <= 7
+                });
+            let exact_current_binding = if strict_input_binding {
+                expected_binding.is_some_and(|binding| {
+                    item.valuation_review_id.as_deref() == Some(binding.review_id.as_str())
+                        && item.valuation_input_fingerprint_sha256.as_deref()
+                            == Some(binding.input_fingerprint_sha256.as_str())
+                        && item
+                            .valuation_financial_evidence_fingerprint_sha256
+                            .as_deref()
+                            == Some(binding.financial_evidence_fingerprint_sha256.as_str())
+                        && item.valuation_input_as_of.as_deref()
+                            == Some(binding.input_as_of.as_str())
+                })
+            } else {
+                true
+            };
+            valid_review_id && valid_fingerprints && fresh_input && exact_current_binding
+        }
+        "" => !strict_input_binding,
+        _ => false,
+    }
 }
 
 async fn read_snapshot(state: &AppState) -> Option<CompanyRatingSnapshot> {
@@ -1626,6 +3639,146 @@ mod tests {
         assert!(!cards.iter().any(|card| card.name == "量子板块"));
     }
 
+    fn sec_financial_state(
+        revenue_growth_percent: Option<f64>,
+    ) -> super::super::investment_decisions::FinancialVerificationState {
+        super::super::investment_decisions::FinancialVerificationState {
+            policy_version: "hone-financial-verification-v3-sec-projection-quality-gate".into(),
+            status: super::super::investment_decisions::MeasurementStatus::PartiallyMeasured,
+            financial_as_of: Some("2026-07-30".into()),
+            revenue_growth_percent,
+            gross_margin_percent: Some(67.9),
+            gross_margin_change_pp: Some(-0.9),
+            ebit_margin_percent: Some(46.8),
+            fcf_margin_percent: None,
+            accounts_receivable_growth_percent: Some(15.7),
+            accounts_payable_growth_percent: Some(53.0),
+            inventory_growth_percent: Some(48.9),
+            property_plant_equipment_growth_percent: None,
+            operating_cash_flow_growth_percent: Some(34.4),
+            capital_expenditure_growth_percent: Some(79.6),
+            free_cash_flow_growth_percent: None,
+            cash_and_equivalents: None,
+            long_term_debt: None,
+            net_cash: None,
+            current_free_cash_flow: None,
+            prior_free_cash_flow: None,
+            financial_value_unit: None,
+            forward_metric_label: None,
+            forward_metric_value: None,
+            forward_metric_growth_percent: None,
+            forward_metric_as_of: None,
+            source_claim_ids: vec!["source-claim:msft-2026:0".into()],
+            source_urls: vec!["https://www.sec.gov/Archives/msft-2026.htm".into()],
+            source_calculations: vec!["收入同比：281724 → 331839，变化 +17.8%".into()],
+            source_claims: Vec::new(),
+            quality_warnings: Vec::new(),
+            missing_checks: vec!["自由现金流率".into()],
+        }
+    }
+
+    #[test]
+    fn sec_projection_is_visible_but_never_scores_before_human_review() {
+        let fact = financial_fact_from_sec_state(
+            sec_financial_state(Some(17.8)),
+            "sec_structured_pending_human_review",
+            false,
+            vec!["尚未完成独立财务证据质量复核".into()],
+        )
+        .unwrap();
+        assert!(!fact.score_eligible);
+        assert_eq!(fact.review_status, "sec_structured_pending_human_review");
+        assert_eq!(fact.revenue_growth_percent, Some(17.8));
+        assert_eq!(fact.source_claim_ids.len(), 1);
+        assert!(
+            fact.quality_warnings
+                .iter()
+                .any(|warning| warning.contains("不进入每日评级分"))
+        );
+
+        let mut financials = HashMap::new();
+        financials.insert("MSFT".to_string(), fact);
+        let snapshot = snapshot_from_facts(
+            parse_cards(),
+            HashMap::new(),
+            financials,
+            HashMap::new(),
+            HashMap::new(),
+            false,
+        );
+        assert_eq!(snapshot.coverage.financial_observations, 1);
+        assert_eq!(snapshot.coverage.financials, 0);
+        assert_eq!(snapshot.coverage.financials_review_required, 1);
+        let msft = snapshot
+            .items
+            .iter()
+            .find(|item| item.symbol == "MSFT")
+            .unwrap();
+        assert_eq!(msft.metrics.revenue_growth_percent, Some(17.8));
+        assert!(!msft.metrics.financial_score_eligible);
+        assert!(msft.dimensions.growth_quality.is_none());
+        assert!(msft.dimensions.pricing_power.is_none());
+        assert!(msft.dimensions.financial_quality.is_none());
+    }
+
+    #[test]
+    fn exact_human_review_admits_sec_projection_to_dynamic_rating_factors() {
+        let fact = financial_fact_from_sec_state(
+            sec_financial_state(Some(17.8)),
+            "sec_human_reviewed_for_rating",
+            true,
+            Vec::new(),
+        )
+        .unwrap();
+        assert!(fact.score_eligible);
+        assert_eq!(fact.review_status, "sec_human_reviewed_for_rating");
+
+        let mut financials = HashMap::new();
+        financials.insert("MSFT".to_string(), fact);
+        let snapshot = snapshot_from_facts(
+            parse_cards(),
+            HashMap::new(),
+            financials,
+            HashMap::new(),
+            HashMap::new(),
+            false,
+        );
+        assert_eq!(snapshot.coverage.financial_observations, 1);
+        assert_eq!(snapshot.coverage.financials, 1);
+        assert_eq!(snapshot.coverage.financials_review_required, 0);
+        let msft = snapshot
+            .items
+            .iter()
+            .find(|item| item.symbol == "MSFT")
+            .unwrap();
+        assert!(msft.metrics.financial_score_eligible);
+        assert!(msft.dimensions.growth_quality.is_some());
+        assert!(msft.dimensions.pricing_power.is_some());
+        assert!(msft.dimensions.financial_quality.is_some());
+    }
+
+    #[test]
+    fn empty_sec_projection_does_not_create_a_financial_observation() {
+        let mut state = sec_financial_state(None);
+        state.gross_margin_percent = None;
+        state.gross_margin_change_pp = None;
+        state.ebit_margin_percent = None;
+        state.accounts_receivable_growth_percent = None;
+        state.accounts_payable_growth_percent = None;
+        state.inventory_growth_percent = None;
+        state.operating_cash_flow_growth_percent = None;
+        state.capital_expenditure_growth_percent = None;
+        assert!(
+            financial_fact_from_sec_state(
+                state,
+                "sec_structured_pending_human_review",
+                false,
+                Vec::new(),
+            )
+            .is_none()
+        );
+    }
+
     #[test]
     fn codex_simulation_fills_all_factors_without_claiming_live_data() {
         let cards = parse_cards();
@@ -1657,6 +3810,516 @@ mod tests {
         assert_eq!(light_for_score(74.9), "yellow");
         assert_eq!(light_for_score(55.0), "yellow");
         assert_eq!(light_for_score(54.9), "red");
+    }
+
+    #[test]
+    fn concurrent_refresh_is_coalesced_only_by_a_snapshot_created_after_its_request() {
+        let request = Utc.with_ymd_and_hms(2026, 8, 13, 9, 0, 0).unwrap();
+        assert!(!snapshot_satisfies_refresh_request(
+            request - chrono::Duration::milliseconds(1),
+            request
+        ));
+        assert!(snapshot_satisfies_refresh_request(request, request));
+        assert!(snapshot_satisfies_refresh_request(
+            request + chrono::Duration::milliseconds(1),
+            request
+        ));
+    }
+
+    #[test]
+    fn nasdaq_fallback_quote_requires_matching_symbol_and_parses_display_fields() {
+        let value = json!({
+            "data": {
+                "symbol": "SNDK",
+                "primaryData": {
+                    "lastSalePrice": "$1,271.05",
+                    "percentageChange": "+2.35%",
+                    "lastTradeTimestamp": "Aug 11, 2026"
+                },
+                "keyStats": {
+                    "fiftyTwoWeekHighLow": { "value": "1,755.00 - 113.46" }
+                }
+            }
+        });
+        let quote = nasdaq_quote_from_value("SNDK", &value).expect("valid Nasdaq quote");
+        assert_eq!(quote.price, 1271.05);
+        assert_eq!(quote.change_percent, Some(2.35));
+        assert_eq!(quote.year_low, Some(113.46));
+        assert_eq!(quote.year_high, Some(1755.0));
+        assert_eq!(quote.as_of.as_deref(), Some("Aug 11, 2026 · Nasdaq"));
+        assert_eq!(quote.source, "Nasdaq 官方行情降级快照");
+        assert!(nasdaq_quote_from_value("MU", &value).is_none());
+    }
+
+    #[test]
+    fn display_range_accepts_common_dashes_but_rejects_invalid_ranges() {
+        assert_eq!(
+            parse_display_range("$113.46 – $1,255.00"),
+            Some((Some(113.46), Some(1255.0)))
+        );
+        assert_eq!(
+            parse_display_range("100 — 20"),
+            Some((Some(20.0), Some(100.0)))
+        );
+        assert_eq!(parse_display_range("100 - 100"), None);
+        assert_eq!(parse_display_range("N/A"), None);
+    }
+
+    #[test]
+    fn nasdaq_history_keeps_point_in_time_path_volume_and_source() {
+        let start = NaiveDate::from_ymd_opt(2026, 5, 1).unwrap();
+        let rows = (0..65)
+            .map(|index| {
+                let date = start + chrono::Duration::days(index);
+                json!({
+                    "date": date.format("%m/%d/%Y").to_string(),
+                    "close": format!("${:.2}", 100.0 + index as f64),
+                    "volume": format!("{}", 1_000 + index * 10),
+                    "open": "$100.00",
+                    "high": "$101.00",
+                    "low": "$99.00"
+                })
+            })
+            .rev()
+            .collect::<Vec<_>>();
+        let requested_through = start + chrono::Duration::days(64);
+        let history = nasdaq_market_history_from_value(
+            &json!({ "data": { "tradesTable": { "rows": rows } } }),
+            "https://api.nasdaq.com/api/quote/SNDK/historical?assetclass=stocks",
+            requested_through,
+        )
+        .expect("usable history");
+
+        assert_eq!(history.policy_version, MARKET_HISTORY_POLICY_VERSION);
+        assert_eq!(history.as_of, requested_through.to_string());
+        assert_eq!(history.session_count, 65);
+        assert_eq!(history.quality_status, "usable");
+        assert!(history.quality_warnings.is_empty());
+        assert_eq!(history.latest_close, 164.0);
+        assert!(history.average_close_50.is_some());
+        assert!(history.average_close_200.is_none());
+        assert!(
+            history
+                .return_20_sessions_percent
+                .is_some_and(|value| value > 0.0)
+        );
+        assert!(
+            history
+                .return_60_sessions_percent
+                .is_some_and(|value| value > 0.0)
+        );
+        assert!(
+            history
+                .drawdown_from_60_session_high_percent
+                .is_some_and(|value| value == 0.0)
+        );
+        assert!(
+            history
+                .recent_5_session_volume_vs_prior_55_percent
+                .is_some()
+        );
+        assert!(history.source_url.starts_with("https://"));
+        assert!(history.price_basis.contains("未声明复权口径"));
+    }
+
+    #[test]
+    fn nasdaq_history_requires_review_for_a_split_like_jump() {
+        let value = json!({
+            "data": { "tradesTable": { "rows": [
+                { "date": "08/12/2026", "close": "$200.00", "volume": "1000" },
+                { "date": "08/11/2026", "close": "$100.00", "volume": "1000" }
+            ] } }
+        });
+        let history = nasdaq_market_history_from_value(
+            &value,
+            "https://api.nasdaq.com/api/quote/TEST/historical?assetclass=stocks",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("reviewable history");
+        assert_eq!(history.quality_status, "review_required");
+        assert!(
+            history
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("拆股"))
+        );
+        assert!(
+            history
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("60 日路径"))
+        );
+    }
+
+    #[test]
+    fn nasdaq_short_interest_keeps_two_period_change_and_ambiguous_interpretation() {
+        let value = json!({
+            "data": { "shortInterestTable": { "rows": [
+                {
+                    "settlementDate": "07/31/2026",
+                    "interest": "6,823,953",
+                    "avgDailyShareVolume": "18,073,238",
+                    "daysToCover": 1
+                },
+                {
+                    "settlementDate": "07/15/2026",
+                    "interest": "7,857,690",
+                    "avgDailyShareVolume": "14,000,000",
+                    "daysToCover": "1"
+                }
+            ] } }
+        });
+        let summary = nasdaq_short_interest_from_value(
+            &value,
+            "https://api.nasdaq.com/api/quote/SNDK/short-interest?assetclass=stocks",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("usable short-interest history");
+
+        assert_eq!(summary.policy_version, SHORT_INTEREST_POLICY_VERSION);
+        assert_eq!(summary.as_of, "2026-07-31");
+        assert_eq!(summary.current_shares_short, 6_823_953.0);
+        assert_eq!(summary.previous_shares_short, 7_857_690.0);
+        assert!((summary.change_percent - -13.1557).abs() < 1e-4);
+        assert_eq!(summary.days_to_cover, 1.0);
+        assert_eq!(summary.quality_status, "usable");
+        assert!(summary.source_url.starts_with("https://"));
+        assert!(summary.interpretation.contains("不单独表示恐惧"));
+    }
+
+    #[test]
+    fn nasdaq_short_interest_marks_stale_context_for_review() {
+        let value = json!({
+            "data": { "shortInterestTable": { "rows": [
+                {
+                    "settlementDate": "01/31/2026",
+                    "interest": "1,100",
+                    "avgDailyShareVolume": "500",
+                    "daysToCover": 2
+                },
+                {
+                    "settlementDate": "01/15/2026",
+                    "interest": "1,000",
+                    "avgDailyShareVolume": "500",
+                    "daysToCover": 2
+                }
+            ] } }
+        });
+        let summary = nasdaq_short_interest_from_value(
+            &value,
+            "https://api.nasdaq.com/api/quote/TEST/short-interest?assetclass=stocks",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("reviewable short-interest history");
+
+        assert_eq!(summary.quality_status, "review_required");
+        assert!(
+            summary
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("45日"))
+        );
+    }
+
+    #[test]
+    fn option_positioning_uses_a_standard_month_and_keeps_ratios_non_scored() {
+        let requested = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let expiration = monthly_option_expiration(requested).expect("standard expiration");
+        assert_eq!(expiration, NaiveDate::from_ymd_opt(2026, 9, 18).unwrap());
+        let value = json!({
+            "data": {
+                "lastTrade": "LAST TRADE: $90.00 (AS OF AUG 12, 2026)",
+                "totalRecord": 3,
+                "table": { "rows": [
+                    { "expirygroup": "September 18, 2026" },
+                    {
+                        "strike": "$85.00",
+                        "c_Openinterest": "1,000",
+                        "p_Openinterest": "1,500",
+                        "c_Volume": "200",
+                        "p_Volume": "250"
+                    },
+                    {
+                        "strike": "$90.00",
+                        "c_Openinterest": "500",
+                        "p_Openinterest": "750",
+                        "c_Volume": "100",
+                        "p_Volume": "125"
+                    }
+                ] }
+            }
+        });
+        let summary = nasdaq_options_positioning_from_value(
+            &value,
+            "https://api.nasdaq.com/api/quote/SNDK/option-chain?assetclass=stocks",
+            requested,
+            expiration,
+        )
+        .expect("usable option positioning");
+
+        assert_eq!(summary.policy_version, OPTIONS_POSITIONING_POLICY_VERSION);
+        assert_eq!(summary.as_of, "2026-08-12");
+        assert_eq!(summary.days_to_expiration, 37);
+        assert_eq!(summary.call_open_interest, 1_500.0);
+        assert_eq!(summary.put_open_interest, 2_250.0);
+        assert_eq!(summary.put_call_open_interest_ratio, Some(1.5));
+        assert_eq!(summary.put_call_volume_ratio, Some(1.25));
+        assert_eq!(summary.quality_status, "usable");
+        assert!(summary.interpretation.contains("不等同方向判断"));
+        assert!(summary.interpretation.contains("不推算"));
+    }
+
+    #[test]
+    fn option_positioning_requires_complete_chain_coverage() {
+        let requested = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let expiration = NaiveDate::from_ymd_opt(2026, 9, 18).unwrap();
+        let summary = nasdaq_options_positioning_from_value(
+            &json!({ "data": {
+                "lastTrade": "LAST TRADE: $90.00 (AS OF AUG 12, 2026)",
+                "totalRecord": "20",
+                "table": { "rows": [
+                    { "expirygroup": "September 18, 2026" },
+                    { "strike": "$90.00", "c_Openinterest": "10", "p_Openinterest": "20" }
+                ] }
+            }}),
+            "https://api.nasdaq.com/api/quote/TEST/option-chain?assetclass=stocks",
+            requested,
+            expiration,
+        )
+        .expect("reviewable option positioning");
+        assert_eq!(summary.quality_status, "review_required");
+        assert!(
+            summary
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("截断"))
+        );
+    }
+
+    #[test]
+    fn news_attention_counts_publication_activity_without_claiming_sentiment() {
+        let requested = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
+        let value = json!({ "data": { "rows": [
+            {
+                "id": 1,
+                "created": "Aug 12, 2026",
+                "publisher": "Publisher A",
+                "title": "One",
+                "primarysymbol": "SNDK",
+                "related_symbols": ["sndk|stocks"]
+            },
+            {
+                "id": 2,
+                "created": "Aug 10, 2026",
+                "publisher": "Publisher B",
+                "title": "Two",
+                "primarysymbol": "SNDK",
+                "related_symbols": ["SNDK|stocks"]
+            },
+            {
+                "id": 3,
+                "created": "Aug 05, 2026",
+                "publisher": "Publisher A",
+                "title": "Three",
+                "primarysymbol": "SNDK",
+                "related_symbols": ["SNDK|stocks"]
+            },
+            {
+                "id": 3,
+                "created": "Aug 05, 2026",
+                "publisher": "Publisher A",
+                "title": "Duplicate",
+                "primarysymbol": "SNDK",
+                "related_symbols": ["SNDK|stocks"]
+            },
+            {
+                "id": 4,
+                "created": "Aug 12, 2026",
+                "publisher": "Other",
+                "title": "Wrong symbol",
+                "primarysymbol": "MU",
+                "related_symbols": ["MU|stocks"]
+            }
+        ] }});
+        let summary = nasdaq_news_attention_from_value(
+            "SNDK",
+            &value,
+            "https://www.nasdaq.com/api/news/topic/articlebysymbol?q=SNDK%7Cstocks&limit=100",
+            requested,
+        )
+        .expect("usable attention context");
+
+        assert_eq!(summary.policy_version, NEWS_ATTENTION_POLICY_VERSION);
+        assert_eq!(summary.recent_article_count, 2);
+        assert_eq!(summary.prior_article_count, 1);
+        assert_eq!(summary.unique_publishers, 2);
+        assert_eq!(summary.observed_article_count, 3);
+        assert_eq!(summary.quality_status, "usable");
+        assert!(!summary.truncated_window);
+        assert!(summary.interpretation.contains("不代表文章观点"));
+        assert!(summary.interpretation.contains("不单独形成方向"));
+    }
+
+    #[test]
+    fn institutional_holdings_reconcile_13f_categories_and_disclose_mixed_periods() {
+        let value = json!({ "data": {
+            "ownershipSummary": {
+                "SharesOutstandingPCT": { "value": "94.07%" }
+            },
+            "holdingsTransactions": {
+                "institutionalHolders": "1,802 Institutional Holders",
+                "sharesHeld": "139,304,332 Total Shares Held",
+                "totalRecords": 1802,
+                "table": { "rows": [
+                    { "date": "06/30/2026" },
+                    { "date": "06/30/2026" },
+                    { "date": "03/31/2026" },
+                    { "date": "12/31/2025" }
+                ] }
+            },
+            "activePositions": { "rows": [
+                { "positions": "Increased Positions", "holders": "1,234", "shares": "40,143,212" },
+                { "positions": "Decreased Positions", "holders": "484", "shares": "25,719,662" },
+                { "positions": "Held Positions", "holders": "84", "shares": "73,441,458" }
+            ] },
+            "newSoldOutPositions": { "rows": [
+                { "positions": "New Positions", "holders": "754", "shares": "22,544,032" },
+                { "positions": "Sold Out Positions", "holders": "73", "shares": "751,055" }
+            ] }
+        }});
+        let summary = nasdaq_institutional_holdings_from_value(
+            &value,
+            "https://api.nasdaq.com/api/company/SNDK/institutional-holdings?limit=50",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("usable institutional holdings");
+
+        assert_eq!(
+            summary.policy_version,
+            INSTITUTIONAL_HOLDINGS_POLICY_VERSION
+        );
+        assert_eq!(summary.institutional_ownership_percent, 94.07);
+        assert_eq!(summary.institutional_holders, 1_802);
+        assert_eq!(summary.total_shares_held, 139_304_332.0);
+        assert_eq!(summary.report_period_count, 3);
+        assert_eq!(summary.earliest_report_period, "2025-12-31");
+        assert_eq!(summary.latest_report_period, "2026-06-30");
+        assert_eq!(summary.latest_period_rows_in_sample, 2);
+        assert!(summary.holder_table_truncated);
+        assert_eq!(summary.quality_status, "usable");
+        assert!(summary.quality_warnings.is_empty());
+        assert!(summary.interpretation.contains("45天"));
+        assert!(summary.interpretation.contains("不代表机构今天买卖"));
+    }
+
+    #[test]
+    fn analyst_consensus_reconciles_distribution_and_discloses_target_limitations() {
+        let value = json!({ "data": {
+            "consensusOverview": {
+                "lowPriceTarget": 130.0,
+                "highPriceTarget": 305.0,
+                "priceTarget": 218.125,
+                "buy": 14,
+                "sell": 0,
+                "hold": 2
+            },
+            "historicalConsensus": [
+                { "z": { "date": "07/01/2026", "buy": 13, "hold": 3, "sell": 0 } },
+                { "z": { "date": "08/01/2026", "buy": 14, "hold": 2, "sell": 0 } }
+            ]
+        }});
+        let summary = nasdaq_analyst_consensus_from_value(
+            &value,
+            "https://api.nasdaq.com/api/analyst/SNDK/targetprice",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("usable analyst consensus");
+
+        assert_eq!(summary.policy_version, ANALYST_CONSENSUS_POLICY_VERSION);
+        assert_eq!(summary.recommendation_count, 16);
+        assert_eq!(summary.dominant_rating, "买入");
+        assert_eq!(summary.dominant_count, 14);
+        assert_eq!(summary.dominant_share_percent, 87.5);
+        assert_eq!(summary.consensus_target_price, 218.125);
+        assert_eq!(summary.target_range_width_percent, 80.2292);
+        assert_eq!(summary.historical_month_count, 2);
+        assert_eq!(summary.quality_status, "usable");
+        assert!(summary.quality_warnings.is_empty());
+        assert!(summary.interpretation.contains("目标价贡献者数量"));
+        assert!(summary.interpretation.contains("不进入评分"));
+    }
+
+    #[test]
+    fn analyst_consensus_small_or_unordered_sample_requires_review() {
+        let value = json!({ "data": {
+            "consensusOverview": {
+                "lowPriceTarget": 120.0,
+                "highPriceTarget": 100.0,
+                "priceTarget": 110.0,
+                "buy": 1,
+                "hold": 1,
+                "sell": 0
+            },
+            "historicalConsensus": []
+        }});
+        let summary = nasdaq_analyst_consensus_from_value(
+            &value,
+            "https://api.nasdaq.com/api/analyst/TEST/targetprice",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("reviewable analyst consensus");
+
+        assert_eq!(summary.dominant_rating, "并列");
+        assert_eq!(summary.quality_status, "review_required");
+        assert_eq!(summary.quality_warnings.len(), 3);
+    }
+
+    #[test]
+    fn institutional_holdings_category_mismatch_is_review_required() {
+        let value = json!({ "data": {
+            "ownershipSummary": {
+                "SharesOutstandingPCT": { "value": "50%" }
+            },
+            "holdingsTransactions": {
+                "institutionalHolders": "3 Institutional Holders",
+                "sharesHeld": "100 Total Shares Held",
+                "totalRecords": 3,
+                "table": { "rows": [
+                    { "date": "06/30/2026" },
+                    { "date": "06/30/2026" },
+                    { "date": "06/30/2026" }
+                ] }
+            },
+            "activePositions": { "rows": [
+                { "positions": "Increased Positions", "holders": "1", "shares": "50" },
+                { "positions": "Decreased Positions", "holders": "1", "shares": "25" },
+                { "positions": "Held Positions", "holders": "0", "shares": "20" }
+            ] },
+            "newSoldOutPositions": { "rows": [
+                { "positions": "New Positions", "holders": "1", "shares": "10" },
+                { "positions": "Sold Out Positions", "holders": "1", "shares": "5" }
+            ] }
+        }});
+        let summary = nasdaq_institutional_holdings_from_value(
+            &value,
+            "https://api.nasdaq.com/api/company/TEST/institutional-holdings?limit=50",
+            NaiveDate::from_ymd_opt(2026, 8, 12).unwrap(),
+        )
+        .expect("reviewable institutional holdings");
+
+        assert_eq!(summary.quality_status, "review_required");
+        assert!(
+            summary
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("持有人"))
+        );
+        assert!(
+            summary
+                .quality_warnings
+                .iter()
+                .any(|warning| warning.contains("持股总数"))
+        );
     }
 
     #[test]
@@ -1759,12 +4422,19 @@ mod tests {
             assumptions: vec!["增长、毛利和资本开支均有明确来源".to_string()],
             sources: vec!["公司 IR".to_string(), "SEC".to_string()],
             review_status: "verified".to_string(),
+            input_mode: String::new(),
+            valuation_review_id: None,
+            valuation_input_fingerprint_sha256: None,
+            valuation_financial_evidence_fingerprint_sha256: None,
+            valuation_input_as_of: None,
         };
         let (_, valuation) = validated_daily_valuation(
             input,
             Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
             "2026-08-11",
             "verified",
+            false,
+            None,
         )
         .expect("valid valuation");
         assert_eq!(valuation.current_position, "基准—乐观之间");
@@ -1790,6 +4460,11 @@ mod tests {
             assumptions: vec!["旧假设".to_string()],
             sources: vec!["单一来源".to_string()],
             review_status: "draft".to_string(),
+            input_mode: String::new(),
+            valuation_review_id: None,
+            valuation_input_fingerprint_sha256: None,
+            valuation_financial_evidence_fingerprint_sha256: None,
+            valuation_input_as_of: None,
         };
         assert!(
             validated_daily_valuation(
@@ -1797,6 +4472,8 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
                 "2026-08-11",
                 "verified",
+                false,
+                None,
             )
             .is_none()
         );
@@ -1820,6 +4497,11 @@ mod tests {
             assumptions: vec!["模型参数可复算".to_string()],
             sources: vec!["FMP cash flow".to_string(), "FMP estimates".to_string()],
             review_status: "computed".to_string(),
+            input_mode: "provider_bundle".to_string(),
+            valuation_review_id: None,
+            valuation_input_fingerprint_sha256: None,
+            valuation_financial_evidence_fingerprint_sha256: None,
+            valuation_input_as_of: None,
         };
         assert!(
             validated_daily_valuation(
@@ -1827,8 +4509,95 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
                 "2026-08-11",
                 "computed",
+                true,
+                None,
             )
             .is_some()
+        );
+    }
+
+    #[test]
+    fn reviewed_sec_valuation_requires_exact_fresh_authorization_binding() {
+        let input = DailyValuationInput {
+            symbol: "SNDK".to_string(),
+            as_of: "2026-08-11".to_string(),
+            currency: "USD".to_string(),
+            bear_case: 90.0,
+            base_case: 120.0,
+            bull_case: 160.0,
+            current_price: 110.0,
+            probability_weighted_value: Some(123.0),
+            expected_upside_percent: Some(11.8),
+            method_count: 3,
+            confidence: "high".to_string(),
+            method: "HONE 多方法估值".to_string(),
+            assumptions: vec!["SEC 一手事实与经复核中周期输入可复算".to_string()],
+            sources: vec!["SEC filing".to_string(), "公司 IR".to_string()],
+            review_status: "computed".to_string(),
+            input_mode: "sec_reviewed_supplemental_packet".to_string(),
+            valuation_review_id: Some("SNDK-valuation-input-review-1".to_string()),
+            valuation_input_fingerprint_sha256: Some("a".repeat(64)),
+            valuation_financial_evidence_fingerprint_sha256: Some("b".repeat(64)),
+            valuation_input_as_of: Some("2026-08-08".to_string()),
+        };
+        let binding = ValuationAuthorizationBinding {
+            review_id: "SNDK-valuation-input-review-1".to_string(),
+            input_fingerprint_sha256: "a".repeat(64),
+            financial_evidence_fingerprint_sha256: "b".repeat(64),
+            input_as_of: "2026-08-08".to_string(),
+        };
+        assert!(
+            validated_daily_valuation(
+                input.clone(),
+                Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
+                "2026-08-11",
+                "computed",
+                true,
+                Some(&binding),
+            )
+            .is_some()
+        );
+
+        let mut missing_review = input.clone();
+        missing_review.valuation_review_id = None;
+        assert!(
+            validated_daily_valuation(
+                missing_review,
+                Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
+                "2026-08-11",
+                "computed",
+                true,
+                Some(&binding),
+            )
+            .is_none()
+        );
+
+        let mut stale = input.clone();
+        stale.valuation_input_as_of = Some("2026-08-03".to_string());
+        assert!(
+            validated_daily_valuation(
+                stale,
+                Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
+                "2026-08-11",
+                "computed",
+                true,
+                Some(&binding),
+            )
+            .is_none()
+        );
+
+        let mut tampered = input;
+        tampered.valuation_input_fingerprint_sha256 = Some("c".repeat(64));
+        assert!(
+            validated_daily_valuation(
+                tampered,
+                Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
+                "2026-08-11",
+                "computed",
+                true,
+                Some(&binding),
+            )
+            .is_none()
         );
     }
 
@@ -1850,6 +4619,11 @@ mod tests {
             assumptions: vec!["模型参数可复算".to_string()],
             sources: vec!["FMP cash flow".to_string(), "FMP estimates".to_string()],
             review_status: "computed".to_string(),
+            input_mode: "provider_bundle".to_string(),
+            valuation_review_id: None,
+            valuation_input_fingerprint_sha256: None,
+            valuation_financial_evidence_fingerprint_sha256: None,
+            valuation_input_as_of: None,
         };
         assert!(
             validated_daily_valuation(
@@ -1857,6 +4631,8 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 8, 11, 10, 0, 0).unwrap(),
                 "2026-08-11",
                 "computed",
+                true,
+                None,
             )
             .is_none()
         );

@@ -135,6 +135,20 @@ pub(crate) struct ValuationLabItem {
     pub fcf_margin_percent: Option<f64>,
     #[serde(default)]
     pub net_cash_to_revenue_percent: Option<f64>,
+    #[serde(default)]
+    pub accounts_receivable_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub accounts_payable_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub inventory_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub property_plant_equipment_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub operating_cash_flow_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub capital_expenditure_growth_percent: Option<f64>,
+    #[serde(default)]
+    pub free_cash_flow_growth_percent: Option<f64>,
     pub current_position: String,
     pub position_percent: Option<f64>,
     pub method: String,
@@ -147,6 +161,42 @@ pub(crate) struct ValuationLabItem {
     pub cross_check: Option<ValuationCrossCheck>,
     pub assumptions: Vec<String>,
     pub evidence: Vec<ValuationEvidence>,
+    #[serde(default)]
+    pub readiness: ValuationReadiness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct ValuationReadiness {
+    pub schema_version: String,
+    pub status: String,
+    pub input_mode: String,
+    pub display_price: Option<f64>,
+    pub market_as_of: Option<String>,
+    pub financial_review_status: String,
+    #[serde(default)]
+    pub valuation_review_status: String,
+    #[serde(default)]
+    pub valuation_review_id: Option<String>,
+    #[serde(default)]
+    pub valuation_input_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    pub valuation_financial_evidence_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    pub valuation_input_as_of: Option<String>,
+    pub rating_factor_authorized: bool,
+    pub sec_valuation_use_authorized: bool,
+    pub available_inputs: Vec<ValuationEvidence>,
+    pub missing_inputs: Vec<String>,
+    pub methods: Vec<ValuationMethodReadiness>,
+    pub scope: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ValuationMethodReadiness {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub missing_inputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +228,8 @@ struct QuoteInput {
     price: f64,
     shares: f64,
     as_of: Option<String>,
+    source_label: Option<String>,
+    source_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -200,6 +252,17 @@ struct FinancialInput {
     current_fcf_margin: Option<f64>,
     net_cash_to_revenue: Option<f64>,
     forward_revenue_growth: Option<f64>,
+    accounts_receivable_growth: Option<f64>,
+    accounts_payable_growth: Option<f64>,
+    inventory_growth: Option<f64>,
+    property_plant_equipment_growth: Option<f64>,
+    operating_cash_flow_growth: Option<f64>,
+    capital_expenditure_growth: Option<f64>,
+    free_cash_flow_growth: Option<f64>,
+    provenance_kind: String,
+    source_label: Option<String>,
+    source_urls: Vec<String>,
+    source_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -276,6 +339,11 @@ struct RatingValuationItem {
     assumptions: Vec<String>,
     sources: Vec<String>,
     review_status: String,
+    input_mode: String,
+    valuation_review_id: Option<String>,
+    valuation_input_fingerprint_sha256: Option<String>,
+    valuation_financial_evidence_fingerprint_sha256: Option<String>,
+    valuation_input_as_of: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,6 +365,13 @@ struct RatingFundamentalItem {
     ebit_margin_percent: Option<f64>,
     fcf_margin_percent: Option<f64>,
     net_cash_to_revenue_percent: Option<f64>,
+    accounts_receivable_growth_percent: Option<f64>,
+    accounts_payable_growth_percent: Option<f64>,
+    inventory_growth_percent: Option<f64>,
+    property_plant_equipment_growth_percent: Option<f64>,
+    operating_cash_flow_growth_percent: Option<f64>,
+    capital_expenditure_growth_percent: Option<f64>,
+    free_cash_flow_growth_percent: Option<f64>,
     sources: Vec<String>,
     review_status: &'static str,
 }
@@ -328,7 +403,7 @@ pub(crate) async fn valuation_lab_worker(state: Arc<AppState>) {
     }
 }
 
-async fn refresh_and_store(state: &AppState) {
+pub(crate) async fn refresh_and_store(state: &AppState) {
     let snapshot = generate_snapshot(state).await;
     if let Err(error) = write_snapshot(state, &snapshot).await {
         warn!("valuation lab snapshot write failed: {error}");
@@ -355,28 +430,34 @@ async fn generate_snapshot(state: &AppState) -> ValuationLabSnapshot {
     let companies = parse_companies();
     let now = Utc::now();
     let report_date = now.with_timezone(&Shanghai).date_naive();
-    let keys = state.core.config.fmp.effective_key_pool().keys().to_vec();
-    if keys.is_empty() {
-        return snapshot_from_inputs(
-            companies,
-            HashMap::new(),
-            HashMap::new(),
-            now,
-            "FMP 未配置，无法核验当日价格、现金流和股本。".to_string(),
-        );
-    }
-
     let symbols = companies
         .iter()
         .map(|item| item.symbol.clone())
         .collect::<Vec<_>>();
-    let quotes = fetch_quotes(state, &keys, &symbols)
+    let keys = state.core.config.fmp.effective_key_pool().keys().to_vec();
+    if keys.is_empty() {
+        let mut quotes = HashMap::new();
+        let mut financials = HashMap::new();
+        merge_authorized_sec_inputs(state, &symbols, &mut quotes, &mut financials).await;
+        let readiness = build_valuation_readiness(state, &symbols, &quotes, &financials).await;
+        return snapshot_from_inputs(
+            companies,
+            quotes,
+            financials,
+            readiness,
+            now,
+            "完整估值数据源未配置；已保留现有行情与 SEC 财务证据，并逐项展示尚未通过的估值输入门槛。".to_string(),
+        );
+    }
+
+    let mut quotes = fetch_quotes(state, &keys, &symbols)
         .await
         .unwrap_or_else(|error| {
             warn!("valuation quotes unavailable: {error}");
             HashMap::new()
         });
-    let financials = fetch_financial_inputs(state, &keys, &symbols, report_date).await;
+    let mut financials = fetch_financial_inputs(state, &keys, &symbols, report_date).await;
+    merge_authorized_sec_inputs(state, &symbols, &mut quotes, &mut financials).await;
     let source_error = if quotes.is_empty() {
         "当日行情源不可用。".to_string()
     } else if financials.is_empty() {
@@ -384,7 +465,8 @@ async fn generate_snapshot(state: &AppState) -> ValuationLabSnapshot {
     } else {
         String::new()
     };
-    snapshot_from_inputs(companies, quotes, financials, now, source_error)
+    let readiness = build_valuation_readiness(state, &symbols, &quotes, &financials).await;
+    snapshot_from_inputs(companies, quotes, financials, readiness, now, source_error)
 }
 
 fn parse_companies() -> Vec<ValuationCompany> {
@@ -397,6 +479,7 @@ fn snapshot_from_inputs(
     companies: Vec<ValuationCompany>,
     quotes: HashMap<String, QuoteInput>,
     financials: HashMap<String, FinancialInput>,
+    mut readiness: HashMap<String, ValuationReadiness>,
     now: DateTime<Utc>,
     source_error: String,
 ) -> ValuationLabSnapshot {
@@ -405,13 +488,22 @@ fn snapshot_from_inputs(
         .into_iter()
         .map(|company| {
             let symbol = company.symbol.clone();
-            valuation_item(
+            let mut item = valuation_item(
                 company,
                 quotes.get(&symbol),
                 financials.get(&symbol),
                 report_date,
                 &source_error,
-            )
+            );
+            item.readiness = finalize_valuation_readiness(
+                readiness.remove(&symbol).unwrap_or_else(empty_readiness),
+                &item,
+            );
+            if item.current_price.is_none() {
+                item.current_price = item.readiness.display_price;
+                item.market_as_of = item.readiness.market_as_of.clone();
+            }
+            item
         })
         .collect::<Vec<_>>();
     items.sort_by(|a, b| {
@@ -466,11 +558,11 @@ fn snapshot_from_inputs(
         generated_at_beijing: now.with_timezone(&Shanghai).format("%Y-%m-%d %H:%M").to_string(),
         next_refresh_at: next_refresh(now),
         timezone: "Asia/Shanghai".to_string(),
-        methodology_version: "hone-valuation-v2".to_string(),
+        methodology_version: "hone-valuation-v4-reviewed-input-admission".to_string(),
         status: status.to_string(),
         coverage,
         summary,
-        methodology_note: "按公司商业模式选择估值组合：周期制造以前瞻 P/E 为主、EV/EBIT 与周期调整 DCF 交叉验证；盈利成长结合前瞻 P/E、DCF 与 EV/EBIT；收入转型公司以 EV/S 为主，并要求第二方法验证。三情景按 20%/55%/25% 概率汇总，同时反推当前股价隐含的 EPS、P/E 或现金流增长。所有参数都是 HONE 可复算模型假设，不冒充老王固定倍数。".to_string(),
+        methodology_note: "按公司商业模式选择估值组合：周期制造以前瞻 P/E 为主、EV/EBIT 与周期调整 DCF 交叉验证；盈利成长结合前瞻 P/E、DCF 与 EV/EBIT；收入转型公司以 EV/S 为主，并要求第二方法验证。估值准备度会分别披露已取得的行情、SEC 财务事实、人工复核状态、前瞻假设和各方法缺口；评级财务复核不等于估值授权。三情景按 20%/55%/25% 概率汇总，同时反推当前股价隐含的 EPS、P/E 或现金流增长。所有参数都是 HONE 可复算模型假设，不冒充老王固定倍数。".to_string(),
         items,
         disclaimer: "估值是研究区间，不是目标价承诺、买卖指令或收益保证；不适用的商业模式和缺失数据会明确留空。".to_string(),
     }
@@ -511,6 +603,27 @@ fn valuation_item(
             .map(|value| round1(value * 100.0));
         item.net_cash_to_revenue_percent = financial
             .net_cash_to_revenue
+            .map(|value| round1(value * 100.0));
+        item.accounts_receivable_growth_percent = financial
+            .accounts_receivable_growth
+            .map(|value| round1(value * 100.0));
+        item.accounts_payable_growth_percent = financial
+            .accounts_payable_growth
+            .map(|value| round1(value * 100.0));
+        item.inventory_growth_percent = financial
+            .inventory_growth
+            .map(|value| round1(value * 100.0));
+        item.property_plant_equipment_growth_percent = financial
+            .property_plant_equipment_growth
+            .map(|value| round1(value * 100.0));
+        item.operating_cash_flow_growth_percent = financial
+            .operating_cash_flow_growth
+            .map(|value| round1(value * 100.0));
+        item.capital_expenditure_growth_percent = financial
+            .capital_expenditure_growth
+            .map(|value| round1(value * 100.0));
+        item.free_cash_flow_growth_percent = financial
+            .free_cash_flow_growth
             .map(|value| round1(value * 100.0));
     }
     let Some(quote) = quote else {
@@ -684,6 +797,13 @@ fn empty_item(company: &ValuationCompany, source_error: &str) -> ValuationLabIte
         ebit_margin_percent: None,
         fcf_margin_percent: None,
         net_cash_to_revenue_percent: None,
+        accounts_receivable_growth_percent: None,
+        accounts_payable_growth_percent: None,
+        inventory_growth_percent: None,
+        property_plant_equipment_growth_percent: None,
+        operating_cash_flow_growth_percent: None,
+        capital_expenditure_growth_percent: None,
+        free_cash_flow_growth_percent: None,
         current_position: "无法判断".to_string(),
         position_percent: None,
         method: "按商业模式选择多方法估值".to_string(),
@@ -696,6 +816,603 @@ fn empty_item(company: &ValuationCompany, source_error: &str) -> ValuationLabIte
         cross_check: None,
         assumptions: Vec::new(),
         evidence: Vec::new(),
+        readiness: empty_readiness(),
+    }
+}
+
+fn empty_readiness() -> ValuationReadiness {
+    ValuationReadiness {
+        schema_version: "hone-valuation-readiness-v2-independent-review".to_string(),
+        status: "no_inputs".to_string(),
+        input_mode: "none".to_string(),
+        display_price: None,
+        market_as_of: None,
+        financial_review_status: "not_observed".to_string(),
+        valuation_review_status: "not_reviewed".to_string(),
+        valuation_review_id: None,
+        valuation_input_fingerprint_sha256: None,
+        valuation_financial_evidence_fingerprint_sha256: None,
+        valuation_input_as_of: None,
+        rating_factor_authorized: false,
+        sec_valuation_use_authorized: false,
+        available_inputs: Vec::new(),
+        missing_inputs: Vec::new(),
+        methods: Vec::new(),
+        scope: "准备度只解释估值输入是否齐全、可追溯和已获对应用途授权；不生成目标价，不授权训练、组合或交易。".to_string(),
+    }
+}
+
+async fn merge_authorized_sec_inputs(
+    state: &AppState,
+    symbols: &[String],
+    quotes: &mut HashMap<String, QuoteInput>,
+    financials: &mut HashMap<String, FinancialInput>,
+) {
+    let sec_states =
+        super::investment_decisions::current_sec_financial_states(state, symbols, Utc::now()).await;
+    let valuation_reviews =
+        super::valuation_input_review::review_outcomes_for_states(state, &sec_states).await;
+    let rating_items = super::company_ratings::current_snapshot(state)
+        .await
+        .items
+        .into_iter()
+        .map(|item| (item.symbol.clone(), item))
+        .collect::<HashMap<_, _>>();
+
+    for symbol in symbols {
+        if financials.contains_key(symbol) {
+            continue;
+        }
+        let Some(state) = sec_states.get(symbol) else {
+            continue;
+        };
+        if state.financial_value_unit.as_deref() != Some("USD_millions") {
+            continue;
+        }
+        let Some(review) = valuation_reviews
+            .get(symbol)
+            .filter(|review| review.valuation_authorized)
+        else {
+            continue;
+        };
+        let Some(record) = review.latest_review.as_ref() else {
+            continue;
+        };
+        let inputs = &record.supplemental_inputs;
+        let Some(shares_millions) = inputs.diluted_shares_millions else {
+            continue;
+        };
+
+        if let Some(existing) = quotes.get_mut(symbol) {
+            existing.shares = shares_millions * 1_000_000.0;
+        } else if let Some(rating) = rating_items.get(symbol) {
+            if let Some(price) = rating
+                .price
+                .filter(|value| value.is_finite() && *value > 0.0)
+            {
+                quotes.insert(
+                    symbol.clone(),
+                    QuoteInput {
+                        price,
+                        shares: shares_millions * 1_000_000.0,
+                        as_of: rating.market_as_of.clone(),
+                        source_label: Some("HONE 公司评级 Nasdaq 行情快照".to_string()),
+                        source_url: Some(format!(
+                            "https://www.nasdaq.com/market-activity/stocks/{}",
+                            symbol.to_ascii_lowercase()
+                        )),
+                    },
+                );
+            }
+        }
+
+        let (current_revenue, prior_revenue) = sec_claim_values(state, "revenue");
+        let (current_ebit, _) = sec_claim_values(state, "operating_income");
+        let current_fcf = state
+            .current_free_cash_flow
+            .map(|value| value * 1_000_000.0);
+        let prior_fcf = state.prior_free_cash_flow.map(|value| value * 1_000_000.0);
+        let current_revenue = current_revenue.map(|value| value * 1_000_000.0);
+        let prior_revenue = prior_revenue.map(|value| value * 1_000_000.0);
+        let net_cash = inputs
+            .complete_net_cash_millions
+            .map(|value| value * 1_000_000.0);
+        let forward_revenue = inputs
+            .forward_revenue_millions
+            .map(|value| value * 1_000_000.0);
+        let mut source_urls = state.source_urls.clone();
+        source_urls.extend(inputs.source_urls.clone());
+        source_urls.sort();
+        source_urls.dedup();
+        financials.insert(
+            symbol.clone(),
+            FinancialInput {
+                as_of: Some(inputs.input_as_of.clone()),
+                current_fcf,
+                prior_fcf,
+                annual_fcf_history: inputs
+                    .annual_fcf_history_millions
+                    .iter()
+                    .map(|value| value * 1_000_000.0)
+                    .collect(),
+                net_cash,
+                contract_liabilities: None,
+                forward_eps: inputs.forward_eps,
+                forward_revenue,
+                current_revenue,
+                prior_revenue,
+                current_ebit: current_ebit.map(|value| value * 1_000_000.0),
+                normalized_ebit_margin: inputs
+                    .normalized_ebit_margin_percent
+                    .map(|value| value / 100.0),
+                current_gross_margin: state.gross_margin_percent.map(|value| value / 100.0),
+                prior_gross_margin: match (state.gross_margin_percent, state.gross_margin_change_pp)
+                {
+                    (Some(current), Some(change)) => Some((current - change) / 100.0),
+                    _ => None,
+                },
+                current_ebit_margin: state.ebit_margin_percent.map(|value| value / 100.0),
+                current_fcf_margin: ratio(current_fcf, current_revenue),
+                net_cash_to_revenue: ratio(net_cash, current_revenue),
+                forward_revenue_growth: ratio_change(forward_revenue, current_revenue),
+                accounts_receivable_growth: state
+                    .accounts_receivable_growth_percent
+                    .map(|value| value / 100.0),
+                accounts_payable_growth: state
+                    .accounts_payable_growth_percent
+                    .map(|value| value / 100.0),
+                inventory_growth: state.inventory_growth_percent.map(|value| value / 100.0),
+                property_plant_equipment_growth: state
+                    .property_plant_equipment_growth_percent
+                    .map(|value| value / 100.0),
+                operating_cash_flow_growth: state
+                    .operating_cash_flow_growth_percent
+                    .map(|value| value / 100.0),
+                capital_expenditure_growth: state
+                    .capital_expenditure_growth_percent
+                    .map(|value| value / 100.0),
+                free_cash_flow_growth: state
+                    .free_cash_flow_growth_percent
+                    .map(|value| value / 100.0),
+                provenance_kind: "sec_reviewed_supplemental_packet".to_string(),
+                source_label: Some("SEC 一手财务 + 独立估值用途复核输入包".to_string()),
+                source_urls,
+                source_note: Some(inputs.source_note.clone()),
+            },
+        );
+    }
+}
+
+fn sec_claim_values(
+    state: &super::investment_decisions::FinancialVerificationState,
+    metric_id: &str,
+) -> (Option<f64>, Option<f64>) {
+    let mut claims = state
+        .source_claims
+        .iter()
+        .filter(|claim| claim.metric_id == metric_id && claim.unit == "USD_millions")
+        .collect::<Vec<_>>();
+    claims.sort_by(|left, right| {
+        right
+            .published_at
+            .cmp(&left.published_at)
+            .then_with(|| right.period.cmp(&left.period))
+    });
+    claims.dedup_by(|left, right| left.period == right.period);
+    (
+        claims.first().map(|claim| claim.numeric_value),
+        claims.get(1).map(|claim| claim.numeric_value),
+    )
+}
+
+async fn build_valuation_readiness(
+    state: &AppState,
+    symbols: &[String],
+    provider_quotes: &HashMap<String, QuoteInput>,
+    provider_financials: &HashMap<String, FinancialInput>,
+) -> HashMap<String, ValuationReadiness> {
+    let rating_snapshot = super::company_ratings::current_snapshot(state).await;
+    let rating_items = rating_snapshot
+        .items
+        .into_iter()
+        .map(|item| (item.symbol.clone(), item))
+        .collect::<HashMap<_, _>>();
+    let sec_states =
+        super::investment_decisions::current_sec_financial_states(state, symbols, Utc::now()).await;
+    let sec_reviews =
+        super::financial_evidence_review::review_outcomes_for_states(state, &sec_states).await;
+    let valuation_reviews =
+        super::valuation_input_review::review_outcomes_for_states(state, &sec_states).await;
+
+    symbols
+        .iter()
+        .map(|symbol| {
+            let provider_quote = provider_quotes.get(symbol);
+            let provider_financial = provider_financials.get(symbol);
+            let rating = rating_items.get(symbol);
+            let sec_review = sec_reviews.get(symbol);
+            let valuation_review = valuation_reviews.get(symbol);
+            let mut readiness = empty_readiness();
+            readiness.display_price = provider_quote
+                .map(|quote| round2(quote.price))
+                .or_else(|| rating.and_then(|item| item.price.map(round2)));
+            readiness.market_as_of = provider_quote
+                .and_then(|quote| quote.as_of.clone())
+                .or_else(|| rating.and_then(|item| item.market_as_of.clone()));
+
+            if let Some(price) = readiness.display_price {
+                readiness.available_inputs.push(ValuationEvidence {
+                    label: "当前行情（仅用于定位）".to_string(),
+                    display_value: format!("${price:.2}"),
+                    as_of: readiness.market_as_of.clone().unwrap_or_default(),
+                    source: if provider_quote.is_some() {
+                        "FMP quote bundle".to_string()
+                    } else {
+                        "HONE 公司评级行情快照".to_string()
+                    },
+                    source_url: format!(
+                        "https://www.nasdaq.com/market-activity/stocks/{}",
+                        symbol.to_ascii_lowercase()
+                    ),
+                });
+            } else {
+                push_unique(&mut readiness.missing_inputs, "可核验的当日行情");
+            }
+
+            if let Some(review) = sec_review {
+                readiness.financial_review_status = review.review_status.clone();
+                readiness.rating_factor_authorized = review.score_eligible;
+                readiness.sec_valuation_use_authorized =
+                    valuation_review.is_some_and(|review| review.valuation_authorized);
+                append_sec_readiness_evidence(
+                    &mut readiness.available_inputs,
+                    &review.evidence,
+                    readiness.sec_valuation_use_authorized,
+                );
+            } else {
+                readiness.financial_review_status =
+                    "sec_financial_evidence_not_observed".to_string();
+                push_unique(&mut readiness.missing_inputs, "可追溯的 SEC 财务事实");
+            }
+
+            if let Some(review) = valuation_review {
+                readiness.valuation_review_status = review.review_status.clone();
+                if let Some(record) = review.latest_review.as_ref() {
+                    readiness.valuation_review_id = Some(record.review_id.clone());
+                    readiness.valuation_input_fingerprint_sha256 =
+                        Some(record.input_fingerprint_sha256.clone());
+                    readiness.valuation_financial_evidence_fingerprint_sha256 =
+                        Some(record.financial_evidence_fingerprint_sha256.clone());
+                    readiness.valuation_input_as_of =
+                        Some(record.supplemental_inputs.input_as_of.clone());
+                }
+                if !review.valuation_authorized {
+                    push_unique(
+                        &mut readiness.missing_inputs,
+                        "SEC 财务事实的独立估值用途授权（评级财务复核不等于估值授权）",
+                    );
+                    for reason in &review.blocking_reasons {
+                        push_unique(&mut readiness.missing_inputs, reason);
+                    }
+                }
+            } else if sec_review.is_some() {
+                readiness.valuation_review_status = "sec_valuation_review_pending".to_string();
+                push_unique(
+                    &mut readiness.missing_inputs,
+                    "SEC 财务事实的独立估值用途授权（评级财务复核不等于估值授权）",
+                );
+            }
+
+            if let Some(financial) = provider_financial {
+                let sec_authorized_packet =
+                    financial.provenance_kind == "sec_reviewed_supplemental_packet";
+                readiness.input_mode = if sec_authorized_packet {
+                    "sec_reviewed_supplemental_packet"
+                } else if sec_review.is_some() {
+                    "provider_bundle_plus_sec_observation"
+                } else {
+                    "provider_bundle"
+                }
+                .to_string();
+                readiness.status = if sec_authorized_packet {
+                    "sec_inputs_authorized"
+                } else {
+                    "provider_inputs_present"
+                }
+                .to_string();
+                append_provider_missing_inputs(
+                    &mut readiness.missing_inputs,
+                    provider_quote,
+                    financial,
+                );
+                readiness.methods = valuation_method_readiness(
+                    provider_quote,
+                    readiness.display_price.is_some(),
+                    Some(financial),
+                );
+            } else {
+                readiness.input_mode = if sec_review.is_some() {
+                    "sec_observation_only"
+                } else if readiness.display_price.is_some() {
+                    "market_only"
+                } else {
+                    "none"
+                }
+                .to_string();
+                readiness.status = if sec_review.is_some() {
+                    "sec_evidence_pending_valuation_admission"
+                } else if readiness.display_price.is_some() {
+                    "market_only"
+                } else {
+                    "no_inputs"
+                }
+                .to_string();
+                for missing in [
+                    "经估值用途核验的稀释后流通股本",
+                    "经估值用途核验的完整净现金或净负债",
+                    "下一财年 EPS 一致预期或经审定的中周期 EPS",
+                    "下一财年收入与正常化 EBIT 利润率",
+                    "可比口径的年度自由现金流历史与中周期假设",
+                ] {
+                    push_unique(&mut readiness.missing_inputs, missing);
+                }
+                readiness.methods = valuation_method_readiness(
+                    provider_quote,
+                    readiness.display_price.is_some(),
+                    None,
+                );
+            }
+            (symbol.clone(), readiness)
+        })
+        .collect()
+}
+
+fn finalize_valuation_readiness(
+    mut readiness: ValuationReadiness,
+    item: &ValuationLabItem,
+) -> ValuationReadiness {
+    readiness.status = if item.eligible_for_rating {
+        "ready_for_rating"
+    } else if !item.scenarios.is_empty() {
+        "calculated_review_required"
+    } else {
+        readiness.status.as_str()
+    }
+    .to_string();
+    readiness
+}
+
+fn append_provider_missing_inputs(
+    missing: &mut Vec<String>,
+    quote: Option<&QuoteInput>,
+    financial: &FinancialInput,
+) {
+    if quote.is_none_or(|quote| quote.shares <= 0.0) {
+        push_unique(missing, "稀释后流通股本");
+    }
+    if financial.net_cash.is_none() {
+        push_unique(missing, "净现金或净负债");
+    }
+    if financial.forward_eps.is_none() {
+        push_unique(missing, "下一财年 EPS 一致预期或经审定的中周期 EPS");
+    }
+    if financial.forward_revenue.is_none() {
+        push_unique(missing, "下一财年收入");
+    }
+    if financial.normalized_ebit_margin.is_none() {
+        push_unique(missing, "正常化 EBIT 利润率");
+    }
+    if financial.current_fcf.is_none() || financial.annual_fcf_history.is_empty() {
+        push_unique(missing, "可比口径的年度自由现金流历史与中周期假设");
+    }
+}
+
+fn valuation_method_readiness(
+    quote: Option<&QuoteInput>,
+    market_price_available: bool,
+    financial: Option<&FinancialInput>,
+) -> Vec<ValuationMethodReadiness> {
+    let method = |id: &str, label: &str, missing_inputs: Vec<&str>| ValuationMethodReadiness {
+        id: id.to_string(),
+        label: label.to_string(),
+        status: if missing_inputs.is_empty() {
+            "prepared"
+        } else {
+            "blocked"
+        }
+        .to_string(),
+        missing_inputs: missing_inputs.into_iter().map(str::to_string).collect(),
+    };
+    let Some(financial) = financial else {
+        return vec![
+            method("forward_pe", "前瞻 P/E", vec!["前瞻/中周期 EPS"]),
+            method(
+                "ev_ebit",
+                "EV/EBIT",
+                vec![
+                    "前瞻收入",
+                    "正常化 EBIT 利润率",
+                    "经估值用途核验的净现金/负债",
+                    "经估值用途核验的稀释股本",
+                ],
+            ),
+            method(
+                "cycle_adjusted_dcf",
+                "周期调整 DCF",
+                vec![
+                    "年度自由现金流历史",
+                    "中周期假设",
+                    "经估值用途核验的净现金/负债",
+                    "经估值用途核验的稀释股本",
+                ],
+            ),
+            method(
+                "reverse_valuation",
+                "反向估值",
+                if market_price_available {
+                    vec!["至少一种完整正向估值输入"]
+                } else {
+                    vec!["当日价格", "至少一种完整正向估值输入"]
+                },
+            ),
+        ];
+    };
+    let shares_missing = quote.is_none_or(|quote| quote.shares <= 0.0);
+    let mut ev_missing = Vec::new();
+    if financial.forward_revenue.is_none() {
+        ev_missing.push("前瞻收入");
+    }
+    if financial.normalized_ebit_margin.is_none() {
+        ev_missing.push("正常化 EBIT 利润率");
+    }
+    if financial.net_cash.is_none() {
+        ev_missing.push("净现金/负债");
+    }
+    if shares_missing {
+        ev_missing.push("稀释股本");
+    }
+    let mut dcf_missing = Vec::new();
+    if financial.current_fcf.is_none() || financial.annual_fcf_history.is_empty() {
+        dcf_missing.push("年度自由现金流历史");
+    }
+    if financial.net_cash.is_none() {
+        dcf_missing.push("净现金/负债");
+    }
+    if shares_missing {
+        dcf_missing.push("稀释股本");
+    }
+    let mut reverse_missing = Vec::new();
+    if !market_price_available && quote.is_none_or(|quote| quote.price <= 0.0) {
+        reverse_missing.push("当日价格");
+    }
+    if financial.forward_eps.is_none()
+        && (financial.current_fcf.is_none() || financial.annual_fcf_history.is_empty())
+    {
+        reverse_missing.push("至少一种完整正向估值输入");
+    }
+    vec![
+        method(
+            "forward_pe",
+            "前瞻 P/E",
+            financial
+                .forward_eps
+                .is_none()
+                .then_some("前瞻/中周期 EPS")
+                .into_iter()
+                .collect(),
+        ),
+        method("ev_ebit", "EV/EBIT", ev_missing),
+        method("cycle_adjusted_dcf", "周期调整 DCF", dcf_missing),
+        method("reverse_valuation", "反向估值", reverse_missing),
+    ]
+}
+
+fn append_sec_readiness_evidence(
+    target: &mut Vec<ValuationEvidence>,
+    state: &super::investment_decisions::FinancialVerificationState,
+    valuation_authorized: bool,
+) {
+    let source_url = state.source_urls.first().cloned().unwrap_or_default();
+    let source_qualifier = if valuation_authorized {
+        "已绑定独立估值用途复核"
+    } else {
+        "尚未获估值用途授权"
+    };
+    for (label, value) in [
+        ("营收同比", state.revenue_growth_percent),
+        ("毛利率", state.gross_margin_percent),
+        ("毛利率同比变化", state.gross_margin_change_pp),
+        ("营业利润率", state.ebit_margin_percent),
+        ("自由现金流利润率", state.fcf_margin_percent),
+        ("应收账款同比", state.accounts_receivable_growth_percent),
+        ("库存同比", state.inventory_growth_percent),
+        ("经营现金流同比", state.operating_cash_flow_growth_percent),
+        ("资本开支同比", state.capital_expenditure_growth_percent),
+        ("自由现金流同比", state.free_cash_flow_growth_percent),
+    ] {
+        if let Some(value) = value {
+            target.push(ValuationEvidence {
+                label: label.to_string(),
+                display_value: format!("{value:+.1}%"),
+                as_of: state.financial_as_of.clone().unwrap_or_default(),
+                source: format!("SEC 结构化事实（{source_qualifier}）"),
+                source_url: source_url.clone(),
+            });
+        }
+    }
+    for (label, value) in [
+        ("现金及现金等价物", state.cash_and_equivalents),
+        ("长期债务（当前 XBRL 标签）", state.long_term_debt),
+        ("现金减当前 XBRL 长期债务（非完整净现金）", state.net_cash),
+        (
+            "本期自由现金流（经营现金流减资本开支）",
+            state.current_free_cash_flow,
+        ),
+        (
+            "上期自由现金流（经营现金流减资本开支）",
+            state.prior_free_cash_flow,
+        ),
+    ] {
+        if let Some(value) = value {
+            target.push(ValuationEvidence {
+                label: label.to_string(),
+                display_value: format_financial_claim_value(
+                    value,
+                    state
+                        .financial_value_unit
+                        .as_deref()
+                        .unwrap_or("issuer_unit"),
+                ),
+                as_of: state.financial_as_of.clone().unwrap_or_default(),
+                source: format!("SEC 确定性投影（{source_qualifier}）"),
+                source_url: source_url.clone(),
+            });
+        }
+    }
+    let mut claims = state.source_claims.clone();
+    claims.sort_by(|left, right| right.published_at.cmp(&left.published_at));
+    claims.dedup_by(|left, right| left.metric_id == right.metric_id && left.period == right.period);
+    for claim in claims.into_iter().take(12) {
+        target.push(ValuationEvidence {
+            label: financial_metric_label(&claim.metric_id).to_string(),
+            display_value: format_financial_claim_value(claim.numeric_value, &claim.unit),
+            as_of: claim.period,
+            source: format!("SEC · {}", claim.metric_basis),
+            source_url: claim.source_url,
+        });
+    }
+}
+
+fn financial_metric_label(metric_id: &str) -> &str {
+    match metric_id {
+        "revenue" => "营业收入",
+        "gross_profit" => "毛利润",
+        "operating_income" => "营业利润",
+        "operating_cash_flow" => "经营现金流",
+        "capital_expenditure" => "资本开支",
+        "free_cash_flow" => "自由现金流",
+        "accounts_receivable" => "应收账款",
+        "accounts_payable" => "应付账款",
+        "inventory" => "库存",
+        "property_plant_equipment" => "固定资产净额",
+        "cash_and_equivalents" => "现金及现金等价物",
+        "long_term_debt" => "长期债务",
+        _ => metric_id,
+    }
+}
+
+fn format_financial_claim_value(value: f64, unit: &str) -> String {
+    match unit {
+        "USD_millions" => format!("{value:.1} 百万美元"),
+        "USD_billions" => format!("{value:.2} 十亿美元"),
+        "percent" | "%" => format!("{value:.1}%"),
+        _ => format!("{value:.2} {unit}"),
+    }
+}
+
+fn push_unique(values: &mut Vec<String>, value: &str) {
+    if !values.iter().any(|existing| existing == value) {
+        values.push(value.to_string());
     }
 }
 
@@ -1317,6 +2034,12 @@ fn evidence_for_item(
     net_cash: f64,
 ) -> Vec<ValuationEvidence> {
     let encoded = utf8_percent_encode(symbol, NON_ALPHANUMERIC).to_string();
+    let reviewed_sec_packet = financial.provenance_kind == "sec_reviewed_supplemental_packet";
+    let financial_source = financial
+        .source_label
+        .clone()
+        .unwrap_or_else(|| "FMP fundamentals bundle".to_string());
+    let financial_source_url = financial.source_urls.first().cloned();
     let mut evidence = vec![
         ValuationEvidence {
             label: "当前价格与股本".to_string(),
@@ -1326,17 +2049,24 @@ fn evidence_for_item(
                 quote.shares / 100_000_000.0
             ),
             as_of: quote.as_of.clone().unwrap_or_default(),
-            source: "FMP Stock Quote".to_string(),
-            source_url: format!("https://financialmodelingprep.com/stable/quote?symbol={encoded}"),
+            source: quote
+                .source_label
+                .clone()
+                .unwrap_or_else(|| "FMP Stock Quote".to_string()),
+            source_url: quote.source_url.clone().unwrap_or_else(|| {
+                format!("https://financialmodelingprep.com/stable/quote?symbol={encoded}")
+            }),
         },
         ValuationEvidence {
             label: "调整后净现金 /（净负债）".to_string(),
             display_value: format!("{:.2} 亿美元", net_cash / 100_000_000.0),
             as_of: financial.as_of.clone().unwrap_or_default(),
-            source: "FMP Balance Sheet Statement".to_string(),
-            source_url: format!(
-                "https://financialmodelingprep.com/stable/balance-sheet-statement?symbol={encoded}"
-            ),
+            source: financial_source.clone(),
+            source_url: financial_source_url.clone().unwrap_or_else(|| {
+                format!(
+                    "https://financialmodelingprep.com/stable/balance-sheet-statement?symbol={encoded}"
+                )
+            }),
         },
     ];
     if let Some(fcf) = financial.current_fcf {
@@ -1344,10 +2074,12 @@ fn evidence_for_item(
             label: "最近四季度自由现金流".to_string(),
             display_value: format!("{:.2} 亿美元", fcf / 100_000_000.0),
             as_of: financial.as_of.clone().unwrap_or_default(),
-            source: "FMP Cash Flow Statement".to_string(),
-            source_url: format!(
-                "https://financialmodelingprep.com/stable/cash-flow-statement?symbol={encoded}"
-            ),
+            source: financial_source.clone(),
+            source_url: financial_source_url.clone().unwrap_or_else(|| {
+                format!(
+                    "https://financialmodelingprep.com/stable/cash-flow-statement?symbol={encoded}"
+                )
+            }),
         });
     }
     if let (Some(revenue), Some(ebit)) = (financial.current_revenue, financial.current_ebit) {
@@ -1359,10 +2091,12 @@ fn evidence_for_item(
                 ebit / 100_000_000.0
             ),
             as_of: financial.as_of.clone().unwrap_or_default(),
-            source: "FMP Income Statement".to_string(),
-            source_url: format!(
-                "https://financialmodelingprep.com/stable/income-statement?symbol={encoded}"
-            ),
+            source: financial_source.clone(),
+            source_url: financial_source_url.clone().unwrap_or_else(|| {
+                format!(
+                    "https://financialmodelingprep.com/stable/income-statement?symbol={encoded}"
+                )
+            }),
         });
     }
     if let Some(eps) = financial.forward_eps {
@@ -1370,10 +2104,12 @@ fn evidence_for_item(
             label: "下一财年 EPS 一致预期".to_string(),
             display_value: format!("${eps:.2}"),
             as_of: quote.as_of.clone().unwrap_or_default(),
-            source: "FMP Financial Estimates".to_string(),
-            source_url: format!(
-                "https://financialmodelingprep.com/stable/analyst-estimates?symbol={encoded}"
-            ),
+            source: financial_source.clone(),
+            source_url: financial_source_url.clone().unwrap_or_else(|| {
+                format!(
+                    "https://financialmodelingprep.com/stable/analyst-estimates?symbol={encoded}"
+                )
+            }),
         });
     }
     if let Some(revenue) = financial.forward_revenue {
@@ -1381,11 +2117,24 @@ fn evidence_for_item(
             label: "下一财年收入一致预期".to_string(),
             display_value: format!("{:.2} 亿美元", revenue / 100_000_000.0),
             as_of: quote.as_of.clone().unwrap_or_default(),
-            source: "FMP Financial Estimates".to_string(),
-            source_url: format!(
-                "https://financialmodelingprep.com/stable/analyst-estimates?symbol={encoded}"
-            ),
+            source: financial_source,
+            source_url: financial_source_url.unwrap_or_else(|| {
+                format!(
+                    "https://financialmodelingprep.com/stable/analyst-estimates?symbol={encoded}"
+                )
+            }),
         });
+    }
+    if reviewed_sec_packet {
+        if let Some(note) = financial.source_note.as_ref() {
+            evidence.push(ValuationEvidence {
+                label: "估值输入复核口径".to_string(),
+                display_value: note.clone(),
+                as_of: financial.as_of.clone().unwrap_or_default(),
+                source: "HONE 独立估值用途复核审计链".to_string(),
+                source_url: financial.source_urls.first().cloned().unwrap_or_default(),
+            });
+        }
     }
     evidence
 }
@@ -1457,6 +2206,8 @@ fn quotes_from_value(value: &Value) -> HashMap<String, QuoteInput> {
                     price,
                     shares,
                     as_of,
+                    source_label: Some("FMP Stock Quote".to_string()),
+                    source_url: None,
                 },
             ))
         })
@@ -1483,7 +2234,7 @@ async fn fetch_financial_inputs(
             let encoded_key = utf8_percent_encode(&key, NON_ALPHANUMERIC).to_string();
             let cash_url = format!("{base}/stable/cash-flow-statement?symbol={encoded_symbol}&period=quarter&limit=20&apikey={encoded_key}");
             let income_url = format!("{base}/stable/income-statement?symbol={encoded_symbol}&period=quarter&limit=20&apikey={encoded_key}");
-            let balance_url = format!("{base}/stable/balance-sheet-statement?symbol={encoded_symbol}&period=quarter&limit=1&apikey={encoded_key}");
+            let balance_url = format!("{base}/stable/balance-sheet-statement?symbol={encoded_symbol}&period=quarter&limit=5&apikey={encoded_key}");
             let estimates_url = format!("{base}/stable/analyst-estimates?symbol={encoded_symbol}&period=annual&page=0&limit=6&apikey={encoded_key}");
             let (cash, income, balance, estimates) = tokio::join!(
                 fetch_fmp_json_once(&client, &cash_url, timeout),
@@ -1526,6 +2277,8 @@ fn financial_from_values(
     let (cash_as_of, current_fcf, prior_fcf, annual_fcf_history) = cashflow_windows(cash);
     let income = income_windows(income);
     let (raw_net_cash, contract_liabilities) = balance_inputs(balance);
+    let balance_operating = balance_operating_metrics(balance);
+    let cash_operating = cashflow_operating_metrics(cash);
     let (forward_eps, forward_revenue) = estimates_from_value(estimates, report_date);
     let current_fcf_margin = ratio(current_fcf, income.current_revenue);
     let net_cash_to_revenue = ratio(raw_net_cash, income.current_revenue);
@@ -1549,6 +2302,17 @@ fn financial_from_values(
         current_fcf_margin,
         net_cash_to_revenue,
         forward_revenue_growth,
+        accounts_receivable_growth: balance_operating.accounts_receivable_growth,
+        accounts_payable_growth: balance_operating.accounts_payable_growth,
+        inventory_growth: balance_operating.inventory_growth,
+        property_plant_equipment_growth: balance_operating.property_plant_equipment_growth,
+        operating_cash_flow_growth: cash_operating.operating_cash_flow_growth,
+        capital_expenditure_growth: cash_operating.capital_expenditure_growth,
+        free_cash_flow_growth: ratio_change(current_fcf, prior_fcf),
+        provenance_kind: "provider_bundle".to_string(),
+        source_label: None,
+        source_urls: Vec::new(),
+        source_note: None,
     }
 }
 
@@ -1723,6 +2487,93 @@ fn balance_inputs(value: Option<&Value>) -> (Option<f64>, Option<f64>) {
     (Some(cash - debt), contract_liabilities)
 }
 
+#[derive(Debug, Clone, Default)]
+struct BalanceOperatingMetrics {
+    accounts_receivable_growth: Option<f64>,
+    accounts_payable_growth: Option<f64>,
+    inventory_growth: Option<f64>,
+    property_plant_equipment_growth: Option<f64>,
+}
+
+fn balance_operating_metrics(value: Option<&Value>) -> BalanceOperatingMetrics {
+    let Some(rows) = value.and_then(Value::as_array) else {
+        return BalanceOperatingMetrics::default();
+    };
+    let Some(current) = rows.first() else {
+        return BalanceOperatingMetrics::default();
+    };
+    let Some(prior) = rows.get(4) else {
+        return BalanceOperatingMetrics::default();
+    };
+    BalanceOperatingMetrics {
+        accounts_receivable_growth: statement_ratio_change(
+            current,
+            prior,
+            &[
+                "netReceivables",
+                "accountsReceivables",
+                "accountsReceivable",
+            ],
+        ),
+        accounts_payable_growth: statement_ratio_change(
+            current,
+            prior,
+            &["accountPayables", "accountsPayable"],
+        ),
+        inventory_growth: statement_ratio_change(current, prior, &["inventory"]),
+        property_plant_equipment_growth: statement_ratio_change(
+            current,
+            prior,
+            &["propertyPlantEquipmentNet", "propertyPlantAndEquipmentNet"],
+        ),
+    }
+}
+
+fn statement_ratio_change(current: &Value, prior: &Value, fields: &[&str]) -> Option<f64> {
+    let current = fields
+        .iter()
+        .find_map(|field| current.get(*field).and_then(Value::as_f64));
+    let prior = fields
+        .iter()
+        .find_map(|field| prior.get(*field).and_then(Value::as_f64));
+    ratio_change(current, prior)
+}
+
+#[derive(Debug, Clone, Default)]
+struct CashflowOperatingMetrics {
+    operating_cash_flow_growth: Option<f64>,
+    capital_expenditure_growth: Option<f64>,
+}
+
+fn cashflow_operating_metrics(value: Option<&Value>) -> CashflowOperatingMetrics {
+    let Some(rows) = value.and_then(Value::as_array) else {
+        return CashflowOperatingMetrics::default();
+    };
+    CashflowOperatingMetrics {
+        operating_cash_flow_growth: ttm_statement_growth(rows, "operatingCashFlow", false),
+        capital_expenditure_growth: ttm_statement_growth(rows, "capitalExpenditure", true),
+    }
+}
+
+fn ttm_statement_growth(rows: &[Value], field: &str, use_absolute: bool) -> Option<f64> {
+    if rows.len() < 8 {
+        return None;
+    }
+    let sum = |window: &[Value]| {
+        window
+            .iter()
+            .map(|row| row.get(field).and_then(Value::as_f64))
+            .collect::<Option<Vec<_>>>()
+            .map(|values| {
+                values
+                    .into_iter()
+                    .map(|value| if use_absolute { value.abs() } else { value })
+                    .sum::<f64>()
+            })
+    };
+    ratio_change(sum(&rows[..4]), sum(&rows[4..8]))
+}
+
 fn estimates_from_value(
     value: Option<&Value>,
     report_date: NaiveDate,
@@ -1826,12 +2677,23 @@ async fn write_rating_valuations(
                     })
                     .collect(),
                 review_status: "computed".to_string(),
+                input_mode: item.readiness.input_mode.clone(),
+                valuation_review_id: item.readiness.valuation_review_id.clone(),
+                valuation_input_fingerprint_sha256: item
+                    .readiness
+                    .valuation_input_fingerprint_sha256
+                    .clone(),
+                valuation_financial_evidence_fingerprint_sha256: item
+                    .readiness
+                    .valuation_financial_evidence_fingerprint_sha256
+                    .clone(),
+                valuation_input_as_of: item.readiness.valuation_input_as_of.clone(),
             })
         })
         .collect();
     let output = RatingValuationFile {
         report_date: &snapshot.report_date,
-        framework_version: "hone-valuation-v2",
+        framework_version: "hone-valuation-v3-reviewed-input-binding",
         generated_at: snapshot.generated_at,
         items,
     };
@@ -1853,7 +2715,14 @@ async fn write_rating_fundamentals(
                 || item.gross_margin_change_pp.is_some()
                 || item.ebit_margin_percent.is_some()
                 || item.fcf_margin_percent.is_some()
-                || item.net_cash_to_revenue_percent.is_some();
+                || item.net_cash_to_revenue_percent.is_some()
+                || item.accounts_receivable_growth_percent.is_some()
+                || item.accounts_payable_growth_percent.is_some()
+                || item.inventory_growth_percent.is_some()
+                || item.property_plant_equipment_growth_percent.is_some()
+                || item.operating_cash_flow_growth_percent.is_some()
+                || item.capital_expenditure_growth_percent.is_some()
+                || item.free_cash_flow_growth_percent.is_some();
             has_metrics.then(|| RatingFundamentalItem {
                 symbol: item.symbol.clone(),
                 as_of,
@@ -1864,6 +2733,14 @@ async fn write_rating_fundamentals(
                 ebit_margin_percent: item.ebit_margin_percent,
                 fcf_margin_percent: item.fcf_margin_percent,
                 net_cash_to_revenue_percent: item.net_cash_to_revenue_percent,
+                accounts_receivable_growth_percent: item.accounts_receivable_growth_percent,
+                accounts_payable_growth_percent: item.accounts_payable_growth_percent,
+                inventory_growth_percent: item.inventory_growth_percent,
+                property_plant_equipment_growth_percent: item
+                    .property_plant_equipment_growth_percent,
+                operating_cash_flow_growth_percent: item.operating_cash_flow_growth_percent,
+                capital_expenditure_growth_percent: item.capital_expenditure_growth_percent,
+                free_cash_flow_growth_percent: item.free_cash_flow_growth_percent,
                 sources: vec![
                     "FMP income-statement · https://financialmodelingprep.com/stable/income-statement".to_string(),
                     "FMP cash-flow-statement · https://financialmodelingprep.com/stable/cash-flow-statement".to_string(),
@@ -1903,6 +2780,7 @@ async fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), S
 fn unavailable_snapshot() -> ValuationLabSnapshot {
     snapshot_from_inputs(
         parse_companies(),
+        HashMap::new(),
         HashMap::new(),
         HashMap::new(),
         Utc::now(),
@@ -2003,6 +2881,23 @@ mod tests {
     }
 
     #[test]
+    fn cashflow_operating_growth_uses_comparable_ttm_windows() {
+        let rows = (0..8)
+            .map(|index| {
+                let current = index < 4;
+                json!({
+                    "date": format!("2026-{:02}-01", 8 - index),
+                    "operatingCashFlow": if current { 30.0 } else { 20.0 },
+                    "capitalExpenditure": if current { -15.0 } else { -10.0 }
+                })
+            })
+            .collect::<Vec<_>>();
+        let metrics = cashflow_operating_metrics(Some(&Value::Array(rows)));
+        assert_eq!(metrics.operating_cash_flow_growth, Some(0.5));
+        assert_eq!(metrics.capital_expenditure_growth, Some(0.5));
+    }
+
+    #[test]
     fn negative_cashflow_never_becomes_a_price_target() {
         let company = ValuationCompany {
             name: "Test".to_string(),
@@ -2015,6 +2910,7 @@ mod tests {
             price: 20.0,
             shares: 100.0,
             as_of: Some("2026-08-11".to_string()),
+            ..QuoteInput::default()
         };
         let financial = FinancialInput {
             as_of: Some("2026-06-30".to_string()),
@@ -2058,6 +2954,59 @@ mod tests {
             NaiveDate::from_ymd_opt(2026, 8, 11).unwrap(),
             4
         ));
+    }
+
+    #[test]
+    fn readiness_exposes_missing_inputs_without_creating_a_valuation() {
+        let methods = valuation_method_readiness(None, false, None);
+        assert_eq!(methods.len(), 4);
+        assert!(methods.iter().all(|method| method.status == "blocked"));
+        assert!(
+            methods
+                .iter()
+                .find(|method| method.id == "forward_pe")
+                .expect("forward PE gate")
+                .missing_inputs
+                .contains(&"前瞻/中周期 EPS".to_string())
+        );
+    }
+
+    #[test]
+    fn rating_financial_review_never_becomes_sec_valuation_authority() {
+        let company = ValuationCompany {
+            name: "SanDisk".to_string(),
+            symbol: "SNDK".to_string(),
+            market_scope: "US".to_string(),
+            theme: "存储/企业级 SSD".to_string(),
+            valuation_method: "中周期 forward P/E 与 EV/EBIT".to_string(),
+        };
+        let item = empty_item(&company, "估值输入不完整");
+        let mut readiness = empty_readiness();
+        readiness.rating_factor_authorized = true;
+        readiness.financial_review_status = "sec_human_reviewed_for_rating".to_string();
+        let finalized = finalize_valuation_readiness(readiness, &item);
+        assert!(finalized.rating_factor_authorized);
+        assert!(!finalized.sec_valuation_use_authorized);
+        assert_ne!(finalized.status, "ready_for_rating");
+    }
+
+    #[test]
+    fn method_readiness_distinguishes_partial_provider_inputs() {
+        let quote = QuoteInput {
+            price: 100.0,
+            shares: 10.0,
+            as_of: Some("2026-08-21".to_string()),
+            ..QuoteInput::default()
+        };
+        let financial = FinancialInput {
+            forward_eps: Some(5.0),
+            ..FinancialInput::default()
+        };
+        let methods = valuation_method_readiness(Some(&quote), true, Some(&financial));
+        assert_eq!(methods[0].status, "prepared");
+        assert_eq!(methods[1].status, "blocked");
+        assert_eq!(methods[2].status, "blocked");
+        assert_eq!(methods[3].status, "prepared");
     }
 
     #[test]
@@ -2115,6 +3064,7 @@ mod tests {
             price: 120.0,
             shares: 100.0,
             as_of: Some("2026-08-11".to_string()),
+            ..QuoteInput::default()
         };
         let financial = FinancialInput {
             as_of: Some("2026-06-30".to_string()),
@@ -2168,6 +3118,22 @@ mod tests {
     }
 
     #[test]
+    fn balance_operating_growth_uses_the_year_ago_quarter() {
+        let balance = json!([
+            {"netReceivables":120.0,"accountPayables":90.0,"inventory":80.0,"propertyPlantEquipmentNet":150.0},
+            {},
+            {},
+            {},
+            {"netReceivables":100.0,"accountPayables":60.0,"inventory":100.0,"propertyPlantEquipmentNet":100.0}
+        ]);
+        let metrics = balance_operating_metrics(Some(&balance));
+        assert!((metrics.accounts_receivable_growth.unwrap() - 0.2).abs() < 1e-9);
+        assert!((metrics.accounts_payable_growth.unwrap() - 0.5).abs() < 1e-9);
+        assert!((metrics.inventory_growth.unwrap() + 0.2).abs() < 1e-9);
+        assert!((metrics.property_plant_equipment_growth.unwrap() - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
     fn same_day_cyclical_item_is_multi_method_and_rating_eligible() {
         let company = ValuationCompany {
             name: "SanDisk".to_string(),
@@ -2180,6 +3146,7 @@ mod tests {
             price: 120.0,
             shares: 100.0,
             as_of: Some("2026-08-11".to_string()),
+            ..QuoteInput::default()
         };
         let financial = FinancialInput {
             as_of: Some("2026-06-30".to_string()),
@@ -2224,6 +3191,7 @@ mod tests {
             price: 500.0,
             shares: 7_400.0,
             as_of: Some("2026-08-11".to_string()),
+            ..QuoteInput::default()
         };
         let financial = FinancialInput {
             as_of: Some("2026-06-30".to_string()),

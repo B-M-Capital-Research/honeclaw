@@ -25,7 +25,9 @@ use tracing::warn;
 use crate::earnings_document::is_earnings_release_document_url;
 use crate::event::{EventKind, MarketEvent, Severity};
 use crate::fmp::FmpClient;
-use crate::pollers::earnings_quality::{EarningsQualityReviewer, apply_earnings_quality_review};
+use crate::pollers::earnings_quality::{
+    EarningsQualityReviewer, apply_earnings_quality_review_with_source,
+};
 use crate::pollers::sec_enrichment::extract_filing_llm_context;
 use crate::source::{EventSource, SourceSchedule};
 use crate::store::EventStore;
@@ -210,10 +212,11 @@ impl EarningsSurprisePoller {
             return false;
         };
         let accepted_at = context.accepted_at;
-        let applied = apply_earnings_quality_review(
+        let applied = apply_earnings_quality_review_with_source(
             event,
             review,
-            Some(context.url),
+            Some(context.url.clone()),
+            &context.context,
             self.quality_min_review_confidence,
             self.quality_min_immediate_confidence,
         );
@@ -580,7 +583,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    use crate::pollers::earnings_quality::EarningsQualityReview;
+    use crate::pollers::earnings_quality::{EarningsQualityReview, apply_earnings_quality_review};
 
     fn surprise(date_offset: i64, actual: f64, est: f64) -> Value {
         let d = (Utc::now() - chrono::Duration::days(date_offset))
@@ -867,6 +870,8 @@ mod tests {
                 risks: vec![],
                 unknowns: vec!["量价贡献未披露".into()],
                 follow_ups: vec!["电话会核验现金流持续性".into()],
+                claims: vec![],
+                operating_kpi_claims: vec![],
                 override_eps_only: true,
             },
             Some(filing_url.clone()),

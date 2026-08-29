@@ -273,14 +273,19 @@ pub fn chat_stream_events_from_value(value: &Value) -> hone_core::HoneResult<Vec
             events.push(ChatStreamEvent::ContentDelta(content.to_string()));
         }
         if let Some(tool_calls) = delta.get("tool_calls").and_then(Value::as_array) {
-            for tool_call in tool_calls {
+            for (position, tool_call) in tool_calls.iter().enumerate() {
                 let function = tool_call.get("function");
                 events.push(ChatStreamEvent::ToolCallDelta {
                     index: tool_call
                         .get("index")
                         .and_then(Value::as_u64)
                         .and_then(|value| u32::try_from(value).ok())
-                        .unwrap_or(0),
+                        // A few OpenAI-compatible gateways omit `index` even
+                        // when one delta contains several complete parallel
+                        // calls. Preserve their array positions so downstream
+                        // assembly never concatenates unrelated ids, names and
+                        // JSON argument objects into one invalid call.
+                        .unwrap_or_else(|| u32::try_from(position).unwrap_or(u32::MAX)),
                     id: tool_call
                         .get("id")
                         .and_then(Value::as_str)
@@ -560,6 +565,45 @@ mod tests {
             &events[3],
             ChatStreamEvent::Usage(usage) if usage.total_tokens == Some(14)
         ));
+    }
+
+    #[test]
+    fn parallel_tool_deltas_without_indexes_use_array_positions() {
+        let events = chat_stream_events_from_value(&serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [
+                        {
+                            "id": "call_skill",
+                            "function": { "name": "skill_tool", "arguments": "{\"skill_name\":\"hari-invest\"}" }
+                        },
+                        {
+                            "id": "call_search",
+                            "function": { "name": "web_search", "arguments": "{\"query\":\"CRWV earnings\"}" }
+                        }
+                    ]
+                }
+            }]
+        }))
+        .expect("compatible parallel tool chunk");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("call_skill".to_string()),
+                    name: Some("skill_tool".to_string()),
+                    arguments: "{\"skill_name\":\"hari-invest\"}".to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("call_search".to_string()),
+                    name: Some("web_search".to_string()),
+                    arguments: "{\"query\":\"CRWV earnings\"}".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

@@ -63,6 +63,17 @@ function statusLabel(status: string) {
   return "数据暂不可用";
 }
 
+function analysisHealthCopy(snapshot: PortfolioNewsSnapshot) {
+  const health = snapshot.analysis_health;
+  if (!health) return "旧快照缺少模型健康记录，禁止用于仓位动作";
+  if (health.status === "healthy") return `模型分析完成 ${health.analyzed_items}/${health.requested_items}`;
+  if (health.status === "not_required") return "本期无新闻需要模型分析";
+  if (health.status === "pending") return `模型分析中 0/${health.requested_items}`;
+  if (health.status === "partial") return `仅完成 ${health.analyzed_items}/${health.requested_items}，未完成项目禁止用于仓位动作`;
+  if (health.status === "unconfigured") return "模型分析未配置，当前内容仅作为来源事实";
+  return `模型分析不可用，${health.failed_items || health.requested_items} 条内容禁止用于仓位动作`;
+}
+
 function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
   const compact = {
     reportDate: snapshot.report_date,
@@ -70,6 +81,7 @@ function reportContext(snapshot: PortfolioNewsSnapshot, question: string) {
     status: snapshot.status,
     lookbackHours: snapshot.lookback_hours,
     summary: snapshot.summary,
+    analysisHealth: snapshot.analysis_health,
     coveredSymbols: snapshot.covered_symbols,
     missingSymbols: snapshot.missing_symbols,
     items: snapshot.items.map((item) => ({
@@ -190,6 +202,25 @@ export function PortfolioNewsDashboard(props: Props) {
                 )}
               </Show>
 
+              <Show when={snapshot()}>
+                {(value) => (
+                  <div
+                    class="portfolio-news-analysis-health"
+                    classList={{ "is-blocked": value().analysis_health?.decision_use_allowed === false }}
+                    role="status"
+                  >
+                    <b>{value().analysis_health?.decision_use_allowed ? "分析门禁通过" : "分析门禁关闭"}</b>
+                    <span>{analysisHealthCopy(value())}</span>
+                    <Show when={value().analysis_health?.model}>
+                      <small>
+                        {value().analysis_health?.profile_name || value().analysis_health?.provider_name}
+                        {" · "}{value().analysis_health?.model}
+                      </small>
+                    </Show>
+                  </div>
+                )}
+              </Show>
+
               <div class="portfolio-news-summary">
                 <div>
                   <strong>{snapshot()?.counts.total ?? 0}</strong><span>重点新闻</span>
@@ -205,6 +236,18 @@ export function PortfolioNewsDashboard(props: Props) {
                 </div>
                 <p>{snapshot()?.summary ?? (error() || "正在读取当天快照…")}</p>
               </div>
+
+              <Show when={(snapshot()?.coverage_items?.length ?? 0) > 0}>
+                <div class="portfolio-news-coverage" aria-label="持仓新闻覆盖状态">
+                  <For each={snapshot()?.coverage_items ?? []}>
+                    {(item) => (
+                      <span class={`is-${item.status}`} title={item.label}>
+                        <b>{item.symbol}</b>{item.label}
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </Show>
 
               <div class="portfolio-news-filters" role="group" aria-label="按新闻影响筛选">
                 <For each={FILTERS}>

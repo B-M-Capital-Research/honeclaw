@@ -77,8 +77,20 @@ function metric(value?: number | null, suffix = "%") {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}${suffix}`;
 }
 
+function financialBasisSummary(item: CompanyRating) {
+  const claims = item.metrics?.financial_source_claims ?? [];
+  const standards = [...new Set(claims.map((claim) => claim.metric_basis.split(":", 1)[0]))];
+  const units = [...new Set(claims.map((claim) => claim.unit))];
+  return [
+    standards.length > 0 ? `会计口径 ${standards.join(" / ")}` : undefined,
+    units.length > 0 ? `原始单位 ${units.join(" / ")}` : undefined,
+  ].filter(Boolean).join(" · ");
+}
+
 function FundamentalMetrics(props: { item: CompanyRating }) {
   const values = () => props.item.metrics ?? {};
+  const reviewOnly = () =>
+    Boolean(values().financial_as_of) && values().financial_score_eligible !== true;
   return (
     <section class="company-rating-fundamentals">
       <h3>财务兑现数据</h3>
@@ -90,11 +102,59 @@ function FundamentalMetrics(props: { item: CompanyRating }) {
         <div><dt>经营利润率</dt><dd>{metric(values().ebit_margin_percent)}</dd></div>
         <div><dt>自由现金流率</dt><dd>{metric(values().fcf_margin_percent)}</dd></div>
         <div><dt>净现金/营收</dt><dd>{metric(values().net_cash_to_revenue_percent)}</dd></div>
+        <div><dt>应收同比</dt><dd>{metric(values().accounts_receivable_growth_percent)}</dd></div>
+        <div><dt>应付同比</dt><dd>{metric(values().accounts_payable_growth_percent)}</dd></div>
+        <div><dt>库存同比</dt><dd>{metric(values().inventory_growth_percent)}</dd></div>
+        <div><dt>固定资产同比</dt><dd>{metric(values().property_plant_equipment_growth_percent)}</dd></div>
+        <div><dt>经营现金流同比</dt><dd>{metric(values().operating_cash_flow_growth_percent)}</dd></div>
+        <div><dt>资本开支同比</dt><dd>{metric(values().capital_expenditure_growth_percent)}</dd></div>
+        <div><dt>自由现金流同比</dt><dd>{metric(values().free_cash_flow_growth_percent)}</dd></div>
         <Show when={values().forward_metric_label}>
           <div><dt>{values().forward_metric_label}</dt><dd>{values().forward_metric_value ?? "—"}<Show when={values().forward_metric_growth_percent != null}> · {metric(values().forward_metric_growth_percent)}</Show></dd></div>
         </Show>
       </dl>
-      <small>{values().financial_as_of ? `财务截至 ${values().financial_as_of}` : "未取得通过日期与来源校验的财务数据，相关因子不计分"}</small>
+      <small classList={{ "is-review-only": reviewOnly() }}>
+        {values().financial_as_of
+          ? reviewOnly()
+            ? `SEC 财务证据截至 ${values().financial_as_of} · 待人工质量复核，暂不计分`
+            : `财务截至 ${values().financial_as_of} · 已通过评分门槛`
+          : "未取得通过日期与来源校验的财务数据，相关因子不计分"}
+      </small>
+      <Show when={financialBasisSummary(props.item)}>
+        <small class="company-rating-fundamentals__basis">{financialBasisSummary(props.item)}</small>
+      </Show>
+      <Show when={(values().financial_quality_warnings?.length ?? 0) > 0}>
+        <ul class="company-rating-fundamentals__warnings">
+          <For each={values().financial_quality_warnings}>{(warning) => <li>{warning}</li>}</For>
+        </ul>
+      </Show>
+      <Show when={
+        (values().financial_calculations?.length ?? 0) > 0
+        || (values().financial_source_claims?.length ?? 0) > 0
+      }>
+        <details class="company-rating-fundamentals__trace">
+          <summary>查看逐项口径、可复算过程与 SEC 来源</summary>
+          <ul>
+            <For each={values().financial_calculations}>{(calculation) => <li>{calculation}</li>}</For>
+          </ul>
+          <div class="company-rating-fundamentals__claims">
+            <For each={values().financial_source_claims ?? []}>
+              {(claim) => (
+                <p>
+                  <strong>{claim.metric_id}</strong> · {claim.period} · {claim.numeric_value.toLocaleString()} {claim.unit}<br />
+                  <small>{claim.metric_basis} · 发布 {new Date(claim.published_at).toLocaleString("zh-CN", { hour12: false })}</small><br />
+                  <a href={claim.source_url} target="_blank" rel="noreferrer">对应 SEC 原文</a>
+                </p>
+              )}
+            </For>
+          </div>
+          <p>
+            <For each={values().financial_source_urls}>
+              {(url, index) => <><a href={url} target="_blank" rel="noreferrer">SEC 原文 {index() + 1}</a>{" "}</>}
+            </For>
+          </p>
+        </details>
+      </Show>
       <Show when={values().forward_metric_as_of}>
         <small>前瞻指标截至 {values().forward_metric_as_of} · 仅已核验增速调整能见度分</small>
       </Show>
@@ -114,6 +174,16 @@ function valuationSyncMessage(snapshot: CompanyRatingSnapshot) {
     return `当日估值 ${valuations}/${companies}：本次没有取得行情与财务输入，因此没有生成或沿用旧目标价。`;
   }
   return `当日估值 ${valuations}/${companies}：其余公司未同时通过数据日期、至少两种方法和方法离散度门槛。`;
+}
+
+function financialSyncMessage(snapshot: CompanyRatingSnapshot) {
+  const { companies, financials } = snapshot.coverage;
+  const observed = snapshot.coverage.financial_observations ?? financials;
+  const reviewRequired = snapshot.coverage.financials_review_required ?? 0;
+  if (snapshot.data_status === "simulation") {
+    return "当前为模拟财务因子，不代表真实财报。";
+  }
+  return `财务证据 ${observed}/${companies}：其中 ${financials} 家已通过评分门槛，${reviewRequired} 家仅展示 SEC 点时证据、等待人工质量复核。`;
 }
 
 function formatValuation(value: number, currency: string) {
@@ -315,6 +385,7 @@ export function CompanyRatingDashboard() {
                       </section>
                       <section>
                         <h3>当前同步状态</h3>
+                        <p>{financialSyncMessage(value())}</p>
                         <p>{valuationSyncMessage(value())}</p>
                       </section>
                     </div>

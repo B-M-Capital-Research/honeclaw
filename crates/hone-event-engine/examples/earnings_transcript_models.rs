@@ -22,7 +22,7 @@ use hone_event_engine::earnings_continuity::{
 };
 use hone_event_engine::earnings_transcript::{
     EarningsTranscriptReview, EarningsTranscriptReviewer, LlmEarningsTranscriptReviewer,
-    apply_earnings_transcript_review,
+    apply_earnings_transcript_review_with_source,
 };
 use hone_event_engine::{EventKind, MarketEvent, Severity};
 use hone_llm::provider::{ChatResult, TokenUsage};
@@ -450,7 +450,12 @@ async fn replay_one(
         .review(&event, &transcript)
         .await
         .context("shared transcript review failed")?;
-    if !apply_earnings_transcript_review(&mut event, review.clone(), transcript_chars) {
+    if !apply_earnings_transcript_review_with_source(
+        &mut event,
+        review.clone(),
+        &transcript,
+        transcript_chars,
+    ) {
         anyhow::bail!("transcript review was not applied");
     }
     drop(transcript);

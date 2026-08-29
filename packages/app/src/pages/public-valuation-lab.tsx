@@ -39,6 +39,26 @@ function statusLabel(item: ValuationLabItem) {
   return "无法估值";
 }
 
+function financialReviewLabel(status: string) {
+  if (status === "sec_human_reviewed_for_rating") return "已复核，仅授权评级";
+  if (status === "sec_structured_pending_human_review") return "SEC 财务待人工复核";
+  if (status === "sec_review_stale_evidence_changed") return "证据变化，需重审";
+  if (status === "sec_review_changes_requested") return "财务证据待修正";
+  if (status === "sec_review_rejected") return "财务证据未通过";
+  if (status === "sec_review_audit_invalid") return "财务复核链异常";
+  return "尚无 SEC 财务观察";
+}
+
+function valuationReviewLabel(status: string) {
+  if (status === "sec_human_reviewed_for_valuation") return "估值输入已独立授权";
+  if (status === "sec_valuation_review_stale_evidence_changed") return "SEC 证据变化，估值授权失效";
+  if (status === "sec_valuation_review_stale_input_expired") return "估值输入超过 7 天，需重审";
+  if (status === "sec_valuation_review_changes_requested") return "估值输入待修正";
+  if (status === "sec_valuation_review_rejected") return "估值输入未通过";
+  if (status === "sec_valuation_review_audit_invalid") return "估值复核链异常";
+  return "估值用途待独立复核";
+}
+
 export default function PublicValuationLabPage() {
   const [view, setView] = createSignal<ViewState>("loading");
   const [snapshot, setSnapshot] = createSignal<ValuationLabSnapshot>();
@@ -148,6 +168,34 @@ export default function PublicValuationLabPage() {
                           <span class="valuation-lab-chevron">›</span>
                         </summary>
                         <div class="valuation-lab-detail">
+                          <section class="valuation-readiness" aria-label="估值输入准备度">
+                            <header>
+                              <div>
+                                <span>输入准备度</span>
+                                <strong>{valuationReviewLabel(item.readiness.valuation_review_status)}</strong>
+                                <small>{financialReviewLabel(item.readiness.financial_review_status)}</small>
+                              </div>
+                              <p>{item.readiness.scope}</p>
+                            </header>
+                            <div class="valuation-readiness__gates">
+                              <span classList={{ "is-ready": item.current_price != null }}>行情 {item.current_price == null ? "缺失" : "已有"}</span>
+                              <span classList={{ "is-ready": item.readiness.available_inputs.length > 1 }}>SEC 财务 {item.readiness.available_inputs.length > 1 ? "已有" : "缺失"}</span>
+                              <span classList={{ "is-ready": item.readiness.rating_factor_authorized }}>评级财务 {item.readiness.rating_factor_authorized ? "已授权" : "未授权"}</span>
+                              <span title="评级财务复核不等于估值授权" classList={{ "is-ready": item.readiness.sec_valuation_use_authorized }}>SEC 估值用途 {item.readiness.sec_valuation_use_authorized ? "已授权" : "未授权"}</span>
+                            </div>
+                            <div class="valuation-readiness__methods">
+                              <For each={item.readiness.methods}>{(method) => (
+                                <article classList={{ "is-ready": method.status === "prepared" }}>
+                                  <strong>{method.label}</strong>
+                                  <span>{method.status === "prepared" ? "输入已准备" : "暂不可计算"}</span>
+                                  <small>{method.missing_inputs.length > 0 ? `缺：${method.missing_inputs.join("、")}` : "仍需通过情景与离散度校验"}</small>
+                                </article>
+                              )}</For>
+                            </div>
+                            <Show when={item.readiness.missing_inputs.length > 0}>
+                              <div class="valuation-readiness__missing"><strong>仍缺少</strong><ul><For each={item.readiness.missing_inputs}>{(missing) => <li>{missing}</li>}</For></ul></div>
+                            </Show>
+                          </section>
                           <Show when={item.scenarios.length === 3} fallback={<div class="valuation-lab-warning"><strong>本日不生成估值</strong><p>{item.unavailable_reason}</p></div>}>
                             <div class="valuation-lab-scenarios">
                               <For each={item.scenarios}>{(scenario) => (
@@ -190,7 +238,7 @@ export default function PublicValuationLabPage() {
 
                           <div class="valuation-lab-audit-grid">
                             <section><h3>模型假设</h3><ul><For each={item.assumptions}>{(assumption) => <li>{assumption}</li>}</For></ul></section>
-                            <section><h3>数据与来源</h3><div class="valuation-lab-evidence"><For each={item.evidence}>{(evidence) => <a href={evidence.source_url} target="_blank" rel="noreferrer"><strong>{evidence.label}</strong><span>{evidence.display_value}</span><small>{evidence.source} · {evidence.as_of}</small></a>}</For></div></section>
+                            <section><h3>数据与来源</h3><div class="valuation-lab-evidence"><For each={item.evidence.length > 0 ? item.evidence : item.readiness.available_inputs}>{(evidence) => <a href={evidence.source_url} target="_blank" rel="noreferrer"><strong>{evidence.label}</strong><span>{evidence.display_value}</span><small>{evidence.source} · {evidence.as_of}</small></a>}</For></div></section>
                           </div>
                         </div>
                       </details>

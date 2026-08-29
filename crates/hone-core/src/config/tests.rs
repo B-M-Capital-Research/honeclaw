@@ -1394,6 +1394,7 @@ admins:
   feishu_emails: ["admin@example.com"]
   feishu_mobiles: ["+8613900139000"]
   feishu_open_ids: ["ou_admin"]
+  old_wang_web_user_ids: ["web-user-old-wang"]
 "#;
     let config: HoneConfig = serde_yaml::from_str(yaml).unwrap();
     assert!(config.feishu.enabled);
@@ -1412,6 +1413,9 @@ admins:
     assert_eq!(config.admins.feishu_emails, vec!["admin@example.com"]);
     assert_eq!(config.admins.feishu_mobiles, vec!["+8613900139000"]);
     assert_eq!(config.admins.feishu_open_ids, vec!["ou_admin"]);
+    assert!(config.admins.is_old_wang_web_user_id("web-user-old-wang"));
+    assert!(!config.admins.is_old_wang_web_user_id("web-user-maintainer"));
+    assert!(config.admins.has_old_wang_web_user_id());
 }
 
 #[test]

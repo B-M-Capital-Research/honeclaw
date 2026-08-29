@@ -54,7 +54,7 @@ pub(crate) const COMMUNITY_EDGE_COOKIE: &str = "hone_community_edge";
 pub(crate) const COMMUNITY_EDGE_COOKIE_PATH: &str = "/_community/v1/";
 const WEB_SESSION_MAX_AGE_LONG_SECS: i64 = 30 * 24 * 60 * 60;
 const WEB_SESSION_MAX_AGE_SHORT_SECS: i64 = 24 * 60 * 60;
-const LOCAL_DEV_LOGIN_PHONE: &str = "19900000001";
+pub(crate) const LOCAL_DEV_LOGIN_PHONE: &str = "19900000001";
 
 /// 与 memory::web_auth 中的 TTL 常量保持一致。
 const SESSION_TTL_DAYS_LONG: i64 = hone_memory::SESSION_TTL_DAYS_LONG;
@@ -101,6 +101,26 @@ pub(crate) async fn handle_dev_login(
             );
         }
     };
+
+    let dev_admin = public_dev_admin_enabled(&state);
+    match state
+        .web_auth
+        .set_web_admin_by_phone(LOCAL_DEV_LOGIN_PHONE, dev_admin)
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "本地测试账号管理员状态同步失败",
+            );
+        }
+        Err(error) => {
+            return crate::routes::json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("同步本地测试账号管理员状态失败: {error}"),
+            );
+        }
+    }
 
     if let Err(error) = state
         .web_auth
@@ -168,6 +188,15 @@ fn public_dev_login_enabled(state: &AppState) -> bool {
     )
 }
 
+fn public_dev_admin_enabled(state: &AppState) -> bool {
+    public_dev_admin_enabled_for(
+        &state.deployment_mode,
+        state.core.config.cloud.effective_mode().as_str(),
+        std::env::var("HONE_PUBLIC_DEV_LOGIN").ok().as_deref(),
+        std::env::var("HONE_PUBLIC_DEV_ADMIN").ok().as_deref(),
+    )
+}
+
 fn public_dev_login_enabled_for(
     deployment_mode: &str,
     cloud_mode: &str,
@@ -176,6 +205,21 @@ fn public_dev_login_enabled_for(
     deployment_mode.eq_ignore_ascii_case("local")
         && cloud_mode.eq_ignore_ascii_case("local")
         && configured.is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+}
+
+pub(crate) fn public_dev_admin_enabled_for(
+    deployment_mode: &str,
+    cloud_mode: &str,
+    dev_login_configured: Option<&str>,
+    dev_admin_configured: Option<&str>,
+) -> bool {
+    public_dev_login_enabled_for(deployment_mode, cloud_mode, dev_login_configured)
+        && dev_admin_configured.is_some_and(|value| {
             matches!(
                 value.trim().to_ascii_lowercase().as_str(),
                 "1" | "true" | "yes"
@@ -2226,7 +2270,7 @@ mod tests {
         infer_canonical_earnings_workflow, is_earnings_research_skill_command,
         logout_success_response, public_active_state_response, public_api_failure_message,
         public_api_finish_reason, public_attachment_filename, public_client_key,
-        public_dev_login_enabled_for, public_sms_phone_candidates,
+        public_dev_admin_enabled_for, public_dev_login_enabled_for, public_sms_phone_candidates,
         resolve_public_generated_file_path, sms_login_rejected_response,
         sms_send_accepted_response, validate_public_generated_file_path,
         validate_public_upload_path,
@@ -2264,6 +2308,40 @@ mod tests {
         assert!(!public_dev_login_enabled_for(
             "local",
             "cloud",
+            Some("true")
+        ));
+    }
+
+    #[test]
+    fn public_dev_admin_requires_both_local_dev_gates() {
+        assert!(public_dev_admin_enabled_for(
+            "local",
+            "local",
+            Some("true"),
+            Some("yes")
+        ));
+        assert!(!public_dev_admin_enabled_for(
+            "local",
+            "local",
+            Some("true"),
+            None
+        ));
+        assert!(!public_dev_admin_enabled_for(
+            "local",
+            "local",
+            Some("false"),
+            Some("true")
+        ));
+        assert!(!public_dev_admin_enabled_for(
+            "remote",
+            "local",
+            Some("true"),
+            Some("true")
+        ));
+        assert!(!public_dev_admin_enabled_for(
+            "local",
+            "cloud",
+            Some("true"),
             Some("true")
         ));
     }

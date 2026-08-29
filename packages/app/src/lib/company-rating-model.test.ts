@@ -79,6 +79,22 @@ describe("company rating model", () => {
     expect(coverageLabel(snapshot)).toContain("当日估值 0/52");
   });
 
+  test("separates visible SEC evidence from financial factors admitted to scoring", () => {
+    const snapshot = {
+      data_status: "partial",
+      coverage: {
+        companies: 52,
+        quotes: 51,
+        financials: 0,
+        financial_observations: 3,
+        financials_review_required: 3,
+        valuations: 0,
+      },
+    } as CompanyRatingSnapshot;
+    expect(coverageLabel(snapshot)).toContain("财务证据 3/52");
+    expect(coverageLabel(snapshot)).toContain("计分 0，复核 3");
+  });
+
   test("labels the local Codex simulation as non-real data", () => {
     const snapshot = {
       data_status: "simulation",

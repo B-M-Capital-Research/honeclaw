@@ -1,0 +1,78 @@
+{
+  "schema_version": "hone-operating-kpi-backfill-manifest-v1",
+  "documents": [
+    {
+      "event_id": "operating-kpi-backfill:SNDK:FY2025:10K",
+      "symbol": "SNDK",
+      "occurred_at": "2025-08-21T00:31:19Z",
+      "period": "FY2025",
+      "document_type": "sec_filing_10k",
+      "format": "html",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/2023554/000202355425000034/sndk-20250627.htm",
+      "claims": [
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "nand_asp_change",
+          "issuer_metric_name": "ASP per gigabyte",
+          "issuer_definition": "ASP per gigabyte",
+          "period": "FY2025",
+          "numeric_value": 17.0,
+          "unit": "%",
+          "value_text": "17% increase in ASP per gigabyte due to improved pricing",
+          "measurement_scope": "Sandisk Cloud end market; 2025 compared with 2024; ASP per gigabyte",
+          "comparison_basis": "year_over_year",
+          "speaker": "",
+          "evidence_quote": "17% increase in ASP per gigabyte due to improved pricing",
+          "source_locator": "Form 10-K · MD&A · Net Revenue",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    },
+    {
+      "event_id": "operating-kpi-backfill:MU:FY2024Q3:prepared-remarks",
+      "symbol": "MU",
+      "occurred_at": "2024-06-26T20:30:00Z",
+      "period": "FY2024 Q3",
+      "document_type": "earnings_call_transcript",
+      "format": "pdf",
+      "source_url": "https://investors.micron.com/static-files/4550f98c-1054-4847-a929-c17d520a0564?download=1",
+      "claims": [
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "nand_bit_shipments_growth",
+          "issuer_metric_name": "bit shipments",
+          "issuer_definition": "bit shipments increasing in the high-single-digit percentage range",
+          "period": "FY2024 Q3",
+          "numeric_value": null,
+          "unit": "",
+          "value_text": "bit shipments increasing in the high-single-digit percentage range",
+          "measurement_scope": "Micron NAND; sequential quarter; qualitative high-single-digit range",
+          "comparison_basis": "sequential_quarter",
+          "speaker": "Mark Murphy, CFO",
+          "evidence_quote": "bit shipments increasing in the high-single-digit percentage range",
+          "source_locator": "Prepared remarks · NAND · Mark Murphy",
+          "definition_changed": false,
+          "disposition": "active"
+        },
+        {
+          "claim_kind": "reported_fact",
+          "kpi_id": "nand_asp_change",
+          "issuer_metric_name": "prices",
+          "issuer_definition": "prices increasing by approximately 20%",
+          "period": "FY2024 Q3",
+          "numeric_value": 20.0,
+          "unit": "%",
+          "value_text": "prices increasing by approximately 20%",
+          "measurement_scope": "Micron NAND sentence; sequential quarter; approximately 20%",
+          "comparison_basis": "sequential_quarter",
+          "speaker": "Mark Murphy, CFO",
+          "evidence_quote": "prices increasing by approximately 20%",
+          "source_locator": "Prepared remarks · NAND · Mark Murphy",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    }
+  ]
+}

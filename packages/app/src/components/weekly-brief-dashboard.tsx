@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { getPublicWeeklyBrief } from "@/lib/api";
 import type { WeeklyBriefItem, WeeklyBriefPayload } from "@/lib/types";
 import "./weekly-brief-dashboard.css";
+import "./model-analysis-health.css";
 
 type Props = { onAsk: (message: string) => void };
 type BriefView = "last" | "next" | "ai";
@@ -67,12 +68,15 @@ function AgendaPanel(props: {
             <span>{categoryLabel(item.category)}</span>
             <Show when={item.importance === "high"}><b>重点</b></Show>
             <em>{evidenceLabel(item.evidence_status)}</em>
+            <Show when={(item.deduplicated_source_count ?? 0) > 0}><em data-dedup="merged">同一事件 · {item.source_count} 个来源</em></Show>
+            <Show when={item.analysis_status === "source_only"}><em data-analysis="blocked">影响待分析</em></Show>
           </div>
           <h4><Show when={item.ticker}><code>{item.ticker}</code></Show>{item.title}</h4>
           <Show when={item.subtitle}><p class="weekly-brief-subtitle">{item.subtitle}</p></Show>
           <p class="weekly-brief-analysis">{item.analysis}</p>
           <aside><strong>提醒关注：</strong>{item.attention}</aside>
           <div class="weekly-brief-evidence"><span>{item.evidence_note}</span><Show when={item.source_url} fallback={<small>{item.source_name}</small>}>{url => <a href={url()!} target="_blank" rel="noreferrer">{item.source_name} ↗</a>}</Show></div>
+          <Show when={(item.deduplicated_source_count ?? 0) > 0}><details class="weekly-brief-source-cluster"><summary>查看同一事件的全部来源</summary><For each={item.supporting_sources ?? []}>{source => <a href={source.source_url} target="_blank" rel="noreferrer">{source.source_name} · {source.published_at_beijing} ↗</a>}</For></details></Show>
         </article>}</For></div>
       </section>}</For></div>
     </Show>
@@ -124,13 +128,14 @@ export function WeeklyBriefDashboard(props: Props) {
       nextWeekItems: current.next_week_items,
       aiOutlookItems: current.ai_outlook_items,
       earningsStatus: current.earnings_status,
+      industryAnalysisHealth: current.industry_analysis_health,
       methodologyNote: current.methodology_note,
     };
     props.onAsk(`<!-- HONE_SAVED_WEEKLY_BRIEF
 ${JSON.stringify(saved)}
 END_HONE_SAVED_WEEKLY_BRIEF -->
 基于已保存的 HONE 周度简报回答：${query}
-要求：区分一手确认的产业变化、已经过去但结果尚未核验的日程、以及尚未发生的未来日程；未来日程不是预测，过去日程也不能据此补造公布值。涉及财报或宏观结果时优先核对公司 IR、监管文件和官方数据，附来源与北京时间，再给出对基本面、估值和持仓风险的适当分析。`);
+要求：区分一手确认的产业变化、已经过去但结果尚未核验的日程、以及尚未发生的未来日程；未来日程不是预测，过去日程也不能据此补造公布值。source_count>1 只是同一事件的多个来源，不得按来源数重复加权。涉及财报或宏观结果时优先核对公司 IR、监管文件和官方数据，附来源与北京时间，再给出对基本面、估值和持仓风险的适当分析。`);
     setOpen(false);
     setQuestion("");
   };
@@ -149,6 +154,7 @@ END_HONE_SAVED_WEEKLY_BRIEF -->
         <Show when={report()} fallback={<div class="weekly-brief-loading"><Show when={!error()} fallback={<><strong>读取失败</strong><p>{error()}</p><button onClick={() => void load()}>重新读取</button></>}><strong>{loading() ? "正在整理两周事件…" : "等待读取"}</strong></Show></div>}>{current => <>
           <div class="weekly-brief-meta"><b>{statusLabel(current().status)}</b><span>报告日 {current().report_date}</span><span>{current().generated_at_beijing} 北京时间</span><button onClick={() => void load()} disabled={loading()}>{loading() ? "读取中…" : "重新读取"}</button></div>
           <section class="weekly-brief-hero"><div><span>本期判断</span><h3>{current().summary}</h3></div><aside><strong>跟踪公司</strong><b>{current().earnings_scope_count}</b></aside></section>
+          <Show when={current().industry_analysis_health?.decision_use_allowed === false}><div class="weekly-brief-coverage is-model-blocked" role="status"><strong>产业影响分析门禁关闭</strong><span>一手里程碑仍可阅读，但未完成的影响分析不会进入周度判断或仓位含义。</span></div></Show>
           <Show when={current().earnings_status !== "ok"}><div class="weekly-brief-coverage" role="status"><strong>财报覆盖未完全就绪</strong><span>{current().errors[0] ?? "当前数据源没有返回全部重点公司财报日期；缺失日期不会被猜测补全。"}</span></div></Show>
           <nav class="weekly-brief-tabs" aria-label="周度简报视图">
             <button classList={{ active: activeView() === "last" }} onClick={() => setActiveView("last")}><span>上周复盘</span><b>{current().last_week_items.length}</b></button>

@@ -31,6 +31,11 @@ pub struct EventEngineConfig {
     #[serde(default)]
     pub sec_filings: SecFilingsConfig,
 
+    /// SEC 官方 Company Facts 历史财务事实回填。该通道与 FMP 无关，且只写入
+    /// 研究事件库，不触发历史推送；用于 point-in-time 回放与因果校准。
+    #[serde(default)]
+    pub sec_company_facts: SecCompanyFactsConfig,
+
     #[serde(default)]
     pub global_digest: GlobalDigestConfig,
 
@@ -66,6 +71,7 @@ impl Default for EventEngineConfig {
             sources: Sources::default(),
             earnings: EarningsConfig::default(),
             sec_filings: SecFilingsConfig::default(),
+            sec_company_facts: SecCompanyFactsConfig::default(),
             global_digest: GlobalDigestConfig::default(),
             disabled_kinds: Vec::new(),
             news_importance_prompt: default_news_importance_prompt(),
@@ -301,6 +307,49 @@ fn default_sec_user_agent() -> String {
     // 占位邮箱:部署方应改成自己的联系邮箱。SEC 不要求邮箱真实可达,但要求格式有
     // 公司/产品名 + 邮箱;长期不改有被 rate-limit 的风险。
     "honeclaw event-engine ops@honeclaw.local".into()
+}
+
+/// SEC Company Facts 历史回填配置。
+///
+/// 默认关闭，避免一个未明确配置联系邮箱的部署在冷启动时访问 SEC。开启后只对
+/// `symbols` 中的公司回填最近若干份 10-Q/10-K；事件 id 由 ticker + accession
+/// 决定，因此每天重跑是幂等的。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecCompanyFactsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_sec_company_facts_symbols")]
+    pub symbols: Vec<String>,
+    #[serde(default = "default_sec_company_facts_history_filings")]
+    pub history_filings: usize,
+    #[serde(default = "default_sec_company_facts_refresh_hours")]
+    pub refresh_hours: u64,
+    #[serde(default = "default_sec_user_agent")]
+    pub user_agent: String,
+}
+
+impl Default for SecCompanyFactsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            symbols: default_sec_company_facts_symbols(),
+            history_filings: default_sec_company_facts_history_filings(),
+            refresh_hours: default_sec_company_facts_refresh_hours(),
+            user_agent: default_sec_user_agent(),
+        }
+    }
+}
+
+fn default_sec_company_facts_symbols() -> Vec<String> {
+    vec!["SNDK".into(), "MU".into(), "MSFT".into()]
+}
+
+fn default_sec_company_facts_history_filings() -> usize {
+    12
+}
+
+fn default_sec_company_facts_refresh_hours() -> u64 {
+    24
 }
 
 /// 全局 digest LLM 子配置,由 unified pipeline 复用来承载 curator / fetcher /

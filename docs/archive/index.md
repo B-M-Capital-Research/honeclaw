@@ -2562,3 +2562,39 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: forum Rust 7/7; Web API 286/2 ignored; focused Web 10/10; full Web 451/451; TypeScript; Rust formatting; public production build; `tests/regression/ci/test_community_forum_research_boundary.sh`; authenticated desktop/mobile acceptance
 - Current conclusion: `/community` now separates the existing read-only HONE archive from an authenticated member discussion forum. Members can post, comment, like, report and attach one bounded safe file under a pseudonymous identity; owners and administrators retain deletion/moderation controls. Forum material never enters Agent or investment evidence paths, and the UI sends curation candidates through “我的知识源”.
 - Next entry point: migrate the forum to PostgreSQL/object storage with retention, moderation audit and abuse observability before any production enablement. Do not add ranking, DMs or investment retrieval to the local filesystem version.
+
+### HONE Investment QA Five-question Benchmark
+
+- Status: done; product acceptance failed
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/investment-qa-benchmark.md`
+- Handoff: `docs/handoffs/2026-08-12-investment-qa-benchmark.md`
+- Decision / ADR: none; this task adds a reusable manual evaluation asset and does not change production behavior
+- Related PRs / commits: local uncommitted change set; no PR, release or production deployment
+- Related runbooks / regressions: `tests/regression/manual/fixtures/investment_qa_benchmark_v1.json`; `tests/regression/manual/test_investment_qa_reference.sh`; five local HONE runs and five isolated GPT-5.6 Sol reference answers
+- Current conclusion: HONE scored 149/500 (29.8/100 average), with 0/5 cases passing. Real-time facts did not reliably reach the final answers, `hari-invest` and `company-thesis-ratings` had no successful runtime load evidence, and one CRWV answer contained a material revenue error. GPT-5.6 Sol was materially stronger on sources, dates, coverage and explicit action, but remains a comparator rather than a truth source.
+- Next entry point: repair attribution of argument-only OpenAI-compatible tool-call deltas, restore a reliable market/fundamental data path, enforce audited Skill execution, then rerun the unchanged five-question fixture against the published acceptance gates.
+
+### HONE Investment QA Score Recovery And Luna Audit
+
+- Status: done locally; no production deployment
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/investment-qa-score-recovery.md`
+- Handoff: `docs/handoffs/2026-08-12-investment-qa-score-recovery.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-12-03-preload-current-first-party-evidence-before-investment-reasoning`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: same five-case fixture; GPT-5.6 Sol references; `hone-llm` 40; `hone-tools` 189/1 ignored; `hone-agent` 152; `hone-channels` 798/1 ignored; Hari and company-research contracts
+- Current conclusion: the unchanged benchmark now scores 432/500 (86.4 average), minimum 80, 5/5 pass, zero hard failures and 100% required-Skill audit success. Luna can clear the product threshold once first-party evidence and both investment Skills are preloaded; its remaining weakness is latency/tool redundancy and transient compatible-gateway reliability, not a proven 70-point reasoning ceiling.
+- Next entry point: keep this suite as a release regression. Route especially complex valuation/comparison work to a stronger model tier when available, but never weaken source, date or hard-failure gates by model tier.
+
+### Daily Investment Products Data Recovery
+
+- Status: done locally; no commit or production deployment
+- Date: 2026-08-12
+- Plan: `docs/archive/plans/daily-investment-products-data-recovery.md`
+- Handoff: `docs/handoffs/2026-08-12-daily-investment-products-data-recovery.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-12-02-keep-daily-investment-dashboards-nonempty-without-manufacturing-evidence`
+- Related PRs / commits: local uncommitted change set
+- Related runbooks / regressions: Web API 304/2 ignored; portfolio news 10/10; position management 8/8; company ratings 19/19; focused Web 8/8; TypeScript; public production build; changed-file rustfmt and diff checks
+- Current conclusion: company ratings use FMP first and an exact-symbol Nasdaq official quote fallback, portfolio news persists source facts before bounded model enrichment and uses title-matched material Tavily fallback when FMP is absent, and position management emits low-confidence non-add actions from current quotes plus the dated research baseline. Local acceptance covered 51/52 company quotes and produced news coverage for all eight holdings plus quote-backed actions for seven; invalid `APPL` stayed explicit.
+- Next entry point: confirm whether `APPL` should be corrected to `AAPL`, then configure a structured financial/estimate provider or an audited SEC/IR ingestion path before expecting nonzero daily financial and valuation coverage.

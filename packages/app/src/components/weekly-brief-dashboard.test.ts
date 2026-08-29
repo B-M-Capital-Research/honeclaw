@@ -19,6 +19,9 @@ describe("weekly brief dashboard", () => {
     expect(component).toContain("未来日程 · 日期或调整");
     expect(component).toContain("未来日程不是预测");
     expect(component).toContain("过去日程也不能据此补造公布值");
+    expect(component).toContain("industry_analysis_health");
+    expect(component).toContain("产业影响分析门禁关闭");
+    expect(component).toContain("影响待分析");
   });
 
   it("uses structured readable agenda cards instead of an image", () => {
@@ -43,5 +46,13 @@ describe("weekly brief dashboard", () => {
     expect(component).toContain("官网已确认");
     expect(component).toContain("缺失日期不会被猜测补全");
     expect(component).toContain("ai_outlook_items");
+  });
+
+  it("inherits key-event deduplication and keeps every supporting source visible", () => {
+    expect(component).toContain("同一事件");
+    expect(component).toContain("查看同一事件的全部来源");
+    expect(component).toContain("supporting_sources");
+    expect(component).toContain("不得按来源数重复加权");
+    expect(styles).toContain("data-dedup=merged");
   });
 });

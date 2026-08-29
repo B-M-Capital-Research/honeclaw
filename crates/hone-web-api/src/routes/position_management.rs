@@ -20,11 +20,16 @@ use tracing::{info, warn};
 
 use crate::routes::company_ratings::{CompanyRating, CompanyRatingSnapshot};
 use crate::routes::daily_signals::DailySignalReport;
+use crate::routes::investment_decisions::{
+    ExposureAction, InvestmentDecisionSnapshot, ResearchZone,
+};
 use crate::routes::portfolio_news::{PortfolioNewsItem, PortfolioNewsSnapshot};
 use crate::state::AppState;
 
 const FRAMEWORK_VERSION: &str = "hari-invest-v1";
-const MODEL_VERSION: &str = "hone-position-management-v1";
+const MODEL_VERSION: &str = "hone-position-management-v3-hari-portfolio-gate";
+const DECISION_GATE_POLICY_VERSION: &str = "hone-hari-confirmed-logic-gate-v2-applicability";
+const PORTFOLIO_GATE_POLICY_VERSION: &str = "hone-hari-portfolio-readiness-v1";
 const STALE_AFTER_HOURS: i64 = 36;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -85,6 +90,51 @@ pub(crate) struct PositionAdviceItem {
     pub evidence_as_of: Vec<String>,
     pub evidence_sources: Vec<String>,
     pub priority_score: f64,
+    #[serde(default)]
+    pub decision_gate: PositionDecisionGate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct PositionDecisionGate {
+    pub status: String,
+    pub revision_id: String,
+    pub decision_at: String,
+    pub policy_version: String,
+    pub skill_version: String,
+    pub pre_methodology_action: String,
+    pub final_action: String,
+    pub confirmed_logic_ids: Vec<String>,
+    pub candidate_logic_used: bool,
+    pub increase_candidate_authorized: bool,
+    pub portfolio_action_authorized: bool,
+    pub blocking_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct PositionPortfolioRuleApplication {
+    pub logic_id: String,
+    pub logic_version: String,
+    pub label: String,
+    pub status: String,
+    pub evidence: Vec<String>,
+    pub gaps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct PositionPortfolioGate {
+    pub policy_version: String,
+    pub skill_id: String,
+    pub skill_version: String,
+    pub confirmed_logic_ids: Vec<String>,
+    pub candidate_logic_used: bool,
+    pub status: String,
+    pub rules: Vec<PositionPortfolioRuleApplication>,
+    pub blocking_reasons: Vec<String>,
+    pub increase_candidate_authorized: bool,
+    pub portfolio_action_authorized: bool,
+    pub shadow_portfolio_authorized: bool,
+    pub trade_authorized: bool,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +153,8 @@ pub(crate) struct PositionManagementSnapshot {
     pub unallocated_weight: f64,
     pub concentration: ConcentrationSummary,
     pub macro_context: PositionMacroContext,
+    #[serde(default)]
+    pub portfolio_gate: PositionPortfolioGate,
     pub counts: PositionActionCounts,
     pub summary: String,
     pub items: Vec<PositionAdviceItem>,
@@ -150,20 +202,40 @@ pub(crate) async fn handle_get_position_management(
         .into_response();
     }
 
-    match read_snapshot(&state, &actor).await {
+    let ratings = crate::routes::company_ratings::current_snapshot(&state).await;
+    let news = crate::routes::portfolio_news::current_snapshot(&state, &actor).await;
+    let latest_upstream_at = news
+        .as_ref()
+        .map(|snapshot| snapshot.generated_at)
+        .unwrap_or(ratings.generated_at)
+        .max(ratings.generated_at);
+    let existing = read_snapshot(&state, &actor).await;
+    let updated_at = portfolio
+        .as_ref()
+        .map(|value| value.updated_at.as_str())
+        .unwrap_or("");
+    let needs_rebuild = existing
+        .as_ref()
+        .is_none_or(|snapshot| snapshot_needs_rebuild(snapshot, updated_at, latest_upstream_at));
+    if needs_rebuild {
+        let macro_report = crate::routes::daily_signals::current_macro_report(&state).await;
+        let decisions = current_decisions(&state, &positions).await;
+        let snapshot = build_snapshot(
+            portfolio.as_ref().expect("portfolio exists"),
+            &ratings,
+            &macro_report,
+            news.as_ref(),
+            &decisions,
+        );
+        if let Err(error) = write_snapshot(&state, &actor, &snapshot).await {
+            warn!(actor = %actor.storage_key(), %error, "on-demand position snapshot write failed");
+        }
+        return Json(snapshot).into_response();
+    }
+
+    match existing {
         Some(mut snapshot) => {
-            let updated_at = portfolio
-                .as_ref()
-                .map(|value| value.updated_at.as_str())
-                .unwrap_or("");
-            if snapshot.portfolio_updated_at != updated_at {
-                snapshot.status = "portfolio_changed".to_string();
-                snapshot.summary = "持仓已变化，旧建议已隐藏，等待每日任务重新计算。".to_string();
-                snapshot.items.clear();
-                snapshot.counts = PositionActionCounts::default();
-            } else if Utc::now() - snapshot.generated_at
-                > chrono::Duration::hours(STALE_AFTER_HOURS)
-            {
+            if Utc::now() - snapshot.generated_at > chrono::Duration::hours(STALE_AFTER_HOURS) {
                 snapshot.status = "stale".to_string();
             }
             Json(snapshot).into_response()
@@ -191,8 +263,16 @@ pub(crate) async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
     let ratings = crate::routes::company_ratings::current_snapshot(state).await;
     let macro_report = crate::routes::daily_signals::current_macro_report(state).await;
     for (actor, portfolio) in portfolios {
+        let positions = real_positions(&portfolio);
+        let decisions = current_decisions(state, &positions).await;
         let news = crate::routes::portfolio_news::current_snapshot(state, &actor).await;
-        let snapshot = build_snapshot(&portfolio, &ratings, &macro_report, news.as_ref());
+        let snapshot = build_snapshot(
+            &portfolio,
+            &ratings,
+            &macro_report,
+            news.as_ref(),
+            &decisions,
+        );
         if let Err(error) = write_snapshot(state, &actor, &snapshot).await {
             warn!(actor = %actor.storage_key(), %error, "position management snapshot write failed");
         }
@@ -206,6 +286,7 @@ fn build_snapshot(
     ratings: &CompanyRatingSnapshot,
     macro_report: &DailySignalReport,
     news: Option<&PortfolioNewsSnapshot>,
+    decisions: &HashMap<String, InvestmentDecisionSnapshot>,
 ) -> PositionManagementSnapshot {
     let positions = real_positions(portfolio);
     let rating_map = ratings
@@ -232,15 +313,24 @@ fn build_snapshot(
         report_date: macro_report.report_date.clone(),
         status: macro_report.status.clone(),
     };
+    let total_weight = round1(positions.iter().map(|item| item.weight).sum::<f64>());
+    let portfolio_gate =
+        position_portfolio_gate(&positions, &macro_context, &concentration, total_weight);
     let mut items = positions
         .iter()
         .map(|position| {
             advise_position(
                 position,
                 rating_map.get(&position.symbol).copied(),
+                position_decision_gate(
+                    decisions.get(&position.symbol),
+                    rating_map.get(&position.symbol).copied(),
+                ),
                 news_map.get(&position.symbol).copied(),
+                news_decision_ready(news, &position.symbol),
                 &macro_context,
                 &concentration,
+                portfolio_gate.increase_candidate_authorized,
             )
         })
         .collect::<Vec<_>>();
@@ -250,16 +340,22 @@ fn build_snapshot(
             .then_with(|| b.weight.total_cmp(&a.weight))
     });
     let counts = action_counts(&items);
-    let total_weight = round1(positions.iter().map(|item| item.weight).sum::<f64>());
     let macro_current = macro_context.report_date
         == Utc::now()
             .with_timezone(&Shanghai)
             .format("%Y-%m-%d")
             .to_string()
         && !matches!(macro_context.status.as_str(), "stale" | "framework_only");
+    let news_analysis_incomplete = positions
+        .iter()
+        .any(|position| !news_decision_ready(news, &position.symbol));
     let status = if counts.insufficient_data == items.len() {
         "data_unavailable"
-    } else if counts.insufficient_data > 0 || ratings.data_status != "live" || !macro_current {
+    } else if counts.insufficient_data > 0
+        || ratings.data_status != "live"
+        || !macro_current
+        || news_analysis_incomplete
+    {
         "partial"
     } else {
         "live"
@@ -283,6 +379,7 @@ fn build_snapshot(
         unallocated_weight: round1((100.0 - total_weight).max(0.0)),
         concentration,
         macro_context,
+        portfolio_gate,
         summary: format!(
             "{} 个持仓：加仓候选 {}、持有 {}、降低暴露 {}、立即复核 {}、数据不足 {}。",
             items.len(),
@@ -294,7 +391,7 @@ fn build_snapshot(
         ),
         counts,
         items,
-        methodology_note: "Hari LOG-V0003/4/5/6 用于检查市场状态、动态杠铃、板块预算与原逻辑；15%/25%/45% 仅为 HONE 集中度预警线，不是 Hari 固定仓位。".to_string(),
+        methodology_note: "公司层增加暴露必须先通过同一点时决策大脑与 Hari LOG-V0001/2/6；组合层还必须完成 LOG-V0003/4/5 的市场状态、动态杠铃和板块预算复核。未确认的精确仓位、角色分类和相关性阈值不会由 HONE 补造；15%/25%/45% 仅为 HONE 风险提示线。".to_string(),
         disclaimer: "仓位建议仅供研究与复核，不构成个性化投资顾问、收益承诺或自动交易；HONE 不会修改持仓。".to_string(),
     }
 }
@@ -302,15 +399,18 @@ fn build_snapshot(
 fn advise_position(
     position: &PositionInput,
     rating: Option<&CompanyRating>,
+    decision_gate: PositionDecisionGate,
     news: Option<&PortfolioNewsItem>,
+    news_decision_ready: bool,
     macro_context: &PositionMacroContext,
     concentration: &ConcentrationSummary,
+    portfolio_increase_authorized: bool,
 ) -> PositionAdviceItem {
     let current_evidence = rating.is_some_and(|item| {
-        matches!(item.data_status.as_str(), "live" | "partial")
-            && item.price.is_some()
-            && item.financial_as_of.is_some()
+        matches!(item.data_status.as_str(), "live" | "partial") && item.price.is_some()
     });
+    let complete_company_evidence =
+        current_evidence && rating.is_some_and(|item| item.financial_as_of.is_some());
     let high_concentration = position.weight >= 25.0
         || (concentration.largest_symbol == position.symbol && concentration.level == "high");
     let negative_news = news.is_some_and(|item| {
@@ -332,8 +432,17 @@ fn advise_position(
         .and_then(|item| item.valuation.as_ref())
         .is_some_and(|value| value.current_price <= value.base_case);
 
-    let (action, label, confidence) = if !current_evidence {
+    let preliminary_increase = rating.is_some_and(|item| {
+        item.light == "green"
+            && item.dimensions.fundamentals >= 70.0
+            && item.dimensions.scarcity >= 70.0
+    }) && valuation_opportunity
+        && macro_supportive
+        && position.weight < 15.0;
+    let (action, label, mut confidence) = if !current_evidence {
         ("insufficient_data", "数据不足", "low")
+    } else if !news_decision_ready {
+        ("review", "等待分析", "low")
     } else if negative_news {
         ("review", "立即复核", "high")
     } else if rating.is_some_and(|item| item.light == "red") && position.weight >= 15.0 {
@@ -344,28 +453,39 @@ fn advise_position(
         ("reduce", "降低暴露", "medium")
     } else if high_concentration {
         ("review", "立即复核", "medium")
-    } else if rating.is_some_and(|item| {
-        item.light == "green"
-            && item.dimensions.fundamentals >= 70.0
-            && item.dimensions.scarcity >= 70.0
-    }) && valuation_opportunity
-        && macro_supportive
-        && position.weight < 15.0
+    } else if preliminary_increase
+        && decision_gate.status == "passed"
+        && portfolio_increase_authorized
     {
         ("increase_candidate", "加仓候选", "medium")
+    } else if preliminary_increase && decision_gate.status == "passed" {
+        ("review", "组合门禁复核", "low")
+    } else if preliminary_increase {
+        ("review", "决策门禁复核", "low")
     } else {
         ("hold", "持有", "medium")
     };
+    if current_evidence && !complete_company_evidence && confidence != "low" {
+        confidence = "low";
+    }
 
     let mut rationale = Vec::new();
     if let Some(item) = rating {
         if current_evidence {
-            rationale.push(format!(
-                "公司评级 {:.1}（{}），财务数据截至 {}。",
-                item.score,
-                light_label(&item.light),
-                item.financial_as_of.as_deref().unwrap_or("未知")
-            ));
+            if let Some(as_of) = item.financial_as_of.as_deref() {
+                rationale.push(format!(
+                    "公司评级 {:.1}（{}），财务数据截至 {}。",
+                    item.score,
+                    light_label(&item.light),
+                    as_of
+                ));
+            } else {
+                rationale.push(format!(
+                    "当前行情已取得，公司研究结构分 {:.1}（{}）；季度财务尚未接入，因此本动作降为低置信度且不触发加仓。",
+                    item.score,
+                    light_label(&item.light)
+                ));
+            }
         } else {
             rationale.push(
                 "缺少可核实的当前行情或季度财务，研究基线不能升级为当前仓位动作。".to_string(),
@@ -382,6 +502,12 @@ fn advise_position(
     if negative_news {
         rationale.push("近 48 小时存在削弱原投资逻辑的负面新闻，先复核证伪条件。".to_string());
     }
+    if !news_decision_ready {
+        rationale.push(
+            "近 48 小时新闻来源或模型影响分析尚未完整通过门禁；未分析不等于没有风险，本次禁止形成加仓或自动持有结论。"
+                .to_string(),
+        );
+    }
     if high_concentration {
         rationale.push(format!(
             "单一标的权重 {:.1}% 触发 HONE 集中度预警。",
@@ -390,6 +516,21 @@ fn advise_position(
     }
     if !macro_supportive {
         rationale.push("宏观信号不是当日绿灯，暂停把优质公司自动等同于可加仓。".to_string());
+    }
+    match decision_gate.status.as_str() {
+        "passed" if portfolio_increase_authorized => rationale.push(format!(
+            "同一点时决策大脑与组合增加暴露门禁均已通过 {}；该结果仍只是研究候选，不授权交易。",
+            decision_gate.policy_version
+        )),
+        "passed" if preliminary_increase => rationale.push(
+            "公司层决策门禁已通过，但组合层 LOG-V0003/4/5 尚未完成；本轮只能复核，不能形成加仓候选。"
+                .to_string(),
+        ),
+        "blocked" | "missing" | "mismatched" if preliminary_increase => rationale.push(format!(
+            "公司评级与估值曾形成加仓前置条件，但统一决策大脑门禁未通过：{}。",
+            decision_gate.blocking_reasons.join("；")
+        )),
+        _ => {}
     }
 
     let current_price = rating.and_then(|item| item.price);
@@ -449,7 +590,10 @@ fn advise_position(
             .map(|item| item.falsifiers.iter().take(3).cloned().collect())
             .unwrap_or_default(),
         framework_logic: vec![
+            "LOG-V0001".to_string(),
+            "LOG-V0002".to_string(),
             "LOG-V0003".to_string(),
+            "LOG-V0004".to_string(),
             "LOG-V0005".to_string(),
             "LOG-V0006".to_string(),
         ],
@@ -462,6 +606,219 @@ fn advise_position(
             .map(|item| item.data_sources.clone())
             .unwrap_or_default(),
         priority_score: round1(priority.min(100.0)),
+        decision_gate,
+    }
+}
+
+fn snapshot_needs_rebuild(
+    snapshot: &PositionManagementSnapshot,
+    portfolio_updated_at: &str,
+    latest_upstream_at: DateTime<Utc>,
+) -> bool {
+    snapshot.model_version != MODEL_VERSION
+        || snapshot.portfolio_updated_at != portfolio_updated_at
+        || snapshot.generated_at < latest_upstream_at
+}
+
+async fn current_decisions(
+    state: &AppState,
+    positions: &[PositionInput],
+) -> HashMap<String, InvestmentDecisionSnapshot> {
+    let mut result = HashMap::new();
+    for position in positions {
+        if let Some(decision) =
+            crate::routes::investment_decisions::current_decision(state, &position.symbol).await
+        {
+            result.insert(position.symbol.clone(), decision);
+        }
+    }
+    result
+}
+
+fn position_decision_gate(
+    decision: Option<&InvestmentDecisionSnapshot>,
+    rating: Option<&CompanyRating>,
+) -> PositionDecisionGate {
+    let Some(decision) = decision else {
+        return PositionDecisionGate {
+            status: "missing".to_string(),
+            blocking_reasons: vec!["缺少同标的、已通过点时校验的公司决策快照".to_string()],
+            ..PositionDecisionGate::default()
+        };
+    };
+    let methodology = &decision.decision.methodology;
+    let mut blocking_reasons = methodology.blocking_reasons.clone();
+    let rating_matches = rating.is_some_and(|rating| {
+        decision.source_rating_score.to_bits() == rating.score.to_bits()
+            && decision.source_rating_light == rating.light
+            && decision.symbol == rating.symbol
+    });
+    if !rating_matches {
+        blocking_reasons.push("公司决策与当前评级快照不一致".to_string());
+    }
+    if methodology.policy_version != DECISION_GATE_POLICY_VERSION {
+        blocking_reasons.push("公司决策未使用当前 Hari 门禁版本".to_string());
+    }
+    if methodology.candidate_logic_used {
+        blocking_reasons.push("公司决策错误地使用了候选或未确认逻辑".to_string());
+    }
+    if methodology.portfolio_action_authorized {
+        blocking_reasons.push("公司层不得携带组合动作授权".to_string());
+    }
+    let increase_passed = rating_matches
+        && methodology.policy_version == DECISION_GATE_POLICY_VERSION
+        && !methodology.candidate_logic_used
+        && !methodology.portfolio_action_authorized
+        && methodology.pre_methodology_action == "increase_candidate"
+        && methodology.increase_candidate_authorized
+        && decision.decision.action == ExposureAction::IncreaseCandidate
+        && decision.decision.zone == ResearchZone::Opportunity;
+    let status = if increase_passed {
+        "passed"
+    } else if methodology.pre_methodology_action == "increase_candidate" {
+        if blocking_reasons.is_empty() {
+            blocking_reasons.push("公司决策未形成最终增加暴露候选".to_string());
+        }
+        "blocked"
+    } else if !rating_matches || methodology.policy_version != DECISION_GATE_POLICY_VERSION {
+        "mismatched"
+    } else {
+        if blocking_reasons.is_empty() {
+            blocking_reasons.push("本轮公司决策不是增加暴露候选".to_string());
+        }
+        "not_applicable"
+    };
+    PositionDecisionGate {
+        status: status.to_string(),
+        revision_id: decision.revision_id.clone(),
+        decision_at: decision.decision_at.to_rfc3339(),
+        policy_version: methodology.policy_version.clone(),
+        skill_version: methodology.skill_version.clone(),
+        pre_methodology_action: methodology.pre_methodology_action.clone(),
+        final_action: match decision.decision.action {
+            ExposureAction::IncreaseCandidate => "increase_candidate",
+            ExposureAction::Maintain => "maintain",
+            ExposureAction::ReduceCandidate => "reduce_candidate",
+            ExposureAction::ResearchOnly => "research_only",
+        }
+        .to_string(),
+        confirmed_logic_ids: methodology.confirmed_logic_ids.clone(),
+        candidate_logic_used: methodology.candidate_logic_used,
+        increase_candidate_authorized: methodology.increase_candidate_authorized,
+        portfolio_action_authorized: methodology.portfolio_action_authorized,
+        blocking_reasons,
+    }
+}
+
+fn position_portfolio_gate(
+    positions: &[PositionInput],
+    macro_context: &PositionMacroContext,
+    concentration: &ConcentrationSummary,
+    total_weight: f64,
+) -> PositionPortfolioGate {
+    let today = Utc::now()
+        .with_timezone(&Shanghai)
+        .format("%Y-%m-%d")
+        .to_string();
+    let macro_current = macro_context.report_date == today
+        && !matches!(macro_context.status.as_str(), "stale" | "framework_only")
+        && matches!(macro_context.signal.as_str(), "green" | "yellow" | "red");
+    let theme_evidence = concentration
+        .theme_exposures
+        .iter()
+        .map(|item| format!("{} {:.1}%", item.theme, item.weight))
+        .collect::<Vec<_>>();
+
+    let market_rule = PositionPortfolioRuleApplication {
+        logic_id: "LOG-V0003".to_string(),
+        logic_version: "0.1".to_string(),
+        label: "牛熊识别与组合总仓位控制".to_string(),
+        status: if macro_current {
+            "partial_evidence"
+        } else {
+            "missing_current_evidence"
+        }
+        .to_string(),
+        evidence: [
+            macro_current.then(|| {
+                format!(
+                    "当日宏观 {} / {}，健康分 {}",
+                    macro_context.signal,
+                    macro_context.phase,
+                    macro_context
+                        .score
+                        .map(|value| format!("{value:.1}"))
+                        .unwrap_or_else(|| "未取得".to_string())
+                )
+            }),
+            Some(format!(
+                "组合已配置 {:.1}%，未配置 {:.1}%",
+                total_weight,
+                (100.0 - total_weight).max(0.0)
+            )),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        gaps: [
+            (!macro_current).then(|| "缺少当日可用宏观环境快照".to_string()),
+            Some("牛熊判定阈值、目标总仓位与切换节奏尚未获得老王确认".to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+    };
+    let barbell_rule = PositionPortfolioRuleApplication {
+        logic_id: "LOG-V0004".to_string(),
+        logic_version: "0.1".to_string(),
+        label: "随市场状态切换的杠铃组合".to_string(),
+        status: "missing_required_classification".to_string(),
+        evidence: vec![format!("当前读取 {} 个真实持仓", positions.len())],
+        gaps: vec![
+            "持仓尚无经过确认的压舱石/高成长 Beta 角色标签及其点时证据".to_string(),
+            "杠铃两端比例、相关性与状态切换条件尚未获得老王确认".to_string(),
+        ],
+    };
+    let sector_rule = PositionPortfolioRuleApplication {
+        logic_id: "LOG-V0005".to_string(),
+        logic_version: "0.1".to_string(),
+        label: "板块优先的仓位分配".to_string(),
+        status: if theme_evidence.is_empty() {
+            "missing_current_evidence"
+        } else {
+            "partial_evidence"
+        }
+        .to_string(),
+        evidence: theme_evidence,
+        gaps: vec![
+            "板块机会强弱、预算档位与板块内相对质量尚未形成点时组合结论".to_string(),
+            "同板块公司风险相关性和精确预算阈值尚未获得老王确认".to_string(),
+            "HONE 集中度提示线不能冒充 Hari 板块预算规则".to_string(),
+        ],
+    };
+
+    PositionPortfolioGate {
+        policy_version: PORTFOLIO_GATE_POLICY_VERSION.to_string(),
+        skill_id: "hari-invest".to_string(),
+        skill_version: "0.1.0".to_string(),
+        confirmed_logic_ids: vec![
+            "LOG-V0003".to_string(),
+            "LOG-V0004".to_string(),
+            "LOG-V0005".to_string(),
+        ],
+        candidate_logic_used: false,
+        status: "incomplete_confirmed_parameters".to_string(),
+        rules: vec![market_rule, barbell_rule, sector_rule],
+        blocking_reasons: vec![
+            "LOG-V0003：缺少已确认的牛熊阈值、总仓位目标与切换节奏".to_string(),
+            "LOG-V0004：缺少经确认的组合角色分类、比例与相关性检查".to_string(),
+            "LOG-V0005：缺少经确认的板块预算、相对质量与风险相关性规则".to_string(),
+        ],
+        increase_candidate_authorized: false,
+        portfolio_action_authorized: false,
+        shadow_portfolio_authorized: false,
+        trade_authorized: false,
+        scope: "只组织 LOG-V0003/4/5 的当前组合证据和缺口；未确认参数不补造，不生成目标仓位、订单或交易授权。".to_string(),
     }
 }
 
@@ -488,6 +845,33 @@ fn latest_analyzed_news<'a>(
             .or_insert(item);
     }
     result
+}
+
+fn news_decision_ready(snapshot: Option<&PortfolioNewsSnapshot>, symbol: &str) -> bool {
+    let Some(snapshot) = snapshot.filter(|value| {
+        matches!(
+            value.status.as_str(),
+            "live" | "partial" | "no_material_news"
+        ) && value.source_status == "live"
+            && Utc::now() - value.generated_at <= chrono::Duration::hours(36)
+    }) else {
+        return false;
+    };
+    let symbol = symbol.to_ascii_uppercase();
+    let relevant = snapshot
+        .items
+        .iter()
+        .filter(|item| item.symbol.eq_ignore_ascii_case(&symbol))
+        .collect::<Vec<_>>();
+    if !relevant.is_empty() {
+        return relevant
+            .iter()
+            .all(|item| item.analysis_status == "model_analyzed");
+    }
+    snapshot
+        .coverage_items
+        .iter()
+        .any(|item| item.symbol.eq_ignore_ascii_case(&symbol) && item.status == "no_material_news")
 }
 
 fn real_positions(portfolio: &Portfolio) -> Vec<PositionInput> {
@@ -656,10 +1040,29 @@ fn empty_snapshot(
             report_date: String::new(),
             status: "not_run".to_string(),
         },
+        portfolio_gate: PositionPortfolioGate {
+            policy_version: PORTFOLIO_GATE_POLICY_VERSION.to_string(),
+            skill_id: "hari-invest".to_string(),
+            skill_version: "0.1.0".to_string(),
+            confirmed_logic_ids: vec![
+                "LOG-V0003".to_string(),
+                "LOG-V0004".to_string(),
+                "LOG-V0005".to_string(),
+            ],
+            candidate_logic_used: false,
+            status: "waiting_for_portfolio".to_string(),
+            rules: Vec::new(),
+            blocking_reasons: vec!["尚无可评估的真实组合".to_string()],
+            increase_candidate_authorized: false,
+            portfolio_action_authorized: false,
+            shadow_portfolio_authorized: false,
+            trade_authorized: false,
+            scope: "只组织 LOG-V0003/4/5 的当前组合证据和缺口；未确认参数不补造，不生成目标仓位、订单或交易授权。".to_string(),
+        },
         counts: PositionActionCounts::default(),
         summary: summary.to_string(),
         items: Vec::new(),
-        methodology_note: "Hari LOG-V0003/4/5/6 与 HONE 集中度预警分层应用。".to_string(),
+        methodology_note: "公司层增加暴露必须通过同一点时决策大脑的 Hari LOG-V0001/2/6 门禁；LOG-V0003/4/5 留在组合层，且不授权交易。".to_string(),
         disclaimer:
             "仓位建议仅供研究与复核，不构成个性化投资顾问、收益承诺或自动交易；HONE 不会修改持仓。"
                 .to_string(),
@@ -783,6 +1186,16 @@ mod tests {
             data_status: "live".to_string(),
             price: Some(100.0),
             change_percent: Some(1.0),
+            price_avg50: Some(95.0),
+            price_avg200: Some(85.0),
+            year_low: Some(70.0),
+            year_high: Some(120.0),
+            market_history: None,
+            short_interest: None,
+            options_positioning: None,
+            news_attention: None,
+            institutional_holdings: None,
+            analyst_consensus: None,
             market_as_of: Some("2026-08-11 09:30 ET".to_string()),
             financial_as_of: Some("2026-06-30".to_string()),
             thesis_summary: "thesis".to_string(),
@@ -845,9 +1258,54 @@ mod tests {
             signal: signal.to_string(),
             score: Some(score),
             phase: "phase".to_string(),
-            report_date: "2026-08-11".to_string(),
+            report_date: Utc::now()
+                .with_timezone(&Shanghai)
+                .format("%Y-%m-%d")
+                .to_string(),
             status: "live".to_string(),
         }
+    }
+
+    fn passed_decision_gate() -> PositionDecisionGate {
+        PositionDecisionGate {
+            status: "passed".to_string(),
+            revision_id: "NVDA-test-decision".to_string(),
+            decision_at: "2026-08-11T12:00:00Z".to_string(),
+            policy_version: DECISION_GATE_POLICY_VERSION.to_string(),
+            skill_version: "0.1.0".to_string(),
+            pre_methodology_action: "increase_candidate".to_string(),
+            final_action: "increase_candidate".to_string(),
+            confirmed_logic_ids: vec![
+                "LOG-V0001".to_string(),
+                "LOG-V0002".to_string(),
+                "LOG-V0003".to_string(),
+                "LOG-V0004".to_string(),
+                "LOG-V0005".to_string(),
+                "LOG-V0006".to_string(),
+            ],
+            candidate_logic_used: false,
+            increase_candidate_authorized: true,
+            portfolio_action_authorized: false,
+            blocking_reasons: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn legacy_snapshot_is_rebuilt_for_the_decision_brain_gate() {
+        let mut snapshot = empty_snapshot("portfolio-v1", "live", "test");
+        let upstream_before_snapshot = snapshot.generated_at - chrono::Duration::seconds(1);
+        assert!(!snapshot_needs_rebuild(
+            &snapshot,
+            "portfolio-v1",
+            upstream_before_snapshot
+        ));
+
+        snapshot.model_version = "hone-position-management-v1".to_string();
+        assert!(snapshot_needs_rebuild(
+            &snapshot,
+            "portfolio-v1",
+            upstream_before_snapshot
+        ));
     }
 
     #[test]
@@ -907,9 +1365,12 @@ mod tests {
         let advice = advise_position(
             &position,
             Some(&baseline),
+            PositionDecisionGate::default(),
             None,
+            true,
             &macro_context("green", 80.0),
             &concentration,
+            false,
         );
         assert_eq!(advice.action, "insufficient_data");
         assert!(advice.rating_score.is_none());
@@ -931,20 +1392,184 @@ mod tests {
         let advice = advise_position(
             &position,
             Some(&with_value),
+            passed_decision_gate(),
             None,
+            true,
             &macro_context("green", 80.0),
             &concentration,
+            true,
         );
         assert_eq!(advice.action, "increase_candidate");
         let without_value = rating("NVDA", "green", 90.0, None);
         let advice = advise_position(
             &position,
             Some(&without_value),
+            PositionDecisionGate::default(),
             None,
+            true,
             &macro_context("green", 80.0),
             &concentration,
+            false,
         );
         assert_eq!(advice.action, "hold");
+    }
+
+    #[test]
+    fn company_candidate_cannot_bypass_the_confirmed_portfolio_gate() {
+        let position = PositionInput {
+            symbol: "NVDA".into(),
+            name: "NVDA".into(),
+            weight: 10.0,
+            avg_cost: None,
+        };
+        let concentration = concentration_summary(
+            &[position.clone()],
+            &HashMap::from([("NVDA".into(), "AI".into())]),
+        );
+        let current = rating("NVDA", "green", 90.0, Some(valuation(90.0, 110.0, 140.0)));
+        let advice = advise_position(
+            &position,
+            Some(&current),
+            passed_decision_gate(),
+            None,
+            true,
+            &macro_context("green", 80.0),
+            &concentration,
+            false,
+        );
+
+        assert_eq!(advice.action, "review");
+        assert_eq!(advice.action_label, "组合门禁复核");
+        assert_eq!(advice.confidence, "low");
+        assert!(
+            advice
+                .rationale
+                .iter()
+                .any(|line| line.contains("LOG-V0003/4/5") && line.contains("不能形成加仓候选"))
+        );
+    }
+
+    #[test]
+    fn portfolio_gate_exposes_only_confirmed_logic_and_never_invents_parameters() {
+        let position = PositionInput {
+            symbol: "NVDA".into(),
+            name: "NVDA".into(),
+            weight: 10.0,
+            avg_cost: None,
+        };
+        let concentration = concentration_summary(
+            &[position.clone()],
+            &HashMap::from([("NVDA".into(), "AI".into())]),
+        );
+        let gate = position_portfolio_gate(
+            &[position],
+            &macro_context("green", 80.0),
+            &concentration,
+            10.0,
+        );
+
+        assert_eq!(gate.policy_version, PORTFOLIO_GATE_POLICY_VERSION);
+        assert_eq!(
+            gate.confirmed_logic_ids,
+            vec!["LOG-V0003", "LOG-V0004", "LOG-V0005"]
+        );
+        assert!(!gate.candidate_logic_used);
+        assert_eq!(gate.status, "incomplete_confirmed_parameters");
+        assert!(!gate.increase_candidate_authorized);
+        assert!(!gate.portfolio_action_authorized);
+        assert!(!gate.shadow_portfolio_authorized);
+        assert!(!gate.trade_authorized);
+        assert_eq!(gate.rules.len(), 3);
+        assert!(
+            gate.blocking_reasons
+                .iter()
+                .any(|line| line.contains("牛熊阈值"))
+        );
+        assert!(
+            gate.blocking_reasons
+                .iter()
+                .any(|line| line.contains("组合角色分类"))
+        );
+        assert!(
+            gate.blocking_reasons
+                .iter()
+                .any(|line| line.contains("板块预算"))
+        );
+    }
+
+    #[test]
+    fn company_rating_cannot_bypass_the_confirmed_hari_decision_gate() {
+        let position = PositionInput {
+            symbol: "NVDA".into(),
+            name: "NVDA".into(),
+            weight: 10.0,
+            avg_cost: None,
+        };
+        let concentration = concentration_summary(
+            &[position.clone()],
+            &HashMap::from([("NVDA".into(), "AI".into())]),
+        );
+        let current = rating("NVDA", "green", 90.0, Some(valuation(90.0, 110.0, 140.0)));
+        let blocked = PositionDecisionGate {
+            status: "blocked".to_string(),
+            blocking_reasons: vec!["LOG-V0002：公司价值捕获尚未验证".to_string()],
+            ..passed_decision_gate()
+        };
+        let advice = advise_position(
+            &position,
+            Some(&current),
+            blocked,
+            None,
+            true,
+            &macro_context("green", 80.0),
+            &concentration,
+            false,
+        );
+
+        assert_eq!(advice.action, "review");
+        assert_eq!(advice.action_label, "决策门禁复核");
+        assert_eq!(advice.confidence, "low");
+        assert!(advice.rationale.iter().any(|line| {
+            line.contains("统一决策大脑门禁未通过") && line.contains("LOG-V0002")
+        }));
+        assert!(!advice.decision_gate.portfolio_action_authorized);
+    }
+
+    #[test]
+    fn current_quote_and_research_baseline_produce_low_confidence_action_without_financials() {
+        let position = PositionInput {
+            symbol: "NVDA".into(),
+            name: "NVDA".into(),
+            weight: 10.0,
+            avg_cost: Some(80.0),
+        };
+        let concentration = concentration_summary(
+            &[position.clone()],
+            &HashMap::from([("NVDA".into(), "AI".into())]),
+        );
+        let mut partial = rating("NVDA", "green", 82.0, None);
+        partial.data_status = "partial".to_string();
+        partial.financial_as_of = None;
+        partial.data_sources = vec!["Nasdaq 官方行情降级快照".to_string()];
+        let advice = advise_position(
+            &position,
+            Some(&partial),
+            PositionDecisionGate::default(),
+            None,
+            true,
+            &macro_context("green", 80.0),
+            &concentration,
+            false,
+        );
+        assert_eq!(advice.action, "hold");
+        assert_eq!(advice.confidence, "low");
+        assert_eq!(advice.rating_score, Some(82.0));
+        assert!(
+            advice
+                .rationale
+                .iter()
+                .any(|line| line.contains("不触发加仓"))
+        );
     }
 
     #[test]
@@ -963,9 +1588,12 @@ mod tests {
         let advice = advise_position(
             &position,
             Some(&current),
+            PositionDecisionGate::default(),
             None,
+            true,
             &macro_context("red", 40.0),
             &concentration,
+            false,
         );
         assert_eq!(advice.action, "hold");
     }
@@ -986,9 +1614,12 @@ mod tests {
         let advice = advise_position(
             &position,
             Some(&current),
+            PositionDecisionGate::default(),
             None,
+            true,
             &macro_context("green", 80.0),
             &concentration,
+            false,
         );
         assert_eq!(advice.action, "reduce");
     }
@@ -1029,10 +1660,63 @@ mod tests {
         let advice = advise_position(
             &position,
             Some(&current),
+            PositionDecisionGate::default(),
             Some(&news),
+            true,
             &macro_context("green", 80.0),
             &concentration,
+            false,
         );
         assert_eq!(advice.action, "review");
+        assert_eq!(advice.confidence, "high");
+
+        let mut partial = current;
+        partial.financial_as_of = None;
+        let partial_advice = advise_position(
+            &position,
+            Some(&partial),
+            PositionDecisionGate::default(),
+            Some(&news),
+            true,
+            &macro_context("green", 80.0),
+            &concentration,
+            false,
+        );
+        assert_eq!(partial_advice.action, "review");
+        assert_eq!(partial_advice.confidence, "low");
+    }
+
+    #[test]
+    fn incomplete_news_analysis_blocks_increase_candidate_and_hold() {
+        let position = PositionInput {
+            symbol: "NVDA".into(),
+            name: "NVDA".into(),
+            weight: 10.0,
+            avg_cost: None,
+        };
+        let concentration = concentration_summary(
+            &[position.clone()],
+            &HashMap::from([("NVDA".into(), "AI".into())]),
+        );
+        let current = rating("NVDA", "green", 90.0, Some(valuation(90.0, 110.0, 140.0)));
+        let advice = advise_position(
+            &position,
+            Some(&current),
+            PositionDecisionGate::default(),
+            None,
+            false,
+            &macro_context("green", 80.0),
+            &concentration,
+            false,
+        );
+        assert_eq!(advice.action, "review");
+        assert_eq!(advice.action_label, "等待分析");
+        assert_eq!(advice.confidence, "low");
+        assert!(
+            advice
+                .rationale
+                .iter()
+                .any(|line| line.contains("未分析不等于没有风险"))
+        );
     }
 }

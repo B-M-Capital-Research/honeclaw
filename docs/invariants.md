@@ -1,6 +1,6 @@
 # Invariants
 
-Last updated: 2026-08-06
+Last updated: 2026-08-29
 
 ## Source of Truth and Document Priority
 
@@ -62,6 +62,7 @@ Last updated: 2026-08-06
 - A comparison table is only as sound as its window. Companies on different fiscal calendars must be compared on `hone_ttm` (which carries gross and operating margin for exactly this reason) or on `hone_forward`, with the period ends printed. Placing one company's FY2025 beside another's FY2026 puts a full year of cycle position into one table, and every individual figure can be correct while the table is wrong. The same applies to multiples: a trailing P/E on a trough year beside one on a peak year compares nothing, so `hone_valuation_basis` derives `forward_pe`/`forward_ps` and the answer prefers those or a single trailing window.
 - Forward multiples need a dated source, not arithmetic. `hone_forward` sums the four analyst-estimate periods dated strictly after the latest filed quarter — the reported window defines "forward", not a wall clock — and carries `min_analyst_count` so thin coverage is disclosed rather than averaged away. Fewer than four forward periods is not a forward-twelve-month estimate and is withheld. The multiple itself is computed server-side where the quote and the statements are both in hand; the model must not divide a current price by whichever EPS it happens to hold.
 - Provider coverage gaps must not silently shrink the answer. When a named security is outside the provider's registry — a non-US listing, a symbol the registry does not carry — the turn may publish figures from current public search, but each one carries its source name,原始 URL and as-of date, is explicitly labelled as a public-source measure rather than a provider quote, never enters the `数据时间：`/`行情口径：` first line, and is never placed in the same column as provider quotes without that distinction. Dropping the security or answering 无法核验 is not an acceptable substitute for a disclosed, attributed figure.
+- Daily investment dashboards must degrade by evidence class, not by fabrication. A provider outage may fall back to an exact-symbol official quote source or to bounded title-matched search snippets, but a quote cannot become a financial statement, a search snippet cannot become full-page or primary evidence, and neither may create an eligible valuation. Source facts are persisted before optional LLM enrichment; model failure cannot erase them. Every portfolio symbol must expose a coverage state, while incomplete financial/valuation evidence can only produce low-confidence hold/review/reduce actions and never an add candidate.
 - Provider capability is declared, not discovered from wrong answers. Aggregate data types are rows in `stable_bundle_components` — a key and a path each — fetched concurrently by one generic bundler that reports `available` / `empty` / `unavailable` per component and surfaces per-component errors. Adding a capability must not require another hand-written join or another coverage map; that cost is why earlier gaps were closed one endpoint at a time, each after a user hit it.
 - Published metrics beat recomputed ones. Trailing ratios, enterprise value, ROE/ROIC, leverage and liquidity come from the provider's own TTM endpoints rather than being derived from statements; Hone's own derived windows exist to cross-check a provider aggregate's freshness, not to replace its published figures. Scores that carry standard thresholds — Altman Z, Piotroski — must travel with their bands and their applicability limits, because a bare 2.4 forces the model to supply a threshold from memory.
 - A comparison needs an anchor the model did not choose. Peers come from the provider's own classification with a batch quote and an industry P/E snapshot, never from the model's recollection of who competes with whom; segment revenue by product and by region answers where the money comes from; multi-period price change and the provider's own aftermarket quote ride along with the snapshot instead of costing a research round.
@@ -272,6 +273,8 @@ Last updated: 2026-08-06
 - User slash skills and model `skill_tool(...)` calls must share the same prompt-expansion source of truth; do not let the Web/CLI path hand-maintain a divergent skill prompt template
 - Invoked skills that materially change the current turn prompt must be recoverable from session metadata after compaction / resume; do not rely only on persisted tool results for skill restoration
 - Session restore must respect current skill activation state. If a previously invoked skill is now disabled, its historical prompt may stay in stored metadata, but it must not be re-injected into the live runtime context on restore/compaction recovery
+- A causal-evidence review is not a company-thesis review. Saving one exact driver/observation verdict must preserve the company-level review status, thesis verdict, zone and action; the causal label needs its own immutable unbranched audit chain, reviewer and time, and replay must be recoverable from that audit
+- A maintainer source review is not a causal-evidence review. It must live in its own immutable fingerprint-bound audit chain and may only record whether the frozen source agrees, mismatches or lacks context; it cannot create a causal label, training label or thesis change. The bounded maintainer queue may contain only source-ready unchecked evidence, while the bounded old-Wang queue may contain only evidence whose current fingerprint has an exact `verified_against_source` review. Mismatch and insufficient-context rows remain auditable but enter neither queue. The legacy mixed active batch may remain readable for compatibility but must not be the administrator UI default.
 - Skill frontmatter fields such as `allowed-tools`, `model`, `effort`, `context`, `paths`, `hooks`, `arguments`, `script`, and `shell` should be parsed from `SKILL.md` as the source of truth. If runner infrastructure does not yet enforce one of these fields, document that gap instead of silently dropping or misrepresenting it
 - Skill script execution must stay opt-in. Loading or disclosing a skill may expand its prompt, but running a declared `script` must only happen through an explicit execution path such as `skill_tool(..., execute_script=true)`
 - Public earnings preview/analysis is an administrator-only server-owned workflow intent. The client may submit only the mode/company/attachments; the Web API must re-read administrator authority, validate the company, construct the canonical user-visible text, inject the exact enabled `earnings-research` slash skill, and only then attach the config-owned `agent.earnings_workflow` runner/model route. That per-turn route must never be inferred from request JSON, prompt text, client UI state, or a model-selected skill. It may select only the explicitly supported trusted OpenCode ACP adapter, must use OpenCode's ephemeral compiled replay even when the global administrator runner is native Codex, and must reject an empty/unknown route rather than silently falling back to another model. The workflow is self-contained: prior chat remains durable and visible but neither prior messages nor a compact summary may enter its executable runner context; only the current structured task, current attachments, current skill and current evidence may shape the report. The same trusted route must replace the generic Interactive investment preflight, timestamp-first system rule, and ordinary answer templates with the earnings skill's Workflow/PDF contract; renderer validation errors remain inside the tool loop and cannot become a text-only terminal answer while correctable. Ordinary chat keeps its configured global runner/model, investment contract, and history behavior. A non-admin must be rejected for both the structured request and recognizable direct slash aliases and must retain the strict actor-bound runner boundary, so hiding buttons is never authorization. The skill must use current-turn evidence, treat attachments as untrusted evidence rather than instructions, follow its ordered stages, and never delegate to Dify/BamangResearch or another external workflow.
@@ -289,6 +292,103 @@ Last updated: 2026-08-06
 - Compact summaries and compact skill snapshots may stay in the stored message stream as restore materials, but primary chat history views should treat them as transcript-only rather than ordinary user-visible dialogue
 - A full earnings-call transcript is ephemeral source material: it may be fetched from a first-party IR URL and sent once to the shared transcript reviewer, but the source body must not be committed, printed in replay output, or persisted in an actor profile. Durable event payloads retain only compact prepared-remarks/Q&A findings, short evidence, source URL, and source character count. Provider news snippets must never be presented to this reviewer as a full transcript.
 - Earnings-release and reviewed-transcript continuity are distinct stages on the same quarterly research object. Completing the release reconciliation must not suppress the later transcript reconciliation; durable job and profile-event identities include the stage. A model may not close a management commitment merely because management reaffirmed it or said it remains on track. Non-open question/commitment states require a kind-compatible `resolution_basis` plus evidence; only already fulfilled commitments may become `confirmed`. A later `open` result must preserve an item's earlier partial progress rather than silently resetting it.
+- A structured earnings/filing claim is a point-in-time review candidate, not a measured causal fact. It must remain bound to one source event, HTTPS document, canonical metric, explicit metric definition/basis, fiscal period, value/unit, locator and publication time. Missing legacy metric basis may remain visible for provenance but is never promotion-eligible. Corrections and withdrawals supersede earlier same-key claims; a differing later SEC filing may supersede a release; other differing primary claims must be marked conflicted, never averaged or silently co-admitted. Human relationship acceptance and investment effect are separate labels: every newly accepted link must be `supports`, `falsifies`, `mixed` or `context_only`, while a rejected relation carries no effect. Legacy accepted/unclassified rows remain auditable but policy-inert. `hone-causal-promotion-v1` requires at least two active accepted-`supports` claims from two distinct source events and URLs, two fiscal periods and at least 45 days of span. A rejected link, unresolved conflict or accepted-`falsifies` link blocks promotion; mixed/context-only links do not promote. Promotion may change decision confidence only: two promoted drivers can raise it one level, while any blocked conflict, human rejection or falsification lowers it one level. It must never change research zone or exposure action, configure a reward, label a future outcome, or authorize execution. Every review-driven change creates a new decision timestamp/revision after its immutable audit is durable; later reviews never rewrite an older point-in-time snapshot.
+- SEC Company Facts backfill is a research corpus, not an alert source or a substitute for reasoning. Every value must join to the exact filing accession, supported form (currently 10-Q, 10-K or audited annual 20-F), one supported taxonomy (`us-gaap` or `ifrs-full`), one exact reporting currency, fiscal period, official HTTPS filing and original SEC acceptance time. A single filing may never mix taxonomies or currencies. IFRS 20-F facts retain an allowlisted original filed currency (currently USD, EUR, TWD or GBP); HONE does not perform FX conversion or relabel native values as USD. Form 6-K, unresolved ticker identities, unsupported taxonomies/currencies and filings without admissible Company Facts stay explicit gaps rather than being guessed. Missing values stay missing; derived growth or margin calculations must be separately labelled computed evidence rather than quoted as source claims. Backfill ids are deterministic and reruns are idempotent. SEC evidence maintenance may run while event notifications are disabled, but it must exit before routing or channel pollers and historical rows must bypass user notification routing. Research events remain available across normal short-lived event-retention sweeps. Admission alone never marks a causal driver measured, changes a decision, creates a reward or authorizes execution.
+- A period comparison is never a source claim. `hone-sec-period-comparison-v1` may compare only active numeric reported facts with identical canonical metric, definition and unit, distinct source events, valid fiscal-period pairing and an earlier prior disclosure. It must retain both claim IDs, values, periods, publication times and official HTTPS filing URLs. Balance-sheet points may compare sequential quarters; revenue may compare Q2/Q1 or Q3/Q2; cumulative capital expenditure may not be presented as a quarterly sequential change. A zero denominator, conflict, correction, withdrawal, formula mismatch, future timestamp or missing endpoint fails closed. Computed evidence remains training-only, does not mark a driver measured, cannot satisfy source-claim promotion and cannot alter zone, action, confidence, reward or execution without a future separately approved policy.
+- The administrator evidence-review queue is a projection, not a second source of truth. It deduplicates by symbol, driver and immutable observation ID, points to the newest frozen sample containing that evidence, and uses the latest review timestamp for its displayed verdict. Filtering, pagination or daily re-projection must not multiply labels. Queue priority may reflect lifecycle risk and review readiness but never price direction, model optimism or a hidden action score. Source verification and causal judgment have separate immutable optimistic audit chains. A source record is bound to its exact sample fingerprint and declares that it created no causal or training label; cross-snapshot reuse additionally requires the same stable evidence identity over symbol, driver, driver mechanism and full observation content. A date or sample revision alone must not force duplicate review, while any evidence or mechanism change must invalidate reuse. Conflicting verdicts for one stable evidence identity fail closed and enter neither the maintainer nor Old-Wang batch. A causal record may be created only after citing the exact verified source-review ID and origin sample and receiving Old Wang's explicit distilled confirmation. Source mismatch or insufficient context stays auditable but cannot become a negative causal label or re-enter the active question batch.
+- Causal-effect calibration must use the same deduplication identity and newest-audit rule as the evidence queue. Support, falsification, mixed and context-only counts describe human labels; they are not precision, return attribution or proof of a profitable policy. Driver/metric cohorts may be shown before outcomes mature, but market-regime calibration must remain explicitly unavailable until a point-in-time regime taxonomy is frozen and validated without future leakage.
+- `hone-market-regime-v1` is point-in-time input, never an outcome-derived label. Supportive/balanced/defensive/stress are determined only from the macro score bands fixed in the decision code. An admitted macro snapshot must precede the decision, be no more than 36 hours old, be neither framework-only nor stale/carry-forward, have a valid score and retain HTTPS provenance; future data cutoffs, label/score mismatches or source-less rows fail closed. The 20:00 refresh may create a new training revision but cannot itself change a company action. Persistent evidence is grouped under the regime of its earliest frozen sample, and no regime cohort is an accuracy claim before forward outcomes mature.
+- `hone-shadow-policy-v1` is a read-only precommitment, not a portfolio. It may expose fixed simulation assumptions, latest point-in-time candidates and explicit blocking reasons, but must always remain unauthorized and unstarted until a future separately approved ledger exists. It has no broker/order/holding mutation path. Evidence-gate passage, a non-stress regime or an indicative weight band never by itself authorizes simulation, order drafting or execution; missing valuation, pending human decision review, causal conflict/rejection/falsification or stress must block the row and suppress its weight band.
+- `hone-shadow-protocol-governance-review-v1` is approval of a frozen protocol, not approval of a shadow portfolio. A future-implementation verdict requires the current long-horizon evidence gate, the exact currently approved reward-objective review, every fingerprinted protocol requirement and explicit confirmation that no ledger/order/broker authority is being granted. Records form one immutable optimistic chain; a stale reward review, changed policy fingerprint, branch, cycle or disconnected record fails closed. Even an approval may only allow a later implementation registration and must keep the shadow ledger, portfolio authorization, broker connection and trading authorization false.
+- A reward-design proposal is not a reward. `hone-reward-design-proposal-v1` must remain unapproved and computation-disabled until an immutable old-Wang/risk-owner governance record accepts or replaces its hard gates, weights and counterfactual protocol. `hone-reward-governance-review-v1` must bind to a SHA-256 fingerprint of that invariant objective, form one unbranched optimistic audit chain and require a written rationale. Offline-research approval additionally requires the long-horizon evidence gate, complete weights totalling 100%, every hard gate and explicit counterfactual confirmation. A governance approval still must not enable reward computation, shadow holdings, broker connectivity or trading. Future leakage, material factual error and risk-policy breaches are eligibility failures that profit cannot offset. No sample may acquire a reward value while its status is unconfigured; evaluation must remain point-in-time, walk-forward, costed, regime-separated and compared with predeclared simple/human baselines before any shadow-ledger discussion.
+- SEC corpus extensions must be additive by metric family, not in-place rewrites or full-filing duplicates. `financial-quality-v2` supplements preserve the existing base event ID family and contain only their new metrics. Every cash/debt/margin/cash-flow value retains its exact XBRL definition; fallback tags are alternatives, never components to sum. Instant balance-sheet facts may be sequentially compared only under the same definition/unit, while cumulative cash-flow facts stay year-over-year until a separately validated standalone-quarter derivation exists.
+- `hone-sec-same-filing-ratio-v1` may divide only active reported monetary-million facts with the exact same currency unit, filing URL, publication timestamp and full period text. Gross margin requires gross profit/revenue and operating margin requires operating income/revenue; cross-currency division is forbidden and no FX conversion is inferred. Every row freezes both claim IDs, XBRL bases and values and is recomputed during point-in-time validation. A computed ratio is reviewable deterministic evidence, not a source claim, pricing-power conclusion, promotion input, action signal or reward.
+- `hone-sec-margin-trend-v1` may compare only two valid margin-ratio rows with identical numerator/denominator bases, distinct source filings and chronological publication. YoY requires the same fiscal slot one year earlier; sequential allows Q2/Q1 and Q3/Q2 only. It stores percentage-point change, not percent growth of a percentage. Both nested ratios and the difference must recompute exactly; definition changes or non-comparable annual/quarterly durations fail closed. A trend remains a human-review candidate, not a moat, pricing-power, confidence or action rule.
+- `hone-operating-kpi-registry-v1` is the semantic admission contract for company/IR operating measures. Every KPI must belong to the active first-principles model and a real driver, retain definition/unit/period/source priorities and state whether it is standardized, within-issuer-only or a contract/milestone. Issuer-defined metrics require the issuer's verbatim definition and are never cross-company comparable by label alone. Duplicate identities, unknown drivers, missing context or incoherent comparability flags invalidate the point-in-time snapshot. A registry entry is not a fact: it cannot mark a driver measured, prove moat/pricing power, alter confidence/zone/action, configure reward or authorize any execution.
+- A deterministic SEC comparison, same-filing ratio or ratio trend remains traceable but unmeasured until its immutable evidence identity has an immutable `verified_against_source` maintainer review and a separate immutable single-evidence review is accepted with `supports` or `falsifies`, `speaker_confirmation=old_wang_confirmed_after_source_check`, the exact source-review ID and origin sample, explicit old-Wang attestation and a server-verified reviewer identity from `admins.old_wang_web_user_ids`. Administrator access or a checked self-attestation box alone is insufficient. Current writes use `hone-causal-evidence-review-v5-cross-snapshot-evidence-bound`; legacy v4 remains readable only under its original identity-bound contract, while v1/v2/v3 remain audit-only and are ineligible for measurement admission, dataset compilation and promotion. Maintainer source checks alone, cross-snapshot review conflicts, mixed/context-only effects, rejected reviews and missing reviews cannot admit measurement. Admission is only `partially_measured`; it cannot establish a moat, causal truth, ranking, valuation, action, reward, shadow state or execution authority.
+- The first-principles measurement backlog is an evidence-work queue, not an investment queue. Its five unresolved categories and counts must reconcile exactly with the latest unique-company driver set, all items must remain unmeasured, and candidate review counts must reconcile. `investment_ranking_enabled` and `action_authorized` must remain false and are covered by the hypothesis-map fingerprint.
+- `hone-operating-kpi-claim-v1` is a separate issuer-measurement claim, never a reinterpretation of generic earnings prose. It is currently limited to the SNDK/MU storage pilot and the pre-registered KPI IDs. Admission requires a supported company/regulatory primary event, HTTPS URL, exact issuer name and verbatim definition retained in the short source text, explicit period, scope, comparison basis, locator and a canonical unit for every number. While the original source body is still in memory, the host must independently find the emitted issuer name, definition and evidence quote in that body and stamp the source-verification marker; model self-attestation or a legacy array without this marker is inadmissible. Industry spot prices are not issuer ASP, pipeline is not signed orders, and sample/qualification/production milestones never collapse into one state. Corrections, withdrawals and explicit definition changes supersede earlier same-key semantics; unexplained definition/scope/unit/comparison/value differences conflict and are never averaged or treated as comparable. A valid row may partially measure only its registered driver, remains training-only until immutable human effect review, and cannot promote a source-claim driver, change confidence/zone/action/valuation, configure reward, create a shadow position or authorize execution.
+- A historical operating-KPI backfill must be manifest-bounded, dry-run-first and source-body verified. It may persist only compact claims and source metadata, never the fetched body; every retained issuer name, definition, value and evidence quote must be found in that body before it is dropped. Official hosts/symbols, document count and bytes are capped, a mismatch aborts before writes, writes require an explicit opt-in flag, IDs are deterministic and reruns are idempotent. A backfilled row has exactly the same training-only policy as a live reviewed row and cannot bypass human relationship/effect review.
+- The local public test account is never an administrator merely because development login is enabled. Administrator-only local testing requires the separate `HONE_PUBLIC_DEV_ADMIN` opt-in and still requires local deployment mode, local cloud mode and `HONE_PUBLIC_DEV_LOGIN`. Local backend startup and every development login synchronize that dedicated test account to the current admin flag, so restarting or logging in without the flag removes the test-only privilege even from an existing session; the flag has no authority in remote or cloud mode.
+- In the storage first-principles model, issuer-reported NAND bit shipments measure realized sold bit demand only. They must never be projected as wafer capacity, yield, utilization or effective deliverable supply. Storage registry v1 samples remain replayable historical artifacts, while storage-v2 is the only valid current mapping. Current review/evaluation surfaces deduplicate an unchanged source observation across registry versions by symbol plus immutable observation ID and retain only its latest semantic driver; this compatibility projection must not rewrite the old sample or carry an old-driver human verdict onto the new driver.
+- Decision completeness is a versioned evidence-readiness contract, never a rating or recommendation. Current rows must separately evaluate first-principles reality evidence, company value capture, financial transmission, multi-method valuation, falsifiability, timing/crowding, market regime and portfolio context. Directional readiness requires every directional layer; portfolio readiness additionally requires the user portfolio/risk budget. A company snapshot cannot fabricate that context. Legacy completeness versions remain replayable but are never reinterpreted as current policy, and the shadow protocol must reject legacy, incomplete or uncrowded rows.
+- A shadow-protocol approval is not a simulation authority. The only next permitted mutation is an immutable, fingerprinted implementation-specification registration bound to the exact current evidence, reward and shadow-governance revisions. A registered specification must remain `registered_not_started`; outbound network, external tools, production writes, ledger creation, running, holdings, order generation, broker access, shadow-portfolio authority and trading authority are all separate future gates and must fail closed.
+- A historical-outcome protocol approval is not a labeler or an outcome. `hone-historical-outcome-labeler-implementation-v1` may be registered only against the exact current governance review, protocol version and SHA-256 fingerprint. Its frozen contract consumes only separately sealed FMP adjusted-close snapshots, uses common asset/SPY sessions at 20/60/250-session horizons, is deterministic and fail-closed, and keeps outbound network, external tools, production writes, historical-state mutation, label writes and running disabled. `hone-historical-outcome-labeler-review-v1` is an immutable optimistic chain bound to that exact implementation fingerprint; an approval only permits a later offline-dry-run authorization review. Registration or review never generates an outcome, creates a training/reward label, authorizes shadow evidence or opens trading. A stale protocol/review binding, duplicate specification, changed code revision, branch, cycle, disconnected review, missing check or any runtime authority fails closed.
+- A sealed historical price input is not an outcome. `hone-historical-outcome-price-snapshot-v1-fmp-adjusted-close-sealed-input` may be created only for one exact currently approved seven-layer reconstruction and one exact currently reviewed labeler implementation. It freezes normalized FMP adjusted-close payload hashes, independently hashed asset/SPY series, requested date bounds, source URLs without credentials, common-session count and 20/60/250-session coverage; malformed, duplicate, non-positive, future, out-of-range or insufficient rows fail closed. It never stores a return, drawdown, direction, outcome label, training target or reward. Daily company-rating and key-event refreshes must never fetch future prices or mutate historical outcome labels. `hone-historical-outcome-dry-run-authorization-v1` is a separate immutable optimistic review chain bound to the exact snapshot, reconstruction, labeler implementation, protocol and code revision. Even a complete approval grants only eligibility to register a later offline dry-run implementation; offline running, label generation, training, reward, shadow evidence, order generation, broker access and trading remain false.
+- A registered historical dry-run implementation is not a run. `hone-historical-outcome-dry-run-implementation-v1` may be registered only from the server-projected current approved authorization and must bind its authorization review, sealed snapshot/payload/series fingerprints, reconstruction, reviewed labeler and labeler code revision, protocol, symbol/date range and complete 20/60/250 common-session coverage. Its own code revision, deterministic replay type, isolated contracts, metrics and sandbox flags are immutable and fingerprinted; duplicates, tampering, stale bindings, missing horizons or any enabled network/tool/write/run/order/broker/downstream authority fail closed. Status is exactly `registered_not_run`. Registration may only expose eligibility for a future separate run-authorization review and cannot calculate outcomes, write labels, train, reward, shadow or trade.
+- A deterministic SEC calculation is not automatically decision-grade financial evidence. Current financial projections must retain both original claim IDs, periods, values, official URLs and the visible calculation. Duration metrics may compare only when retained durations are within seven days; a fiscal-slot match cannot hide quarter-versus-cumulative mismatch. Mechanical anomaly flags (absolute change at least 200%, gross-margin change at least 40 percentage points, or gross/operating margin outside -100% to 100%) preserve the number but force data-quality review and prevent the financial layer from passing. These flags are not investment thresholds and cannot prove direction, moat, pricing power, reward or execution authority.
+- Daily company ratings must not report the SEC ledger as absent merely because the separate FMP fundamentals bridge is empty. Current rating snapshots may expose point-in-time SEC-derived metrics only with exact claim IDs, official URLs, visible calculations, quality warnings, a financial-evidence review status and a per-claim accounting trace containing the metric/tag basis, period, original numeric value, original filed currency unit and publication time. Current trace claim-ID and URL sets must exactly equal the projection source sets; duplicate, future, non-HTTPS, non-finite or unsupported monetary-unit rows fail closed. Before an exact immutable administrator review is `approved_for_rating`, such rows count as observations, not score-admitted financials: they cannot populate growth/pricing/financial factors, peer percentiles, score caps, valuation eligibility, company/portfolio gates, training labels, rewards or execution. Approval requires all six source, identity/period/unit, recomputation, corporate-action/restatement, warning-resolution and material-issue confirmations. The approval is bound to a canonical SHA-256 evidence fingerprint, including every claim's accounting basis and original unit, and the unbranched per-symbol audit tip; any value, period, calculation, source, claim identity, basis, unit, missing-check or warning change makes it stale and fails closed. Even an exact approval authorizes only the three daily-rating financial factors; valuation, training, reward, portfolio, shadow, trading and old-Wang-logic confirmation remain false. A fresh reviewed FMP row has precedence and must never be silently mixed with SEC metrics.
+- `hone-financial-review-readiness-batch-v1` is only an administrator attention queue over current financial evidence. Its default batch is at most five actionable companies and its full queue remains accessible. Rank may use audit status, evidence-staleness, explicit correction status, missing-check count, quality-warning count, retained source-claim count and a deterministic symbol tie-break only. It must not read price, company rating, valuation, outcome, return, position weight, action or any hidden old-Wang label. Selection cannot approve evidence, change a score, create a training label or authorize valuation, reward, portfolio, shadow or trading.
+- Crowding contracts are point-in-time pressure measurements, not greed/fear classifiers. V1 price/valuation snapshots remain replayable; current `hone-crowding-v2-price-path-partial` may additionally use only usable `hone-market-history-v1-nasdaq-daily-close` summaries. Missing components are never imputed, every component retains source/as-of/formula, and fixed interpolation/weights are HONE engineering proposals rather than old-Wang rules. Nasdaq history must disclose its undeclared adjustment basis; stale, short or split-like paths are review-only and policy-inert. Until positioning, attention, derivatives and longer-history evidence have their own validated contracts, crowding can never be `measured`; partial output fails completeness timing and shadow admission and cannot change action, confidence, valuation, reward, holding or execution.
+- Current `hone-crowding-v3-analyst-consensus-context` may additionally carry only a fresh, reconciled `hone-analyst-consensus-v1-nasdaq-observation`. Buy/hold/sell counts must sum to the stored total; bucket shares, dominant category and range width must be exactly recomputable; target prices must be positive and ordered; the sample must contain at least three recommendations and an observed historical series. This remains non-scored background because analyst independence, target-price contributor count, row timestamps and individual targets are unavailable. Missing or invalid rows remain absent, and V1/V2 replays must reject this newer field.
+- `hone-short-interest-v1-nasdaq-settlement` is non-scored context inside the current crowding record. It requires two valid Nasdaq settlement observations, an HTTPS source, a non-future latest date no more than 45 days old, positive share/volume inputs and a deterministically recomputable change. High or rising short interest is ambiguous and must never be converted by itself into greed, fear, bullishness, bearishness, moat, valuation or an action. Its presence cannot change the v2 pressure score or satisfy full-crowding, completeness, shadow, reward or execution gates.
+- `hone-options-positioning-v1-nasdaq-monthly-open-interest` and `hone-news-attention-v1-nasdaq-syndicated-14d` are non-scored point-in-time context. The option record requires a complete standard-month chain, two-sided positive open interest, recomputable ratios and fresh HTTPS provenance; it must not invent IV/skew or treat put/call structure as direction. The news record measures syndicated publication activity only, requires a complete 14-day window and recomputable 3-day versus prior-11-day rates, and must not claim sentiment, truth, independence or Nasdaq endorsement. Review-required, truncated or future context stays policy-inert. Neither record may change crowding score/action/confidence/valuation or satisfy completeness, shadow, reward or execution gates.
+- `hone-institutional-holdings-v1-nasdaq-13f-observation` is quarterly disclosure background, never a live institutional-flow or analyst-consensus signal. Active holder/share categories must reconcile to aggregate totals; observation/report dates, row truncation and source provenance must validate point-in-time. The top-50 rows may disclose mixed periods only and cannot be used as a full concentration estimate. A usable row must state the possible 45-day filing lag and cannot change crowding score, greed/fear interpretation, action, confidence, valuation, completeness, shadow, reward or execution authorization. Analyst ratings remain a separate explicit gap when a directly verifiable sample is unavailable.
+- `hone-active-review-batch-v3-source-ready-diversity` is a deterministic administrator attention queue, not training output. Every selection pass may select only pending evidence frozen no later than its decision timestamp whose `source_review_ready` contract passes: an openable HTTPS original locator, source metadata, active lifecycle and evidence-specific provenance sufficient to locate or recompute the displayed claim. Future prices, returns, outcomes, actions, effect labels and rewards are forbidden inputs. The default small batch first covers issuer KPI, computed comparison, computed ratio and source-claim contracts where available, then fills while keeping one row per company-driver and at most two rows per company; those diversity caps may relax for sparse filters, but source-readiness never may. `hone-investment-evidence-review-queue-v2-source-readiness` keeps blocked rows and exact reasons visible in the full queue. Readiness is not source verification or causal acceptance and must never create a label, alter a frozen decision or authorize reward, shadow or execution.
+- `hone-causal-training-dataset-v3-company-source-identity-component-isolated` is the only current causal-label training projection. Examples may contain frozen model/driver/evidence/source fields and the latest immutable causal target only; they must structurally exclude action, zone, confidence, reviewer prose/corrections, outcomes, drawdown and reward. Accepted-unclassified links and future-dated evidence are ineligible. Exact symbol/driver/observation reviews deduplicate to the newest audit while the underlying records remain immutable. Every example derives a set of source identities from event ID, normalized source URL, content SHA-256 when archived, and referenced source-claim IDs; companies and all of those aliases form one graph whose transitive connected components must occupy a single stable train, validation or sealed-holdout partition. One company, one source alias, one mirrored document or any derived claim that depends on it may never cross partitions. The public administrator report may expose counts, component statistics, both isolation checks and the fingerprint but never holdout examples/labels. V1/V2 projections remain replay-only. Dataset readiness is not training authorization and can never enable RL, reward, shadow or execution.
+- Every global source-claim lifecycle, operating-KPI lifecycle, computed comparison, same-filing ratio and ratio trend must partition by normalized company symbol before metric, basis, unit or period. Cross-company evidence can never conflict, supersede, withdraw, compare or form a trend with another issuer, and pair builders must reject symbol mismatch even when callers provide pre-grouped rows. Correcting this projection may change corpus diagnostics only; it cannot create a human label, approve evidence, alter a company action, authorize training, compute reward, create a shadow holding or enable execution.
+- Causal training advances through separate fail-closed authorities. `hone-causal-dataset-governance-review-v3` is an immutable single-chain verdict over one exact current dataset fingerprint and requires separate confirmations for company isolation and shared-source-identity connected-component isolation; it may only allow experiment registration and becomes stale on any dataset or policy change. Legacy v1/v2 governance records remain readable for audit but cannot authorize a v3 dataset. `hone-causal-training-experiment-v1` is a non-executing registry restricted to frozen-prompt baselines and bounded supervised causal classifiers: train/validation only, no holdout labels, network, tools, arbitrary code, production writes, deployment or trading. `hone-causal-blind-evaluation-v1` must use an independent sealed evaluator, three seeds, a frozen baseline and predeclared gates; passing only permits human component review. `hone-causal-component-drift-v1` blocks use without audited coverage, freezes promotion on warning drift and disables on contract change, future leakage or hard drift. None of these records authorizes reward computation, preference learning, RL, decision-agent replacement, shadow holdings, broker access or orders.
+- New causal labels are distilled, not inferred. `hone-causal-evidence-review-v5-cross-snapshot-evidence-bound` first requires an independent `verified_against_source` review and note whose stable evidence identity exactly matches the frozen symbol, driver, mechanism and observation; it persists the exact source-review ID and origin sample used. An unchanged evidence identity may reuse that review across daily snapshots, but changed evidence or conflicting source verdicts fail closed. Every current-v5 replay must reopen the independent source-audit context and prove that the referenced review still exists, is the latest non-conflicting review for that identity, remains `verified_against_source`, has the same note and came from the recorded origin sample; a self-consistent causal JSON file is insufficient. Replay reads build this context once per symbol and quarantine an orphaned, stale, mismatched or tampered causal record before dataset compilation. `evidence_mismatch` and `insufficient_source_context` are auditable exclusions, never negative causal labels. A source-verified causal answer must separately retain verbatim judgment, normalized interpretation, applicability boundary and observable falsifier. Only `old_wang_confirmed_after_source_check` submitted by the exact server-configured old-Wang web-user ID, with explicit attestation, is eligible for measurement admission or dataset compilation. Non-designated administrators may verify sources but may not submit the causal judgment. Legacy v4 retains only its original identity-bound eligibility; v1/v2/v3 rows, `source_checked_not_speaker_confirmed` and unconfirmed rows remain auditable but cannot become supervised targets. Silence, repetition, maintainer judgment, a client-supplied identity claim and model-generated prose never count as old-Wang confirmation.
+- A full-thesis review can never create or update a causal label. The client must omit causal-link payloads and the server must reject stale clients that submit them. Every new causal verdict must use the independent distilled-review audit chain; legacy embedded labels are replay-only.
+- A new company decision must freeze `hone-hari-confirmed-logic-gate-v2-applicability`. Only `LOG-V0001` through `LOG-V0006` from `hari-invest@0.1.0` may appear; candidate or unconfirmed logic is forbidden. A provisional increase candidate must fail closed to research-only unless current evidence passes the first-principles/reality, scarcity/differentiation/value-capture and future demand/supply gates. Outside a provisional increase the authorization field is false/not-applicable. Portfolio rules remain delegated and `portfolio_action_authorized` is always false at this layer. The numeric evidence mapping is a HONE engineering contract, not a new old-Wang threshold, and point-in-time validation must reject any action-relevant altered projection. V1 remains replay-only under its historical non-applicable-field semantics.
+- `hone-hari-logic-scenario-benchmark-v1-synthetic-non-authorizing` must exercise the same pure company-gate kernel used by new point-in-time decisions. Its fixed synthetic cases must cover `LOG-V0001`, `LOG-V0002` and `LOG-V0006` evidence failures and prove that `LOG-V0003` through `LOG-V0005` stay delegated to the portfolio layer. It may report code conformance only: it cannot represent real company evidence, historical performance, Old Wang review, a training label, investment validity, profitability, decision authority, portfolio authority, shadow eligibility or trading permission. A perfect pass rate proves only that the implementation matches these declared boundaries.
+- Position management must not derive `increase_candidate` directly from company-rating, valuation, macro or news fields. It must bind the exact current rating to a validated company decision using `hone-hari-confirmed-logic-gate-v2-applicability`; missing, mismatched or blocked decisions fail to low-confidence review. A passed company gate still has `portfolio_action_authorized=false` and enters only the separate LOG-V0003/4/5 portfolio review. Verified defensive risk triggers may still produce review/reduce research labels, but never an order.
+- Every new actor position snapshot must freeze `hone-hari-portfolio-readiness-v1`, exactly LOG-V0003/4/5 from `hari-invest@0.1.0`, no candidate logic and four false authorization fields for increase-candidate admission, portfolio action, shadow portfolio and trading until separately governed future versions exist. Current macro/exposure/theme observations are evidence only: unconfirmed bull/bear thresholds, target gross exposure, barbell role labels/ratios/correlations and sector budgets must remain named gaps. HONE concentration bands cannot be promoted into Hari rules. A passed company gate plus a failed portfolio gate produces low-confidence review, not an increase candidate.
+- Model unavailability is an explicit state, never a neutral investment signal. New portfolio-news snapshots must retain a versioned model-health record with resolved model identity, requested/analyzed/failed counts and normalized failure reasons. Legacy or incomplete health fails closed. Source-only facts may remain readable with provenance, but a position may reach hold/increase/reduce logic only after a fresh complete source scan and either no material event for that symbol or model analysis of every retained event. Otherwise the only permitted action is low-confidence human review; no training label, reward, shadow order or execution permission may be inferred from the outage.
+- All cached reports that contain model-derived interpretation must use the shared model-health contract rather than inferring success from non-empty output. Timeouts are report budgets, not per-item multipliers; derived reports must scope health to the rows they actually consume. A primary-source milestone can enter a factual evidence ledger without model analysis, but any direction, impact, author stance, counterpoint, investment transmission or action that depends on the model remains unavailable. Saved-report chat context must carry the same per-item analysis status and may not regenerate a missing interpretation from prose alone.
+- Every company-aware chat path must begin from the same validated point-in-time decision revision used by daily ratings and position management. `hone-investment-decision-chat-context-v1` is a bounded read-only projection, not a second policy engine: a fresh projection supplies the only frozen zone/action baseline; new current evidence may change it only with an explicit strengthen/weaken/falsify explanation. Missing, invalid or expired context disables action carry-forward and forbids reconstructing an action from a score, historical company card or model memory. Candidate logic is forbidden and portfolio, shadow and trading authorization must remain false.
+
+## Historical Judgment Anchors
+
+- A transcript, company card or model summary is never automatically a historical decision. A candidate must bind one approved global research item, its complete-file SHA-256, original claimed date, mapped symbol, source locator and an exact excerpt present in the complete stored UTF-8 text.
+- Candidate normalization must remain explicitly unconfirmed. A confirmed/revised historical anchor requires an immutable second review that explicitly verifies source time, Old Wang speaker identity and exclusion of hindsight; silence or an administrator-created candidate is not confirmation.
+- Confirmed historical anchors are benchmark-only. Until a separately reviewed point-in-time reconstruction exists and the separately frozen outcome-labeling protocol is explicitly enabled, they must not increment investment training counts, evidence-gate counts, reward inputs, shadow readiness, portfolio actions or trading authority.
+- Candidate creation and each per-candidate review chain must be serialized. Every read must revalidate the complete source binding and exact candidate-review fingerprint; stale, missing, altered, branched or disconnected evidence fails the entire registry closed.
+- Historical source bytes remain runtime research-library data and are not copied into repository fixtures or public responses. The administrator registry exposes metadata and selected exact excerpts only.
+- Transcript discovery is read-only and high-recall, not a decision extractor. Explicit action-word hits may expose a bounded exact excerpt plus source binding, but may never create a candidate or infer a thesis. Negated, conflicting, quoted third-party or audience-question language must not receive an automatic action prefill; any remaining first-person hint still requires separate speaker, time, action and thesis review before an administrator can save a candidate.
+- A historical discovery review batch is only an administrator attention order over the complete queue. It may use transcript speaker-label frequency, explicit first-person context, risk exclusions and source/company diversity, but never future prices, outcomes, returns, action success, human effect labels or reward. A dominant transcript label is not speaker identity; selection cannot create or confirm a candidate, populate a thesis, enter training, affect reward/shadow readiness or authorize execution.
+- A historical discovery screening is immutable administrator triage over one exact hash-bound hit. Its verdict may only route the hit to continue candidate review, not-decision context or needs-more-context. It must never create a candidate, confirm speaker identity, action or investment logic, enter a benchmark or training set, affect reward/shadow readiness or authorize execution. A continue verdict still requires a separately human-written candidate and the independent Old Wang confirmation chain.
+- Historical screening corrections are an append-only audit chain, never an overwrite or deletion. A correction must bind the exact current tip, change the verdict and preserve a written reason. The registry must fail closed on stale tips, branches, cycles, disconnected history or directory-binding drift, and only the latest valid single tip may affect queue routing. The bounded surrounding context is display evidence only and grants no candidate, identity, action, logic, training, reward, shadow or trading authority.
+- A confirmed or revised anchor must record an exact decision-availability timestamp whose Shanghai date equals the source date and which is no later than the immutable review. Date-only provenance is not sufficient for point-in-time evaluation.
+- A confirmed anchor is still not a point-in-time state. `hone-historical-state-reconstruction-candidate-v1` must cover industry thesis, company fundamentals, financial verification, valuation, crowding, market regime and portfolio context exactly once. Each component must contain complete-source, hash-bound evidence available no later than the decision timestamp or an explicit missing reason; missing history must never be model-filled.
+- A reconstruction becomes benchmark-state eligible only after a separate immutable review confirms anchor identity, full source bytes, every availability timestamp, no future information, preserved missingness and faithful component interpretation. Upstream anchor drift invalidates the approval. Eligibility does not authorize outcome labeling, training, reward, shadow, portfolio action or trading.
+- Historical outcomes, when separately authorized in the future, must be stored outside the reconstructed state under the predeclared 20/60/250 common-session asset/SPY adjusted-close protocol. Future prices, returns and drawdowns may never rewrite the reconstructed state or its human review.
+- The historical outcome protocol has its own deterministic fingerprint and immutable optimistic review chain. Approval requires at least one human-approved benchmark state and all pre-outcome, adjusted-close, common-session, benchmark, future-isolation and fail-closed checks; an empty benchmark set can never be approved.
+- Historical outcome-protocol approval is not label authorization. It can only make a separately registered labeler implementation eligible for review; outcome generation, decision training, reward evidence, shadow evidence and trading remain false until later independent gates exist and pass.
+- `hone-empirical-validation-readiness-v1-non-authorizing` is a fail-closed read projection over two independent evidence lanes: the current immutable human-causal dataset and the historical anchor → seven-layer point-in-time reconstruction → pre-frozen outcome-protocol chain. Missing or unreadable registries must become explicit blockers, not zero-count success. Dataset-governance readiness and historical labeler-implementation-review eligibility remain separate milestones; neither permits label generation. The combined readiness may become true only after both lanes pass and outcome-label generation is separately enabled. The projection itself cannot create an anchor, reconstruction, label, training run, reward, shadow holding, portfolio action or trade.
+
+## Key-event Identity and Deduplication
+
+- Exact URL normalization is necessary but insufficient for event identity. Reprints may merge only under the versioned high-confidence contract: same first-principles topic, same explicit milestone class, at most 96 hours apart, a shared distinctive entity/product anchor, and exact normalized title or title-token Jaccard of at least 0.80.
+- Generic headings, viewpoint/unclear material, disjoint numeric parameters and events outside the time window must not merge. In particular, different bandwidth, capacity, model-version, order-size or financial-period numbers are separate evidence unless independently reconciled later.
+- A merged event keeps every source URL, publication time, tier and verification state. The canonical source must be selected deterministically with regulatory and issuer-primary evidence ahead of secondary, research and opinion material; replacing the display source must not erase provenance or create a new event.
+- Multiple sources for one event disclose corroboration but cannot increase event count, scoring weight, training frequency or decision confidence by themselves. Deduplication never upgrades a clue to confirmed evidence and never makes an unavailable model interpretation decision-usable.
+
+## First-principles Hypothesis Map
+
+- A cross-company first-principles map must select exactly one newest valid point-in-time sample per normalized company before aggregation. Historical revision count, repeated sources and duplicate sample IDs must never increase company or industry weight.
+- Demand, effective supply and company value capture are separate evidence layers. Missing layers stay missing; a company rating, price move, historical research narrative or model prior cannot fill them. Falsification blocks take precedence over apparent coverage in the displayed state.
+- Traceable coverage and measured coverage are different contracts. Primary context, structured source claims and deterministic computations may establish a traceable evidence path but cannot mark a driver measured; only direct metrics, proxies and active operating KPIs may enter the strict measurement tier. Measured company counts must be subsets of traceable company counts.
+- An immutable observation attached to multiple driver families is counted once per normalized company in evidence-path diagnostics. Every unique pathway count must reconcile exactly to the unique observation total; this deduplication changes display diagnostics only and cannot promote causal confidence.
+- The map is evidence-readiness diagnostics, not an opportunity rank, expected-return model, portfolio allocation or action. Its fingerprint must bind the exact latest samples, model statistics, blocking states and closed authorities; duplicate companies/samples, count drift, fingerprint mismatch or any enabled ranking/action fails closed.
+- Issuer operating-KPI extraction has one shared, versioned symbol-to-model catalog across storage, compute, optical, power, platform and application companies. A prompt may expose only the current symbol's allowlisted KPI IDs; an unsupported symbol or a cross-model KPI must produce no admitted operating claim.
+- Every admitted operating KPI must retain the issuer's metric name, definition, value, measurement scope and evidence quote verbatim inside one bounded primary source. Model output cannot substitute for source verification, and a missing official metric must remain missing rather than be inferred from prose, spot prices or another company.
+- The current Web decision registry must match the shared catalog's KPI-to-driver pairs exactly. The historical storage v1 registry is replay-only and may be checked by KPI identity without rewriting its old driver mapping; it cannot authorize new writes.
+- A catalog-admitted operating KPI remains `training_only_pending_human_review`. It may partially measure only its registered driver and cannot by itself establish a moat, validate causality, alter valuation or action, rank a company, create a reward, open shadow authority or authorize trading.
+- A writable operating-KPI backfill must use the v2 manifest, pin a lowercase SHA-256 for the complete primary-source bytes and declare exact or conservative date-only source-time precision. Network redirects, unapproved hosts, wrong file signatures, digest drift and missing artifact metadata fail closed before event insertion.
+- V2 source bytes are create-once content-addressed objects. Their path, format, byte length, source digest and extracted-text digest travel with every admitted claim; an existing object whose bytes differ from the digest is an integrity failure, never an overwrite opportunity.
+- Current power backlog evidence must retain the issuer's original RPO/order/reservation definition and unit under `generation_equipment_backlog`. Historical `power_backlog_mw` registries are replay-only and cannot be emitted by a current snapshot.
+- Storage revenue growth, enterprise SSD revenue/bit mix, signed supply-agreement count and order/RPO value are different issuer facts. They must use separate KPI IDs and retain their own denominator or contract definition; none may be relabelled as another to fill a missing driver.
+- A verbatim numeric claim may match a standalone English integer word only for zero through twenty. Substrings, compounds outside that bounded vocabulary and model-paraphrased numerals remain invalid.
+- Historical storage v1/v2 registries are replay-only. Current storage snapshots must emit v3 with all eight KPI-to-driver pairs; compatibility cannot authorize an old registry for new evidence writes.
+- Operating KPI attachment applies to all six registered first-principles models. A symbol/KPI/driver mismatch yields no observation; a valid claim may mark only its registered driver partially measured and cannot create any downstream investment authority.
+
+## 投资决策大脑：转换规范独立复核边界
+
+- 离线数据集转换规范必须能够由两个独立实现得到唯一结果。切分规范必须枚举全部时间连续的连通分量边界，以精确整数偏差的字典序目标选择唯一 70/15/15 边界，只在时点完全相同时使用 SHA-256 破同分，并绑定冻结的标的/SPY 共同交易日索引、250 个共同交易日 purge/embargo 与空分区失败规则。
+- “七层特征”不是只允许七个 namespace。当前合同只允许 65 个逐项冻结语义的 feature ID；每项都必须有历史时点可用的精确制品版本、来源、available-at、值类型、单位/期间/会计/范围及显式缺失。改名、同 namespace 异义字段、后来重述、当前持仓、未来信息、结果或标签字段一律失败关闭。
+- 第二十六阶段复核人必须独立于数据集、正式标签、治理和规范登记的完整角色链。复核必须精确绑定当前规范及所有上游哈希，并用独立预期语义目录复核边界和全部 65 个 feature ID；不能以注册生成器自身的断言代替独立审计。
+- 规范复核批准只开放未来隔离转换实现的登记资格。实现登记、manifest/bundle 生成、特征连接、目标定义、训练、奖励、影子组合、订单、券商和交易都必须保持关闭并分别建门禁；任何字段缺省不得解释为授权。
 
 ## Change Constraints
 
@@ -307,3 +407,849 @@ Last updated: 2026-08-06
 - 题库只在前端定义，后端只做结构校验（键的字符集与长度、题数、选项数、类型）。后端不认识任何选项文本，所以改题、加题、调整选项都不需要动后端与数据库。超长开放题截断而不是拒绝——一段认真写的长回答不该整条丢失。
 - 提交限流分三层：同 IP 冷却、进程内每小时配额、按摘要的落库计数。只有最后一层跨副本且能在重启后存活，前两层是快速拒绝而不是保证。落库计数失败时放行并记 warn，不能因为计不了数就丢掉一个正常用户的回答。
 - 问卷页面上对隐私的承诺与实现是同一件事的两面：改动存储行为时必须同步改 `CONTENT.survey.privacy`。
+
+## 投资决策大脑：存储合同指标边界
+
+- NBM/RPO、订单/积压、协议数量、收入增长、产品收入或位元占比必须分别保存；任何一项都不能被别名、模型摘要或确定性投影替代另一项。
+- 存储 NBM RPO 必须保留合同覆盖的终端市场、已开票/未开票状态、预计确认期和可终止/保护条款。范围含 Edge 时不得写成纯数据中心订单；RPO 不等于收入、现金、不可取消保证或估值。
+- 公司/SEC 一手财务事实可以进入待复核证据层；未完成不可变人工复核的财务观察不得进入每日评级动态因子，也不得绕过七日内至少两种方法的三情景估值门槛。
+
+## 投资决策大脑：估值准备与训练样本隔离
+
+- 评级财务复核与估值用途复核是不同权限。`approved_for_rating`、SEC 一手来源、当前行情或估值准备度中的任一项，都不能单独授权目标价、三情景估值或估值评分。
+- SEC 补充估值输入只有在独立不可变复核链的当前有效尖端中才可使用：必须精确绑定当前财务证据指纹、补充输入指纹、复核记录 ID 和输入日期，包含完整股本与净现金/负债、至少两种可计算方法、一手来源/口径及全部八项确认。输入超过七天、证据变化、审计链无效或投影绑定不一致时必须失败关闭。
+- 估值用途批准只允许该精确输入包进入估值计算。它不能批准评级财务、老王逻辑、投资动作、训练、奖励、组合、影子组合、订单或交易；这些权限不得由字段缺省、版本兼容或模型文本推断。
+- 现金、债务与 FCF 绝对额必须从冻结的点时来源声明确定性重放；“现金减当前 XBRL 长期债务标签”必须明确标为非完整净现金。任一期 FCF 非正时不得计算增长率，也不得用旧快照或模型推断回填。
+- 估值输入不足时必须逐方法显示缺口并保持估值为空。当前价可用于反向问题的市场定位，但不能使任何正向方法自动变为可用。
+- 训练、评测与管理员单标的回放都必须逐条隔离无效历史样本并继续读取其余有效样本。管理员回放必须同时返回隔离数量与受限错误诊断；全部记录无效时必须明确显示“均未通过校验”，不能伪装成无历史。隔离不是修复、删除或认可坏样本，坏样本不得进入训练、奖励或晋级统计。
+- A single-stock price-move explanation is not an investment-decision authorization. “Why did it rise/fall” must use the dedicated five-section attribution route, classify causes as direct company events, indirect related-entity/industry mappings or background factors, and attach a confidence level. Every occurred-event fact remains bound to the verified same-clause date/domain evidence contract. Unless the user also asks what to do, the answer must not publish buy/hold/add/reduce/sell, stop-loss, target-price or precise entry-level instructions.
+- Investment prose must preserve metric and domain semantics at publication time. Negative earnings or EBITDA produce `N/M`, never a negative P/E or EV/EBITDA multiple. A first claim of GAAP profitability must surface operating profit/loss and material non-recurring or unrealized income in the conclusion. Exact Bull/Base/Bear price targets require auditable inputs, formula, share count and dilution bridge. RSI/overbought, moving averages, programmatic buying and short covering require reproducible dated evidence and internally consistent values. MRD means residual-disease detection/recurrence monitoring and must not be relabelled as general-population cancer screening.
+- A dry-run run-authorization review is not execution authority. It must bind the exact current `registered_not_run` implementation, immutable code revision, approved upstream authorization, sealed snapshot, reconstruction, labeler and protocol; every review carries a self-hash and an exact previous-review hash. The implementation registrant cannot approve the same implementation. Approval may only expose future isolated-runner registration eligibility. `run_authorized`, actual offline execution, output creation, label admission, training, reward, shadow writes, order generation, broker access and trading must remain false; stale bindings, missing checks, hash drift, self-approval, branches, cycles or disconnected chains fail closed.
+- An isolated historical dry-run runner registration is not an invocation. `hone-historical-outcome-dry-run-isolated-runner-v1` must bind one exact current approved run review, implementation/code revision, sealed snapshot and series, reconstruction, labeler and protocol plus an immutable runner artifact SHA-256. Its status is exactly `registered_not_run`; it has no callable entrypoint, inherited environment, secrets, network, external tools or production access. Read-only input/root filesystems, unprivileged execution, no-new-privileges, ephemeral output and fixed time/memory/CPU/process/output limits are mandatory. Registration may only expose eligibility for a later independent first-execution authorization review. Invocation, output creation, labels, training, reward, shadow, orders, broker access and trading remain false; tampering, duplicates, stale review bindings, environment access or any enabled downstream authority fails closed.
+- A first-execution authorization review is not an invocation. It must bind one exact current isolated-runner specification, independently verified artifact SHA-256, immutable code revision, current upstream audit chain and unchanged sandbox/resource limits. The runner registrant cannot approve it. Approval grants at most one future invocation and expires exactly 24 hours after submission; the review registry itself must have no callable endpoint, must not consume the authorization and must not start a process or create output. Output admission, labels, training, reward, shadow, orders, broker access and trading remain separate closed gates. Missing checks, unavailable/unreproducible artifacts, stale bindings, expiry, hash drift, self-approval, branches, cycles or any execution/write/trading side effect fail closed.
+- A one-shot historical dry-run execution is not an outcome-label admission. `hone-historical-outcome-dry-run-execution-attempt-claim-v1` must be written create-once before computation and must consume one exact current unexpired authorization at most once. The current runtime binary SHA-256 and sealed snapshot/upstream bindings must be reverified before claim. Only the fixed bounded pure-function backend may run; arbitrary binaries, shell commands, inherited environment, network, external tools, child processes and production/history/label/training/reward/shadow/order/broker/trading capabilities are forbidden. Inputs above the static series/common-session limits fail before claim. Success and failure must both preserve immutable result hashes, duration, exit/stdout/stderr metadata and actual ephemeral-directory cleanup state; failure still consumes the authorization. A computed 20/60/250-session output remains explicitly untrusted and cannot become a label, training target, reward, shadow position, order or trade until separate independent structural validation, deterministic recomputation and later label-admission review all succeed.
+- An independent historical-output validation is not outcome-label admission. It must bind one exact immutable claim/result/output, the current sealed snapshot, frozen protocol and all upstream hashes; the validator must differ from the execution invoker, runner registrant, first-execution reviewer and run-authorization reviewer. A separately implemented traversal must reconstruct common sessions and recompute every frozen 20/60/250-session metric, while canonical structure, provenance, closed capability flags and output SHA-256 are verified. Duplicate validation, replay, stale bindings, tampering, missing horizons, non-finite values, invalid drawdown signs or any bitwise metric mismatch must create an immutable failure or fail closed. Passing validation cannot create or admit a label and cannot authorize training, reward, shadow evidence, orders, broker access or trading.
+- An independent historical outcome-label admission review is not label materialization. It must bind one exact current passing validation plus the immutable claim/result/output, sealed snapshot/series, frozen protocol and all upstream hashes in an append-only self-hashed chain. The reviewer must differ from the validator, invoker, runner registrant and both authorization reviewers, and must explicitly assess protocol applicability, complete common-session horizons, adjusted-close/corporate-action basis, benchmark comparability, event-time isolation, missingness, sample-selection and survivorship bias, manual overrides, semantic inference and every closed downstream authority. Rationale and known limitations are mandatory. Approval may expose only future materialization eligibility for that exact input; it cannot write a label, start materialization, train, reward, create shadow evidence, order, access a broker or trade. Stale bindings, failed/unvalidated inputs, replay, forks, cycles, hash drift, self-review or any downstream authority fail closed.
+- A historical outcome-label materialization implementation registration is not materialization or label writing. `hone-historical-outcome-label-materialization-implementation-v1` must bind one exact current admitted review and its validation, claim/result/output, sealed snapshot, reconstruction, protocol, 20/60/250 endpoints, recomputed-metric hash and known limitations in a create-once content-addressed record. The only permitted output contract is a deterministic raw validated outcome envelope that bitwise preserves asset, benchmark and excess returns plus maximum drawdown, provenance and limitations. It may not fetch, fill, recompute, round, override or infer direction, rating, action, position or reward. Status must remain `registered_not_run`; network, tools, production/history mutation, run authority, label writes, training, reward, shadow, orders, broker access and trading all remain false. Duplicate semantics, stale admission, hash drift, missing limitations or any enabled inference/downstream authority fail closed.
+- A historical outcome-label materialization run-authorization review is not a runner registration, execution or label write. `hone-historical-outcome-label-materialization-run-authorization-review-v1` must bind one exact current `registered_not_run` materializer plus its admission, validation, output, sealed snapshot, protocol, code revision and known limitations in an append-only self-hashed chain. The reviewer must differ from the implementation registrant, admission reviewer, validator, execution invoker, runner registrant and both prior authorization reviewers. Approval requires reproducibility, current bindings, deterministic raw-envelope-only semantics, bitwise metric preservation, provenance/limitation preservation, create-once isolation, missing-data failure and explicit zero network/tool/production/semantic/downstream authority. It may expose only future materialization-runner registration eligibility; runner registration, run authorization, execution, label writing, training, reward, shadow, orders, broker access and trading remain false. Stale tips, binding drift, missing checks, self-review, forks, cycles, tampering or enabled downstream authority fail closed.
+- A historical outcome-label materialization isolated-runner registration is not an invocation or a label write. `hone-historical-outcome-label-materialization-isolated-runner-v1` must bind one exact current approved stage-fifteen review, materializer implementation, admission/validation/claim/result/output, sealed snapshot/reconstruction/protocol, immutable code revision and artifact SHA-256 in a create-once content-addressed record. Its fixed sandbox has no callable entrypoint, inherited environment, environment variables, secrets, network, external tools, child processes or production/history access; read-only inputs/root, an ephemeral working directory, create-once validated output, unprivileged/no-new-privileges execution and fixed time, memory, CPU, process and output limits are mandatory. Status must remain `registered_not_run`, and registration may expose only eligibility for a later independent first-execution authorization review. Invocation, materialization, output or label creation, training, reward, shadow, orders, broker access and trading remain false; duplicate semantics, stale upstream bindings, artifact/resource drift or any enabled capability/downstream authority fails closed.
+- A historical outcome-label materialization first-execution authorization review is not an invocation, claim, materialization or label write. `hone-historical-outcome-label-materialization-first-execution-authorization-review-v1` must bind one exact current stage-sixteen runner, independently verified artifact SHA-256, immutable code revision, fixed sandbox/resources and the complete materialization/admission/validation/execution/snapshot/reconstruction/protocol chain in an append-only self-hashed review. The reviewer must differ from the runner and materializer registrants, materialization run reviewer, admission reviewer, validator, original invoker, original runner registrant and both original execution-authorization reviewers. Approval requires all fourteen exact-binding, artifact, isolation, raw-envelope, zero-capability and single-use checks, grants at most one future invocation and expires exactly 24 hours after submission. The review registry must have no invocation endpoint and cannot claim, consume, run, create output, write labels, train, reward, shadow, order, access a broker or trade. Stale bindings, missing checks, artifact/resource drift, role conflict, expiry, hash drift, forks, cycles or any enabled downstream authority fail closed.
+- A stage-eighteen materialization invocation accepts only one exact current, unexpired and never-claimed stage-seventeen authorization. It must persist a create-once claim before projection and revalidate the runtime artifact plus every runner, implementation, admission, validation, original output, snapshot, reconstruction, protocol and metric binding. Claim creation consumes the authorization; later failure, cleanup failure or process interruption must not make it replayable.
+- The materialization executor is a fixed pure projection over the already independently validated outcome object, never an arbitrary binary, shell, model or tool call. It bitwise-copies only the frozen 20/60/250-session metrics, provenance and known limitations and has no ambient filesystem/environment, network, external-tool, child-process, production-data, history-mutation or downstream-write capability.
+- A successful stage-eighteen output is always an untrusted raw envelope, not an outcome label. It must record independent validation as incomplete and keep direction, rating, action, position, training, reward, shadow, order, broker and trading states false. A later independent structure/provenance/bitwise validation is mandatory before any separate label-admission discussion.
+- A stage-nineteen materialization-output validation is create-once for one exact completed stage-eighteen claim/result/output. Its validator must be absent from the complete materialization and original execution actor set, and the validation implementation must not reuse the materialization projection. It must rebind the current admitted source, verify canonical output hash, schema, closed authority flags, complete provenance and known limitations, and compare every 20/60/250-session metric by IEEE-754 bit pattern. Replay, actor overlap, binding drift, one-ULP difference, invalid horizon/value/drawdown or downstream authority fails closed. A passing record only validates the untrusted envelope; it cannot create or admit a formal label, authorize a label write, train, reward, shadow, generate orders, access a broker or trade.
+- A stage-twenty formal-label-write authorization review is not a writer or a label. It must append a self-hashed review over one exact current passing stage-nineteen record plus its claim/result/output, admitted source, snapshot, protocol, metric digest and fixed raw-outcome label contract. The reviewer must be absent from the validator and complete prior actor set. Approval requires all twelve binding, raw-semantics, provenance, limitation, create-once, single-use/24-hour-expiry, storage-isolation and zero-capability confirmations. It grants at most one future create-once write, but the review registry has no writer endpoint, cannot consume the allowance and must keep label-written, training, reward, shadow, order, broker and trading authority false. Replay, stale binding, contract drift, role overlap, missing checks, chain forks/cycles or enabled downstream authority fails closed.
+- A stage-twenty-one formal raw-label write is not training admission. It may accept exactly one current, unexpired and never-claimed stage-twenty approval and must create an immutable claim before any label write; that claim consumes the approval even when serialization, storage or the process later fails. The formal label is create-once, stored outside training and reward stores, and permits exactly eight semantic payload fields: symbols, decision-available time, common-session count, the frozen 20/60/250-session asset/SPY/excess-return and maximum-drawdown metrics, provenance, limitations and immutable bindings. Every metric is preserved by IEEE-754 bit pattern. It must never fetch, fill, recompute, round, overwrite or infer direction, rating, action, position or reward. Success, failure and interrupted-claim states stay auditable, replay fails closed, and all training, reward, shadow, order, broker and trading authority remains false until a separate independent training-admission validator exists and passes.
+- A stage-twenty-two formal-label validation is only offline-dataset-candidate admission. It must reopen one exact create-once label and claim, the exact stage-twenty approval and the complete current upstream chain. Its validator must be absent from the writer and every preserved producer/reviewer actor, must not reuse the writer's validation code, and must independently verify canonical label/claim hashes, the fixed eight-field semantic payload, provenance, limitations and each frozen 20/60/250-session metric by IEEE-754 bit pattern. The independently read metric-vector hash must equal the frozen recomputed-metric digest. Replay, role overlap, stale bindings, contract drift, one-ULP change, invalid horizons or enabled downstream authority fails closed. A pass admits only the immutable validation record to an isolated offline-training-dataset candidate set; it cannot copy into training storage, assemble/version a dataset, authorize or run training, write a target/reward, shadow, order, access a broker or trade.
+- A stage-twenty-three offline historical-outcome dataset is an immutable raw-outcome archive, not a trainable dataset. It must assemble the exact complete current stage-twenty-two passing set, bind every label/claim/validation/upstream hash, preserve raw metrics, provenance, limitations and actors, and reject duplicate labels or conflicting symbol/benchmark/decision-time identities. Every later content-addressed version must name the latest parent, retain every prior entry byte-for-byte in prefix order and only append new candidates. It may not create features, infer semantic targets, assign train/validation/test splits, approve dataset governance, run training, write rewards, create shadow positions, generate orders, access brokers or trade. Candidate omission, prior-prefix rewrite, parent/manifest drift, hash mismatch or any downstream authority fails closed.
+- A stage-twenty-four offline-dataset governance approval is only eligibility to register a later transformation specification. It must be an append-only self-hashed review bound to the exact current dataset content, manifest and candidate-set hashes, with a reviewer outside the assembler and complete preserved label/validation actor set. The future split policy must keep transitive company, historical-event and source-family connected components indivisible, assign each component to exactly one stable 70/15/15 train/validation/sealed-holdout partition, preserve time order, apply a 250-market-session purge/embargo and withhold holdout labels from the training worker. The future feature policy must require immutable artifact/source/version provenance and `available_at_utc <= decision_available_at_utc`, forbid outcome/label/validation/admission/dataset/future-market/split fields, and fail closed on missing or ambiguous availability without backfill or interpolation. The review itself must not assign a split, join a feature, create a target, authorize or run training, write reward, create shadow evidence, generate orders, access a broker or trade. A new candidate-set binding makes prior approvals non-current; stale tips, role overlap, hash drift, forks, cycles or any enabled downstream authority fail closed.
+- A stage-twenty-five transformation specification registration is only eligibility for later independent specification review. It must be create-once and content-addressed, bind one exact current dataset and governance approval, and freeze server-generated contracts for transitive component isolation, chronological contiguous 70/15/15 boundaries, SHA-256 equal-time tie-breaking, a 250-session purge/embargo, sealed-holdout label isolation and exactly seven point-in-time feature namespaces with complete artifact/source/version/availability provenance and explicit missingness. The registrar must be absent from the complete dataset and all governance-review actor sets, and registry reads must rebind that exact exclusion set. Registration must generate no split assignment or feature bundle, perform no join, infer no semantic target and authorize no training, reward, shadow, order, broker or trading capability. Duplicate approval registration, upstream drift, actor drift, schema/hash drift, backfill, interpolation or enabled downstream authority fails closed.
+### 隔离转换实现登记不等于代码执行
+
+- 只有当前独立批准的转换规范可以登记一个 create-once、内容寻址实现；同一批准不得覆盖、重复或分叉登记。
+- 实现必须精确绑定全部上游哈希，并冻结工件、代码 revision、split/feature 算法版本、serializer、输入输出 schema 和静态资源边界。
+- 登记记录不得拥有 callable entrypoint、环境继承、环境变量、密钥、网络、外部工具、子进程或生产读写能力。
+- `registered_not_run` 只允许进入独立实现复核；不得生成 manifest/bundle、join 特征、定义 target、训练、奖励、影子、订单、券商或交易。
+
+### 隔离转换实现复核不等于 runner 登记或执行
+
+- 独立复核人必须排除完整上游角色和实现登记者；复核链必须追加式、自哈希、精确绑定前序和当前实现。
+- 审计必须独立复现工件摘要并重新验证代码 revision、split/65 项 feature 实现、canonical serializer、固定 schema 与单 subject/2048 MiB 资源上限，不能只信任登记器字段。
+- 可批准的唯一结果是未来隔离 runner 规范登记资格。runner、执行授权、执行、manifest/bundle/join、target、training、reward、shadow、order、broker、trading 必须继续为 false。
+
+### 隔离转换 runner 登记不是执行授权
+
+- runner 规范必须 create-once、内容寻址并绑定当前有效的实现独立批准、实现和完整上游；状态只能为 `registered_not_run`。
+- runner 登记人不得属于数据集、治理、转换规范、规范复核、实现或实现独立复核的完整角色链。
+- 工件 SHA-256、不可变代码版本、固定运行时身份/版本、只读输入、内容寻址 create-once 输出和静态资源上限必须进入自哈希记录，不得由运行时覆盖。
+- `callable_entrypoint_registered`、首次执行授权、环境继承/变量、密钥、网络、工具、子进程、生产读写与历史修改必须为 false。
+- 唯一下一门禁是独立首次执行授权复核。manifest/bundle/join/target/training/reward/shadow/order/broker/trading 必须继续为 false。
+- 角色重合、绑定漂移、工件或合同不一致、沙箱能力打开、复核链分叉/循环/篡改均失败关闭。
+
+### 隔离转换首次执行授权复核不是 claim 或执行
+
+- 复核链必须按精确 runner ID 隔离、追加式、自哈希并绑定唯一前序；读取时必须拒绝分叉、循环、断链、前序哈希漂移、重复或文件名不匹配。
+- 复核者必须排除 runner 登记者和数据集、治理、转换规范、规范复核、实现、实现复核及此前授权复核完整角色链；排除集必须进入哈希并按链重建。
+- 批准必须同时复现 runner 工件摘要并确认代码可复现/工件可用、只读输入与根文件系统、非特权/no-new-privileges、create-once 内容寻址输出、独立输出校验、固定资源，以及无环境、密钥、网络、工具、子进程、生产或历史状态能力。
+- 批准最多授予提交后 24 小时内的一次未来隔离调用资格。授权记录不得 claim、消费、调用、执行或创建输出；过期或已 claim 必须失败关闭。
+- output validation、manifest/bundle/join/target/training/reward/shadow/order/broker/trading 必须继续为 false；下一门禁只能是独立实现的单次执行尝试。
+
+### 隔离转换一次性执行结果不是正式训练制品
+
+- 只有当前、未过期、未 claim 且完整绑定可重开的授权可以进入调用；运行制品摘要必须在 claim 前重新验证。
+- claim 必须先 create-once 落盘；claim 后成功、明确失败或只有 claim 的中断都永久消费授权，同一 runner/授权不得重放。
+- 转换只能读取精确封存数据集和封存快照；不得联网、调用工具、读取宿主环境/密钥、启动子进程或写生产/历史状态。
+- 同公司、历史重建、行情快照或来源身份的传递连通分量不得跨 split；边界只按冻结时点顺序和整数目标决定，250 交易日 purge/embargo 后任一分区为空必须失败关闭。
+- 无确定点时值的 65 项 allowlist 特征必须显式缺失，不得补值、插值或使用结果/标签/未来信息；封存留出标签必须隐藏。
+- 输出只可标记为 `untrusted candidate envelope`；official manifest/bundle、join、target、training、reward、shadow、order、broker、trading 必须保持 false，下一门禁只能是独立输出校验。
+
+### 独立转换输出校验通过仍不是正式 manifest 或 feature bundle
+
+- 校验者必须排除执行调用人、runner 登记/授权复核人、完整上游、数据集装配及正式标签链角色；一个 attempt 最多形成一条 create-once 校验记录。
+- 校验必须重开精确当前数据集、封存行情和 runner，并允许按历史精确哈希审计已过期/已消费授权；不能只依赖 ID 或执行层内存对象。
+- 独立校验算法不得调用执行层转换函数。连通分量必须用不同实现重算，并重新验证边界、250 日 purge/embargo、65 项显式缺失来源、排除审计、留出隔离和 canonical output SHA-256。
+- 任一结构、绑定、角色、哈希、权限位或重算差异必须写入不可变失败记录并失败关闭；不得人工覆盖为通过。
+- 通过只证明未信任候选可重复。official manifest/bundle、join、target、training、reward、shadow、order、broker、trading 仍必须为 false，下一门禁只能是独立准入/物化。
+
+### 离线转换候选准入不等于正式工件物化
+
+- 准入复核必须重开一个精确、当前且独立校验通过的候选，并绑定 validation、claim/result/output、数据集、转换/split/feature 规范和独立重算摘要；历史 ID 存在但当前绑定不可重开时失败关闭。
+- 复核链必须按 attempt 隔离、追加式、自哈希且只有一个有效链尖；分叉、循环、断链、前序哈希漂移、重放、重复记录或文件名不匹配必须拒绝。
+- 复核人必须排除输出校验人、执行人、runner 登记/授权人、完整上游及所有此前准入复核人。传递分量、连续边界、全部目标审计、250 日 purge/embargo、非空分区、封存留出、65 项点时特征、显式缺失、未来/结果/当前组合排除与三门分离必须逐项确认。
+- 批准只允许 `future_create_once_official_artifact_materialization_eligible=true`。物化未开始，official manifest/bundle 尚不存在；join、target、training、reward、shadow、order、broker、trading 必须保持 false。
+
+### 正式工件已经物化不等于已经校验或可以训练
+
+- 正式物化只能精确绑定当前第 33 阶段批准，且物化人必须排除准入、校验、执行和完整上游角色。claim 必须先于工件落盘，成功、失败或中断都永久消费资格。
+- claim 一旦存在，同一 attempt 的准入复核链必须永久冻结；不得通过追加准入记录改变正式工件所依据的链尖，也不得覆盖 claim、工件或 result。
+- official split manifest 与 official feature bundle 只能逐字段复制已独立重算候选，不得重算、补数、插值、改写缺失语义或引入新来源。两个工件必须自哈希并保留 dataset/specification/output/validation/admission 完整绑定。
+- `completed_pending_independent_validation` 只能表示正式文件已形成。物化后独立校验、feature join、semantic target、training、reward、shadow、order、broker、trading 必须继续为 false；下一门禁只能是另一个独立正式工件校验阶段。
+
+### 正式工件独立校验通过不等于已经 join、定义 target 或可以训练
+
+- 校验器必须重新读取完整 official manifest/bundle、物化 claim/result 与当前准入源候选，并独立重算 claim、result、manifest、bundle 及组合摘要；不得调用物化实现或复用其校验 helper 自证。
+- 校验者必须排除物化、准入、候选输出校验、执行与完整上游角色。一组 attempt 最多形成一条 create-once 自哈希记录，不得覆盖、重放或用后来的源候选替换绑定。
+- schema、文件大小、摘要、逐字段精确复制、封存留出、65 项点时特征/显式缺失、排除审计或零下游权限任一不一致都必须失败关闭并留下不可变失败记录。
+- `official_artifact_pair_independently_validated=true` 只允许未来登记 join/target 治理规范。实际 feature join、semantic target、training store、training、reward、shadow、order、broker 与 trading 必须继续为 false。
+
+### join/target 治理规范登记不等于已经连接数据或定义交易动作
+
+- 规范必须精确绑定一组当前独立校验通过的 official manifest/bundle、物化 claim/result 和原始离线数据集；登记者不得属于校验、物化或完整上游角色链，一组 attempt 只能 create-once 登记一次。
+- join key 固定为 `dataset_entry_id`；每个条目只允许唯一 split、唯一 raw outcome 和每个 allowlist feature 唯一记录。purged/embargoed 条目不得复活或重新分区，point-in-time availability 晚于判断时点必须失败关闭。
+- 65 项 feature 必须完整保留，缺失值只能是带原因的显式缺失；不得插值、回填、删列或把 outcome、未来信息、sealed holdout 标签、当前组合或模型生成补值接入特征。
+- 监督目标只允许 20/60/250 日资产收益、相对基准超额收益和最大回撤的九维原始连续向量。不得在本规范中定义 buy/hold/sell、仓位、动作阈值、排序变换或标量 reward。
+- train、validation 和 sealed holdout 标签访问必须分离；sealed holdout 在模型与评测协议冻结前不得对训练或调参开放。
+- 登记后 `join_execution_authorized`、`semantic_target_assignment_authorized`、joined dataset、training store、training、reward、shadow、order、broker 与 trading 必须全部为 false；下一门禁只能是独立规范复核。
+
+### join/target 规范独立复核通过不等于实现已登记或 join 可以执行
+
+- 复核器必须独立重算登记 record、规范 body、join spec 与 target spec 的 canonical SHA-256，并重新核对当前独立校验正式工件和 65 项 feature 目录；不得复用第 36 阶段登记校验器自证。
+- 复核人必须排除规范登记者、完整正式工件生产/校验上游及此前复核人。复核链必须保持单根、无分叉、无循环、精确前序哈希；批准记录必须是终端记录。
+- 独立复核必须明确记录：250 日超额收益主目标和 250 日最大回撤风险目标只是工程候选，不是老王已确认逻辑，也不证明可预测、可盈利或可用于交易。
+- 任一工件/指纹/连接/点时/缺失/holdout/目标语义漂移，或出现 action、position、threshold、ranking、reward 和任何下游权限，都必须失败关闭。
+- 批准只开放未来隔离 join/target 实现规范登记资格。实现登记、join、标签访问/分配、joined rows、training store、training、reward、shadow、order、broker 与 trading 必须继续分门且全部关闭。
+
+### 正式 joined dataset 已物化不等于已独立校验或可进入训练库
+
+- 物化必须先 create-once 保存 claim，再读取并复制 Stage 44 精确准入候选；成功、失败或中断都永久消费资格。不得覆盖、重放、修补失败工件或换一个物化人复用同一 admission。
+- 物化人必须排除准入复核、独立输出校验、执行与完整上游角色；claim/result/official dataset 必须绑定 admission、validation、source claim/result/output、authorization、runner、implementation、spec、official artifacts、原始数据集、重算 rows/excluded/target-commitment 哈希和计数。
+- 正式数据集只能逐字节保留候选 rows、排除审计和目标承诺；不得重算、插补、回填、改变 split/purge/embargo、改变 65 项 feature 或九项目标位模式。validation 与 sealed holdout 目标值必须继续隐藏。
+- `official_joined_dataset_created=true` 必须仍保持 `independently_validated_after_materialization=false`、`eligible_for_training_store_copy=false`。training store、training、reward、shadow、order、broker 与 trading 在后续独立校验和独立训练准入前全部失败关闭。
+
+### 正式 joined dataset 独立校验通过不等于训练库复制或训练准入
+
+- Stage 46 校验器必须自行重开 claim、result、内容寻址 official dataset 和精确当前准入候选，独立重算工件、rows、excluded rows 与 target commitments；不得调用 Stage 45 物化器或其校验 helper 自证。
+- 校验者必须排除物化者及完整 admission/validation/execution/upstream 角色；每个 attempt 只允许一条不可变校验记录，重放、重复哈希、目录误绑定或角色重合均失败关闭。
+- 一对一基数、65 项点时特征、显式缺失、official split/purge/embargo、九项原始 f64 位目标、train-only 可见性及 validation/sealed-holdout 隐藏必须同时成立；任何不一致都关闭候选。
+- `official_joined_dataset_independently_validated=true` 只能同时设置 `future_training_store_copy_admission_review_eligible=true`。`copied_to_training_store`、training、reward、shadow、order、broker 与 trading 必须继续为 false。
+
+### join/target 隔离实现已登记不等于实现正确或可以运行
+
+- 实现必须精确绑定当前独立批准 review、独立 audit、规范 record/body、join/target 规范、正式组合工件和原始数据集；同一批准复核只能 create-once 登记一次，不得覆盖或重放。
+- 登记者必须排除规范登记者、独立复核人和保存的完整上游角色。实现工件 SHA-256、不可变代码版本、join/target 算法身份、序列化器、输入输出 schema 与资源上限必须共同进入内容指纹。
+- 合同只能描述严格一对一 entry join、重复/缺失键失败关闭、点时/缺失/purge/embargo/split 隔离，以及九维原始 f64 目标投影；不得加入 action、position、threshold、rank 或 scalar reward 语义。
+- 登记阶段必须没有可调用入口、环境/密钥/网络/工具/子进程、标签库/训练库或生产读写权限。sealed holdout 标签不得向训练、调参或模型选择开放。
+- 登记只开放未来独立实现复核资格。runner、标签访问、join、目标分配、joined/training rows、输出验证、训练、奖励、影子、订单、券商和交易必须全部为 false。
+
+### join/target 实现独立复核通过不等于 runner 已登记或 join 可以执行
+
+- 复核器必须独立重算实现记录与实现合同 SHA-256，并重新核对实现工件、不可变代码版本和当前完整上游绑定；不得把第 38 阶段登记校验器的成功当作独立审计结果。
+- 复核人必须排除实现登记者、规范登记/复核与完整正式工件上游，以及此前复核人。复核链只能单根、单尖、无分叉/循环/断链，批准后不得追加子记录。
+- 一对一 join、重复/缺键失败关闭、点时缺失、purge/embargo、官方 split、sealed holdout、九维原始 f64 目标、固定 schema/序列化和静态资源边界必须全部一致；任一漂移失败关闭。
+- 250 日超额收益和最大回撤仍只是工程目标候选。复核不得引入动作、仓位、阈值、排名、reward 或把目标解释为已确认的老王逻辑、可预测性或盈利证明。
+- 批准只开放未来隔离 runner 规格登记。runner、首次执行授权、标签访问、join、目标分配、joined/training rows、输出校验、训练、奖励、影子、订单、券商和交易必须继续为 false。
+
+### join/target runner 已登记不等于首次执行已授权或 join 已执行
+
+- runner 必须精确绑定当前第 39 阶段批准、实现合同和完整上游哈希，并以 runner 工件、不可变代码版本、固定运行时、I/O 与资源合同形成 create-once 内容指纹；更换登记者或时间不得绕过重放检测。
+- runner 登记者必须排除实现审查、实现登记、规范登记/复核和正式工件完整上游角色。任何角色重合、旧绑定、哈希漂移、重复登记或权限位变化均失败关闭。
+- runner 状态只能是 `registered_not_run`，且没有 callable entrypoint、环境继承、环境变量、密钥、网络、工具、子进程、标签/训练库和生产读写能力；固定资源上限不能解释为已调度或已运行。
+- 登记不得访问标签、执行 join、分配目标、创建 joined/training rows 或产出可训练数据，也不得开放训练、奖励、影子、订单、券商与交易。
+- 唯一下一门禁是由完整上游角色之外的独立复核者建立首次执行授权复核；该复核仍须与真实执行、输出校验和正式工件准入分离。
+
+### join/target 首次执行授权批准不等于已经 claim、执行或产生训练数据
+
+- 授权复核必须绑定精确当前 runner 与完整上游链，并由 runner 登记、实现登记/复核、规范登记/复核、正式工件上游和此前授权复核之外的新角色完成。
+- 批准有效期固定 24 小时且最多消费一次；过期、已 claim、绑定漂移或链分叉都必须失败关闭。
+- 授权注册表本身不得提供 claim 或 invocation endpoint，不得启动进程、挂载输入、读取通用标签/训练库或创建任何输出。
+- 一对一 join、九项原始 f64 目标、点时/显式缺失、purge/embargo/split 与 sealed holdout 只能作为未来隔离执行的固定合同，不能解释为已经完成 join 或验证了投资策略。
+- label access、feature join、target assignment、joined dataset、training-store copy、training、reward、shadow、order、broker 与 trading 必须继续为 false；下一步只能另行设计和复核一次性执行尝试。
+
+### join/target 一次性执行成功不等于候选已经独立校验或可用于训练
+
+- 执行前必须重新打开当前完整链并验证 runner 工件摘要、未过期且未消费的精确授权、独立校验 official artifacts 和当前原始结果数据集；随后先 create-once 保存 claim。claim 后成功、失败或中断均消费授权，不得覆盖或重放。
+- 投影只能做固定的一对一连接。重复或缺失 entry/feature key、非 65 项目录、目录跨行漂移、未来特征、含糊缺失、purged/embargoed 行出现特征或任何 split 绑定漂移都必须失败关闭。
+- train 行只允许九项原始 f64 位模式；validation 与 sealed holdout 目标值不得出现在 target vector，只允许内容承诺用于后续独立核验。不得标准化、winsorize、排名或生成 buy/hold/sell、仓位与 reward。
+- 输出必须标记为不可信且未独立校验。official joined dataset、training-store copy、training、reward、shadow、order、broker 与 trading 必须全部为 false。
+- 唯一下一门禁是由不同实现重开 claim/result/output 与精确上游，独立逐位重算连接、目标和泄漏边界；执行路径不能自证有效。
+
+### join/target 独立输出校验通过不等于正式 joined dataset 或训练准入
+
+- 校验器必须重开精确已结束 Stage 42 claim/result/output、当前授权审计、原始结果数据集和独立校验 official artifacts；不得调用 Stage 42 投影或记录校验 helper 自证。
+- 校验人必须排除执行调用人和完整 runner、授权、实现、规范、正式工件及数据集上游角色；排除链不能为空，且必须排序去重并进入自哈希记录。
+- 独立重算必须覆盖 claim/result/output 指纹、一对一 entry/split/raw-outcome/65-feature 键、PIT availability、显式缺失、official split/purge/embargo、九项原始 f64 位目标和逐行目标承诺。
+- train 行必须精确包含九项目标位模式；validation 与 sealed holdout 必须继续隐藏目标值，只允许承诺核对。任一结构、哈希、位模式、留出或权限差异必须写入不可变失败记录并失败关闭。
+- 通过只开放未来独立候选准入复核资格。official joined dataset、training-store copy、training、reward、shadow、order、broker 与 trading 必须继续为 false。
+
+### join/target 候选准入批准不等于正式数据集已经物化或可以训练
+
+- 候选准入复核必须精确绑定当前 Stage 43 validation 以及 Stage 42 claim/result/output、授权、runner、实现、规范、official artifacts、原始结果数据集、重算行数、排除行数、目标承诺和固定 feature/target 计数；不得用同类或更新后的候选替换。
+- 复核人必须排除独立输出校验人、执行人、完整上游角色和此前准入复核人。链必须追加、自哈希、单根、无分叉、无循环；批准记录必须终止该候选的复核链。
+- 十二项准入确认必须全部成立。任一角色、链尖、哈希、计数、承诺、留出隔离或零权限边界漂移，都必须失败关闭并留下不可覆盖记录。
+- 批准只允许未来一次 create-once official joined dataset 物化。当前不得创建正式 joined dataset、复制 training store、训练、计算 reward、运行影子组合、生成订单、访问券商或交易。
+- 候选准入、正式物化、物化后独立校验和训练准入必须保持四道独立门禁；任何前一道批准都不得自动授予后一道权限。
+
+### 训练存储复制准入批准不等于已复制、已训练或模型有效
+
+- Stage 47 必须精确绑定当前 Stage 46 独立验证、Stage 45 claim/result/official dataset、Stage 44 admission、Stage 43 source validation、原始数据集与 rows/excluded/target commitments；不得用更新、相似或重新生成的数据集替换。
+- 复核人必须排除 Stage 46 校验者、Stage 45 物化者、完整上游和此前 Stage 47 复核人。复核链必须追加、自哈希、单根、无分叉、无断链、无循环；批准是终端记录。
+- 十二项确认必须覆盖 65-feature、9-target、PIT/显式缺失、official split/purge/embargo、validation 与 sealed holdout 隐藏、无动作/仓位/reward 语义，以及复制和复制后校验继续分门。
+- 批准只允许进入未来 claim-first、create-once 训练存储复制门禁。当前不得复制、训练、奖励、影子、下单、接券商或交易；`future_create_once_training_store_copy_eligible` 绝不等于 `copied_to_training_store` 或 `training_authorized`。
+
+### 训练存储已复制不等于已独立校验或可训练
+
+- Stage 48 必须在读取或写入正式 joined dataset 前 create-once 保存不可变 claim；成功、失败或中断均永久消费精确 Stage 47 准入资格，不得覆盖、重放、修补失败工件或换人重试。
+
+### 训练存储副本通过独立校验不等于可训练
+
+- Stage 49 校验器必须独立重开 Stage 48 claim/result/内容寻址副本和精确 Stage 47 正式数据集，并重新计算 claim、result、副本、rows、excluded rows 与 target commitments；不得调用 Stage 48 的复制或工件校验 helper 自证。
+- 校验者必须排除复制者和完整 Stage 47/46/45/44/43 及更早角色链；同一 attempt 只允许一条不可变校验记录。重放、误命名、重复哈希、角色重合或绑定漂移均失败关闭。
+- 一对一基数、65 项点时特征、显式缺失、official split/purge/embargo、九项原始 f64 位和 train-only target visibility 必须同时成立；validation 与 sealed holdout 目标值不得出现在副本中。
+- training_store_copy_independently_validated=true 只能同时设置 future_training_registration_review_eligible=true。training registration、training authorization/run、reward、shadow、order、broker 与 trading 必须继续为 false。
+- 复制一致只证明工程数据一致性，不证明模型、策略、收益或老王投资逻辑有效。
+
+### 训练登记独立准入通过不等于训练已登记
+
+- Stage 50 必须精确绑定当前 Stage 49 validation、Stage 48 copy claim/result/training-store dataset、Stage 47 source dataset，以及 rows、excluded rows 和 target commitments；任一当前链或内容指纹变化都失败关闭。
+- 复核人必须排除 Stage 49 校验者、Stage 48 复制者、完整上游角色和此前 Stage 50 复核人。复核链只能追加、自哈希、单根、无分叉/断链/循环，批准后不得追加或改写。
+- 十二项确认必须覆盖三层不可变指纹、独立逐行逐位校验、精确复制、一对一基数、65 项 PIT/显式缺失特征、official split/purge/embargo、九项原始目标与 train-only 可见性、无 action/reward 语义，以及登记、授权和运行继续分门。
+- 批准只能设置 `training_registration_candidate_admitted=true` 与 `future_create_once_training_registration_eligible=true`。training registration、authorization/run、reward、shadow、order、broker 与 trading 必须继续为 false。
+- 训练登记准入只是允许未来建立一次性训练实验登记的工程门禁，不证明模型质量、策略有效性、可预测性、收益、老王确认逻辑或实盘能力。
+
+### 训练实现独立批准不等于 runner、数据访问、训练或模型有效
+
+- Stage 54 必须对当前 Stage 53 实现记录和实现合同分别独立重算 SHA-256，并精确绑定 Stage 52 review 与 Stage 51 claim/registration/result；不得调用 Stage 53 私有哈希校验 helper 自证。
+- 复核人必须排除 Stage 53 登记人、Stage 52 复核者、完整上游和此前 Stage 54 复核人。复核链只能追加、自哈希、单根、无分叉/断链/循环，批准记录必须终止该实现的复核链。
+- 十四项确认必须覆盖不可变工件/代码、固定三模型臂与 17/29/43、65 项特征、九项原始连续目标、train-only 拟合、validation-only 选择、sealed holdout 隔离、逐目标逐种子指标、确定性资源上限、无 reward/action/position/rank 语义及零入口/环境/密钥/网络/工具/子进程/数据访问。
+- 批准只能设置 `training_implementation_independently_approved=true` 与 `future_isolated_training_runner_registration_eligible=true`。runner、数据访问、训练、validation/holdout 权限、模型工件、指标、输出校验、reward、shadow、order、broker 与 trading 必须继续为 false。
+- Stage 54 只证明冻结实现忠实于已批准工程合同，不证明模型质量、预测能力、策略收益、老王投资逻辑有效性或实盘能力。下一步若继续，只能另建 Stage 55 隔离 runner 规格登记。
+
+### 训练隔离 runner 已登记不等于数据访问、首次执行或训练
+
+- Stage 55 必须精确绑定当前 Stage 54 独立批准、Stage 53 实现与合同、Stage 52 review、Stage 51 claim/registration/result、suite specification、training-store dataset、rows、excluded rows 和 target commitments；任一摘要漂移都必须失败关闭。
+- 登记人必须排除 Stage 54 复核者、Stage 53 登记者、Stage 52/51 和完整上游角色。同一规范只能 create-once 登记，runner 记录、合同和工件必须内容寻址且不可覆盖。
+- runner 规格必须固定无可调用入口、无宿主环境继承、无环境变量/密钥/外网/工具/子进程/生产访问；当前不得挂载或读取 training-store dataset，不得创建模型工件、指标或输出目录。
+- 未来即使另获授权，输入也只能是精确绑定 training-store dataset 的只读挂载；train 可拟合、validation 只选模、sealed holdout 对拟合和选择 worker 隐藏。输出只能 create-once 写入待独立校验的逐目标逐种子候选，不得折叠为 reward、动作、仓位或排名。
+- 资源上限必须固定为单实验并行、3600 秒、8192 MiB、4000 millicores、4 个进程和 256 MiB 输出。状态只能是 `registered_not_run`，且 training data access/run/start、validation/holdout 权限、model/metrics、reward、shadow、order、broker 与 trading 全部为 false。
+- 登记只开放 Stage 56 独立首次执行授权复核资格；规格登记不证明模型质量、预测能力、策略收益、老王投资逻辑有效性或实盘能力。
+
+### 训练首次执行授权批准不等于已消费资格、访问数据或运行训练
+
+- Stage 56 必须由 Stage 55 登记人、Stage 54 复核者、Stage 53 登记者、Stage 52/51 和完整上游之外的新角色独立复核；同一 runner 的复核链只能追加、自哈希、单根、无分叉/断链/循环，批准记录必须终止该链。
+- 复核必须独立重算 Stage 55 runner 记录/合同/工件、Stage 53 实现记录/合同、Stage 54 实现复核、Stage 52 登记复核和 Stage 51 claim/registration/result，并精确绑定 suite、training-store dataset、rows、excluded rows 与 target commitments；任一摘要漂移都失败关闭。
+- 十六项确认必须覆盖内容寻址工件、可复现代码、只读输入根、无特权运行、create-once 输出与后续独立校验、固定资源、无宿主环境/密钥/网络/工具/子进程/生产/历史访问、固定三臂三种子与 65/9、切分隔离、精确未来只读挂载、24 小时单次资格、门禁分离和全部投资执行权限关闭。
+- 批准只能在精确 24 小时内提供最多一次未来隔离调用资格；批准本身不创建 claim、调用入口、数据挂载、工作目录、训练进程、模型、指标或候选输出。validation selection、sealed holdout、reward、shadow、order、broker 与 trading 权限必须继续为 false。
+- Stage 56 只证明独立复核者认为冻结 runner 满足进入下一门禁的工程条件，不证明模型质量、预测能力、策略收益、老王投资逻辑有效性或实盘能力。下一步若继续，只能另建 Stage 57 claim-first、一次性隔离训练执行尝试。
+
+### 一次性 train-only 拟合不等于模型有效、已选模或可用于投资
+
+- Stage 57 必须先 create-once 写入不可变 claim，再开始任何训练副本读取；成功、失败或中断都消费精确 Stage 56 授权，不得覆盖、重放、换人重试或自动续期。
+- claim 必须精确绑定 Stage 56 review、Stage 55 runner、Stage 54/53 实现链、Stage 52/51 训练实验链、training-store dataset、rows、excluded rows 和 target commitments；当前运行制品摘要或任何上游绑定漂移都必须在读取数据前失败关闭。
+- 预处理与拟合只能读取 train 标签。validation 与 sealed holdout 目标必须保持隐藏，既不能进入拟合、调参或选择，也不能通过诊断、日志、错误或工件泄漏；显式缺失必须保持缺失并单独建模，不得伪装成观测值。
+- 只允许运行冻结的零预测、岭回归和梯度提升三臂以及 17/29/43 三种子。输出必须逐模型、逐种子、逐目标内容寻址；train-only 诊断不得标记为 model-selection metric，也不得折叠成 reward、投资动作、仓位或排名。
+- 成功输出仍是不可信候选，必须另经 Stage 58 独立逐模型、逐诊断、逐位校验。Stage 57 不写正式模型库或指标库，不开放 validation selection、sealed holdout、reward、shadow、order、broker 或 trading。
+- “真实拟合已完成”只证明冻结代码对精确训练输入产生了可审计输出，不证明泛化、预测、策略收益、老王投资逻辑有效性或实盘能力。
+
+### train-only 工件独立复算通过不等于 validation 已访问、模型已选或有效
+
+- Stage 58 验证人必须排除 Stage 57 执行者、Stage 56 授权复核者、Stage 55 runner 登记者、Stage 54/53 实现复核与登记者以及完整上游角色；同一 attempt 只能写一条 create-once、自哈希且不可覆盖的成功或失败记录。
+- 验证器必须独立重开 claim/result/envelope、当前完整 Stage 51–57 链、独立校验 training-store dataset 与冻结 suite，并独立计算 claim/result/output 指纹；不得调用 Stage 57 私有预处理、拟合、求解、树桩、诊断或 envelope 校验 helper 自证。
+- 必须从原始 train 行全量复算 65 项预处理、9 个三臂三种子模型工件和 81 项逐目标 train-only 诊断；权重、阈值、叶值、指标、工件及输出都必须逐 f64 位模式或 SHA-256 精确相等，一位差异即失败关闭。
+- validation 与 sealed holdout 目标必须继续隐藏为 `None`；验证器不得读取、重建、推断、记录或用其调参和选模。失败原因也不得泄漏留出标签。
+- 通过只能设置 `training_output_independently_validated=true` 与 `future_validation_evaluation_implementation_registration_eligible=true`。validation selection、sealed holdout、model/metric store、reward、shadow、order、broker 与 trading 必须保持 false。
+- 可重现只证明冻结 train-only 工程产物一致，不证明模型泛化、可预测性、策略收益、投资逻辑有效性或实盘能力。下一步只能另建 validation 评估实现登记，不能直接打开标签或选模。
+
+### validation 评估实现已登记不等于标签可访问、评估已运行或模型有效
+
+- Stage 59 必须精确绑定当前 Stage 58 validation、Stage 57 claim/result/output、suite、training-store dataset、rows、excluded rows、target commitments 以及 9 个三臂三种子模型工件；任一上游或候选集合漂移都使登记失去后续资格。
+- 登记人必须排除 Stage 58 验证者、Stage 57 执行者和完整上游角色。同一 validation 只能 create-once 登记一个内容寻址实现，不得覆盖、重放或因后续结果重写协议。
+- 指标、零预测基准、component-block bootstrap、bootstrap 次数/种子、Holm family-wise correction、最低改善、最小样本、三种子稳健性、逐目标规则和 tie-break 必须在读取 validation 标签前冻结。
+- 不得挑选表现最好的 seed、临时调参/改阈值、合并失败目标或用综合分声称模型整体有效；每个目标和种子的结果必须可单独审计，证据不足不得被解释为通过。
+- 状态只能是 `registered_not_reviewed_not_run`。callable entrypoint、validation 特征/标签访问、评估、候选选择、sealed holdout、model/metric store、reward、shadow、order、broker 与 trading 必须全部为 false。
+- Stage 59 只开放 Stage 60 独立实现复核资格；预注册统计规则仍是 AI 工程候选，不是预测能力、收益、老王投资逻辑或实盘能力的证据。
+
+### validation 评估实现独立批准不等于 runner、标签访问、评估或选模
+
+- Stage 60 复核人必须排除 Stage 59 登记者、Stage 58 验证者、Stage 57 执行者、完整上游和此前复核者；复核链只能追加、自哈希、单根、单链尖、无分叉/断链/循环，批准记录必须终止。
+- 独立复核必须自行重算 Stage 59 实现记录、合同和候选集合指纹，并精确重绑当前 Stage 58 validation 与 Stage 57 output；不得只信任登记界面的人工勾选或复用登记路径自证。
+- 必须独立核对三算法×三种子的 9 个唯一工件、每工件 9 个目标、65 项特征/预处理、九项目标顺序、逐目标逐种子指标、固定 bootstrap/Holm、效果/诊断/样本门槛和三个种子全部通过规则。
+- seed shopping、临时调参、阈值改写、综合分遮蔽失败目标、样本不足冒充通过或任何标签/holdout 泄漏都必须失败关闭；退回或拒绝不得开放后续能力。
+- 独立批准只开放 Stage 61 未来无入口隔离 runner 规格登记资格。runner、标签访问、评估、选模、sealed holdout、model/metric store、reward、shadow、order、broker 与 trading 必须继续为 false。
+- Stage 60 只证明冻结实现通过独立工程审计，不证明泛化、预测能力、策略收益、老王投资逻辑有效性或实盘能力。
+
+### validation 评估 runner 已登记不等于标签访问、评估、选模或有效
+
+- Stage 61 必须精确绑定当前 Stage 60 独立批准、Stage 59 实现/合同/候选集合、Stage 58 validation 与 Stage 57 九个候选工件；任一上游摘要漂移都使登记失去后续资格。
+- 登记人必须排除 Stage 60/59/58/57 和完整上游角色。同一批准最多 create-once 登记一个内容寻址 runner，不得覆盖、重放或更换工件。
+- runner 当前必须没有可调用入口、挂载、环境变量、密钥、网络、工具、子进程、输出目录或生产访问。状态只能为 `registered_not_run`。
+- 未来经独立授权后也只能只读挂载精确 validation features/labels 与九个候选；不得更新训练预处理或模型，sealed holdout features/labels 必须始终隐藏。
+- 未来输出只能 create-once 生成待独立校验的逐目标逐种子指标、bootstrap/Holm 诊断和逐目标建议；不得用综合分或全局有效性声明遮蔽失败目标。
+- runner 登记只开放 Stage 62 独立首次执行授权复核资格。标签读取、评估、选模、模型/指标库、reward、shadow、order、broker 与 trading 必须继续为 false。
+- Stage 61 只冻结隔离运行合同，不证明模型泛化、预测能力、策略收益、老王投资逻辑有效性或实盘能力。
+
+### validation 首次执行授权不等于 claim、评估或选模
+
+- Stage 62 必须精确绑定当前 Stage 61 runner、Stage 60 review/独立审计、Stage 59 实现/合同/九候选集合、Stage 58 validation 与 Stage 57 output；任一上游、工件、代码、合同或链尖漂移都使授权失效。
+- 复核人必须排除 Stage 61–57、完整上游和此前 Stage 62 复核者。复核链只能追加、自哈希、单根、单链尖、无分叉/断链/循环；批准记录必须终止链。
+- 批准 verdict 只能授权未来精确 runner 在 24 小时内最多调用一次；过期不得续期，成功、失败或中断的消费规则必须由下一门禁另行实现。
+- Stage 62 本身不得创建 claim、调用入口、挂载或输出目录，不得读取 validation features/labels，不得评估、选模、生成未验证输出或写模型/指标库。
+- 未来执行也只能只读挂载精确 validation features/labels 与九个候选；training 更新禁止，sealed holdout features/labels 必须永久隐藏。
+- Stage 62 只开放 Stage 63 claim-first 一次性隔离评估尝试资格，不证明模型泛化、预测能力、策略收益、老王投资逻辑有效性或实盘能力。
+- reward、shadow、order、broker 与 trading 必须继续为 false。
+
+### validation 一次性执行结果不等于正式选模或模型有效
+
+- Stage 63 必须在重开任何原始结果或读取 validation feature/label 之前，create-once 写入绑定精确 Stage 62 授权的不可变 claim；claim 成功后所有失败、中断与成功都永久消费授权，不得覆盖、重放、自动重试或续期。
+- 当前运行制品、Stage 62/61/60/59/58/57、training-store dataset、rows、excluded rows、target commitments、65 项特征/预处理、九项目标或九候选集合任一漂移，都必须失败关闭。
+- 宿主标签代理只能把 Stage 48 副本标记的 validation entry 投影给固定 worker。sealed holdout entry 不得进入 worker 输入；validation 与 sealed holdout entry 集合必须不相交。当前隔离后端必须明确标注为进程内能力隔离，不得冒充 OS/容器级强沙箱。
+- 输出矩阵必须精确覆盖三算法×三种子×九目标的 81 条唯一指标；54 项候选假设必须按 official split component 整块 bootstrap 并做 Holm family-wise correction。不得挑种子、临时调参、修改阈值、重复/替换组合、合成总分或宣称全局模型有效。
+- 每个目标必须单独保留样本不足、门禁失败或三种子不一致；recommendation 只能标为不可信且 `official_selection=false`。任何成功 envelope 都必须等待链外独立复算。
+- 失败 result 必须如实记录是否已经接触 validation 投影；不得把访问后的失败伪装成“未读取标签”。sealed holdout、训练更新、模型/指标库、正式选模、reward、shadow、order、broker 与 trading 始终为 false。
+- Stage 63 只开放 Stage 64 独立输出复算校验资格，不证明预测能力、泛化、策略收益、老王投资逻辑有效性、公司评级、仓位建议或实盘能力。
+
+### validation 评估输出独立复算通过不等于候选已准入或正式选模
+
+- Stage 64 校验人必须排除 Stage 63 执行者、Stage 62–57 各级登记/复核/执行者和完整上游角色；同一 attempt 最多只有一条 create-once、不可覆盖的通过或失败记录。
+- 校验器必须自行重开并重算 Stage 51–63 完整绑定、validation-only 投影、九候选预测、81 条指标、54 项 component-block bootstrap/Holm 检验和 9 条 recommendation；不得通过调用 Stage 63 私有计算 helper 自证。
+- 原 envelope 与第二实现重算 envelope 必须逐 f64 位模式、顺序、计数和 SHA-256 全等；任何一位不一致、上游漂移或权限扩张都必须失败关闭。
+- validation 与 sealed holdout entry 集合必须不相交；sealed holdout 特征和标签不得被读取、重建、推断或记录。
+- 通过只能开放未来逐目标候选准入复核；不得自动选模、写模型/指标库、生成 reward、shadow position、order，不得访问 broker 或 trading。
+- Stage 64 只证明冻结评估输出工程上可重现，不证明预测泛化、模型有效、策略收益、老王投资逻辑有效性、公司评级、仓位建议或实盘能力。
+
+### 逐目标候选准入不等于 sealed-holdout 可访问或正式选模
+
+- Stage 65 必须把每条 Stage 64 通过记录精确拆成九个目标包；每个目标只能使用自身三算法×三个冻结种子的九项指标、证据状态、recommendation 和内容哈希，不得使用综合分、平均分或其他目标掩盖失败。
+- 每个目标必须恰有三个算法与 17/29/43 三个种子的九个唯一组合，且全部保持 `official_model_selection_metric=false`。任何缺失、重复、未知种子或 official-selection 标记都必须失败关闭。
+- 推荐候选只能是 ridge 或 gradient-boosted；推荐算法的三个冻结种子必须全部通过预注册门槛。服务端必须从 MAE 的 f64 位模式重算三种子中位数并与冻结 recommendation 精确一致；证据不足、无候选全过或中位数漂移不得批准。
+- 复核人必须独立于 Stage 64 校验者、Stage 63 执行者、完整 Stage 51–64 链和该目标此前复核者。每个 attempt/target 的链只能追加、自哈希、单根、单链尖、无分叉/断链/循环；批准为终端。
+- 批准只开放未来 sealed-holdout evaluation protocol review。Stage 65 不得读取 sealed holdout、正式选择候选、写模型/指标库、定义 reward、运行 shadow、生成 order、访问 broker 或 trading。
+- Stage 65 只证明某个 validation 目标的候选满足冻结准入合同，不证明 sealed-holdout 泛化、策略收益、老王投资逻辑有效性、公司评级、仓位建议或实盘能力。
+
+## Stage 78 Controlled Shadow Runner Specification Boundary
+
+- Stage 78 每条当前 Stage 77 批准最多登记一个 create-once、内容寻址的 runner specification；登记人必须排除 Stage 77 复核者、Stage 76 登记者和 Stage 51–77 完整责任链，任何角色重叠、绑定漂移、重复登记或内容篡改必须失败关闭。
+- runner specification 必须绑定一个有效 SHA-256 的精确可执行工件、不可变代码版本和固定 runtime 身份；缺失、无效、摘要或代码版本漂移必须失败关闭。它仍不得注册 callable entrypoint、input mount、data access、环境继承、密钥、网络、工具、子进程或生产读写。
+- 规格只能冻结未来点时/只读/内容寻址/白名单输入、create-once 不可信独立验证输出、非特权身份和资源上限；不得包含 order intent 或 broker payload。
+- 登记只开放未来独立首次影子执行授权复核，不开放模型/指标库写入、训练反馈、reward、影子运行、账本、持仓、订单、券商或交易。
+
+## Stage 79 Controlled Shadow First-Execution Authorization Boundary
+
+- Stage 79 复核者必须排除 Stage 78 登记人和 Stage 51–78 完整责任链；每个 runner 的复核链只能追加、自哈希、单根、单链尖且批准终止，角色重叠、分叉、断链、绑定漂移或内容篡改必须失败关闭。
+- 复核必须独立复现 runner 可执行工件摘要、确认精确代码版本和工件可获得，并重算 runner specification/contract、implementation/contract/review/audit、design review/registration/specification 及目标、算法、三种子、sealed split、65 项特征顺序和预处理的完整绑定。
+- 批准只允许提交后 24 小时内最多一次的未来 Stage 80 claim-first 尝试资格；授权过期不得自动续期，授权本身不得创建 claim、附加 input manifest、读取数据或执行。
+- Stage 79 不得把“工件存在”解释为 callable entrypoint、mount 或运行授权，也不得启动影子运行、创建输出、账本、持仓、模型/指标库、训练反馈、reward、订单、券商或交易能力。
+- 未来 Stage 80 也必须先 create-once claim 再消费精确授权，输入只能点时/只读/内容寻址/白名单，输出只能 create-once、不可信、无订单载荷并另经独立校验。
+
+### sealed-holdout 协议获批不等于数据访问、评估执行或正式选模
+
+- Stage 66 必须在 sealed holdout 的任何特征或标签可见前，逐目标绑定当前 Stage 65 准入记录、候选/数据/目标承诺、65 项特征顺序、预处理、目标包与 recommendation；任何上游或协议哈希漂移都失败关闭。
+- 每个协议只能冻结一种已准入算法和 17/29/43 三个种子，恰好形成三项确认性假设；指标、效果与诊断门槛、100 行/20 component 最小样本、official-component 10,000 次 bootstrap、Holm 校正和三个种子全通过规则不得在结果后改变。
+- sealed holdout 必须 one-shot 且不得反馈复用。禁止跨目标综合、挑种子、调参、重新拟合、候选重选、阈值修改或隐藏单种子失败；样本不足必须失败关闭。
+- 复核人必须独立于 Stage 65 复核者、Stage 51–65 完整责任链和该目标此前 Stage 66 复核者。复核链只能追加、自哈希、单根、单链尖、无分叉/断链/循环，批准为终端。
+- Stage 66 审查不得读取、挂载、解密、投影或执行 sealed holdout。批准只开放未来 sealed-holdout evaluation implementation registration；数据访问、runner、单次授权、执行与输出独立校验必须继续分门。
+- 协议获批不证明泛化、收益、老王投资逻辑有效、评级、仓位建议或操盘能力，且不得写模型/指标库、定义 reward、运行 shadow、生成 order、访问 broker 或 trading。
+
+### 训练实验已登记不等于训练已复核、授权或运行
+
+- Stage 51 必须先 create-once 保存不可变 claim，再创建登记；claim 成功、登记失败或进程中断都永久消费精确 Stage 50 资格，不得覆盖、重放、换人重试或就地修复。
+
+### 训练实验登记独立批准不等于训练实现、runner 或运行授权
+
+- Stage 52 复核人必须独立于 Stage 51 登记人、Stage 50 复核者、完整上游和此前 Stage 52 复核者；排除角色清单必须排序去重并进入复核哈希。
+- 复核必须独立重算 claim、suite specification、registration 和 result 指纹及语义，且精确重绑当前 Stage 50 admission、训练副本、rows、excluded rows 与 target commitments；不得依赖登记路径自证。
+- 固定合同只能是三模型臂、17/29/43 三种子、65 项点时特征、九项原始连续结果、train 拟合、validation 选择、sealed holdout 隐藏、逐目标逐种子指标和固定资源上限。任一漂移、综合分遮蔽失败或权限扩张都必须失败关闭。
+- 复核链只能追加、自哈希、单根、单链尖；批准是终端记录。链尖漂移、分叉、断链、循环、角色重合或确认缺失都不得批准。
+- 批准只开放未来训练实现登记资格。训练实现、实现复核、runner、运行授权、训练执行、reward、shadow、order、broker 与 trading 必须继续为 false。
+- 登记人必须排除 Stage 50 复核者、Stage 49 校验者、Stage 48 复制者和完整上游角色。claim、规范、登记和结果必须自哈希并精确绑定同一副本、来源数据集、rows、excluded rows、target commitments、65-feature/9-target 合同。
+- 实验套件必须由服务器固定为零预测冻结基线、岭回归多目标模型和梯度提升多目标模型，每个实验臂固定使用种子 17、29、43。不得由请求端改变算法、种子、特征、目标、指标、资源上限或权限位。
+- train 只用于拟合，validation 只用于模型选择，sealed holdout 的目标必须对训练进程完全隐藏。指标必须逐目标、逐种子报告，不得用单一综合分隐藏某一时间尺度、收益目标或回撤目标失败。
+- 九项目标仍是原始连续结果工程候选；不得转换成 buy/hold/sell、仓位、排名或标量 reward。`training_experiment_registered=true` 必须同时保持 status=`registered_not_run`，runner、training authorization/start、reward、shadow、order、broker 与 trading 全部为 false。
+- 登记完成只开放未来独立登记复核资格，不证明模型质量、策略有效性、可预测性、收益、老王确认逻辑或实盘能力。
+
+### 训练实现已登记不等于存在可运行代码或训练权限
+
+- Stage 53 必须精确绑定当前 Stage 52 独立批准和 Stage 51 claim/registration/result；登记人必须排除完整上游角色，且同一批准只能产生一个不可变实现登记。
+- 实现合同只能冻结内容摘要、不可变代码版本、三模型臂、17/29/43、65 项特征、九项目标、逐目标逐种子指标和资源上限；不得包含 callable entrypoint、环境、密钥、网络、工具、子进程、数据读取或生产访问能力。
+- 登记状态只能为 `registered_not_reviewed_not_run`，且必须保持数据访问、训练、验证选择、封存集访问、模型工件、指标、reward、shadow、order、broker 与 trading 全部关闭。
+- 登记只开放未来独立实现复核。实现复核、隔离 runner 登记与一次性运行授权必须继续分为后续独立门禁。
+- 复制人必须排除 Stage 47 复核人、Stage 46 校验者、Stage 45 物化者和完整上游角色；claim、result 和训练存储副本必须精确绑定 admission/validation/materialization/source 链、rows、excluded rows、target commitments 和唯一目标目录。
+- 副本必须逐字节保留正式数据集内容，不得重算、修补、插补、标准化或改变 65 项特征、9 项原始目标及 split/purge/embargo 语义。validation 与 sealed holdout 目标必须继续隐藏。
+- `copied_to_training_store=true` 不得推出 `independently_validated_after_copy`、training registration/review/authorization/start、reward、shadow、order、broker 或 trading；Stage 49 独立复制后校验必须保持为另一门禁。
+# Sealed-holdout evaluation implementation registered != reviewed, runnable, authorized or executed
+
+- A Stage 67 record is only immutable implementation identity and protocol binding. It has no callable entrypoint, input mount, data adapter, environment, secret, network or subprocess capability.
+- Registration must preserve the exact Stage 66 target, algorithm, seeds, feature order, preprocessing, metrics, thresholds, component bootstrap, Holm family and one-shot/no-feedback rules.
+- Registration cannot access sealed-holdout features or labels, run an evaluation, tune/refit/reselect, create a cross-target composite, write official stores or formally select a candidate.
+- Future output must be create-once, untrusted and independently validated. Independent implementation review, runner registration, one-shot access authorization, execution and output validation are separate gates.
+- Implementation registration never implies model validity, investment validity, reward, position/ranking semantics, shadow portfolio, order generation, broker access or trading.
+
+### sealed-holdout 评估实现独立批准不等于 runner、数据访问、评估或正式选模
+
+- Stage 68 复核者必须独立于 Stage 67 登记者、Stage 66 协议复核者、完整 Stage 51–67 责任链及该实现此前复核者；链只能追加、自哈希、单根、单链尖且批准终止。
+- 复核必须以独立路径重算实现记录、实现合同和协议 SHA-256，重新核对固定算法、17/29/43、65/1、指标/门槛、official-component bootstrap、Holm family、最小样本、三种子全过及 one-shot 无反馈语义；不能以登记结论自证。
+- 批准只能开放未来无入口隔离 runner 规格登记。它不能创建 runner、挂载、adapter、访问额度、执行 claim 或输出，也不能读取、解密、投影或评估 sealed holdout。
+- 实现审查通过不证明泛化、收益、老王投资逻辑、公司评级、仓位建议或操盘能力；不得写模型/指标库、定义 reward、运行 shadow、生成 order、访问 broker 或 trading。
+
+### sealed-holdout 评估 runner 已登记不等于可访问、可执行或可正式选模
+
+- Stage 69 对同一当前 Stage 68 批准复核最多允许一个 create-once、内容寻址 runner；登记人必须独立于 Stage 68 复核者、Stage 67 登记者、Stage 66 复核者和完整 Stage 51–68 责任链。
+- runner 必须精确绑定 review/audit、implementation/contract、protocol、目标包、recommendation、算法三种子承诺、sealed split、特征顺序、预处理、目标和算法；任何漂移都必须失败关闭。
+- 当前 runner 必须无 callable entrypoint、输入/候选挂载、环境继承、密钥、网络、工具、子进程、生产读写、sealed-holdout 特征/标签访问、评估或输出能力，状态只能是 `registered_not_run`。
+- 未来只有新的链外独立、限时、单次授权才可精确只读挂载一个目标 holdout 与一种算法的三个候选；授权、claim-first 执行和输出链外校验必须继续分门。
+- 未来输出只能 create-once、先视为不可信且逐目标逐种子保留失败；不得形成跨目标综合分、全局有效性、正式候选选择、模型/指标库、reward、position/ranking、shadow、order、broker 或 trading。
+
+### sealed-holdout 首次执行授权获批不等于已 claim、已访问、已执行或可正式选模
+
+- Stage 70 复核者必须排除 Stage 69 登记者、Stage 68 复核者、Stage 67 登记者、Stage 66 复核者、Stage 51–69 完整责任链及该 runner 此前 Stage 70 复核者。
+- 复核必须重新验证 runner specification/artifact/code/contract、review/audit、implementation/contract、protocol、candidate set、target bundle、recommendation、单目标/单算法、17/29/43、sealed split、65 项特征顺序和预处理；任一漂移或缺项失败关闭。
+- 批准只能在提交后 24 小时内提供最多一次未来隔离调用资格；批准记录必须终止该 runner 的 Stage 70 复核链，且不得授权其他目标或未限定访问。
+- Stage 70 模块不得创建 claim 或 invocation endpoint，不得挂载、解密、投影或读取 sealed-holdout 特征/标签，不得消费额度、执行评估或创建输出。
+- 资格不证明泛化、收益、老王逻辑、评级、仓位或操盘能力；Stage 71 claim-first 执行、输出链外复算、正式选择、模型/指标库、reward、shadow、order、broker 和 trading 必须继续分门。
+
+## Stage 80 Controlled-Shadow Claim-First Execution Boundary
+
+- Stage 80 必须在当前二进制摘要、冻结模型工件或点时输入的任何读取之前 create-once 写入 claim；claim 必须精确绑定 Stage 79 授权、Stage 78 runner、输入 manifest 和执行者。成功、失败或中断均永久消费授权，不得重放。
+- claim 之后必须重算当前执行二进制 SHA-256，并与 Stage 78 登记、Stage 79 独立复核的工件摘要完全一致；代码/工件/runtime、完整 Stage 51–79 责任链或任何内容摘要漂移都必须失败关闭。
+- 输入必须点时、只读、自哈希、内容寻址并限制在 SEC、公司 IR、许可行情、交易所官方和政府官方来源；来源可用时间不得晚于决策时间。候选集、SPY 基准、65 项特征顺序、预处理、三种子及冻结主题必须全部匹配。
+- 初始化必须同时满足单股 5%、主题 20%、总敞口 60%、现金至少 40% 和最多 10 个持仓；不得把虚拟观察配置写入真实账本或生产持仓。
+- 首次输出的前向观察日必须为 0，21/63/126/252 日绩效必须为空；输出只能 create-once、不可信、无订单意图/券商载荷，并须经未来 Stage 81 责任链外第二实现独立校验。
+- Stage 80 不得写模型/指标库、反馈训练或 reward，不得创建订单、访问券商或交易；完成执行不证明泛化、收益、老王确认逻辑、评级、仓位建议或自主操盘能力。
+
+## Stage 81 Controlled-Shadow Independent Output Validation Boundary
+
+- Stage 81 校验者必须不同于 Stage 80 executor 和 Stage 51–80 完整责任链所有角色；角色重叠必须在任何校验记录写入前失败关闭。
+- 校验必须重新提交与 Stage 80 claim 同一份点时、只读、内容寻址输入，并独立重算 manifest。不得从 Stage 80 输出反推、补齐或改写输入，也不得用不同输入验证同一 attempt。
+- 第二实现不得调用 Stage 80 的预处理、初始观察投影、预测或虚拟权重 helper；必须独立复算 65 项预处理、17/29/43 三种子预测、均值排序、symbol tie-break 和单股/主题/总敞口/现金/最大持仓数五重边界。
+- claim、result、原始输出信封、输入 manifest、Stage 79 授权和 Stage 71 冻结训练工件必须全部精确重绑并独立校验。任一差异都形成 create-once 失败记录，不得重放。
+- 通过记录仍只能标记“不可信初始化观察已独立复现”，且前向观察日必须为 0、绩效为空。它最多开放未来前向观察协议登记，不得创建账本/持仓、写模型/指标、反馈训练/reward、生成订单、接入券商或交易。
+
+## Stage 82 Controlled-Shadow Forward-Observation Protocol Boundary
+
+- Stage 82 登记人必须独立于 Stage 81 校验者、Stage 80 executor 和 Stage 51–81 完整责任链；每条 validation 最多 create-once 登记一个自哈希协议。
+- `observation_not_before` 必须等于登记时点；未来独立复核批准前不得开始观察，任何登记/批准前日期都不得回填。
+- 每个未来周度周期必须 claim-first、create-once，随后才可读取点时、内容寻址、白名单来源；证券与 SPY 必须使用同市场时点及官方美国交易日历。
+- 原始/复权价格、分红、拆股和公司行动证据必须保留；更正只能追加、不能覆盖。下一完整交易日模拟成交和单边 25bp 成本不得漂移。
+- 21/63/126/252 日检查点、252 日/40 信号/12 公司/4 季度门槛、分项指标、多重检验与停止规则必须继承冻结设计；自然门槛前不得计算或暗示绩效、晋级或收益。
+- Stage 82 不得创建观察记录、账本、持仓、绩效、模型/指标写入、反馈、reward、订单、券商或交易权限；登记最多开放未来独立协议复核。
+
+## Stage 83 Controlled-Shadow Forward-Observation Protocol Independent Review Boundary
+
+- Stage 83 复核者必须独立于 Stage 82 登记人和 Stage 51–82 完整责任链；后续复核还必须排除所有此前 Stage 83 复核者。角色重叠在写入前失败关闭。
+- 每条 Stage 82 协议只能形成一条追加式、自哈希、单根单链尖审计链；批准节点是终止节点，禁止在批准后追加、分叉、覆盖或原位重启。
+- 独立实现必须重算 Stage 82 登记、前向协议和完整 Stage 74 设计三层指纹；validation、claim、result、output、input manifest、授权、runner 工件、实现合同、候选集、特征顺序、预处理、目标或算法任一漂移都必须拒绝。
+- 批准前必须逐项复核自然前向/禁止回填、claim-first/create-once、官方日历与 SPY 同步、点时来源、公司行动/追加更正、下一完整交易日/25bp、反事实、只多边界、21/63/126/252、252/40/12/4、分项指标、多重检验和停止/证伪。
+- Stage 83 批准只开放未来零能力观察实现规格登记；不得创建观察、账本、持仓、绩效、模型/指标写入、反馈、reward、订单、券商或交易权限。
+
+## Stage 84 Controlled-Shadow Forward-Observation Zero-Capability Implementation Boundary
+
+- 每条当前 Stage 83 独立批准最多 create-once 登记一个自哈希实现规格；登记人必须独立于 Stage 83 复核人和 Stage 51–83 完整责任链。
+- 实现必须独立重算并精确绑定 Stage 83 复核、Stage 82 登记/协议、Stage 74 设计以及 validation、claim、result、output、input manifest、授权、runner 工件、实现合同、候选集、特征顺序、预处理、目标和冻结算法。
+- 周度 claim、官方交易日历、点时来源托管、公司行动追加更正、信号投影、组合转移、下一完整交易日/25bp 成本及反事实、检查点/指标/停止规则必须以确定性函数标识冻结；未来 schema 只能作为未实例化合同存在。
+- Stage 84 不得存在可执行工件、callable entrypoint、runtime、输入挂载、行情适配器、环境继承、密钥、网络、工具、子进程、生产读写或观察写入能力。
+- 登记只开放未来独立实现复核；不得开始观察、创建账本、写持仓/绩效/模型/指标、反馈训练/reward、生成订单、访问券商或交易。
+
+## Stage 85 Controlled-Shadow Forward-Observation Implementation Independent Review Boundary
+
+- Stage 85 复核者必须独立于 Stage 84 登记人、Stage 51–84 完整责任链和全部此前 Stage 85 复核者；角色重叠必须在写入前失败关闭。
+- 每个 Stage 84 实现只能形成一条追加式、自哈希、单根单链尖复核链；批准节点是终止节点，禁止批准后追加、分叉、覆盖或原位重启。
+- 独立复核必须重算 Stage 84 实现记录/合同、Stage 83 复核、Stage 82 登记/协议和 Stage 74 设计六层指纹，并重新检查八类确定性纯函数、三个未实例化未来 schema、自然前向、禁止回填、官方日历、点时托管、追加更正和全部零权限边界。
+- 任何上游哈希、责任链、函数标识、schema 状态或权限声明漂移都必须拒绝；`changes_required` 和 `rejected` 只能追加，不得改写 Stage 84 实现。
+- 批准只开放未来 Stage 86 隔离 runner 规格登记；不得创建 runner、观察、账本、持仓、绩效、模型/指标写入、训练反馈、reward、订单、券商或交易能力。
+
+## Stage 86 前向观察隔离 runner 规格边界
+
+- Stage 86 必须精确绑定当前 Stage 85/84/83/82/74 链、完整责任人排除集合、runner 工件 SHA-256、不可变代码版本、固定非特权 runtime 身份和工件复现程序；角色重叠、摘要漂移、重复登记或复现程序缺失必须失败关闭。
+- 工件存在只证明未来复核对象可寻址，不代表已经可执行。Stage 86 不得存在 callable entrypoint、已实例化 runtime、输入 mount、行情适配器或数据访问能力。
+
+## Stage 87 前向观察首次执行授权复核边界
+
+- Stage 87 复核者必须在 Stage 86 登记人、Stage 85 复核者、完整 Stage 51–86 责任链和全部先前 Stage 87 复核者之外；角色重叠必须失败关闭。
+- 复核必须提交独立复现得到的 runner 工件 SHA-256 和有界复现证据。后端必须把该摘要与 Stage 86 冻结摘要精确比较；确认勾选不能替代摘要匹配。
+- 复核链必须 append-only、自哈希、单根单 tip；批准终止链。上游漂移、分叉、环、断链、摘要不符或批准后追加均失败关闭。
+- 批准最多签发 24 小时内一次未来 Stage 88 claim-first 尝试候选，不等于执行授权。Stage 87 不得创建或消费 claim，不得存在 callable entrypoint、runtime 实例、mount、数据访问、观察、账本、持仓或绩效写入。
+- 模型/指标写入、训练反馈、reward、订单生成、券商访问与交易权限必须继续为 false；真实执行必须另经 Stage 88 门禁。
+
+## Stage 88 前向观察 claim-first 初始化边界
+
+- 必须在打开初始化 manifest、重新计算当前二进制摘要或接触任何未来数据之前，create-once 持久化 claim 并永久消费精确 Stage 87 授权；成功、失败或中断都禁止重放。
+- claim 必须精确绑定 Stage 87/86/85/84/83/82/74 哈希链、执行者、完整责任人排除集合和 manifest SHA-256；执行者与 Stage 87 及全部上游角色重叠时失败关闭。
+- manifest 必须匹配 observation-not-before、周度节奏、官方交易日历、SPY 和 Stage 81 初始校验摘要；只能自然前向、禁止回填、不得携带任何行情行，且请求时间必须在有界时钟偏差内。
+- 成功结果只能是 create-once、不可信、待未来 Stage 89 独立验证的 day-0 初始化收据，固定为 0 个自然前向交易日。不得实例化持久 runtime、挂载输入、访问行情、开始观察、创建账本、写持仓或绩效。
+- 模型/指标写入、训练反馈、scalar reward、订单生成、券商访问和交易必须继续为 false；任何能力位漂移均使 claim/result 无效并失败关闭。
+
+## Stage 89 零行情初始化收据独立验证边界
+
+- Stage 88 成功收据必须完整保留重建原 manifest 所需的官方日历 URL、自然前向、禁止回填、点时内容寻址白名单来源与证券/SPY 同步协议位；仅保存 manifest 哈希不满足独立验证。
+- 验证者必须排除 Stage 88 executor、Stage 87 reviewer、Stage 51–88 完整责任链和此前该 attempt 的验证者；每个 attempt 只能有一条 create-once、自哈希终态验证记录。
+- 独立路径必须重算 claim/result/receipt 指纹，从收据重建 manifest 指纹，并从当前可重开的精确上游链构造唯一预期收据；不得复用 Stage 88 manifest/receipt 校验 helper 自证，也不得要求重放原请求。
+- 必须核对 claim-first 时序、单一 terminal result、无 replay/fork、Stage 86/87 二进制证明绑定、requested-at 有界时间、observation-not-before、官方 HTTPS 日历内容摘要、SPY 同步和所有零权限位。
+- 通过只开放未来首个自然前向周期授权复核资格；不得实例化 runtime、读取行情、开始观察、创建账本/持仓/绩效，或写模型/指标、训练反馈、reward、订单、券商和交易数据。
+
+## Stage 90 首个自然前向周期一次性授权边界
+
+- 每条复核必须精确绑定当前 Stage 89 validation、Stage 88 attempt/claim/result/receipt 及 Stage 87–51 完整摘要链；调用者提交的预期摘要与当前责任链不一致时失败关闭。
+- 复核者必须排除 Stage 89 validator、Stage 88 executor、Stage 87 reviewer、完整上游责任人及该链此前复核者；review create-once、自哈希、单根单 tip，批准后终止复核链。
+- 授权的 `not_before` 必须等于 `max(submitted_at, observation_not_before)`，有效期固定 7 天且最多一次。它只开放未来 claim-first 周期尝试资格，不得续期、覆盖或被解释为已经开始观察。
+- 当前 Stage 90 复核不得读取官方日历或行情，不得授权行情适配器、实例化 runtime、开始观察、创建账本、写持仓或绩效；未来行情适配器必须另经明确、只读、内容寻址白名单授权。
+- 模型/指标写入、训练反馈、reward、订单生成、券商访问与交易始终为 false；本阶段不得创建 Stage 91 claim、结果或任何前向业绩。
+- 未来输入必须只读、点时、内容寻址且白名单化；周度周期必须 claim-first/create-once，公司行动更正只能追加；未来输出必须 create-once、不可信、独立验证，且不得含订单意图或券商载荷。
+- 根目录只读、工作区临时、身份非特权且 no-new-privileges，单并发单进程并受固定 CPU、内存、时长和输出上限约束；环境继承、密钥、网络、工具、子进程和生产 I/O 全部关闭。
+- 登记只开放未来 Stage 87 独立首次执行授权复核；观察、账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商和交易权限继续关闭。
+
+## Stage 91 首个自然前向周期任务声明边界
+
+- Stage 91 必须先于任何日历解析、行情适配器授权或数据访问 create-once 写入 claim；claim 一经持久化，精确 Stage 90 授权永久消费，不因后续失败、过期、中断或未运行而恢复。
+- 同一 Stage 90 `authorization_review_sha256` 最多对应一个 Stage 91 claim；重复文件、重复授权摘要、角色重叠、上游绑定漂移或非当前授权必须失败关闭。
+- 领取者必须独立于 Stage 90 reviewer 与完整既有责任链。界面确认不能替代服务端角色排除和哈希校验。
+- Stage 91 claim 只能保存不可执行任务身份、周期序号与观察资格锚点；不得解析日历、推断周期窗口、读取行情、挂载输入、实例化 runtime 或开始观察。
+- 行情适配器必须经过后续单独、明确、只读、内容寻址白名单授权；Stage 91 不得把“等待适配器授权”偷换成数据访问权限。
+- Stage 91 不创建账本、持仓、绩效、模型或指标，不反馈训练/reward，不生成订单、不接券商、不交易。
+
+## Stage 92 只读行情适配器授权边界
+
+- Stage 92 必须由 Stage 91 claimant 与 Stage 51–91 完整责任链之外的新角色 create-once 复核，并精确绑定 claim、Stage 90 review、Stage 89 validation 和 Stage 88 initialization manifest；重复复核、角色重叠或摘要漂移必须失败关闭。
+- 合同只能允许 GET、固定 HTTPS 路径和固定 `apikey/from/to` 查询参数。凭据必须服务端隔离、脱敏、不得持久化或返回，并排除在规范请求哈希之外；禁止重定向、非 HTTPS、任意 URL、任意股票和追溯回填。
+- 未来股票集合、时间窗口、请求、响应、来源正文、抓取时间和来源可用时间必须内容寻址；证券必须与 SPY 同步，原始载荷保留且修正只追加。
+- Stage 92 批准最多开放 7 天内未来独立 claim-first、create-once 只读数据收据资格，以覆盖周末与休市日。批准本身不得解析日历、发起请求、读取行情、启动 runtime/观察或创建任何业绩和交易事实。
+- Stage 92 不创建账本、持仓、绩效、模型或指标，不反馈训练/reward，不生成订单、不接券商、不交易；未来数据收据仍是不可信输入，必须另行独立验证。
+
+## Stage 93 claim-first 单次只读原始行情收据边界
+
+- Stage 93 必须在任何外部请求前 create-once 写入 claim；claim 精确绑定 Stage 92 授权、Stage 91 claim、适配器规格、服务端推导标的集合、SPY、自然前向时间窗和全部脱敏规范请求。失败、中断或部分载荷写入均不得恢复或重放授权。
+- 标的只能来自 Stage 81 已独立验证的初始影子组合，排序去重后为 1–10 个；客户端不得提交任意标的。时间窗只能从 Stage 92 授权纽约日期的下一自然日起算至执行日，禁止客户端选窗与历史回填。
+- 网络只允许固定 FMP 与 NYSE HTTPS GET，重定向关闭。凭据只允许在 claim 落盘后于内存中注入 wire URL；不得进入规范请求摘要、持久记录、管理端响应、日志或错误文本。
+- 每响应最多 16 MiB、合计最多 64 MiB；每份原始载荷必须 create-once、内容寻址，并保存规范请求、响应、来源正文、抓取时间、来源可用时间及保管路径。registry 读取必须复验字节数和 SHA-256。
+- 成功收据固定为未信任外部原始证据，日历未解析、行情行未建立、观察未开始；失败终态也必须保存有界无凭据错误码。两者都不创建账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易事实。
+
+## Stage 94 原始行情收据责任链外独立验证边界
+
+- Stage 94 validator 必须排除 Stage 93 executor、Stage 92 reviewer 与 Stage 51–93 完整责任链；客户端不得提交股票、日期、URL、载荷或解析结果，只能提交预期摘要、理由和明确边界确认。
+- 必须通过独立实现重算 Stage 93 claim/result/receipt、全部规范请求、响应正文、来源正文和 raw payload 指纹，并从精确上游链重建固定脱敏 FMP、SPY 和 NYSE 请求；不得调用 Stage 93 executor 作为验证依据。
+- 每份 raw payload 必须重新打开并复核路径、字节数、SHA-256 与收据绑定；持久 JSON 和 raw bytes 都不得含当前配置的数据源凭据。原始载荷缺失、篡改、路径越界、凭据泄漏或任一摘要漂移必须失败关闭。
+- 验证只允许检查最小响应信封，不得解析交易日、行情行、价格、复权、分红、拆股或公司行动，不得创建观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。
+- Stage 94 记录 create-once；失败永久终止，不能重写为通过。通过只开放未来零能力 parser 规格独立复核资格，不等于允许解析或开始自然前向观察。
+
+## Stage 95 零能力行情 parser 规格登记边界
+
+- Stage 92–94 的规范请求必须使用 FMP stable 五类显式来源：拆股调整价、未拆股调整原始价、分红调整价、分红事件和拆股事件，并对每个 subject 与 SPY 都请求；另有 NYSE 官方日历。禁止 legacy `historical-price-full`，也禁止从价格差异推断公司行动。
+- Stage 95 登记者必须排除 Stage 94 validator、Stage 93 executor、Stage 92 reviewer 和 Stage 51–94 完整责任链；客户端不得提交规则、代码、载荷、URL、标的、时间窗口或解析结果。
+- 规格必须 create-once、自哈希并绑定精确 validation/receipt/claim/result/authorization/spec/request-set 摘要；严格 schema、重复/越界/缺失失败关闭、三价格序列隔离、SPY/官方日历同步和跨来源对账不得由未来实现放宽。
+- 合成向量只能是虚构输入，不能携带真实行情或凭据，也不能证明来源语义或 `source_available_at`。登记不等于复核、实现或运行；Stage 96 独立复核前不得创建 parser 工件、入口、runtime、载荷挂载或解析行。
+- 不得由 Stage 95 创建观察、账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易事实。
+
+## Stage 96 行情 parser 规格责任链外独立复核边界
+
+- 每条 Stage 95 登记最多一个 create-once 终态复核；复核者不得是 Stage 95 registrar、Stage 94 validator、Stage 93 executor 或 Stage 51–95 任一既有责任人。
+- 独立复核必须由第二实现重算 validation/claim/result/receipt/registration/specification，并独立重建五类 FMP 请求、NYSE 官方日历请求及八组合成向量哈希；不得只相信 Stage 95 自报摘要。
+- 复核不得读取或挂载原始载荷，不得提供 parser 代码、工件、入口或 runtime。批准只开放未来零能力 parser 实现登记资格，不能创建解析行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。
+- `source_available_at` 继续保持未验证；任何要求修改或拒绝都必须重建上游不可变规格，不能覆盖原记录。
+
+## Stage 97 行情 parser 零能力实现契约登记边界
+
+- 每条当前 Stage 96 独立批准复核最多登记一个 create-once、自哈希契约；登记者必须排除 Stage 96 reviewer 与 Stage 51–96 完整既有责任链，并独立重算 review、registration 和 specification 指纹。
+- 契约只能冻结纯确定性函数标识、canonical schema、显式来源/公司行动/日历/对账语义、严格失败关闭规则和八组合成向量哈希；不得包含或挂接源码、可执行制品、entrypoint 或 runtime。
+- 原始载荷不得挂载或读取；不得继承环境、读取 secret、联网、调用工具/子进程或访问生产系统。`source_available_at` 仍保持未验证，未来输出即使生成也必须内容寻址、create-once、非可信并另经独立验证。
+- 登记只开放 Stage 98 责任链外独立实现复核资格；不得创建交易日历行、行情行、观察、账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易事实。
+
+## Stage 98 行情 parser 实现责任链外独立复核边界
+
+- 每条 Stage 97 当前实现契约最多一个 create-once 终态复核；复核者不得是 Stage 97 registrar 或 Stage 51–97 任一既有责任人。
+- 独立审计必须重新计算 implementation/contract、Stage 96 review、Stage 95 registration/specification 指纹，并独立复核八个函数、canonical schema、显式来源、公司行动、日历/对账和八组合成向量；不得只相信 Stage 97 自报摘要。
+- `source_available_at` 必须继续显示为未验证。任何不一致、要求修改或拒绝都失败关闭并要求重建不可变上游，不能覆盖旧记录。
+- 批准只开放 Stage 99 隔离 parser runner 规格登记资格；不得创建工件、入口、runtime、载荷读取、解析行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。
+
+## Stage 99 隔离行情 parser runner 规格登记边界
+
+- 每条 Stage 98 当前独立批准实现最多登记一个 create-once、自哈希 runner 规格；登记者必须排除 Stage 98 reviewer 与 Stage 51–98 完整既有责任链。
+- 规格必须绑定 Stage 93–98 全链摘要、未来工件 SHA-256、代码版本和可复现步骤，但登记时源码、可执行工件、callable entrypoint 和 runtime 必须明确不存在；不得把拟议摘要表述成已经交付的程序。
+- 未来 runner 必须固定无特权身份、只读根文件系统、临时工作目录、禁止提权，并受单并发、1024 MiB、300 秒、1000 millicores、单进程和 8 MiB 输出上限约束。环境继承、secret、网络、工具、子进程及生产读写全部禁止。
+- 未来输入只能是 Stage 94 已验证、只读且内容寻址的收据载荷；未来输出必须 create-once、非可信并另经独立验证，不能包含市场解释或订单意图。`source_available_at` 仍保持未验证。
+- 登记只开放 Stage 100 责任链外首次执行授权复核资格；不得读取真实载荷、执行 parser、生成解析行、启动观察或创建账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。
+
+## Stage 100 行情 parser 首次执行授权复核边界
+
+- Stage 100 复核者必须排除 Stage 99 registrar、工件构建者及 Stage 51–99 完整既有责任链；工件构建者与复核者不得为同一人。授权复核链 append-only，批准后必须终止。
+- 工件路径必须由服务端从 runner ID 与 Stage 99 冻结 SHA-256 派生，客户端不得提交路径或工件字节。`runner.artifact` 与 `manifest.json` 必须是非空、只读、非符号链接的常规文件，分别不得超过 16 MiB 与 64 KiB。
+- manifest 必须自哈希并精确绑定 runner/spec/contract、代码版本、source bundle、复现步骤、runtime、工件长度/摘要、构建者和时间；服务端必须独立读取工件字节、重算 SHA-256 与长度，不能接受管理员手填摘要代替。
+- 授权最多一次、24 小时有效；当前工件或 manifest 删除、替换、修改、变为可写或摘要/长度漂移时，Stage 101 claim 资格必须立即失败关闭。
+- 本阶段不得创建 callable entrypoint、实例化 runtime、挂载或读取真实载荷、执行 parser、生成日历/行情行、启动观察或创建账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。批准只开放未来 Stage 101 claim-first 单次尝试资格。
+
+## Stage 101 行情 parser 首次执行尝试声明边界
+
+- Stage 101 必须在任何 runtime 实例化、载荷挂载/读取或 parser 调用之前 create-once 写入 claim；声明一经持久化，精确 Stage 100 授权永久消费，不因失败、过期、中断、取消或未执行而恢复。
+- claim 必须绑定仍在有效窗口内且当前工件/manifest 持续匹配的 Stage 100 授权；同一 review ID 或 authorization-review SHA-256 最多声明一次。Stage 100 原记录保持不可变，未来资格以 Stage 101 消费事实为准。
+- 固定输入只能由服务端从 Stage 94/93 不可变链重建，必须包含 validation、claim、result、receipt、股票、SPY、自然前向窗口、规范请求集合、raw-payload custody manifest 以及每份载荷的元数据、摘要、路径和字节数。客户端不得提交或替换上述输入。
+- Stage 101 只能保存不可执行尝试身份和输入元数据；不得打开 raw payload，不得提供运行按钮、entrypoint 或 runtime，不得产生解析输出。任何未来 Stage 102 执行必须是新的、独立的一次性门禁并重新核对当前工件和固定输入。
+- Stage 101 不创建日历/行情行、观察、账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易事实；claim 不能被表述为行情正确、策略有效或自然前向观察已开始。
+
+## Stage 102 行情 parser 单次受限执行边界
+
+- 同一 Stage 101 attempt ID 最多写入一个终态 Stage 102 result；任何工件或载荷读取前必须先 create-once 写入 start marker。marker 一旦存在即从待执行集合移除且永久禁止重试；显式失败直接固化，进程异常中断必须在 Stage 99 固定 wall-clock 截止点后恢复为保守失败终态。任何失败、超时或输出写入错误都永久消费 claim。
+- 每次执行必须重新核对当前 Stage 100 只读常规工件、manifest、SHA-256 和长度。artifact 只允许是严格声明式 parser binding；不得 spawn、fork、加载动态代码、继承环境、读取 secret、访问网络、调用工具或创建子进程。
+- raw payload 只允许来自 Stage 101 固定 manifest 中列出的 `payloads/{stage93_attempt_id}/...` 路径；绝对路径、父目录、symlink、非常规文件、单文件超过 16 MiB、总量超过 64 MiB、长度或摘要漂移均失败关闭。
+- FMP 必须是 UTF-8 顶层 array；价格必须是正 JSON number，volume 必须为非负整数；日期必须为 ISO 且在窗口内；重复日期、缺字段、字符串数字或未知请求路径失败关闭。分红/拆股不得推断。
+- NYSE 日历必须来自可识别的 server-rendered table。SPY 三套价格必须覆盖每个官方 session；个股缺失只创建显式 gap，不得 forward-fill、插值或使用其他价格序列替代。
+- 成功输出仍是非可信事实候选，不等于行情正确、投资结论、观察开始或策略有效；Stage 103 独立校验前不得创建账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易事实。
+
+## Stage 103 行情 parser 输出独立校验边界
+
+- validator 必须排除 Stage 102 executor、Stage 101 claimant、Stage 100 reviewer、工件构建者与完整上游责任链；同一 Stage 102 attempt 最多一条 create-once 终态校验。
+- 第二实现不得调用 Stage 102 的价格、分红、拆股、日历、覆盖、行哈希或输出构造 helper；必须独立重开、重哈希和全量重解析 Stage 94 固定载荷，并与 Stage 102 完整输出精确相等比较。
+- 摘要相等不能替代语义重解析；任一字段、顺序、行、覆盖、显式缺口、manifest 或完整对象不一致都必须永久失败关闭。
+- 通过只开放 Stage 104 观察输入准入复核候选；`source_available_at` 继续未验证。不得自动开始观察、建立账本/持仓/绩效、写模型/指标、训练、生成 reward、订单、券商或交易事实。
+
+## Stage 104 首次自然前向周期观察输入独立准入边界
+
+- reviewer 必须排除 Stage 103 validator、Stage 102 executor 和完整既有责任链；批准记录终止并冻结，要求修改/拒绝只能通过绑定 previous review ID/SHA-256 的追加记录继续，不能覆盖或分叉。
+- Stage 104 必须在写入和读取时重新打开 Stage 102 内容寻址输出并重新计算结构审计；symlink、越界路径、空/超限文件、摘要漂移、非当前 Stage 91–103 链或持久化审计字段漂移一律失败关闭。
+- 至少一个官方交易日；SPY 三价格口径逐日完整；每个标的/交易日/口径必须恰好为真实行或 `missing_subject_row_no_fill` gap；禁止前填、插值、跨序列替代。分红、拆股与三价格口径必须继续分开。
+- HONE `retrieved_at_utc` 只能证明保管取得时间，不能冒充供应商发布时间。`provider_publication_time_verified` 保持 false；`admitted_available_at_utc` 只能取最新保管取得、parser 完成、独立校验和复核提交时间的最大值，作为保守下限。
+- 批准只开放 Stage 105 create-once 观察物化规格登记；不得物化观察、建账、写持仓/绩效/模型/指标、训练、生成 reward、订单、券商或交易事实。
+
+## Stage 105 首次自然前向周期观察物化规格登记边界
+
+- 登记者必须排除 Stage 104 reviewer 与完整既有责任链；同一 Stage 104 review 最多一条 create-once、自哈希登记。读取时必须重新取得当前 Stage 104 准入源并重建完整规格；上游或持久记录漂移一律失败关闭。
+- 输入只能是 Stage 104 已准入的精确 Stage 102 输出；禁止重新抓取、重新解析、补历史、覆盖或原地纠错。供应商发布时间继续为未验证，`admitted_available_at_utc` 和 custody-time limitation 必须原样保留。
+- 每个官方交易日、每个标的和 SPY 的 raw-unadjusted、split-adjusted、dividend-adjusted 三口径必须保持独立。标的缺失只能是显式 gap；SPY 缺失、重复、越界、填充、插值、跨口径替代或摘要漂移必须失败关闭。分红、拆股与价格继续分开。
+- Stage 88 初始影子组合只能以 output/manifest SHA-256 绑定，不得在规格登记中重算权重、执行组合会计转换、创建持仓、净值或绩效。
+- 规格必须固定 canonical schema/order、精确十进制字符串保留、逐行 SHA-256、cycle-scoped 内容寻址 create-once 输出路径和未来独立验证要求；未来输出仍须标记 untrusted。
+- 登记状态固定 `registered_not_reviewed_not_implemented_not_run`。实现、工件、entrypoint、runtime、输入挂载、环境继承、secret、网络、工具、子进程、生产读写以及观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商和交易能力全部为 false。只开放 Stage 106 责任链外规格复核资格。
+
+## Stage 106 观察物化规格独立复核边界
+
+- reviewer 必须排除 Stage 105 登记者、完整上游责任链和同一复核链既有 reviewer；复核记录 append-only、自哈希，批准终态不可逆。
+- 独立复核必须从当前 Stage 104 已准入源以第二实现重建完整 Stage 105 规格；禁止调用 Stage 105 规格构造器或只比较自报哈希。重建结果与登记必须逐字段精确一致。
+- 官方 session、股票/SPY、raw-unadjusted/split-adjusted/dividend-adjusted、显式标的 gap、SPY fail-closed、分红拆股分离、十进制字符串、确定性顺序、逐行摘要、内容寻址路径和 Stage 88 初始分配摘要均须重新核验。
+- 供应商发布时间继续为未验证；只能保留 Stage 104 的保守 custody-time available-at 和 limitation，不得升级为来源发布时间事实。
+- 审批只开放 Stage 107 零能力实现登记候选。实现、工件、entrypoint、runtime、输入挂载、环境/secret/网络/工具/子进程、生产读写、观察、账本、持仓、绩效、模型/训练/reward、订单、券商和交易能力全部保持 false。
+
+## Stage 107 观察物化实现契约边界
+
+- registrar 必须独立于 Stage 106 reviewer 和 Stage 51–106 完整责任链；契约必须绑定当前 review/audit 与 Stage 105 registration/specification。
+- 只能登记确定性函数标识、schema、路径、摘要和语义；源码、可执行工件、entrypoint、runtime、输入 mount/read 均必须不存在。
+- 上游漂移立即撤销当前绑定资格。登记只开放 Stage 108 独立实现复核，不生成观察、账本、持仓、绩效、训练、reward、订单、券商或交易事实。
+
+## Stage 108 观察物化实现责任链外独立复核边界
+
+- reviewer 必须排除 Stage 107 registrar、Stage 106 reviewer、Stage 51–107 完整责任链和同一复核链既有 reviewer；记录 append-only、自哈希，批准终态不可逆。
+- 独立审计必须重新计算 Stage 107 implementation/contract、Stage 106 review/audit、Stage 105 registration/specification 指纹；禁止只相信持久布尔位或复用 Stage 107 构造路径。
+- 八个纯函数、canonical schema、精确 Stage 104 输入、official sessions、标的/SPY 三价格口径、显式 gap、分红/拆股、初始分配、保守 available-at、create-once 内容寻址输出必须逐项匹配。供应商发布时间始终是未验证信息。
+- 批准只开放 Stage 109 隔离 runner 规格登记候选。工件、entrypoint、runtime、输入挂载/读取、环境/secret/网络/工具/子进程、生产 I/O、观察、账本、持仓、绩效、模型/训练/reward、订单、券商与交易能力全部保持 false。
+
+## Stage 109 观察物化隔离 runner 规格登记边界
+
+- registrar 必须排除 Stage 108 reviewer、Stage 107 registrar、Stage 51–108 完整责任链及同一 implementation 既有 registrar；登记 create-once、自哈希，读取时重新绑定当前完整上游。
+- 只能保存提议工件 SHA-256、不可变代码 revision、复现程序、固定非特权 runtime、Stage 104 内容寻址只读输入、create-once untrusted output 和资源上限。提议工件、源码/可执行文件、entrypoint、runtime 实例、挂载及任何输入读取必须仍不存在。
+- 每个 implementation 最多 1 次运行、1024 MiB、300 秒、1000 millicores、1 个进程、8 MiB 输出；环境继承、secret、网络、工具、子进程、生产写入及输出覆盖均禁止。
+- 登记只开放 Stage 110 责任链外首次执行授权复核候选；观察、账本、持仓、绩效、模型指标、训练反馈、reward、订单、券商和交易能力全部保持 false。
+
+## Stage 110 观察物化首次执行授权边界
+
+- 首次执行授权只能基于服务端派生的内容寻址 custody。客户端不能提交工件路径或用手填摘要代替服务端对 `runner.artifact` 的重新读取、SHA-256 与长度核验。
+- 工件与 manifest 必须是非空、大小受限、只读常规文件；symlink、可写文件、无效自哈希、immutable revision/runtime/复现程序/完整 Stage 101–109 绑定漂移均失败关闭。
+- 工件构建者、Stage 109 registrar、Stage 51–109 完整责任链及同链既有 reviewer 不能担任 Stage 110 reviewer；批准为终态，不得通过后续 review 延期或扩权。
+- 授权固定最多一次且仅 24 小时有效；工件或 manifest 后续漂移立即撤销 future claim 资格。Stage 110 必须从 Stage 111 持久化 claim 读取 consumed-review 集合，不能假装未消费或已执行。
+- Stage 110 没有 claim、execution endpoint、entrypoint、runtime、输入挂载/读取、观察物化执行或输出；观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商与交易能力全部保持 false。
+- Stage 111 必须在任何执行能力出现前永久消费精确 Stage 110 授权。claim create-once，未来执行失败或未开始也不得 retry、release 或恢复授权。
+- Stage 111 只保存不可变授权元数据与摘要，不得挂载或读取 Stage 104 输入、执行工件、创建观察物化输出、账本、持仓、绩效、训练、reward、订单、券商或交易事实。
+
+## Stage 112 单次受控观察物化执行边界
+
+- start marker 必须在任何 Stage 110 工件或 Stage 104/102 输入读取前 create-once 持久化；已开始、成功、失败、超时或中断的 claim 均不得重试、释放、覆盖或恢复授权。
+- `runner.artifact` 只能是 `deny_unknown_fields` 的严格声明式程序，精确绑定合同、代码 revision、八个纯函数和五个 canonical schema；禁止把它作为命令、脚本或二进制启动，禁止 entrypoint、网络、环境继承、secret、工具、子进程和生产外部 I/O。
+- 执行必须重验证 Stage 110 artifact/manifest 和完整上游绑定，并重新打开、重哈希精确 Stage 104-admitted Stage 102 output。客户端不得提供路径、日期、标的、替代输入、参数或工件。
+- official sessions 必须唯一完整；SPY 每个 session 必须有三价格口径；每个标的/session/basis 必须满足 price 与固定原因 explicit gap 的严格异或；公司行动、精确十进制、来源 row hash 与 Stage 88 initial-allocation binding 必须保持原样，不做插值、补值或会计状态迁移。
+- 成功输出只能是 create-once、内容寻址、非可信 observation envelope。Stage 113 责任链外独立重算通过前，不得进入账本、持仓、净值、绩效、模型指标、训练、RL、reward、订单、券商或交易链。
+
+## Stage 113 观察物化输出独立校验边界
+
+- validator 必须排除 Stage 112 executor、Stage 111 claimant、Stage 110 reviewer、Stage 109 registrar 与 Stage 51–112 完整责任链；同一 attempt 只能有一个 create-once 终态验证记录。
+- 必须重新打开 exact Stage 112 result/output 与 Stage 104-admitted Stage 102 input，并独立重投影 sessions、三价格口径、显式 gap、dividends/splits、Stage 88 initial allocation、available-at、逐行哈希、规范排序和完整 envelope 指纹。
+- 禁止调用 Stage 112 materializer helper、只比较持久布尔位或只重哈希原文件。任何角色、保管、指纹、来源矩阵、行、排序或完整输出漂移都失败关闭且不可覆盖。
+- 验证通过只开放 Stage 114 观察证据准入复核。账本、持仓、净值、绩效、模型/指标、训练、RL、reward、订单、券商与交易权限全部保持 false。
+
+## Stage 114 观察证据独立准入边界
+
+- 只有当前 Stage 113 独立验证通过的 exact Stage 112 envelope 可以进入复核；服务端必须在复核写入和读取时重新打开 Stage 113 终态、Stage 112 envelope 与 Stage 104/102 精确输入绑定，并再次运行完整独立重投影。自洽的 Stage 114 JSON 不能替代当前 custody 复核。
+- reviewer 必须独立于 Stage 113 validator、Stage 112 executor 和 Stage 51–113 完整责任链。复核记录 append-only、自哈希；批准后永久冻结，退回/拒绝只能由新的链外角色追加，不得覆盖历史。
+- admission 是与原 envelope 分离的证据事实，不得修改原 envelope 的任何字节或把其 `untrusted` 标记改成 trusted。供应商发布时间继续是未验证限制，Stage 104 custody-time floor 不得被包装成 provider time。
+- Stage 114 不允许 refetch、fill、interpolate、cross-series substitute、rewrite、correction 或 retroactive backfill，也不执行 accounting transition。
+- 批准只开放 Stage 115 账本转换规格登记。ledger、position、NAV/performance、model/metric、training/RL、reward、order、broker 和 trading 权限全部保持 false。
+
+## Stage 115 观察证据到账本转换规格登记边界
+
+- registrar 必须排除 Stage 114 reviewer、Stage 113 validator、Stage 112 executor 与 Stage 51–114 完整责任链；登记 create-once、自哈希。每次读取必须重新取得当前 Stage 114 准入证据、重跑完整独立重投影，并精确重建规格与责任链排除名单。
+- Stage 88 binding 只能证明初始化来源，不能充当 opening portfolio snapshot。没有另行独立准入的 opening snapshot 时，不得默认或推断本金、现金、持仓、股数或目标权重，允许写入的财务事件类型必须为空。
+- 证券会计 mark 只能使用 raw unadjusted close；split-adjusted 与 dividend-adjusted 价格不得作为证券 mark。SPY dividend-adjusted 仅允许作为非会计 benchmark total-return 比较，不能进入组合会计。
+- 任一 required mark 显式缺失都必须阻断 NAV/performance；禁止 fill、interpolate、cross-series 或 cross-basis substitution。dividend/split 在独立验证持仓和生效条款前只作为 notice，不得记账。
+- 未来事件必须使用精确十进制字符串、append-only、幂等身份。纠错只能由新准入证据和新增 superseding/reversal 事件完成，不得原地覆盖或回写历史。
+- 登记只开放 Stage 116 责任链外规格复核。当前不得创建 ledger、event、position、cash、NAV/performance、model/metric、training/RL、reward、order、broker 或 trading 能力。
+
+## Stage 116 账本转换规格责任链外独立复核边界
+
+- reviewer 必须排除 Stage 115 registrar 与 Stage 51–115 完整责任链；同链 reviewer 不得重复任职。复核记录 append-only、自哈希；批准后冻结，要求修改或拒绝不能覆盖既有规格。
+- 独立审计必须从当前 Stage 114 正式证据完整重建规格，且不得调用 Stage 115 builder。必须独立复算 registration/specification/audit 哈希并逐字段比较，不能只读取 Stage 115 自报确认位。
+- 必须再次证明 Stage 88 不是 opening positions；opening portfolio snapshot 另行独立准入前，禁止默认或推断 notional、cash、positions、shares 和 target weights，财务写入继续关闭。
+- raw unadjusted close 才能进入未来证券会计；adjusted prices 只能用于非会计比较。显式 gap 必须阻断 NAV；dividend/split 在持仓和有效条款准入前只作 notice，避免双计。
+- 精确十进制、append-only、幂等事件身份、双分录、保守 available-at 和追加 superseding/reversal 纠错规则必须在第二实现中保持一致。
+- 批准只开放 Stage 117 零能力实现登记。implementation artifact、entrypoint、runtime、input mount、ledger/event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 与 trading 权限全部保持 false。
+
+## Stage 117 账本转换零能力实现合同边界
+
+- registrar 必须排除 Stage 116 reviewer 与 Stage 51–116 完整责任链；合同 create-once、自哈希，每次读取必须重验 Stage 116 review/audit、Stage 115 registration/specification 和全部当前指纹。
+- 合同只能冻结纯函数标识、canonical event/double-entry schema 与内容寻址路径，不能携带源码、可执行工件、入口、runtime、输入挂载/读取、环境、secret、网络、工具、子进程或生产 I/O 能力。
+- Stage 88 永远不能在实现层变成 opening positions。没有单独独立准入的 opening portfolio snapshot 时，不得默认或推断 notional、cash、positions、shares、target weights，财务 posting 必须保持 false。
+- raw unadjusted close 才能作为未来证券会计 mark；adjusted prices 不得进入证券会计，SPY dividend-adjusted 只作非会计基准比较。显式 gap 阻断 NAV；公司行动在持仓和有效条款准入前只作 notice。
+- 精确十进制、append-only、幂等身份、双分录、保守 available-at 和新增 superseding/reversal 纠错必须由合同固定；不得通过改写历史修正。
+- 登记只开放 Stage 118 责任链外实现复核。opening snapshot、ledger/event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 与 trading 权限全部保持 false。
+
+## Stage 118 账本转换实现合同责任链外独立复核边界
+
+- reviewer 必须排除 Stage 117 registrar、Stage 116 reviewer、Stage 51–117 完整责任链和同链既有 reviewer；记录 append-only、create-once、自哈希，批准终态不可覆盖。
+- 独立审计必须从当前 Stage 116/115/114 来源重建完整 Stage 117 合同，禁止调用 Stage 117 contract builder；implementation/contract、review/audit、registration/specification 哈希必须独立复算并与当前 custody 精确匹配。
+- 八个纯合同函数、canonical event/double-entry schemas、内容寻址路径、opening portfolio 独立前置门、raw/adjusted 价格边界、gap/NAV、公司行动 notice、防双计、精确十进制、幂等、双分录、append-only 纠错与 conservative available-at 必须逐字段一致。
+- Stage 88 仍只能证明初始化来源，不能产生 opening positions。没有单独准入的 opening portfolio snapshot 时，任何财务 posting、NAV 或 performance 都必须关闭。
+- 批准只开放 Stage 119 隔离 runner 规格登记。源码/工件/入口/runtime/input mount/read、opening snapshot、ledger/event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 与 trading 权限全部保持 false。
+
+## Stage 119 账本转换隔离 runner 规格登记边界
+
+- runner 记录必须 create-once、自哈希，并精确绑定当前 Stage 118 review/audit、Stage 117 implementation/contract、Stage 116 review、Stage 115 registration/specification 与 Stage 114–111 上游摘要；任一漂移即失败关闭。
+- registrar 必须独立于 Stage 118 reviewer、Stage 117 registrar 和完整 Stage 51–118 责任链；同一 Stage 118 review 只能登记一次，不得覆盖或分叉。
+- 只能冻结拟议工件 SHA-256、immutable revision、reproduction procedure、固定非特权 runtime、Stage 114 精确只读输入、create-once untrusted candidate output 与资源上限；当前不得存在源码、工件、entrypoint、runtime、mount/read、环境继承、secret、网络、工具、子进程或生产 I/O。
+- opening portfolio snapshot 缺失时金融事件 allowlist 必须为空；不得默认、推断或补造本金、现金、持仓、股数或权重，也不得创建 authoritative ledger/event/position/cash/NAV/performance。
+- 登记只开放 Stage 120 责任链外首次执行授权复核；model/metric、training/RL/reward、order、broker 与 trading 始终关闭。
+
+## Stage 120 账本转换首次执行授权复核边界
+
+- 复核只能读取 runner 派生内容寻址保管区中的只读常规 `runner.artifact` 和自哈希 `manifest.json`；服务端必须重新计算工件摘要与长度。手填摘要、符号链接、可写文件、空文件、超限文件、manifest 自哈希或 immutable revision/runtime/reproduction drift 均失败关闭。
+- reviewer 必须独立于 Stage 119 registrar、artifact builder 和 Stage 51–119 完整责任链；复核 append-only、自哈希，批准后不得追加同链复核，退回/拒绝不得原地覆盖。
+- 授权只能有效 24 小时且只能被一个未来 Stage 121 claim 原子消费；Stage 120 本身不得创建 execution endpoint、entrypoint、runtime、mount、input read、candidate output 或重试能力。
+- opening portfolio snapshot 缺失与空 financial-event allowlist 是授权合同的一部分。没有另行准入的期初组合时，未来尝试只可产生 non-financial observation notice candidate，不得创建 authoritative ledger event、position、cash、NAV/performance 或任何交易状态。
+- Stage 120 不创建模型、指标、训练、RL、reward、订单、券商或交易权限，也不把未确认 Hari/老王观点写成系统规则。
+
+## Stage 121 账本转换执行尝试认领边界
+
+- claim 必须在任何 runner entrypoint、runtime、Stage 114 已准入输出 mount/read 或转换执行之前，以 create-once、自哈希文件原子持久化；同一 Stage 120 review 只能对应一个 claim。
+- claimant 必须排除 Stage 120 reviewer、artifact builder、Stage 119 registrar 与 Stage 51–120 完整责任链；调用方不得选择或替换 artifact、manifest、input、path、symbol、date 或 financial state。
+- 持久化 claim 永久消费授权；失败、取消、过期、未执行和未来执行终态都不能 retry、release 或 restore。Stage 120 eligibility 必须从 Stage 121 持久化记录派生。
+- Stage 121 不得提供执行入口、runtime、输入读取或候选输出，也不得创建 opening snapshot、ledger/event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 或 trading authority。
+
+## Stage 122 账本转换单次受控执行边界
+
+- Stage 122 只能执行一条已被 Stage 121 永久认领、仍精确绑定当前 Stage 120 artifact/manifest、Stage 119 runner/contract、Stage 114 admitted output 与 Stage 113/112/111 摘要的 claim；executor 必须位于 claimant 和完整 Stage 51–121 责任链之外。
+- start marker 必须在读取工件或输入任何字节前 create-once 持久化。每个 claim 最多一次；成功、失败、超时、中断或终态写入异常都不能 retry、release、restore 或改换 executor。
+- runner artifact 只能是经过 Stage 120 重哈希确认的严格声明式 JSON 程序；不得含 command、entrypoint、动态代码、shell、子进程、网络、secret、环境继承或任意文件访问。服务端只可在进程内执行固定八函数和两套 canonical schema。
+- opening portfolio snapshot 缺失时 financial-event allowlist 必须为空，输出只可包含未受信的非财务 observation/evidence/session/raw-close/benchmark/gap/dividend-or-split notice candidate；不得把 notice 晋升为 authoritative ledger event。
+- 候选必须精确十进制、canonical ordering、内容寻址且幂等；成功后仍必须由未来 Stage 123 责任链外独立验证。任何 financial posting、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 和 trading authority 均保持关闭。
+
+## Stage 123 账本转换候选责任链外独立验证边界
+
+- validator 必须排除 Stage 122 executor、Stage 121 claimant 与 Stage 51–122 完整责任链；不得复用 Stage 122 的投影 helper 作为独立验证实现。
+- 验证必须重新打开并重哈希 exact claim/result/content-addressed candidate、Stage 120 artifact/manifest、Stage 119 contract 和 Stage 114 admitted evidence；符号链接、路径漂移、空文件、超限文件、绑定或哈希差异全部失败关闭。
+- 第二套实现必须逐条重建允许的七类非财务 notice，独立复算 identity、精确十进制、canonical ordering、complete candidate 与幂等哈希，再与 Stage 122 持久化候选作 exact compare。
+- 每个 attempt 只能写入一个 create-once、append-only、自哈希终态；失败不能覆盖、重试或改换 validator。通过只开放 Stage 124 非财务候选准入复核，候选仍为 untrusted。
+- Stage 123 不得补造 opening portfolio snapshot、把 notice 晋升为 authoritative financial event，或创建 position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 和 trading authority。
+
+## Stage 124 非财务观察候选责任链外独立准入边界
+
+- reviewer 必须排除 Stage 123 validator、Stage 122 executor、Stage 121 claimant、Stage 51–123 完整责任链和同一 Stage 124 链上的既有 reviewer；复核链必须唯一线性、append-only、自哈希，批准后永久冻结。
+- 每次写入和读取必须通过 Stage 123 当前读取链重新打开并核对 exact validation/result/candidate/claim 与 Stage 114/112 摘要；客户端确认位不能替代服务端当前 custody 校验。
+- 批准只能创建分离的正式非财务观察证据记录，不能修改 Stage 122 candidate 的 `untrusted`/immutable 属性，不能把 notice 写成 authoritative financial event。
+- opening portfolio snapshot 必须继续为未准入，financial-event allowlist 必须为空；不得默认或推断 notional、cash、positions、shares、weights、NAV 或 performance。
+- Stage 124 通过只开放 Stage 125 外部来源期初组合快照治理规格。position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 与 trading 权限全部保持 false。
+
+## Stage 125 外部来源期初组合快照治理规格边界
+
+- 规格必须 create-once、自哈希，并精确绑定当前 Stage 124/123/122/114/112。registrar 必须排除 Stage 124 reviewer、Stage 123 validator、Stage 122 executor、Stage 121 claimant 与完整既有责任链。
+- 未来来源只能是券商/托管机构机器导出、券商/托管机构对账单或已核验组合会计系统导出；必须保留原始字节、SHA-256、长度、来源标识、来源时间和 HONE 接收时间。真实账号和凭据不得保存，手工余额与持仓不得作为来源。
+- 账户范围、现金、持仓、上市期权、负债和未结算活动必须完整；精确十进制、有符号数量、证券身份优先级、公司行动对账、成本基础和 append-only 纠错规则不得省略、默认或推断。部分账户或不支持资产必须失败关闭。
+- 对账单市值只作信息字段，不得成为证券会计 mark。计算 NAV 前必须另行取得完整独立行情、汇率和衍生品估值；缺口不能插值或跨口径替代。
+- Stage 125 不接收或读取来源文件，不实现 parser/runtime，不物化或准入 opening snapshot，不开放 financial-event allowlist，不创建 ledger/event/position/cash/NAV/performance/model/training/RL/reward/order/broker/trading。登记只开放 Stage 126 独立规格复核。
+
+## Stage 126 期初组合治理规格责任链外独立复核边界
+
+- reviewer 必须排除 Stage 125 registrar 与 Stage 51–125 完整责任链；同一 registration 的复核链必须唯一线性、append-only、自哈希，批准后不得覆盖或分叉。
+- 服务端必须从当前 Stage 124 正式非财务证据重新读取 Stage 125 registration，并独立重算 registration/specification hash；第二实现不得调用 Stage 125 specification builder。
+- 独立重建必须覆盖原始外部工件来源与匿名化、完整账户范围、现金、持仓、上市期权、负债、未结算活动、证券身份、成本基础、公司行动、精确十进制、有符号数量、无默认/推断/部分准入及 append-only 纠错。
+- 对账单市值仍只作信息参考。NAV 前必须另有完整独立行情、FX 与衍生品估值；来源接收、快照物化、输出验证与准入必须继续是分离的后续门。
+- Stage 126 不接收或读取来源文件，不实现 parser/runtime，不物化或准入 opening snapshot，不开放 financial-event allowlist，不创建 ledger/event/position/cash/NAV/performance/model/training/RL/reward/order/broker/trading。批准只开放 Stage 127 零能力来源工件接收实现登记。
+
+## Stage 127 来源工件接收零能力实现登记边界
+
+- registrar 必须排除 Stage 126 reviewer 与完整 Stage 51–126 责任链；记录必须 create-once、自哈希，并逐项保存全部 17 个确认，不能只依赖一个汇总布尔值。
+- 合同必须精确绑定当前 Stage 126 review/audit 与 Stage 125 registration/specification。每次读取必须逐条重新匹配当前独立批准来源，严格重验排除人员名单；孤立、过期或漂移记录必须令 registry 失败关闭。
+- 当前实现只能冻结未来接收协议：管理员认证流、64 MiB 单工件、256 MiB 单 receipt、最多 64 个原始 PDF/CSV/JSON，流式哈希与长度、私有隔离、格式/魔数/安全结构、主动内容拒绝、账号匿名化与日志脱敏、静态加密、内容寻址 create-new、失败清理及 append-only 未受信 manifest。
+- 接收、快照物化、快照输出验证和快照准入必须保持独立。receipt 即使未来生成也必须标记 untrusted，并先通过独立接收验证。
+- Stage 127 不提供上传入口、不接收/读取来源字节、不写来源工件、不实现 parser/runtime，不物化或准入 opening snapshot，不开放 financial-event allowlist，不创建 ledger/event/position/cash/NAV/performance/model/training/RL/reward/order/broker/trading。登记只开放 Stage 128 独立实现复核。
+
+## Stage 128 来源工件接收实现责任链外独立复核边界
+
+- reviewer 必须排除 Stage 127 registrar 与完整 Stage 51–127 责任链；每个 implementation 只能产生一个 terminal、append-only、自哈希复核记录，退回或拒绝后必须重建新实现，不能复核原实现第二次。
+- 第二实现不能调用 Stage 127 builder，必须独立重建完整合同并重算 implementation/contract、Stage 126 review/audit 与 Stage 125 registration/specification 摘要。任何字段、摘要、来源绑定或排除人员漂移都必须失败关闭。
+- 必须重新验证 Stage 127 全部 17 项确认、原始 PDF/CSV/JSON、64 MiB 单工件、256 MiB 单 receipt、最多 64 件、管理员认证流、禁止远程抓取、流式哈希/长度、私有隔离、格式/主动内容拒绝、匿名化/脱敏、静态加密、内容寻址 create-new、幂等、失败清理与未受信 manifest。
+- 来源接收校验、快照物化、输出验证和快照准入保持独立。复核批准只开放 Stage 129 隔离接收器规格登记。
+- Stage 128 不提供上传入口、不接收/读取/保存来源字节、不实现 parser/runtime/network/secret/tool/subprocess，不物化或准入 opening snapshot，不开放 financial-event allowlist，不创建 ledger/event/position/cash/NAV/performance/model/training/RL/reward/order/broker/trading。
+
+## Stage 129 隔离来源工件接收器规格登记边界
+
+- registrar 必须排除 Stage 128 reviewer、Stage 127 registrar 与 Stage 51–128 完整责任链；规格必须 create-once、自哈希，并精确绑定当前 Stage 125–128 全部摘要和完整实现合同。
+- 规格只允许登记拟议工件 SHA-256、不可变代码版本、复现程序和固定非特权 runtime。`source_artifact_present`、`executable_artifact_present`、`callable_entrypoint_present`、`runtime_instantiated`、input mount/read 与 data access 必须全部为 false。
+- 必须逐项确认并继承原始 PDF/CSV/JSON、8 个接收函数、64 MiB 单工件、256 MiB 单 receipt、最多 64 件，以及管理员鉴权流式传输、禁止远程抓取、私有隔离、流式哈希/长度、主动内容拒绝、匿名化/脱敏、静态加密、内容寻址 create-new、失败清理和未受信 manifest。
+- runtime 必须是单并发、单进程、非特权、只读根目录与临时工作目录；禁止环境继承、secret、网络、工具、子进程和生产 I/O。Stage 129 自身仍不提供 upload/storage/manifest write 或任何 parser 能力。
+
+## Stage 130 来源工件接收器首次执行授权边界
+
+- 工件保管位置只能由服务端根据当前 Stage 129 接收器 ID 与冻结工件 SHA-256 推导；客户端不能指定路径或上传工件。
+- `receiver.artifact` 与 `manifest.json` 必须非空、在大小上限内、是只读常规文件且不是符号链接；manifest 必须自哈希并精确绑定 Stage 125–129，服务端必须重新计算工件摘要和长度。
+- 工件构建者、Stage 129 登记人、完整前序责任链和 Stage 130 复核者必须分离。授权 append-only、批准后终止、24 小时失效、最多一次且与未来 claim 分离。
+- Stage 130 只开放 Stage 131 claim-first 候选；没有 upload、runtime、source read、receipt、snapshot、financial allowlist、ledger、portfolio、performance、model/training/RL、order、broker 或 trading 权限。
+
+## Stage 131 来源工件接收尝试 claim-first 边界
+
+- claim 必须在任何上传流、来源字节、接收器入口、runtime、挂载或输入读取之前 create-once 落盘；只有当前未过期且服务端重新核验的 Stage 130 授权可领取。
+- 每条 Stage 130 review 最多一个 claim；claim 一旦存在即永久消费授权，不得重试、释放、覆盖或恢复。
+- Stage 131 仅保存既有责任链元数据和摘要，不得接收文件、创建 receipt、快照、金融白名单、账本/持仓/现金/NAV/绩效、模型/训练/RL/reward、订单/券商/交易状态。
+- 来源接收、receipt 独立验证、快照物化、快照输出验证和准入保持分离。登记只开放 Stage 130 首次执行授权复核，不创建 opening snapshot、financial-event allowlist、ledger/event、position/cash、NAV/performance、model/training/RL/reward、order/broker/trading。
+
+## Stage 132 来源工件单次加密接收边界
+
+- 只有精确、当前且未启动的 Stage 131 claim 可进入；有上限的 JSON request 必须是 multipart 首字段，start marker 必须在首个文件字段字节前 create-once 落盘。失败、中断和恢复均消费 claim，不得重试、释放、覆盖或恢复。
+- 只允许原始 provider PDF/CSV/JSON；最多 64 件、64 MiB/件、256 MiB/receipt。必须拒绝格式/魔数不一致、无效或主动/嵌入/加密 PDF、CSV 公式与敏感表头、JSON 敏感键、路径/符号链接/归档、远程 URL 和未经匿名化的账户身份。
+- 原始来源字节只能以 AES-256-GCM 加密形式落盘，并使用服务端派生的内容寻址路径、create-new 和密文完整性绑定；原始文件名、原始账户号、凭据和客户端路径不得进入日志、manifest 或持久路径。密钥必须稳定且只能通过环境配置提供。
+- receipt 必须 create-once、自哈希、脱敏并明确 `untrusted=true`；Stage 132 不解析金融行、不物化或准入快照。来源接收、Stage 133 独立 receipt 验证、快照物化、输出验证和准入继续保持不同责任门。
+- 任何 Stage 132 结果均不得创建 financial allowlist、ledger/event、position/cash、NAV/performance、model/training/RL/reward、order/broker/trading 权限；失败终态必须保守承认可能已读取部分来源流。
+
+## Stage 133 加密 receipt 责任链外独立验证边界
+
+- validator 必须排除 Stage 132 executor、Stage 131 claimant 与 Stage 51–132 完整责任链；每个 Stage 132 receipt 只能写一个 create-once、append-only、自哈希终态，失败不得覆盖或改换 validator 重试。
+- 验证必须使用服务端派生路径重新打开 exact Stage 131 claim、Stage 132 result、receipt manifest 与每个加密内容对象；逐项重算 result/manifest/ciphertext 摘要、长度、只读常规文件保管和完整责任链。
+- 独立实现必须自行派生 nonce/AAD，执行 AES-256-GCM 认证解密，并重算明文长度、SHA-256、内容地址、格式 magic、安全结构、敏感字段和 receipt 脱敏证据。不得调用 Stage 132 的接收/筛查 helper 代替验证。
+- 缺失、格式错误或指纹不匹配的密钥必须在创建终态前失败，允许修复运行配置；manifest、密文、认证解密、明文或责任链漂移必须形成失败终态。
+- Stage 133 通过只证明加密 receipt 的完整性和保管链，不证明其中持仓数字真实。通过只开放 Stage 134 零能力物化实现登记；不得解析金融行、物化/准入快照或创建 financial allowlist、ledger、position、cash、NAV/performance、model/training/RL/reward、order/broker/trading 权限。
+
+## Stage 134 期初快照物化零能力实现登记边界
+
+- registrar 必须排除 Stage 133 validator、Stage 132 executor、Stage 131 claimant 与 Stage 51–133 完整责任链；记录必须 create-once、自哈希，并精确绑定当前 validation、result、claim、receipt 与 Stage 125 specification。
+- 登记只能冻结未来确定性 PDF/CSV/JSON parser/materializer 合同。当前必须没有 decryption key/input read、receipt plaintext、parser/runtime、output write、candidate snapshot 或 authoritative snapshot 能力。
+- 未来 schema 必须完整覆盖账户、现金、持仓、上市期权、负债与未结算活动；金额和数量必须是精确十进制字符串和有符号数量，禁止 binary float。证券身份优先级、公司行动对账和成本基础规则必须固定。
+- 每个输出行必须绑定来源工件 SHA-256 和可重放来源位置，且不得携带真实账户号、凭据或 secret。缺失、歧义、不支持资产、部分账户、手填、默认或推断必须令整份快照失败关闭。
+- 对账单市场价值只能作为信息字段，不得直接产生 NAV/绩效。未来输出只能是 create-once、untrusted candidate，并须经过独立输出验证和独立准入。
+- Stage 134 只开放 Stage 135 责任链外独立实现复核；不得创建 financial allowlist、ledger/event、position/cash、NAV/performance、model/training/RL/reward、order/broker/trading 权限。
+
+## Stage 135 期初快照物化实现责任链外独立审查边界
+
+- reviewer 必须排除 Stage 134 registrar、Stage 133 validator、Stage 132 executor、Stage 131 claimant 与 Stage 51–134 完整责任链；每个实现只能产生一个 append-only、终态、自哈希审查记录。
+- 独立审查不得调用 Stage 134 builder；必须用第二实现重建 10 个固定函数和完整合同，重算 Stage 125/131/132/133/134 哈希与绑定，并逐项重新验证 Stage 134 的 18 项确认。
+- 完整账户、现金、持仓、上市期权、负债、未结算活动、精确十进制、有符号数量、证券身份、公司行动、逐行来源和缺失/歧义/不支持/部分/默认/手填/推断整批失败语义必须再次失败关闭。
+- Stage 135 不接收 key、receipt 字节、路径、明文或解析结果；没有输入读取、解密、parser/runtime、输出、候选/正式快照或任何财务、训练和交易权限。
+- 明确批准只开放 Stage 136 隔离物化器规格登记；changes-required 或 rejected 均终止当前链，必须从新的 Stage 134 登记重新开始。

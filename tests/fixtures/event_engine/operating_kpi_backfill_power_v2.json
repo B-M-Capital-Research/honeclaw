@@ -1,0 +1,35 @@
+{
+  "schema_version": "hone-operating-kpi-backfill-manifest-v2",
+  "documents": [
+    {
+      "event_id": "operating-kpi-backfill:GEV:FY2025:earnings-release",
+      "symbol": "GEV",
+      "occurred_at": "2026-01-28T23:59:59Z",
+      "period": "FY2025",
+      "document_type": "earnings_release",
+      "format": "pdf",
+      "source_url": "https://www.gevernova.com/sites/default/files/gev_webcast_pressrelease_01282026.pdf",
+      "source_sha256": "edabb6bc60426471c6555e1ea9797fd2e833da2195cfda09a0cc40d4a200afd2",
+      "source_time_precision": "date_only_conservative_end_of_day",
+      "claims": [
+        {
+          "claim_kind": "contract_milestone",
+          "kpi_id": "generation_equipment_backlog",
+          "issuer_metric_name": "backlog",
+          "issuer_definition": "remaining performance obligation (RPO)",
+          "period": "FY2025",
+          "numeric_value": 150.0,
+          "unit": "USD_billions",
+          "value_text": "We increased our backlog to $150 billion",
+          "measurement_scope": "GE Vernova total backlog at year-end 2025",
+          "comparison_basis": "point_in_time",
+          "speaker": "GE Vernova CEO Scott Strazik",
+          "evidence_quote": "Defined as remaining performance obligation (RPO)",
+          "source_locator": "4Q 2025 earnings release · highlights and footnote 1",
+          "definition_changed": false,
+          "disposition": "active"
+        }
+      ]
+    }
+  ]
+}

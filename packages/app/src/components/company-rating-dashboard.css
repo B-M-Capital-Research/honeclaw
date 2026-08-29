@@ -493,6 +493,25 @@
 .company-rating-fundamentals dt { color: #8a9490; font-size: 9px; }
 .company-rating-fundamentals dd { margin: 2px 0 0; color: #26332f; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .company-rating-fundamentals small { display: block; margin-top: 9px; color: #8a9490; font-size: 9px; line-height: 1.5; }
+.company-rating-fundamentals small.is-review-only { color: #a46f13; font-weight: 750; }
+.company-rating-fundamentals small.company-rating-fundamentals__basis { margin-top: 4px; color: #4b655a; font-weight: 750; }
+.company-rating-fundamentals__warnings {
+  margin: 7px 0 0 !important;
+  padding: 7px 8px 7px 22px !important;
+  border-radius: 8px;
+  background: rgba(214, 156, 24, 0.09);
+  color: #86631f !important;
+  font-size: 9px !important;
+  line-height: 1.5 !important;
+}
+.company-rating-fundamentals__trace { margin-top: 8px; }
+.company-rating-fundamentals__trace summary { color: #53615c; font-size: 9px; font-weight: 800; cursor: pointer; }
+.company-rating-fundamentals__trace ul { margin-top: 6px !important; font-size: 9px !important; }
+.company-rating-fundamentals__trace p { margin-top: 6px !important; }
+.company-rating-fundamentals__trace a { margin-right: 8px; color: #23845a; font-weight: 750; text-decoration: none; }
+.company-rating-fundamentals__claims { display: grid; gap: 6px; margin-top: 7px; }
+.company-rating-fundamentals__claims p { padding: 7px 8px; border-radius: 7px; background: rgba(35, 132, 90, 0.06); overflow-wrap: anywhere; }
+.company-rating-fundamentals__claims small { display: inline; margin: 0; }
 .company-rating-source { margin: 16px 0 0; color: #929a97; font-size: 10px; }
 
 .company-rating-state {
@@ -555,6 +574,8 @@
 [data-theme="dark"] .company-rating-valuation__cases dd,
 [data-theme="dark"] .company-rating-fundamentals dd,
 [data-theme="dark"] .company-rating-valuation__position { color: #e9f0ed !important; }
+[data-theme="dark"] .company-rating-fundamentals__warnings { color: #dcc47b !important; background: rgba(214, 156, 24, 0.12); }
+[data-theme="dark"] .company-rating-fundamentals__trace summary { color: #b8c3bf; }
 [data-theme="dark"] .company-rating-thesis,
 [data-theme="dark"] .company-rating-company strong,
 [data-theme="dark"] .company-rating-market strong,

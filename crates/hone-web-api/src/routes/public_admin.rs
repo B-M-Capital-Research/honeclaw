@@ -732,6 +732,15 @@ pub(crate) fn require_public_admin_for_read(
     require_public_admin(state, headers)
 }
 
+/// Shared mutation gate for administrator-owned public modules. Mutations must
+/// carry the same explicit browser action marker as invite administration.
+pub(crate) fn require_public_admin_for_mutation(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<WebInviteUser, Response> {
+    require_public_admin_mutation(state, headers)
+}
+
 fn require_public_admin(state: &AppState, headers: &HeaderMap) -> Result<WebInviteUser, Response> {
     let user = crate::routes::public::require_public_session_user(state, headers)?;
     match state.web_auth.is_web_admin(&user.user_id) {

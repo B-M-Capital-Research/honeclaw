@@ -32,6 +32,11 @@
 .portfolio-news-meta b.is-source_only, .portfolio-news-meta b.is-partial, .portfolio-news-meta b.is-portfolio_changed { background: #fff4d8; color: #8c6610; }
 .portfolio-news-meta b.is-stale { background: #f5e8e3; color: #985044; }
 .portfolio-news-meta button { margin-left: auto; border: 0; background: transparent; color: #c65440; font: inherit; font-weight: 750; cursor: pointer; }
+.portfolio-news-analysis-health { margin: 10px 26px 0; padding: 9px 12px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(35,132,90,.18); border-radius: 11px; background: #eef8f2; color: #315b49; font-size: 11px; }
+.portfolio-news-analysis-health b { color: #1e7650; white-space: nowrap; }
+.portfolio-news-analysis-health small { margin-left: auto; color: #71807a; white-space: nowrap; }
+.portfolio-news-analysis-health.is-blocked { border-color: rgba(200,128,24,.22); background: #fff7e4; color: #765d24; }
+.portfolio-news-analysis-health.is-blocked b { color: #9a6b10; }
 .portfolio-news-summary { padding: 14px 26px; display: grid; grid-template-columns: repeat(4, 88px) minmax(0,1fr); gap: 9px; border-bottom: 1px solid rgba(35,48,45,.08); }
 .portfolio-news-summary > div { padding: 9px 10px; display: grid; border-radius: 11px; background: #f2f1ed; }
 .portfolio-news-summary strong { font-size: 18px; }
@@ -80,6 +85,8 @@
 [data-theme="dark"] .portfolio-news-summary > div, [data-theme="dark"] .portfolio-news-item__top span { background: #172231; }
 [data-theme="dark"] .portfolio-news-dialog > header, [data-theme="dark"] .portfolio-news-meta, [data-theme="dark"] .portfolio-news-summary, [data-theme="dark"] .portfolio-news-filters, [data-theme="dark"] .portfolio-news-dialog > footer { border-color: #263347; }
 [data-theme="dark"] .portfolio-news-item__top b, [data-theme="dark"] .portfolio-news-list h3, [data-theme="dark"] .portfolio-news-item__why strong { color: #e9f0ed; }
+[data-theme="dark"] .portfolio-news-analysis-health { background: #12281f; color: #b7d4c7; border-color: #25513e; }
+[data-theme="dark"] .portfolio-news-analysis-health.is-blocked { background: #2a2415; color: #d7c18c; border-color: #57471e; }
 
 @media (max-width: 768px) {
   .portfolio-news-launcher { padding: 8px 12px 0; }
@@ -92,6 +99,8 @@
   .portfolio-news-dialog > header span { max-width: 280px; font-size: 11px; }
   .portfolio-news-meta { padding: 8px 16px; gap: 7px; overflow-x: auto; white-space: nowrap; }
   .portfolio-news-meta span:nth-of-type(2), .portfolio-news-meta span:nth-of-type(3) { display: none; }
+  .portfolio-news-analysis-health { margin: 8px 16px 0; align-items: flex-start; flex-wrap: wrap; }
+  .portfolio-news-analysis-health small { width: 100%; margin-left: 0; }
   .portfolio-news-summary { padding: 11px 16px; grid-template-columns: repeat(4,1fr); }
   .portfolio-news-summary p { grid-column: 1 / -1; }
   .portfolio-news-filters { padding: 8px 16px; overflow-x: auto; }
@@ -100,4 +109,37 @@
   .portfolio-news-item__foot { flex-wrap: wrap; }
   .portfolio-news-item__foot a { width: 100%; margin-left: 0; }
   .portfolio-news-dialog > footer { padding: 9px 12px; }
+}
+.portfolio-news-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 16px;
+}
+
+.portfolio-news-coverage > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid rgba(35,48,45,.12);
+  border-radius: 999px;
+  color: #68736f;
+  font-size: 13px;
+}
+
+.portfolio-news-coverage > span.is-news_found {
+  border-color: rgba(35,132,90,.4);
+  color: #23845a;
+}
+
+.portfolio-news-coverage > span.is-source_unavailable,
+.portfolio-news-coverage > span.is-pending {
+  color: #9a6b10;
+}
+
+[data-theme="dark"] .portfolio-news-coverage > span {
+  border-color: #263347;
+  color: #aab5b1;
 }

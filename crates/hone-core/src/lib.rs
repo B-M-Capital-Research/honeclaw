@@ -14,6 +14,7 @@ pub mod context_window;
 pub mod email;
 pub mod error;
 pub mod heartbeat;
+pub mod investment_decision_context;
 pub mod logging;
 pub mod process_lock;
 pub mod provider_symbol;

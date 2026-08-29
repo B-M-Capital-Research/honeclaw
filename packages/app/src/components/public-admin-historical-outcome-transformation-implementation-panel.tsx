@@ -1,0 +1,203 @@
+import { For, Show, createMemo, createSignal, onMount } from "solid-js";
+
+import {
+  getHistoricalOutcomeOfflineDatasetTransformationImplementations,
+  registerHistoricalOutcomeOfflineDatasetTransformationImplementation,
+} from "@/lib/api";
+import type {
+  HistoricalOutcomeOfflineDatasetTransformationImplementationRegistry,
+} from "@/lib/types";
+
+const REGISTRATION_CHECKS = [
+  "已精确绑定当前独立批准复核、转换规范、两份子规范、治理和数据集哈希",
+  "登记人未参与数据集、治理、规范登记或规范独立复核链",
+  "实现工件 SHA-256 与代码版本不可变且可复现",
+  "切分和 65 项点时特征实现身份、版本及确定性规则已冻结",
+  "规范化序列化器和固定输入输出 schema 已冻结",
+  "输入只读且封存，未来输出只能 create-once、内容寻址并另行验证",
+  "本登记没有可调用入口、环境继承、环境变量、密钥、网络、外部工具或子进程",
+  "登记、独立实现复核、执行和输出验证分离；不生成 manifest/bundle、不 join、不写目标、不训练、奖励、影子、订单、券商或交易",
+] as const;
+
+export function PublicAdminHistoricalOutcomeTransformationImplementationPanel() {
+  const [registry, setRegistry] =
+    createSignal<HistoricalOutcomeOfflineDatasetTransformationImplementationRegistry>();
+  const [selectedReviewId, setSelectedReviewId] = createSignal("");
+  const [implementationName, setImplementationName] = createSignal("");
+  const [codeRevision, setCodeRevision] = createSignal("");
+  const [artifactSha256, setArtifactSha256] = createSignal("");
+  const [rationale, setRationale] = createSignal("");
+  const [knownLimitations, setKnownLimitations] = createSignal("");
+  const [checks, setChecks] = createSignal(REGISTRATION_CHECKS.map(() => false));
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const [notice, setNotice] = createSignal("");
+
+  const eligibleReviews = createMemo(() => {
+    const current = registry();
+    if (!current) return [];
+    const registered = new Set(
+      current.items
+        .filter((item) => item.upstream_binding_current)
+        .map((item) => item.implementation.approved_review.review_id),
+    );
+    return current.eligible_reviews.filter((review) => !registered.has(review.review_id));
+  });
+
+  const load = async () => {
+    try {
+      const next = await getHistoricalOutcomeOfflineDatasetTransformationImplementations();
+      setRegistry(next);
+      setSelectedReviewId((current) =>
+        next.eligible_reviews.some((review) => review.review_id === current) ? current : "",
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "隔离转换实现登记表读取失败");
+    }
+  };
+
+  onMount(() => void load());
+
+  const selected = createMemo(() =>
+    eligibleReviews().find((review) => review.review_id === selectedReviewId()),
+  );
+  const disabled = createMemo(
+    () =>
+      busy() ||
+      !selected() ||
+      !implementationName().trim() ||
+      !codeRevision().trim() ||
+      !/^[a-fA-F0-9]{64}$/.test(artifactSha256().trim()) ||
+      !rationale().trim() ||
+      !knownLimitations().trim() ||
+      checks().some((value) => !value),
+  );
+
+  const submit = async () => {
+    const review = selected();
+    if (!review || disabled()) return;
+    const spec = review.specification;
+    const confirmed = checks();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const next = await registerHistoricalOutcomeOfflineDatasetTransformationImplementation({
+        expected_review_id: review.review_id,
+        expected_review_sha256: review.review_sha256,
+        expected_review_contract_sha256: review.review_contract.contract_sha256,
+        expected_transformation_spec_id: spec.transformation_spec_id,
+        expected_transformation_spec_sha256: spec.transformation_spec_sha256,
+        expected_transformation_body_sha256: spec.transformation_body_sha256,
+        expected_split_specification_sha256:
+          spec.split_manifest_specification.specification_sha256,
+        expected_feature_specification_sha256:
+          spec.feature_bundle_specification.specification_sha256,
+        expected_dataset_content_sha256: spec.subject.dataset_content_sha256,
+        expected_manifest_sha256: spec.subject.manifest_sha256,
+        expected_candidate_set_sha256: spec.subject.candidate_set_sha256,
+        expected_governance_review_id: spec.governance_review_id,
+        expected_governance_review_sha256: spec.governance_review_sha256,
+        implementation_name: implementationName().trim(),
+        immutable_code_revision: codeRevision().trim(),
+        implementation_artifact_sha256: artifactSha256().trim().toLowerCase(),
+        rationale: rationale().trim(),
+        known_limitations: knownLimitations().trim(),
+        exact_approved_review_and_specification_binding_confirmed: confirmed[0],
+        registrar_independence_confirmed: confirmed[1],
+        implementation_artifact_and_code_revision_immutable_confirmed: confirmed[2],
+        deterministic_split_and_feature_implementation_confirmed: confirmed[3],
+        canonical_serialization_and_fixed_schema_confirmed: confirmed[4],
+        sealed_read_only_input_and_create_once_output_confirmed: confirmed[5],
+        no_entrypoint_environment_secrets_network_tools_or_child_process_confirmed: confirmed[6],
+        registration_review_execution_and_output_validation_separation_confirmed: confirmed[7],
+        no_manifest_bundle_join_target_training_reward_shadow_order_broker_or_trading_confirmed:
+          confirmed[7],
+      });
+      setRegistry(next);
+      setSelectedReviewId("");
+      setImplementationName("");
+      setCodeRevision("");
+      setArtifactSha256("");
+      setRationale("");
+      setKnownLimitations("");
+      setChecks(REGISTRATION_CHECKS.map(() => false));
+      setNotice("隔离转换实现规范已不可覆盖登记；没有执行，也没有生成任何数据工件。");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "隔离转换实现登记失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Show when={registry()}>
+      {(currentRegistry) => (
+        <section
+          class="public-admin-reward-governance"
+          aria-label="离线历史结果隔离转换实现规范登记"
+        >
+          <header>
+            <strong>第 27 阶段 · 隔离转换实现规范登记</strong>
+            <span>{currentRegistry().implementation_status}</span>
+          </header>
+          <p>{currentRegistry().scope}</p>
+          <div class="public-admin-decision-metrics">
+            <div><span>可登记</span><strong>{currentRegistry().registration_eligible_count}</strong></div>
+            <div><span>历史实现</span><strong>{currentRegistry().implementation_count}</strong></div>
+            <div><span>当前绑定</span><strong>{currentRegistry().current_binding_implementation_count}</strong></div>
+            <div><span>待独立实现复核</span><strong>{currentRegistry().independent_implementation_review_eligible_count}</strong></div>
+          </div>
+
+          <Show when={eligibleReviews().length > 0}>
+            <label>
+              <span>当前独立批准规范</span>
+              <select value={selectedReviewId()} onChange={(event) => setSelectedReviewId(event.currentTarget.value)}>
+                <option value="">请选择批准复核</option>
+                <For each={eligibleReviews()}>
+                  {(review) => <option value={review.review_id}>{review.specification.specification_name} · {review.review_id.slice(0, 12)}…</option>}
+                </For>
+              </select>
+            </label>
+            <label><span>实现名称</span><input value={implementationName()} onInput={(event) => setImplementationName(event.currentTarget.value)} placeholder="例如：确定性离线转换器 v1" /></label>
+            <label><span>不可变代码版本</span><input value={codeRevision()} onInput={(event) => setCodeRevision(event.currentTarget.value)} placeholder="git commit / release digest" /></label>
+            <label><span>实现工件 SHA-256</span><input value={artifactSha256()} onInput={(event) => setArtifactSha256(event.currentTarget.value)} placeholder="64 位十六进制摘要" /></label>
+            <label><span>登记理由</span><textarea value={rationale()} onInput={(event) => setRationale(event.currentTarget.value)} placeholder="说明实现如何忠实落地已批准规范" /></label>
+            <label><span>已知局限</span><textarea value={knownLimitations()} onInput={(event) => setKnownLimitations(event.currentTarget.value)} placeholder="说明尚未复核、未运行以及覆盖限制" /></label>
+            <div class="public-admin-decision-checks">
+              <For each={REGISTRATION_CHECKS}>
+                {(label, index) => (
+                  <label>
+                    <input type="checkbox" checked={checks()[index()]} onChange={(event) => setChecks((current) => current.map((value, currentIndex) => currentIndex === index() ? event.currentTarget.checked : value))} />
+                    <span>{label}</span>
+                  </label>
+                )}
+              </For>
+            </div>
+            <button type="button" class="public-admin-decision-submit" disabled={disabled()} onClick={() => void submit()}>
+              登记实现规范（无入口、不执行）
+            </button>
+          </Show>
+
+          <For each={currentRegistry().items}>
+            {(item) => (
+              <article class="public-admin-reward-governance">
+                <header>
+                  <strong>{item.implementation.implementation_name}</strong>
+                  <span>{item.upstream_binding_current ? "当前绑定 · 等待独立实现复核" : "历史绑定"}</span>
+                </header>
+                <p>实现 {item.implementation.implementation_id} · 登记人 {item.implementation.registered_by} · {item.implementation.status}</p>
+                <p>工件 {item.implementation.implementation_contract.implementation_artifact_sha256} · 代码 {item.implementation.implementation_contract.immutable_code_revision}</p>
+                <p>{item.implementation.rationale}</p>
+                <p>局限：{item.implementation.known_limitations}</p>
+                <p class="public-admin-anchor-boundary">没有可调用入口；无环境、密钥、网络、工具或子进程权限。下一步只有独立实现复核。</p>
+              </article>
+            )}
+          </For>
+          <Show when={error()}><p class="public-admin-decision-error">{error()}</p></Show>
+          <Show when={notice()}><p class="public-admin-decision-notice">{notice()}</p></Show>
+        </section>
+      )}
+    </Show>
+  );
+}

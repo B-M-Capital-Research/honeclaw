@@ -18,6 +18,315 @@ import type {
   PublicAdminInviteList,
   PublicAdminInviteMutation,
   PublicAdminUsageReport,
+  InvestmentDecisionEvaluation,
+  InvestmentEvidenceReviewQueue,
+  InvestmentDecisionReplay,
+  InvestmentDecisionReviewRecord,
+  InvestmentDecisionReviewRequest,
+  InvestmentCausalEvidenceReviewRecord,
+  InvestmentCausalEvidenceReviewRequest,
+  InvestmentCausalSourceReviewRecord,
+  InvestmentCausalSourceReviewRequest,
+  InvestmentFinancialEvidenceReviewRequest,
+  InvestmentValuationInputReviewRequest,
+  InvestmentValuationInputReviewResponse,
+  InvestmentFinancialEvidenceReviewResponse,
+  InvestmentCausalDatasetGovernance,
+  InvestmentCausalDatasetGovernanceRequest,
+  InvestmentCausalTrainingExperimentRegistry,
+  InvestmentCausalTrainingExperimentRequest,
+  InvestmentRewardGovernance,
+  InvestmentRewardGovernanceRequest,
+  InvestmentShadowProtocolGovernance,
+  InvestmentShadowProtocolGovernanceRequest,
+  InvestmentShadowImplementationRegistry,
+  InvestmentShadowImplementationRegistrationRequest,
+  HistoricalDecisionAnchorCandidate,
+  HistoricalAnchorDiscoveryResponse,
+  HistoricalAnchorDiscoveryScreeningRecord,
+  HistoricalDecisionAnchorRegistry,
+  HistoricalDecisionAnchorReview,
+  CreateHistoricalDecisionAnchorCandidateRequest,
+  ReviewHistoricalDecisionAnchorRequest,
+  ScreenHistoricalAnchorDiscoveryRequest,
+  HistoricalStateReconstructionCandidate,
+  HistoricalStateReconstructionRegistry,
+  HistoricalStateReconstructionReview,
+  CreateHistoricalStateReconstructionRequest,
+  ReviewHistoricalStateReconstructionRequest,
+  HistoricalOutcomeGovernanceRegistry,
+  HistoricalOutcomeGovernanceReview,
+  ReviewHistoricalOutcomeGovernanceRequest,
+  HistoricalOutcomeLabelerRegistry,
+  HistoricalOutcomeLabelerReview,
+  RegisterHistoricalOutcomeLabelerRequest,
+  ReviewHistoricalOutcomeLabelerRequest,
+  HistoricalOutcomePriceSnapshot,
+  HistoricalOutcomePriceSnapshotRegistry,
+  IngestHistoricalOutcomePriceSnapshotRequest,
+  HistoricalOutcomeDryRunAuthorizationRegistry,
+  HistoricalOutcomeDryRunAuthorizationReview,
+  ReviewHistoricalOutcomeDryRunAuthorizationRequest,
+  HistoricalOutcomeDryRunImplementationRegistry,
+  RegisterHistoricalOutcomeDryRunImplementationRequest,
+  HistoricalOutcomeDryRunRunAuthorizationRegistry,
+  ReviewHistoricalOutcomeDryRunRunAuthorizationRequest,
+  HistoricalOutcomeDryRunIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeDryRunIsolatedRunnerRequest,
+  HistoricalOutcomeDryRunFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeDryRunFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeDryRunExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeDryRunRequest,
+  HistoricalOutcomeDryRunOutputValidationRegistry,
+  ValidateHistoricalOutcomeDryRunOutputRequest,
+  HistoricalOutcomeLabelAdmissionRegistry,
+  ReviewHistoricalOutcomeLabelAdmissionRequest,
+  HistoricalOutcomeLabelMaterializationImplementationRegistry,
+  RegisterHistoricalOutcomeLabelMaterializationImplementationRequest,
+  HistoricalOutcomeLabelMaterializationRunAuthorizationRegistry,
+  ReviewHistoricalOutcomeLabelMaterializationRunAuthorizationRequest,
+  HistoricalOutcomeLabelMaterializationIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeLabelMaterializationIsolatedRunnerRequest,
+  HistoricalOutcomeLabelMaterializationFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeLabelMaterializationFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeLabelMaterializationExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeLabelMaterializationOnceRequest,
+  HistoricalOutcomeLabelMaterializationOutputValidationRegistry,
+  ValidateHistoricalOutcomeLabelMaterializationOutputRequest,
+  HistoricalOutcomeLabelWriteAuthorizationRegistry,
+  ReviewHistoricalOutcomeLabelWriteAuthorizationRequest,
+  HistoricalOutcomeFormalLabelWriteRegistry,
+  WriteHistoricalOutcomeFormalLabelOnceRequest,
+  HistoricalOutcomeFormalLabelValidationRegistry,
+  ValidateHistoricalOutcomeFormalLabelRequest,
+  HistoricalOutcomeOfflineDatasetRegistry,
+  AssembleHistoricalOutcomeOfflineDatasetRequest,
+  HistoricalOutcomeOfflineDatasetGovernanceRegistry,
+  ReviewHistoricalOutcomeOfflineDatasetGovernanceRequest,
+  HistoricalOutcomeOfflineDatasetTransformationSpecRegistry,
+  RegisterHistoricalOutcomeOfflineDatasetTransformationSpecRequest,
+  HistoricalOutcomeOfflineDatasetTransformationSpecReviewRegistry,
+  ReviewHistoricalOutcomeOfflineDatasetTransformationSpecRequest,
+  HistoricalOutcomeOfflineDatasetTransformationImplementationRegistry,
+  RegisterHistoricalOutcomeOfflineDatasetTransformationImplementationRequest,
+  HistoricalOutcomeOfflineDatasetTransformationImplementationReviewRegistry,
+  ReviewHistoricalOutcomeOfflineDatasetTransformationImplementationRequest,
+  HistoricalOutcomeOfflineDatasetTransformationIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeOfflineDatasetTransformationIsolatedRunnerRequest,
+  HistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeOfflineDatasetTransformationExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeOfflineDatasetTransformationOnceRequest,
+  HistoricalOutcomeOfflineDatasetTransformationOutputValidationRegistry,
+  ValidateHistoricalOutcomeOfflineDatasetTransformationOutputRequest,
+  HistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionRegistry,
+  ReviewHistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionRequest,
+  HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactMaterializationRegistry,
+  MaterializeHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactsRequest,
+  HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactOutputValidationRegistry,
+  ValidateHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactsRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetSpecRegistry,
+  RegisterHistoricalOutcomeFeatureLabelJoinTargetSpecRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetSpecReviewRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetSpecRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetImplementationRegistry,
+  RegisterHistoricalOutcomeFeatureLabelJoinTargetImplementationRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetImplementationReviewRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetImplementationRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeFeatureLabelJoinTargetIsolatedRunnerRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeFeatureLabelJoinTargetOnceRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetOutputValidationRegistry,
+  ValidateHistoricalOutcomeFeatureLabelJoinTargetOutputRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetMaterializationRegistry,
+  MaterializeHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetOutputValidationRegistry,
+  ValidateHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyRegistry,
+  CopyHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyOutputValidationRegistry,
+  ValidateHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyRequest,
+  HistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionRegistry,
+  ReviewHistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionRequest,
+  HistoricalOutcomeTrainingExperimentRegistrationRegistry,
+  RegisterHistoricalOutcomeTrainingExperimentSuiteRequest,
+  HistoricalOutcomeTrainingExperimentRegistrationReviewRegistry,
+  ReviewHistoricalOutcomeTrainingExperimentRegistrationRequest,
+  HistoricalOutcomeTrainingImplementationRegistry,
+  RegisterHistoricalOutcomeTrainingImplementationRequest,
+  HistoricalOutcomeTrainingImplementationReviewRegistry,
+  ReviewHistoricalOutcomeTrainingImplementationRequest,
+  HistoricalOutcomeTrainingIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeTrainingIsolatedRunnerRequest,
+  HistoricalOutcomeTrainingFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeTrainingFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeTrainingExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeTrainingOnceRequest,
+  HistoricalOutcomeTrainingOutputValidationRegistry,
+  ValidateHistoricalOutcomeTrainingOutputRequest,
+  HistoricalOutcomeValidationEvaluationImplementationRegistry,
+  RegisterHistoricalOutcomeValidationEvaluationImplementationRequest,
+  HistoricalOutcomeValidationEvaluationImplementationReviewRegistry,
+  ReviewHistoricalOutcomeValidationEvaluationImplementationRequest,
+  HistoricalOutcomeValidationEvaluationIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeValidationEvaluationIsolatedRunnerRequest,
+  HistoricalOutcomeValidationEvaluationFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeValidationEvaluationFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeValidationEvaluationExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeValidationEvaluationOnceRequest,
+  HistoricalOutcomeValidationEvaluationOutputValidationRegistry,
+  ValidateHistoricalOutcomeValidationEvaluationOutputRequest,
+  HistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionRegistry,
+  ReviewHistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationProtocolReviewRegistry,
+  ReviewHistoricalOutcomeSealedHoldoutEvaluationProtocolRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationImplementationRegistry,
+  RegisterHistoricalOutcomeSealedHoldoutEvaluationImplementationRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationImplementationReviewRegistry,
+  ReviewHistoricalOutcomeSealedHoldoutEvaluationImplementationRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationIsolatedRunnerRegistry,
+  RegisterHistoricalOutcomeSealedHoldoutEvaluationIsolatedRunnerRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizationRegistry,
+  ReviewHistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizationRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationExecutionAttemptRegistry,
+  InvokeHistoricalOutcomeSealedHoldoutEvaluationOnceRequest,
+  HistoricalOutcomeSealedHoldoutEvaluationOutputValidationRegistry,
+  ValidateHistoricalOutcomeSealedHoldoutEvaluationOutputRequest,
+  HistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudicationRegistry,
+  ReviewHistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudicationRequest,
+  ControlledShadowExperimentDesignRegistrationRegistry,
+  RegisterControlledShadowExperimentDesignRequest,
+  ControlledShadowExperimentDesignRegistrationReviewRegistry,
+  ReviewControlledShadowExperimentDesignRegistrationRequest,
+  ControlledShadowExperimentImplementationRegistry,
+  RegisterControlledShadowExperimentImplementationRequest,
+  ControlledShadowExperimentImplementationReviewRegistry,
+  ReviewControlledShadowExperimentImplementationRequest,
+  ControlledShadowExperimentIsolatedRunnerRegistry,
+  RegisterControlledShadowExperimentIsolatedRunnerRequest,
+  ControlledShadowExperimentFirstExecutionAuthorizationRegistry,
+  ReviewControlledShadowExperimentFirstExecutionAuthorizationRequest,
+  ControlledShadowExperimentExecutionAttemptRegistry,
+  InvokeControlledShadowExperimentOnceRequest,
+  ControlledShadowExperimentOutputValidationRegistry,
+  ValidateControlledShadowExperimentOutputRequest,
+  ControlledShadowForwardObservationProtocolRegistrationRegistry,
+  RegisterControlledShadowForwardObservationProtocolRequest,
+  ControlledShadowForwardObservationProtocolRegistrationReviewRegistry,
+  ReviewControlledShadowForwardObservationProtocolRegistrationRequest,
+  ControlledShadowForwardObservationImplementationRegistry,
+  RegisterControlledShadowForwardObservationImplementationRequest,
+  ControlledShadowForwardObservationImplementationReviewRegistry,
+  ReviewControlledShadowForwardObservationImplementationRequest,
+  ControlledShadowForwardObservationIsolatedRunnerRegistry,
+  RegisterControlledShadowForwardObservationIsolatedRunnerRequest,
+  ControlledShadowForwardObservationFirstExecutionAuthorizationRegistry,
+  ReviewControlledShadowForwardObservationFirstExecutionAuthorizationRequest,
+  ControlledShadowForwardObservationExecutionAttemptRegistry,
+  InvokeControlledShadowForwardObservationOnceRequest,
+  ControlledShadowForwardObservationOutputValidationRegistry,
+  ValidateControlledShadowForwardObservationOutputRequest,
+  ControlledShadowFirstNaturalForwardCycleAuthorizationRegistry,
+  ReviewControlledShadowFirstNaturalForwardCycleAuthorizationRequest,
+  ControlledShadowFirstNaturalForwardCycleClaimRegistry,
+  ClaimControlledShadowFirstNaturalForwardCycleRequest,
+  ControlledShadowMarketDataAdapterAuthorizationRegistry,
+  ReviewControlledShadowMarketDataAdapterAuthorizationRequest,
+  ControlledShadowMarketDataReceiptAttemptRegistry,
+  ClaimAndReadControlledShadowMarketDataReceiptRequest,
+  ControlledShadowMarketDataReceiptValidationRegistry,
+  ValidateControlledShadowMarketDataReceiptRequest,
+  ControlledShadowMarketDataParserSpecificationRegistry,
+  RegisterControlledShadowMarketDataParserSpecificationRequest,
+  ControlledShadowMarketDataParserSpecificationReviewRegistry,
+  ReviewControlledShadowMarketDataParserSpecificationRequest,
+  ControlledShadowMarketDataParserImplementationRegistry,
+  RegisterControlledShadowMarketDataParserImplementationRequest,
+  ControlledShadowMarketDataParserImplementationReviewRegistry,
+  ReviewControlledShadowMarketDataParserImplementationRequest,
+  ControlledShadowMarketDataParserIsolatedRunnerRegistry,
+  RegisterControlledShadowMarketDataParserIsolatedRunnerRequest,
+  ControlledShadowMarketDataParserFirstExecutionAuthorizationRegistry,
+  ReviewControlledShadowMarketDataParserFirstExecutionAuthorizationRequest,
+  ControlledShadowMarketDataParserExecutionAttemptClaimRegistry,
+  ClaimControlledShadowMarketDataParserExecutionAttemptRequest,
+  ControlledShadowMarketDataParserExecutionAttemptRegistry,
+  ExecuteControlledShadowMarketDataParserAttemptRequest,
+  ControlledShadowMarketDataParserOutputValidationRegistry,
+  ValidateControlledShadowMarketDataParserOutputRequest,
+  ControlledShadowObservationInputAdmissionRegistry,
+  ReviewControlledShadowObservationInputAdmissionRequest,
+  ControlledShadowObservationMaterializationSpecificationRegistry,
+  RegisterControlledShadowObservationMaterializationSpecificationRequest,
+  ControlledShadowObservationMaterializationSpecificationReviewRegistry,
+  ReviewControlledShadowObservationMaterializationSpecificationRequest,
+  ControlledShadowObservationMaterializationImplementationRegistry,
+  RegisterControlledShadowObservationMaterializationImplementationRequest,
+  ControlledShadowObservationMaterializationImplementationReviewRegistry,
+  ReviewControlledShadowObservationMaterializationImplementationRequest,
+  ControlledShadowObservationMaterializationIsolatedRunnerRegistry,
+  RegisterControlledShadowObservationMaterializationIsolatedRunnerRequest,
+  ControlledShadowObservationMaterializationFirstExecutionAuthorizationRegistry,
+  ReviewControlledShadowObservationMaterializationFirstExecutionAuthorizationRequest,
+  ControlledShadowObservationMaterializationExecutionAttemptClaimRegistry,
+  ClaimControlledShadowObservationMaterializationExecutionAttemptRequest,
+  ControlledShadowObservationMaterializationExecutionAttemptRegistry,
+  ExecuteControlledShadowObservationMaterializationAttemptRequest,
+  ControlledShadowObservationMaterializationOutputValidationRegistry,
+  ValidateControlledShadowObservationMaterializationOutputRequest,
+  ControlledShadowObservationEvidenceAdmissionRegistry,
+  ReviewControlledShadowObservationEvidenceAdmissionRequest,
+  ControlledShadowObservationLedgerTransitionSpecificationRegistry,
+  RegisterControlledShadowObservationLedgerTransitionSpecificationRequest,
+  ControlledShadowObservationLedgerTransitionSpecificationReviewRegistry,
+  ReviewControlledShadowObservationLedgerTransitionSpecificationRequest,
+  ControlledShadowObservationLedgerTransitionImplementationRegistry,
+  RegisterControlledShadowObservationLedgerTransitionImplementationRequest,
+  ControlledShadowObservationLedgerTransitionImplementationReviewRegistry,
+  ReviewControlledShadowObservationLedgerTransitionImplementationRequest,
+  ControlledShadowObservationLedgerTransitionIsolatedRunnerRegistry,
+  RegisterControlledShadowObservationLedgerTransitionIsolatedRunnerRequest,
+  ControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationRegistry,
+  ReviewControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationRequest,
+  ControlledShadowObservationLedgerTransitionExecutionAttemptClaimRegistry,
+  ClaimControlledShadowObservationLedgerTransitionExecutionAttemptRequest,
+  ControlledShadowObservationLedgerTransitionExecutionAttemptRegistry,
+  ExecuteControlledShadowObservationLedgerTransitionAttemptRequest,
+  ControlledShadowObservationLedgerTransitionOutputValidationRegistry,
+  ValidateControlledShadowObservationLedgerTransitionOutputRequest,
+  ControlledShadowObservationLedgerTransitionCandidateAdmissionRegistry,
+  ReviewControlledShadowObservationLedgerTransitionCandidateAdmissionRequest,
+  OpeningPortfolioSnapshotGovernanceSpecificationRegistry,
+  RegisterOpeningPortfolioSnapshotGovernanceSpecificationRequest,
+  OpeningPortfolioSnapshotGovernanceSpecificationReviewRegistry,
+  ReviewOpeningPortfolioSnapshotGovernanceSpecificationRequest,
+  OpeningPortfolioSourceArtifactReceiptImplementationRegistry,
+  RegisterOpeningPortfolioSourceArtifactReceiptImplementationRequest,
+  OpeningPortfolioSourceArtifactReceiptImplementationReviewRegistry,
+  ReviewOpeningPortfolioSourceArtifactReceiptImplementationRequest,
+  OpeningPortfolioSourceArtifactReceiptIsolatedReceiverRegistry,
+  RegisterOpeningPortfolioSourceArtifactReceiptIsolatedReceiverRequest,
+  OpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizationRegistry,
+  ReviewOpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizationRequest,
+  OpeningPortfolioSourceArtifactReceiptExecutionAttemptClaimRegistry,
+  ClaimOpeningPortfolioSourceArtifactReceiptExecutionAttemptRequest,
+  OpeningPortfolioSourceArtifactReceiptExecutionAttemptRegistry,
+  ReceiveOpeningPortfolioSourceArtifactReceiptAttemptRequest,
+  OpeningPortfolioSourceArtifactReceiptValidationRegistry,
+  ValidateOpeningPortfolioSourceArtifactReceiptRequest,
+  OpeningPortfolioSnapshotMaterializationImplementationRegistry,
+  RegisterOpeningPortfolioSnapshotMaterializationImplementationRequest,
+  OpeningPortfolioSnapshotMaterializationImplementationReviewRegistry,
+  ReviewOpeningPortfolioSnapshotMaterializationImplementationRequest,
+  OpeningPortfolioSnapshotMaterializationIsolatedMaterializerRegistry,
+  RegisterOpeningPortfolioSnapshotMaterializationIsolatedMaterializerRequest,
   MetaInfo,
   SkillDetailInfo,
   SkillInfo,
@@ -488,6 +797,3977 @@ export async function disablePublicAdminInvite(userId: string) {
     },
   );
   return parseJson<PublicAdminInviteMutation>(response);
+}
+
+export async function getInvestmentDecisionEvaluation(
+  symbol?: string,
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams();
+  if (symbol?.trim()) query.set("symbol", symbol.trim().toUpperCase());
+  const suffix = query.size ? `?${query}` : "";
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/evaluation${suffix}`,
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentDecisionEvaluation>(response);
+}
+
+export async function getInvestmentEvidenceReviewQueue(
+  options: {
+    symbol?: string;
+    status?: "all" | "pending" | "accepted" | "rejected";
+    kind?: "all" | "source_claim" | "operating_kpi" | "computed_comparison" | "computed_ratio";
+    selection?: "full_queue" | "source_batch" | "old_wang_batch" | "active_batch";
+    limit?: number;
+  } = {},
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams();
+  if (options.symbol?.trim()) query.set("symbol", options.symbol.trim().toUpperCase());
+  query.set("status", options.status ?? "pending");
+  query.set("kind", options.kind ?? "all");
+  if (options.selection) query.set("selection", options.selection);
+  query.set("limit", String(Math.max(1, Math.min(500, Math.trunc(options.limit ?? 100)))));
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/review-queue?${query}`,
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentEvidenceReviewQueue>(response);
+}
+
+export async function getInvestmentDecisionReplay(
+  symbol: string,
+  limit = 100,
+  signal?: AbortSignal,
+) {
+  const normalized = symbol.trim().toUpperCase();
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/replay/${encodeURIComponent(normalized)}?limit=${Math.max(1, Math.min(500, Math.trunc(limit)))}`,
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentDecisionReplay>(response);
+}
+
+export async function reviewInvestmentDecision(
+  symbol: string,
+  sampleId: string,
+  request: InvestmentDecisionReviewRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/review/${encodeURIComponent(symbol.trim().toUpperCase())}/${encodeURIComponent(sampleId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentDecisionReviewRecord>(response);
+}
+
+export async function reviewInvestmentCausalEvidence(
+  symbol: string,
+  sampleId: string,
+  request: InvestmentCausalEvidenceReviewRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/causal-review/${encodeURIComponent(symbol.trim().toUpperCase())}/${encodeURIComponent(sampleId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentCausalEvidenceReviewRecord>(response);
+}
+
+export async function reviewInvestmentCausalSource(
+  symbol: string,
+  sampleId: string,
+  request: InvestmentCausalSourceReviewRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/causal-source-review/${encodeURIComponent(symbol.trim().toUpperCase())}/${encodeURIComponent(sampleId)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentCausalSourceReviewRecord>(response);
+}
+
+export async function getInvestmentFinancialEvidenceReviews(
+  options: {
+    symbol?: string;
+    selection?: "active_batch" | "full_queue";
+    limit?: number;
+  } | string = {},
+  signal?: AbortSignal,
+) {
+  const normalized = typeof options === "string" ? { symbol: options } : options;
+  const query = new URLSearchParams();
+  if (normalized.symbol?.trim()) {
+    query.set("symbol", normalized.symbol.trim().toUpperCase());
+  }
+  if (normalized.selection) query.set("selection", normalized.selection);
+  if (normalized.limit != null) {
+    query.set("limit", String(Math.max(1, Math.min(20, Math.trunc(normalized.limit)))));
+  }
+  const suffix = query.size ? `?${query}` : "";
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/financial-evidence-reviews${suffix}`,
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentFinancialEvidenceReviewResponse>(response);
+}
+
+export async function reviewInvestmentFinancialEvidence(
+  symbol: string,
+  request: InvestmentFinancialEvidenceReviewRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/financial-evidence-reviews/${encodeURIComponent(symbol.trim().toUpperCase())}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentFinancialEvidenceReviewResponse>(response);
+}
+
+export async function getInvestmentValuationInputReviews(
+  symbol?: string,
+  signal?: AbortSignal,
+) {
+  const normalized = symbol?.trim().toUpperCase();
+  const suffix = normalized ? `?symbol=${encodeURIComponent(normalized)}` : "";
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/valuation-input-reviews${suffix}`,
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentValuationInputReviewResponse>(response);
+}
+
+export async function reviewInvestmentValuationInputs(
+  symbol: string,
+  request: InvestmentValuationInputReviewRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/valuation-input-reviews/${encodeURIComponent(symbol.trim().toUpperCase())}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentValuationInputReviewResponse>(response);
+}
+
+export async function getInvestmentRewardGovernance(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/reward-governance",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentRewardGovernance>(response);
+}
+
+export async function reviewInvestmentRewardGovernance(
+  request: InvestmentRewardGovernanceRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/reward-governance",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentRewardGovernance>(response);
+}
+
+export async function getInvestmentShadowProtocolGovernance(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/shadow-protocol-governance",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentShadowProtocolGovernance>(response);
+}
+
+export async function reviewInvestmentShadowProtocolGovernance(
+  request: InvestmentShadowProtocolGovernanceRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/shadow-protocol-governance",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentShadowProtocolGovernance>(response);
+}
+
+export async function getInvestmentShadowImplementations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/shadow-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentShadowImplementationRegistry>(response);
+}
+
+export async function registerInvestmentShadowImplementation(
+  request: InvestmentShadowImplementationRegistrationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/shadow-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentShadowImplementationRegistry>(response);
+}
+
+export async function getHistoricalDecisionAnchors(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-anchors",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalDecisionAnchorRegistry>(response);
+}
+
+export async function createHistoricalDecisionAnchorCandidate(
+  request: CreateHistoricalDecisionAnchorCandidateRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-anchors",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalDecisionAnchorCandidate>(response);
+}
+
+export async function getHistoricalAnchorDiscovery(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-anchor-discovery",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalAnchorDiscoveryResponse>(response);
+}
+
+export async function screenHistoricalAnchorDiscovery(
+  suggestionId: string,
+  request: ScreenHistoricalAnchorDiscoveryRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-anchor-discovery/${encodeURIComponent(suggestionId)}/screening`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalAnchorDiscoveryScreeningRecord>(response);
+}
+
+export async function reviewHistoricalDecisionAnchor(
+  candidateId: string,
+  request: ReviewHistoricalDecisionAnchorRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-anchors/${encodeURIComponent(candidateId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalDecisionAnchorReview>(response);
+}
+
+export async function getHistoricalStateReconstructions(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-state-reconstructions",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalStateReconstructionRegistry>(response);
+}
+
+export async function createHistoricalStateReconstruction(
+  request: CreateHistoricalStateReconstructionRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-state-reconstructions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalStateReconstructionCandidate>(response);
+}
+
+export async function reviewHistoricalStateReconstruction(
+  reconstructionId: string,
+  request: ReviewHistoricalStateReconstructionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-state-reconstructions/${encodeURIComponent(reconstructionId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalStateReconstructionReview>(response);
+}
+
+export async function getHistoricalOutcomeGovernance(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-governance",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeGovernanceRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeGovernance(
+  request: ReviewHistoricalOutcomeGovernanceRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-governance",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeGovernanceReview>(response);
+}
+
+export async function getHistoricalOutcomeLabelers(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-labelers",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeLabeler(
+  request: RegisterHistoricalOutcomeLabelerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-labelers",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelerRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeLabeler(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeLabelerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-labelers/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelerReview>(response);
+}
+
+export async function getHistoricalOutcomePriceSnapshots(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-price-snapshots",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomePriceSnapshotRegistry>(response);
+}
+
+export async function ingestHistoricalOutcomePriceSnapshot(
+  request: IngestHistoricalOutcomePriceSnapshotRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-price-snapshots",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomePriceSnapshot>(response);
+}
+
+export async function getHistoricalOutcomeDryRunAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeDryRunAuthorization(
+  snapshotId: string,
+  request: ReviewHistoricalOutcomeDryRunAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-dry-run-authorizations/${encodeURIComponent(snapshotId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunAuthorizationReview>(response);
+}
+
+export async function getHistoricalOutcomeDryRunImplementations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeDryRunImplementation(
+  request: RegisterHistoricalOutcomeDryRunImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeDryRunRunAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-run-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunRunAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeDryRunRunAuthorization(
+  dryRunImplementationId: string,
+  request: ReviewHistoricalOutcomeDryRunRunAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-dry-run-run-authorizations/${encodeURIComponent(dryRunImplementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunRunAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeDryRunIsolatedRunners(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeDryRunIsolatedRunner(
+  request: RegisterHistoricalOutcomeDryRunIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeDryRunFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeDryRunFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeDryRunFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-dry-run-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeDryRunExecutionAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeDryRunOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeDryRunRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-dry-run-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeDryRunOutputValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-dry-run-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeDryRunOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeDryRunOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeDryRunOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-dry-run-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeDryRunOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelAdmissionReviews(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelAdmissionRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeLabelAdmission(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeLabelAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelAdmissionRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeLabelMaterializationImplementation(
+  request: RegisterHistoricalOutcomeLabelMaterializationImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationRunAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-run-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationRunAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeLabelMaterializationRunAuthorization(
+  materializationImplementationId: string,
+  request: ReviewHistoricalOutcomeLabelMaterializationRunAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-materialization-run-authorizations/${encodeURIComponent(materializationImplementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationRunAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeLabelMaterializationIsolatedRunner(
+  request: RegisterHistoricalOutcomeLabelMaterializationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeLabelMaterializationFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeLabelMaterializationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-materialization-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeLabelMaterializationOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeLabelMaterializationOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-materialization-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelMaterializationOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-materialization-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeLabelMaterializationOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeLabelMaterializationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-materialization-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelMaterializationOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeLabelWriteAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-label-write-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeLabelWriteAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeLabelWriteAuthorization(
+  validationId: string,
+  request: ReviewHistoricalOutcomeLabelWriteAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-label-write-authorizations/${encodeURIComponent(validationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeLabelWriteAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFormalLabelWrites(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-formal-label-writes",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFormalLabelWriteRegistry>(response);
+}
+
+export async function writeHistoricalOutcomeFormalLabelOnce(
+  authorizationReviewId: string,
+  request: WriteHistoricalOutcomeFormalLabelOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-formal-label-writes/${encodeURIComponent(authorizationReviewId)}/write-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFormalLabelWriteRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFormalLabelValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-formal-label-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFormalLabelValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeFormalLabel(
+  labelId: string,
+  request: ValidateHistoricalOutcomeFormalLabelRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-formal-label-validations/${encodeURIComponent(labelId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFormalLabelValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasets(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-datasets",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetRegistry>(response);
+}
+
+export async function assembleHistoricalOutcomeOfflineDataset(
+  request: AssembleHistoricalOutcomeOfflineDatasetRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-datasets",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetGovernance(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-governance",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetGovernanceRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeOfflineDatasetGovernance(
+  datasetId: string,
+  request: ReviewHistoricalOutcomeOfflineDatasetGovernanceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-governance/${encodeURIComponent(datasetId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetGovernanceRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationSpecs(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-specs",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationSpecRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeOfflineDatasetTransformationSpec(
+  datasetId: string,
+  request: RegisterHistoricalOutcomeOfflineDatasetTransformationSpecRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-specs/${encodeURIComponent(datasetId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationSpecRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationSpecReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-spec-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationSpecReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeOfflineDatasetTransformationSpec(
+  transformationSpecId: string,
+  request: ReviewHistoricalOutcomeOfflineDatasetTransformationSpecRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-spec-reviews/${encodeURIComponent(transformationSpecId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationSpecReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeOfflineDatasetTransformationImplementation(
+  request: RegisterHistoricalOutcomeOfflineDatasetTransformationImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationImplementationReviewRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeOfflineDatasetTransformationImplementation(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeOfflineDatasetTransformationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationImplementationReviewRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeOfflineDatasetTransformationIsolatedRunner(
+  request: RegisterHistoricalOutcomeOfflineDatasetTransformationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeOfflineDatasetTransformationOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeOfflineDatasetTransformationOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeOfflineDatasetTransformationOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeOfflineDatasetTransformationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-candidate-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeOfflineDatasetTransformationCandidateAdmission(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-candidate-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationCandidateAdmissionRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactMaterializations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-official-artifact-materializations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactMaterializationRegistry>(response);
+}
+
+export async function materializeHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactsOnce(
+  attemptId: string,
+  request: MaterializeHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactsRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-official-artifact-materializations/${encodeURIComponent(attemptId)}/materialize-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactMaterializationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-official-artifact-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeOfflineDatasetTransformationOfficialArtifacts(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeOfflineDatasetTransformationOfficialArtifactsRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-offline-dataset-transformation-official-artifact-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeOfflineDatasetTransformationOfficialArtifactOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetSpecs(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-specs",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetSpecRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeFeatureLabelJoinTargetSpec(
+  attemptId: string,
+  request: RegisterHistoricalOutcomeFeatureLabelJoinTargetSpecRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-specs/${encodeURIComponent(attemptId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetSpecRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetSpecReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-spec-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetSpecReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetSpec(
+  specificationId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetSpecRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-spec-reviews/${encodeURIComponent(specificationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetSpecReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeFeatureLabelJoinTargetImplementation(
+  request: RegisterHistoricalOutcomeFeatureLabelJoinTargetImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetImplementationReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetImplementation(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetImplementationReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeFeatureLabelJoinTargetIsolatedRunner(
+  request: RegisterHistoricalOutcomeFeatureLabelJoinTargetIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeFeatureLabelJoinTargetOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeFeatureLabelJoinTargetOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeFeatureLabelJoinTargetOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeFeatureLabelJoinTargetOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-candidate-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetCandidateAdmission(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-candidate-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetCandidateAdmissionRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetMaterializations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-official-dataset-materializations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetMaterializationRegistry>(
+    response,
+  );
+}
+
+export async function materializeHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetOnce(
+  attemptId: string,
+  request: MaterializeHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-official-dataset-materializations/${encodeURIComponent(attemptId)}/materialize-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetMaterializationRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-official-dataset-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetOutputValidationRegistry>(
+    response,
+  );
+}
+
+export async function validateHistoricalOutcomeFeatureLabelJoinTargetOfficialDataset(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-official-dataset-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetOfficialDatasetOutputValidationRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copy-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmission(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copy-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyAdmissionRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopies(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copies",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyRegistry>(response);
+}
+
+export async function copyHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreOnce(
+  attemptId: string,
+  request: CopyHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copies/${encodeURIComponent(attemptId)}/copy-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copy-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopy(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-store-copy-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingStoreCopyOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-registration-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmission(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-registration-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeFeatureLabelJoinTargetTrainingRegistrationAdmissionRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingExperimentRegistrations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-experiment-registrations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingExperimentRegistrationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeTrainingExperimentSuiteOnce(
+  attemptId: string,
+  request: RegisterHistoricalOutcomeTrainingExperimentSuiteRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-experiment-registrations/${encodeURIComponent(attemptId)}/register-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingExperimentRegistrationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingExperimentRegistrationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-experiment-registration-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingExperimentRegistrationReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeTrainingExperimentRegistration(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeTrainingExperimentRegistrationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-experiment-registration-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingExperimentRegistrationReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingImplementations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeTrainingImplementation(
+  request: RegisterHistoricalOutcomeTrainingImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingImplementationReviews(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingImplementationReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeTrainingImplementation(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeTrainingImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingImplementationReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingIsolatedRunners(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeTrainingIsolatedRunner(
+  request: RegisterHistoricalOutcomeTrainingIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingFirstExecutionAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeTrainingFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeTrainingFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingExecutionAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeTrainingOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeTrainingOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeTrainingOutputValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeTrainingOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeTrainingOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeTrainingOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeTrainingOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeValidationEvaluationImplementation(
+  request: RegisterHistoricalOutcomeValidationEvaluationImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationImplementationReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeValidationEvaluationImplementation(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeValidationEvaluationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationImplementationReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeValidationEvaluationIsolatedRunner(
+  request: RegisterHistoricalOutcomeValidationEvaluationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeValidationEvaluationFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeValidationEvaluationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/reviews`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationFirstExecutionAuthorizationRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeValidationEvaluationExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeValidationEvaluationOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeValidationEvaluationOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeValidationEvaluationOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeValidationEvaluationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-per-target-candidate-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionRegistry>(
+    response,
+  );
+}
+
+export async function reviewHistoricalOutcomeValidationEvaluationPerTargetCandidateAdmission(
+  attemptId: string,
+  targetId: string,
+  request: ReviewHistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-validation-evaluation-per-target-candidate-admission-reviews/${encodeURIComponent(attemptId)}/targets/${encodeURIComponent(targetId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeValidationEvaluationPerTargetCandidateAdmissionRegistry>(
+    response,
+  );
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationProtocolReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-protocol-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationProtocolReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeSealedHoldoutEvaluationProtocol(
+  attemptId: string,
+  targetId: string,
+  request: ReviewHistoricalOutcomeSealedHoldoutEvaluationProtocolRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-protocol-reviews/${encodeURIComponent(attemptId)}/targets/${encodeURIComponent(targetId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationProtocolReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationImplementationRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeSealedHoldoutEvaluationImplementation(
+  request: RegisterHistoricalOutcomeSealedHoldoutEvaluationImplementationRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-implementations",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationImplementationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationImplementationReviewRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeSealedHoldoutEvaluationImplementation(
+  implementationId: string,
+  request: ReviewHistoricalOutcomeSealedHoldoutEvaluationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationImplementationReviewRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerHistoricalOutcomeSealedHoldoutEvaluationIsolatedRunner(
+  request: RegisterHistoricalOutcomeSealedHoldoutEvaluationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-isolated-runners",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationIsolatedRunnerRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewHistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationExecutionAttemptRegistry>(response);
+}
+
+export async function invokeHistoricalOutcomeSealedHoldoutEvaluationOnce(
+  isolatedRunnerId: string,
+  request: InvokeHistoricalOutcomeSealedHoldoutEvaluationOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationExecutionAttemptRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutEvaluationOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationOutputValidationRegistry>(response);
+}
+
+export async function validateHistoricalOutcomeSealedHoldoutEvaluationOutput(
+  attemptId: string,
+  request: ValidateHistoricalOutcomeSealedHoldoutEvaluationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutEvaluationOutputValidationRegistry>(response);
+}
+
+export async function getHistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudications(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-confirmatory-result-adjudications",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudicationRegistry>(response);
+}
+
+export async function reviewHistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudication(
+  attemptId: string,
+  request: ReviewHistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudicationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-confirmatory-result-adjudications/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<HistoricalOutcomeSealedHoldoutConfirmatoryResultAdjudicationRegistry>(response);
+}
+
+export async function getControlledShadowExperimentDesignRegistrations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-design-registrations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentDesignRegistrationRegistry>(response);
+}
+
+export async function registerControlledShadowExperimentDesign(
+  attemptId: string,
+  request: RegisterControlledShadowExperimentDesignRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-design-registrations/${encodeURIComponent(attemptId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentDesignRegistrationRegistry>(response);
+}
+
+export async function getControlledShadowExperimentDesignRegistrationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-design-registration-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentDesignRegistrationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowExperimentDesignRegistration(
+  attemptId: string,
+  request: ReviewControlledShadowExperimentDesignRegistrationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-design-registration-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentDesignRegistrationReviewRegistry>(response);
+}
+
+export async function getControlledShadowExperimentImplementations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentImplementationRegistry>(response);
+}
+
+export async function registerControlledShadowExperimentImplementation(
+  attemptId: string,
+  request: RegisterControlledShadowExperimentImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-implementations/${encodeURIComponent(attemptId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentImplementationRegistry>(response);
+}
+
+export async function getControlledShadowExperimentImplementationReviews(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentImplementationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowExperimentImplementation(
+  implementationId: string,
+  request: ReviewControlledShadowExperimentImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentImplementationReviewRegistry>(response);
+}
+
+export async function getControlledShadowExperimentIsolatedRunners(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentIsolatedRunnerRegistry>(response);
+}
+
+export async function registerControlledShadowExperimentIsolatedRunner(
+  implementationId: string,
+  request: RegisterControlledShadowExperimentIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-isolated-runners/${encodeURIComponent(implementationId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentIsolatedRunnerRegistry>(response);
+}
+
+export async function getControlledShadowExperimentFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowExperimentFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewControlledShadowExperimentFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowExperimentExecutionAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentExecutionAttemptRegistry>(response);
+}
+
+export async function invokeControlledShadowExperimentOnce(
+  isolatedRunnerId: string,
+  request: InvokeControlledShadowExperimentOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentExecutionAttemptRegistry>(response);
+}
+
+export async function getControlledShadowExperimentOutputValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowExperimentOutputValidationRegistry>(response);
+}
+
+export async function validateControlledShadowExperimentOutput(
+  attemptId: string,
+  request: ValidateControlledShadowExperimentOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowExperimentOutputValidationRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationProtocolRegistrations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-protocol-registrations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationProtocolRegistrationRegistry>(response);
+}
+
+export async function registerControlledShadowForwardObservationProtocol(
+  validationId: string,
+  request: RegisterControlledShadowForwardObservationProtocolRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-protocol-registrations/${encodeURIComponent(validationId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationProtocolRegistrationRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationProtocolRegistrationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-protocol-registration-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationProtocolRegistrationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowForwardObservationProtocolRegistration(
+  protocolRegistrationId: string,
+  request: ReviewControlledShadowForwardObservationProtocolRegistrationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-protocol-registration-reviews/${encodeURIComponent(protocolRegistrationId)}/review`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationProtocolRegistrationReviewRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationImplementationRegistry>(response);
+}
+
+export async function registerControlledShadowForwardObservationImplementation(
+  protocolReviewId: string,
+  request: RegisterControlledShadowForwardObservationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-implementations/${encodeURIComponent(protocolReviewId)}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationImplementationRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationImplementationReviews(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationImplementationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowForwardObservationImplementation(
+  implementationId: string,
+  request: ReviewControlledShadowForwardObservationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationImplementationReviewRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerControlledShadowForwardObservationIsolatedRunner(
+  implementationId: string,
+  request: RegisterControlledShadowForwardObservationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-isolated-runners/${encodeURIComponent(implementationId)}/register`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationIsolatedRunnerRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowForwardObservationFirstExecutionAuthorization(
+  isolatedRunnerId: string,
+  request: ReviewControlledShadowForwardObservationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationExecutionAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationExecutionAttemptRegistry>(response);
+}
+
+export async function invokeControlledShadowForwardObservationOnce(
+  isolatedRunnerId: string,
+  request: InvokeControlledShadowForwardObservationOnceRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-execution-attempts/${encodeURIComponent(isolatedRunnerId)}/invoke-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationExecutionAttemptRegistry>(response);
+}
+
+export async function getControlledShadowForwardObservationOutputValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowForwardObservationOutputValidationRegistry>(response);
+}
+
+export async function validateControlledShadowForwardObservationOutput(
+  attemptId: string,
+  request: ValidateControlledShadowForwardObservationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-output-validations/${encodeURIComponent(attemptId)}/validate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowForwardObservationOutputValidationRegistry>(response);
+}
+
+export async function getControlledShadowFirstNaturalForwardCycleAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowFirstNaturalForwardCycleAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowFirstNaturalForwardCycleAuthorization(
+  validationId: string,
+  request: ReviewControlledShadowFirstNaturalForwardCycleAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-authorizations/${encodeURIComponent(validationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowFirstNaturalForwardCycleAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowFirstNaturalForwardCycleClaims(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-claims",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowFirstNaturalForwardCycleClaimRegistry>(response);
+}
+
+export async function claimControlledShadowFirstNaturalForwardCycleOnce(
+  authorizationReviewId: string,
+  request: ClaimControlledShadowFirstNaturalForwardCycleRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-claims/${encodeURIComponent(authorizationReviewId)}/claim-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowFirstNaturalForwardCycleClaimRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataAdapterAuthorizations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-adapter-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataAdapterAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowMarketDataAdapterAuthorization(
+  cycleClaimId: string,
+  request: ReviewControlledShadowMarketDataAdapterAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-adapter-authorizations/${encodeURIComponent(cycleClaimId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataAdapterAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataReceiptAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-receipt-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataReceiptAttemptRegistry>(response);
+}
+
+export async function claimAndReadControlledShadowMarketDataReceiptOnce(
+  adapterAuthorizationId: string,
+  request: ClaimAndReadControlledShadowMarketDataReceiptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-receipt-attempts/${encodeURIComponent(adapterAuthorizationId)}/claim-and-read-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataReceiptAttemptRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataReceiptValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-receipt-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataReceiptValidationRegistry>(response);
+}
+
+export async function validateControlledShadowMarketDataReceiptOnce(
+  attemptId: string,
+  request: ValidateControlledShadowMarketDataReceiptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-receipt-validations/${encodeURIComponent(attemptId)}/validate-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataReceiptValidationRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserSpecifications(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-specifications",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserSpecificationRegistry>(response);
+}
+
+export async function registerControlledShadowMarketDataParserSpecificationOnce(
+  validationId: string,
+  request: RegisterControlledShadowMarketDataParserSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-specifications/${encodeURIComponent(validationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserSpecificationRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserSpecificationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-specification-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserSpecificationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowMarketDataParserSpecificationOnce(
+  registrationId: string,
+  request: ReviewControlledShadowMarketDataParserSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-specification-reviews/${encodeURIComponent(registrationId)}/review-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserSpecificationReviewRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserImplementationRegistry>(response);
+}
+
+export async function registerControlledShadowMarketDataParserImplementationOnce(
+  specificationReviewId: string,
+  request: RegisterControlledShadowMarketDataParserImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-implementations/${encodeURIComponent(specificationReviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserImplementationRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserImplementationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowMarketDataParserImplementationOnce(
+  implementationId: string,
+  request: ReviewControlledShadowMarketDataParserImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-implementation-reviews/${encodeURIComponent(implementationId)}/review-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserImplementationReviewRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserIsolatedRunnerRegistry>(response);
+}
+
+export async function registerControlledShadowMarketDataParserIsolatedRunnerOnce(
+  implementationId: string,
+  request: RegisterControlledShadowMarketDataParserIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-isolated-runners/${encodeURIComponent(implementationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserIsolatedRunnerRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowMarketDataParserFirstExecutionAuthorizationOnce(
+  isolatedRunnerId: string,
+  request: ReviewControlledShadowMarketDataParserFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserExecutionAttemptClaims(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-execution-attempt-claims",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserExecutionAttemptClaimRegistry>(response);
+}
+
+export async function claimControlledShadowMarketDataParserExecutionAttemptOnce(
+  authorizationReviewId: string,
+  request: ClaimControlledShadowMarketDataParserExecutionAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-execution-attempt-claims/${encodeURIComponent(authorizationReviewId)}/claim-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserExecutionAttemptClaimRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserExecutionAttemptRegistry>(response);
+}
+
+export async function executeControlledShadowMarketDataParserAttemptOnce(
+  attemptId: string,
+  request: ExecuteControlledShadowMarketDataParserAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-execution-attempts/${encodeURIComponent(attemptId)}/execute-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserExecutionAttemptRegistry>(response);
+}
+
+export async function getControlledShadowMarketDataParserOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowMarketDataParserOutputValidationRegistry>(response);
+}
+
+export async function validateControlledShadowMarketDataParserOutputOnce(
+  attemptId: string,
+  request: ValidateControlledShadowMarketDataParserOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-market-data-parser-output-validations/${encodeURIComponent(attemptId)}/validate-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowMarketDataParserOutputValidationRegistry>(response);
+}
+
+export async function getControlledShadowObservationInputAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-input-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationInputAdmissionRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationInputAdmission(
+  attemptId: string,
+  request: ReviewControlledShadowObservationInputAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-input-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationInputAdmissionRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationSpecifications(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-specifications",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationSpecificationRegistry>(response);
+}
+
+export async function registerControlledShadowObservationMaterializationSpecification(
+  reviewId: string,
+  request: RegisterControlledShadowObservationMaterializationSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-specifications/${encodeURIComponent(reviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationSpecificationRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationSpecificationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-specification-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationSpecificationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationMaterializationSpecification(
+  registrationId: string,
+  request: ReviewControlledShadowObservationMaterializationSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-specification-reviews/${encodeURIComponent(registrationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationSpecificationReviewRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationImplementationRegistry>(response);
+}
+
+export async function registerControlledShadowObservationMaterializationImplementationOnce(
+  specificationReviewId: string,
+  request: RegisterControlledShadowObservationMaterializationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-implementations/${encodeURIComponent(specificationReviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationImplementationRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationImplementationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationMaterializationImplementationOnce(
+  implementationId: string,
+  request: ReviewControlledShadowObservationMaterializationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationImplementationReviewRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationIsolatedRunnerRegistry>(response);
+}
+
+export async function registerControlledShadowObservationMaterializationIsolatedRunnerOnce(
+  implementationId: string,
+  request: RegisterControlledShadowObservationMaterializationIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-isolated-runners/${encodeURIComponent(implementationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationIsolatedRunnerRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationMaterializationFirstExecutionAuthorizationOnce(
+  isolatedRunnerId: string,
+  request: ReviewControlledShadowObservationMaterializationFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationExecutionAttemptClaims(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-execution-attempt-claims",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationExecutionAttemptClaimRegistry>(response);
+}
+
+export async function claimControlledShadowObservationMaterializationExecutionAttemptOnce(
+  authorizationReviewId: string,
+  request: ClaimControlledShadowObservationMaterializationExecutionAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-execution-attempt-claims/${encodeURIComponent(authorizationReviewId)}/claim-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationExecutionAttemptClaimRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationExecutionAttemptRegistry>(response);
+}
+
+export async function executeControlledShadowObservationMaterializationAttemptOnce(
+  attemptId: string,
+  request: ExecuteControlledShadowObservationMaterializationAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-execution-attempts/${encodeURIComponent(attemptId)}/execute-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationExecutionAttemptRegistry>(response);
+}
+
+export async function getControlledShadowObservationMaterializationOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationMaterializationOutputValidationRegistry>(response);
+}
+
+export async function validateControlledShadowObservationMaterializationOutputOnce(
+  attemptId: string,
+  request: ValidateControlledShadowObservationMaterializationOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-materialization-output-validations/${encodeURIComponent(attemptId)}/validate-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationMaterializationOutputValidationRegistry>(response);
+}
+
+export async function getControlledShadowObservationEvidenceAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-evidence-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationEvidenceAdmissionRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationEvidenceAdmission(
+  attemptId: string,
+  request: ReviewControlledShadowObservationEvidenceAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-evidence-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationEvidenceAdmissionRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionSpecifications(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-specifications",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionSpecificationRegistry>(response);
+}
+
+export async function registerControlledShadowObservationLedgerTransitionSpecification(
+  reviewId: string,
+  request: RegisterControlledShadowObservationLedgerTransitionSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-specifications/${encodeURIComponent(reviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionSpecificationRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionSpecificationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-specification-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionSpecificationReviewRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationLedgerTransitionSpecification(
+  registrationId: string,
+  request: ReviewControlledShadowObservationLedgerTransitionSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-specification-reviews/${encodeURIComponent(registrationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionSpecificationReviewRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionImplementationRegistry>(response);
+}
+
+export async function registerControlledShadowObservationLedgerTransitionImplementationOnce(
+  specificationReviewId: string,
+  request: RegisterControlledShadowObservationLedgerTransitionImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-implementations/${encodeURIComponent(specificationReviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionImplementationRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionImplementationReviewRegistry>(
+    response,
+  );
+}
+
+export async function reviewControlledShadowObservationLedgerTransitionImplementationOnce(
+  implementationId: string,
+  request: ReviewControlledShadowObservationLedgerTransitionImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionImplementationReviewRegistry>(
+    response,
+  );
+}
+
+export async function getControlledShadowObservationLedgerTransitionIsolatedRunners(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-isolated-runners",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionIsolatedRunnerRegistry>(response);
+}
+
+export async function registerControlledShadowObservationLedgerTransitionIsolatedRunnerOnce(
+  implementationId: string,
+  request: RegisterControlledShadowObservationLedgerTransitionIsolatedRunnerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-isolated-runners/${encodeURIComponent(implementationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionIsolatedRunnerRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationOnce(
+  isolatedRunnerId: string,
+  request: ReviewControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-first-execution-authorizations/${encodeURIComponent(isolatedRunnerId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionExecutionAttemptClaims(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-execution-attempt-claims",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionExecutionAttemptClaimRegistry>(response);
+}
+
+export async function claimControlledShadowObservationLedgerTransitionExecutionAttemptOnce(
+  authorizationReviewId: string,
+  request: ClaimControlledShadowObservationLedgerTransitionExecutionAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-execution-attempt-claims/${encodeURIComponent(authorizationReviewId)}/claim-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionExecutionAttemptClaimRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionExecutionAttempts(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionExecutionAttemptRegistry>(response);
+}
+
+export async function executeControlledShadowObservationLedgerTransitionAttemptOnce(
+  attemptId: string,
+  request: ExecuteControlledShadowObservationLedgerTransitionAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-execution-attempts/${encodeURIComponent(attemptId)}/execute-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionExecutionAttemptRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionOutputValidations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-output-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionOutputValidationRegistry>(response);
+}
+
+export async function validateControlledShadowObservationLedgerTransitionOutputOnce(
+  attemptId: string,
+  request: ValidateControlledShadowObservationLedgerTransitionOutputRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-output-validations/${encodeURIComponent(attemptId)}/validate-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionOutputValidationRegistry>(response);
+}
+
+export async function getControlledShadowObservationLedgerTransitionCandidateAdmissionReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-candidate-admission-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionCandidateAdmissionRegistry>(response);
+}
+
+export async function reviewControlledShadowObservationLedgerTransitionCandidateAdmission(
+  attemptId: string,
+  request: ReviewControlledShadowObservationLedgerTransitionCandidateAdmissionRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/historical-outcome-feature-label-join-target-training-sealed-holdout-evaluation-controlled-shadow-experiment-forward-observation-first-natural-forward-cycle-observation-ledger-transition-candidate-admission-reviews/${encodeURIComponent(attemptId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<ControlledShadowObservationLedgerTransitionCandidateAdmissionRegistry>(response);
+}
+
+export async function getOpeningPortfolioSnapshotGovernanceSpecifications(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-governance-specifications",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSnapshotGovernanceSpecificationRegistry>(response);
+}
+
+export async function registerOpeningPortfolioSnapshotGovernanceSpecification(
+  stage124ReviewId: string,
+  request: RegisterOpeningPortfolioSnapshotGovernanceSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-governance-specifications/${encodeURIComponent(stage124ReviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSnapshotGovernanceSpecificationRegistry>(response);
+}
+
+export async function getOpeningPortfolioSnapshotGovernanceSpecificationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-governance-specification-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSnapshotGovernanceSpecificationReviewRegistry>(response);
+}
+
+export async function reviewOpeningPortfolioSnapshotGovernanceSpecification(
+  registrationId: string,
+  request: ReviewOpeningPortfolioSnapshotGovernanceSpecificationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-governance-specification-reviews/${encodeURIComponent(registrationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSnapshotGovernanceSpecificationReviewRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptImplementations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptImplementationRegistry>(response);
+}
+
+export async function registerOpeningPortfolioSourceArtifactReceiptImplementation(
+  stage126ReviewId: string,
+  request: RegisterOpeningPortfolioSourceArtifactReceiptImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-implementations/${encodeURIComponent(stage126ReviewId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptImplementationRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptImplementationReviewRegistry>(response);
+}
+
+export async function reviewOpeningPortfolioSourceArtifactReceiptImplementation(
+  implementationId: string,
+  request: ReviewOpeningPortfolioSourceArtifactReceiptImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptImplementationReviewRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptIsolatedReceivers(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-isolated-receivers",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptIsolatedReceiverRegistry>(response);
+}
+
+export async function registerOpeningPortfolioSourceArtifactReceiptIsolatedReceiver(
+  implementationId: string,
+  request: RegisterOpeningPortfolioSourceArtifactReceiptIsolatedReceiverRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-isolated-receivers/${encodeURIComponent(implementationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptIsolatedReceiverRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizations(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-first-execution-authorizations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function reviewOpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorization(
+  isolatedReceiverId: string,
+  request: ReviewOpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-first-execution-authorizations/${encodeURIComponent(isolatedReceiverId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptFirstExecutionAuthorizationRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptExecutionAttemptClaims(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-execution-attempt-claims",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptExecutionAttemptClaimRegistry>(response);
+}
+
+export async function claimOpeningPortfolioSourceArtifactReceiptExecutionAttemptOnce(
+  authorizationReviewId: string,
+  request: ClaimOpeningPortfolioSourceArtifactReceiptExecutionAttemptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-execution-attempt-claims/${encodeURIComponent(authorizationReviewId)}/claim-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptExecutionAttemptClaimRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptExecutionAttempts(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-execution-attempts",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptExecutionAttemptRegistry>(response);
+}
+
+export async function receiveOpeningPortfolioSourceArtifactReceiptAttemptOnce(
+  attemptId: string,
+  request: ReceiveOpeningPortfolioSourceArtifactReceiptAttemptRequest,
+  artifacts: File[],
+) {
+  const body = new FormData();
+  body.append("request", JSON.stringify(request));
+  for (const artifact of artifacts) body.append("artifact", artifact, artifact.name);
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-execution-attempts/${encodeURIComponent(attemptId)}/receive-once`,
+    { method: "POST", headers: PUBLIC_ADMIN_ACTION_HEADERS, body },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptExecutionAttemptRegistry>(response);
+}
+
+export async function getOpeningPortfolioSourceArtifactReceiptValidations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-validations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptValidationRegistry>(response);
+}
+
+export async function validateOpeningPortfolioSourceArtifactReceiptOnce(
+  attemptId: string,
+  request: ValidateOpeningPortfolioSourceArtifactReceiptRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-source-artifact-receipt-validations/${encodeURIComponent(attemptId)}/validate-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSourceArtifactReceiptValidationRegistry>(response);
+}
+
+export async function getOpeningPortfolioSnapshotMaterializationImplementations(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-implementations",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationImplementationRegistry>(response);
+}
+
+export async function registerOpeningPortfolioSnapshotMaterializationImplementation(
+  validationId: string,
+  request: RegisterOpeningPortfolioSnapshotMaterializationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-implementations/${encodeURIComponent(validationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationImplementationRegistry>(response);
+}
+
+export async function getOpeningPortfolioSnapshotMaterializationImplementationReviews(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-implementation-reviews",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationImplementationReviewRegistry>(response);
+}
+
+export async function reviewOpeningPortfolioSnapshotMaterializationImplementation(
+  implementationId: string,
+  request: ReviewOpeningPortfolioSnapshotMaterializationImplementationRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-implementation-reviews/${encodeURIComponent(implementationId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationImplementationReviewRegistry>(response);
+}
+
+export async function getOpeningPortfolioSnapshotMaterializationIsolatedMaterializers(
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-isolated-materializers",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationIsolatedMaterializerRegistry>(response);
+}
+
+export async function registerOpeningPortfolioSnapshotMaterializationIsolatedMaterializer(
+  implementationId: string,
+  request: RegisterOpeningPortfolioSnapshotMaterializationIsolatedMaterializerRequest,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/investment-decisions/controlled-shadow-opening-portfolio-snapshot-materialization-isolated-materializers/${encodeURIComponent(implementationId)}/register-once`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...PUBLIC_ADMIN_ACTION_HEADERS },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<OpeningPortfolioSnapshotMaterializationIsolatedMaterializerRegistry>(response);
+}
+
+export async function getInvestmentCausalDatasetGovernance(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/causal-dataset-governance",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentCausalDatasetGovernance>(response);
+}
+
+export async function reviewInvestmentCausalDatasetGovernance(
+  request: InvestmentCausalDatasetGovernanceRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/causal-dataset-governance",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentCausalDatasetGovernance>(response);
+}
+
+export async function getInvestmentCausalTrainingExperiments(signal?: AbortSignal) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/causal-training-experiments",
+    { signal, cache: "no-store" },
+  );
+  return parseJson<InvestmentCausalTrainingExperimentRegistry>(response);
+}
+
+export async function registerInvestmentCausalTrainingExperiment(
+  request: InvestmentCausalTrainingExperimentRequest,
+) {
+  const response = await apiFetch(
+    "/api/public/admin/investment-decisions/causal-training-experiments",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  return parseJson<InvestmentCausalTrainingExperimentRegistry>(response);
 }
 
 export async function getPublicChatBootstrap(signal?: AbortSignal) {

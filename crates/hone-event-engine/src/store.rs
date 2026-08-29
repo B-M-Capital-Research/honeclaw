@@ -745,14 +745,16 @@ impl EventStore {
         Ok(())
     }
 
-    /// 按 `created_at_ts` 删除早于 `cutoff_days` 天的 events，返回删除行数。
+    /// 按 `created_at_ts` 删除早于 `cutoff_days` 天的短期 events，返回删除行数。
+    /// SEC point-in-time 历史事实是稀疏训练语料，必须跨季度保留，否则回放会在
+    /// 30 天清理任务后静默失去历史。
     /// delivery_log 单独按 `sent_at_ts` 清，`purge_delivery_log_older_than`。
     pub fn purge_events_older_than(&self, cutoff_days: i64) -> anyhow::Result<usize> {
         let cutoff = Utc::now().timestamp() - cutoff_days * 86_400;
         let conn = self.conn.lock().unwrap();
         let deleted_count = conn.execute(
-            "DELETE FROM events WHERE created_at_ts < ?1",
-            params![cutoff],
+            "DELETE FROM events WHERE created_at_ts < ?1 AND source != ?2",
+            params![cutoff, "sec.companyfacts.point_in_time"],
         )?;
         Ok(deleted_count)
     }
@@ -962,6 +964,89 @@ impl EventStore {
             });
         }
         Ok(upcoming_earnings_events)
+    }
+
+    /// Returns point-in-time company materials that carry an explicit typed
+    /// financial or operating-KPI claim array. Prose-only summaries are
+    /// intentionally excluded: callers must use the claim-family parser to
+    /// revalidate definition, metric, period, unit and provenance before
+    /// admitting any item downstream.
+    pub fn list_earnings_source_claim_events(
+        &self,
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<MarketEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, kind_json, severity, symbols_json, occurred_at_ts,
+                   title, summary, url, source, payload_json
+            FROM events
+            WHERE occurred_at_ts >= ?1
+              AND occurred_at_ts <= ?2
+              AND (
+                json_array_length(payload_json, '$.earnings_transcript_review.claims') > 0
+                OR json_array_length(payload_json, '$.earnings_quality_review.claims') > 0
+                OR json_array_length(payload_json, '$.earnings_filing_claims') > 0
+                OR json_array_length(payload_json, '$.earnings_transcript_review.operating_kpi_claims') > 0
+                OR json_array_length(payload_json, '$.earnings_quality_review.operating_kpi_claims') > 0
+                OR json_array_length(payload_json, '$.operating_kpi_claims') > 0
+              )
+            ORDER BY occurred_at_ts ASC, id ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![since.timestamp(), until.timestamp()], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+        let mut events = Vec::new();
+        for row in rows {
+            let (
+                id,
+                kind_json,
+                severity_label,
+                symbols_json,
+                occurred_at_ts,
+                title,
+                summary,
+                url,
+                source,
+                payload_json,
+            ) = row?;
+            let Ok(kind) = serde_json::from_str(&kind_json) else {
+                continue;
+            };
+            let Some(occurred_at) = DateTime::<Utc>::from_timestamp(occurred_at_ts, 0) else {
+                continue;
+            };
+            events.push(MarketEvent {
+                id,
+                kind,
+                severity: match severity_label.as_str() {
+                    "high" => crate::event::Severity::High,
+                    "medium" => crate::event::Severity::Medium,
+                    _ => crate::event::Severity::Low,
+                },
+                symbols: serde_json::from_str(&symbols_json).unwrap_or_default(),
+                occurred_at,
+                title,
+                summary,
+                url,
+                source,
+                payload: serde_json::from_str(&payload_json).unwrap_or(serde_json::Value::Null),
+            });
+        }
+        Ok(events)
     }
 
     /// 该 actor 在 `[since, now]` 窗口内通过 sink 成功送达的 High 事件数。
@@ -2238,6 +2323,50 @@ mod tests {
     }
 
     #[test]
+    fn source_claim_query_returns_only_explicit_structured_claim_events() {
+        let dir = tempdir().unwrap();
+        let store = EventStore::open(dir.path().join("events.db")).unwrap();
+        let now = Utc::now();
+        let mut transcript = sample_event("sndk-claim-call");
+        transcript.kind = EventKind::EarningsCallTranscript;
+        transcript.symbols = vec!["SNDK".into()];
+        transcript.occurred_at = now;
+        transcript.url = Some("https://investor.sandisk.com/call".into());
+        transcript.payload = serde_json::json!({
+            "earnings_transcript_review": {"claims": [{
+                "claim_kind":"reported_fact","metric_id":"gross_margin","metric_basis":"non-GAAP","period":"FY2026 Q4",
+                "numeric_value":48.0,"unit":"%","value_text":"毛利率48%","speaker":"",
+                "evidence_zh":"本季毛利率为48%","source_locator":"prepared remarks"
+            }]}
+        });
+        store.insert_event(&transcript).unwrap();
+        let mut operating = transcript.clone();
+        operating.id = "sndk-operating-kpi-call".into();
+        operating.payload = serde_json::json!({
+            "earnings_transcript_review": {"operating_kpi_claims": [{
+                "claim_kind":"reported_fact","kpi_id":"nand_asp_change"
+            }]}
+        });
+        store.insert_event(&operating).unwrap();
+        let mut prose_only = transcript.clone();
+        prose_only.id = "prose-only".into();
+        prose_only.payload = serde_json::json!({
+            "earnings_transcript_review": {"prepared_findings":[{"finding_zh":"增长"}]}
+        });
+        store.insert_event(&prose_only).unwrap();
+
+        let events = store
+            .list_earnings_source_claim_events(
+                now - chrono::Duration::minutes(1),
+                now + chrono::Duration::minutes(1),
+            )
+            .unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].id, "sndk-claim-call");
+        assert_eq!(events[1].id, "sndk-operating-kpi-call");
+    }
+
+    #[test]
     fn transcript_and_formal_filing_link_to_the_nearest_reviewed_release() {
         let dir = tempdir().unwrap();
         let store = EventStore::open(dir.path().join("events.db")).unwrap();
@@ -3409,9 +3538,22 @@ mod tests {
             .unwrap();
         }
         assert!(store.insert_event(&sample_event("new")).unwrap());
+        let mut historical = sample_event("historical-sec-fact");
+        historical.source = "sec.companyfacts.point_in_time".into();
+        assert!(store.insert_event(&historical).unwrap());
+        {
+            let conn = store.conn.lock().unwrap();
+            let cutoff = Utc::now().timestamp() - 40 * 86_400;
+            conn.execute(
+                "UPDATE events SET created_at_ts = ?1 WHERE id = 'historical-sec-fact'",
+                params![cutoff],
+            )
+            .unwrap();
+        }
         let removed = store.purge_events_older_than(30).unwrap();
         assert_eq!(removed, 1);
-        assert_eq!(store.count_events().unwrap(), 1);
+        assert_eq!(store.count_events().unwrap(), 2);
+        assert!(store.contains_event("historical-sec-fact").unwrap());
     }
 
     /// `delivered_event_ids_since` 是 digest synth 跨 flush 去重的底座 ——

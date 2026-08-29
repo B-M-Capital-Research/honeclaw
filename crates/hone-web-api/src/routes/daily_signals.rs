@@ -310,6 +310,9 @@ async fn refresh_all(state: &AppState, force: bool) {
             warn!(kind = kind.slug(), "daily signal write failed: {error}");
         } else {
             info!(kind = kind.slug(), status = %final_report.status, score = ?final_report.score, "daily signal refreshed");
+            if kind == ReportKind::Macro {
+                super::investment_decisions::refresh_from_macro_signal(state, &final_report).await;
+            }
         }
     }
 }

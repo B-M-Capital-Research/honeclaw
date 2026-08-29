@@ -15,15 +15,18 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use chrono_tz::Asia::Shanghai;
+use futures::{StreamExt, stream};
 use hone_core::ActorIdentity;
 use hone_event_engine::{
     EventKind, EventSource, FmpClient, MarketEvent, NewsPoller, Severity, SourceSchedule,
 };
 use hone_llm::{CreatedLlmProvider, LlmResolver, Message};
 use hone_memory::portfolio::{Portfolio, PortfolioStorage, holdings_with_weights};
+use hone_tools::{Tool, WebSearchTool};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+use super::model_analysis_health::{ModelAnalysisHealth, build as model_analysis_health};
 use super::research_library::{ResearchUse, item_published_at, items_for_personal_use};
 use crate::state::AppState;
 
@@ -33,6 +36,7 @@ const LOOKBACK_HOURS: i64 = 48;
 const STALE_AFTER_HOURS: i64 = 36;
 const MAX_NEWS_PER_ACTOR: usize = 20;
 const MAX_NEWS_PER_SYMBOL: usize = 3;
+const ANALYSIS_TIMEOUT_SECS: u64 = 20;
 const MODEL_VERSION: &str = "hone-portfolio-news-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +70,13 @@ pub(crate) struct PortfolioNewsCounts {
     pub immediate_review: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct PortfolioNewsCoverageItem {
+    pub symbol: String,
+    pub status: String,
+    pub label: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PortfolioNewsSnapshot {
     pub report_date: String,
@@ -77,11 +88,15 @@ pub(crate) struct PortfolioNewsSnapshot {
     pub status: String,
     pub source_status: String,
     pub model_status: String,
+    #[serde(default)]
+    pub analysis_health: ModelAnalysisHealth,
     pub portfolio_updated_at: String,
     pub holdings_count: usize,
     pub lookback_hours: i64,
     pub covered_symbols: Vec<String>,
     pub missing_symbols: Vec<String>,
+    #[serde(default)]
+    pub coverage_items: Vec<PortfolioNewsCoverageItem>,
     pub summary: String,
     pub counts: PortfolioNewsCounts,
     pub items: Vec<PortfolioNewsItem>,
@@ -103,6 +118,19 @@ struct ModelAnalysisItem {
     why_it_matters: String,
     attention: String,
     confidence: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct AnalysisBatchResult {
+    analyses: HashMap<String, ModelAnalysisItem>,
+    failure_reasons: HashSet<String>,
+}
+
+impl AnalysisBatchResult {
+    fn extend(&mut self, other: Self) {
+        self.analyses.extend(other.analyses);
+        self.failure_reasons.extend(other.failure_reasons);
+    }
 }
 
 pub(crate) async fn handle_get_portfolio_news(
@@ -153,11 +181,20 @@ pub(crate) async fn handle_get_portfolio_news(
                 snapshot.items.clear();
                 snapshot.counts = PortfolioNewsCounts::default();
                 snapshot.covered_symbols.clear();
-                snapshot.missing_symbols = symbols;
+                snapshot.missing_symbols = symbols.clone();
+                snapshot.coverage_items =
+                    coverage_items_for_symbols(&snapshot.missing_symbols, &[], "unconfigured");
             } else if Utc::now() - snapshot.generated_at
                 > chrono::Duration::hours(STALE_AFTER_HOURS)
             {
                 snapshot.status = "stale".to_string();
+            }
+            if snapshot.coverage_items.is_empty() {
+                snapshot.coverage_items = coverage_items_for_symbols(
+                    &symbols,
+                    &snapshot.covered_symbols,
+                    &snapshot.source_status,
+                );
             }
             Json(snapshot).into_response()
         }
@@ -212,7 +249,7 @@ async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
         .into_iter()
         .collect::<Vec<_>>();
     let fmp = FmpClient::from_config(&state.core.config.fmp);
-    let (events, source_status) = if fmp.has_keys() {
+    let (mut events, mut source_status) = if fmp.has_keys() {
         match fetch_portfolio_news(fmp, &union_symbols).await {
             Ok(events) => (events, "live".to_string()),
             Err(error) => {
@@ -223,68 +260,142 @@ async fn refresh_all(state: &AppState) -> anyhow::Result<()> {
     } else {
         (Vec::new(), "unconfigured".to_string())
     };
+    if source_status != "live" && !state.core.config.search.api_keys.is_empty() {
+        let ratings = crate::routes::company_ratings::current_snapshot(state).await;
+        let company_names = ratings
+            .items
+            .into_iter()
+            .map(|item| (item.symbol.to_ascii_uppercase(), item.name))
+            .collect::<HashMap<_, _>>();
+        let (fallback_events, fallback_status) =
+            fetch_tavily_portfolio_news(state, &union_symbols, &company_names).await;
+        events.extend(fallback_events);
+        source_status = fallback_status;
+    }
+
+    let prepared = portfolios
+        .into_iter()
+        .map(|(actor, portfolio)| {
+            let mut actor_events = events.clone();
+            let library_events = research_events_for_actor(state, &actor, &portfolio);
+            actor_events.extend(library_events.iter().cloned());
+            let actor_source_status = if source_status == "live" {
+                "live".to_string()
+            } else if !library_events.is_empty() {
+                "partial".to_string()
+            } else {
+                source_status.clone()
+            };
+            (
+                actor,
+                portfolio,
+                actor_events,
+                library_events,
+                actor_source_status,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    // Persist traceable source facts before any model call. The optional model
+    // may be slow or unavailable, but it must never block the whole dashboard.
+    for (actor, portfolio, actor_events, _, actor_source_status) in &prepared {
+        let analysis_health =
+            model_analysis_health(None, actor_events.len(), 0, ["analysis_pending"], "pending");
+        let snapshot = snapshot_for_portfolio(
+            portfolio,
+            actor_events,
+            &HashMap::new(),
+            actor_source_status,
+            analysis_health,
+        );
+        if let Err(error) = write_snapshot(state, actor, &snapshot).await {
+            warn!(actor = %actor.storage_key(), %error, "portfolio news source snapshot write failed");
+        }
+    }
 
     let analyzer = resolve_analyzer(state);
     let analyses = if events.is_empty() {
-        HashMap::new()
+        AnalysisBatchResult::default()
     } else if let Some(created) = analyzer.as_ref() {
-        analyze_events(created, &events).await
+        analyze_events_with_timeout(created, &events).await
     } else {
-        HashMap::new()
+        AnalysisBatchResult {
+            analyses: HashMap::new(),
+            failure_reasons: HashSet::from(["analyzer_unconfigured".to_string()]),
+        }
     };
-    let model_status = if events.is_empty() {
-        "not_needed"
-    } else if analyzer.is_none() {
-        "unconfigured"
-    } else if analyses.is_empty() {
-        "error"
-    } else if analyses.len() < events.len() {
-        "partial"
-    } else {
-        "live"
-    };
-
-    for (actor, portfolio) in portfolios {
-        let mut actor_events = events.clone();
-        let library_events = research_events_for_actor(state, &actor, &portfolio);
-        actor_events.extend(library_events.iter().cloned());
-        let mut actor_analyses = analyses.clone();
+    for (actor, portfolio, actor_events, library_events, actor_source_status) in prepared {
+        let mut actor_result = analyses.clone();
         if let Some(created) = analyzer.as_ref()
             && !library_events.is_empty()
         {
-            actor_analyses.extend(analyze_events(created, &library_events).await);
+            actor_result.extend(analyze_events_with_timeout(created, &library_events).await);
         }
-        let actor_source_status = if source_status == "live" || !library_events.is_empty() {
-            "live"
+        let actor_model_status = if actor_events.is_empty() {
+            "not_required"
+        } else if analyzer.is_none() {
+            "unconfigured"
         } else {
-            source_status.as_str()
-        };
-        let actor_model_status = if !library_events.is_empty() && analyzer.is_some() {
-            if library_events
+            let analyzed = actor_events
                 .iter()
-                .all(|event| actor_analyses.contains_key(&event.id))
-            {
-                "live"
-            } else if actor_analyses.is_empty() {
-                "error"
+                .filter(|event| actor_result.analyses.contains_key(&event.id))
+                .count();
+            if analyzed == actor_events.len() {
+                "healthy"
+            } else if analyzed == 0 {
+                "unavailable"
             } else {
                 "partial"
             }
-        } else {
-            model_status
         };
+        let analyzed = actor_events
+            .iter()
+            .filter(|event| actor_result.analyses.contains_key(&event.id))
+            .count();
+        let analysis_health = model_analysis_health(
+            analyzer.as_ref(),
+            actor_events.len(),
+            analyzed,
+            actor_result.failure_reasons.iter().map(String::as_str),
+            actor_model_status,
+        );
         let snapshot = snapshot_for_portfolio(
             &portfolio,
             &actor_events,
-            &actor_analyses,
-            actor_source_status,
-            actor_model_status,
+            &actor_result.analyses,
+            &actor_source_status,
+            analysis_health,
         );
         if let Err(error) = write_snapshot(state, &actor, &snapshot).await {
             warn!(actor = %actor.storage_key(), %error, "portfolio news snapshot write failed");
         }
     }
     Ok(())
+}
+
+async fn analyze_events_with_timeout(
+    analyzer: &CreatedLlmProvider,
+    events: &[MarketEvent],
+) -> AnalysisBatchResult {
+    match tokio::time::timeout(
+        Duration::from_secs(ANALYSIS_TIMEOUT_SECS),
+        analyze_events(analyzer, events),
+    )
+    .await
+    {
+        Ok(analyses) => analyses,
+        Err(_) => {
+            warn!(
+                events = events.len(),
+                timeout_seconds = ANALYSIS_TIMEOUT_SECS,
+                "portfolio news model analysis timed out; keeping source-only snapshot"
+            );
+            AnalysisBatchResult {
+                analyses: HashMap::new(),
+                failure_reasons: HashSet::from(["analysis_timeout".to_string()]),
+            }
+        }
+    }
 }
 
 fn research_events_for_actor(
@@ -348,6 +459,202 @@ async fn fetch_portfolio_news(
         events.extend(poller.poll().await?);
     }
     Ok(filter_news_events(events, Utc::now(), symbols))
+}
+
+async fn fetch_tavily_portfolio_news(
+    state: &AppState,
+    symbols: &[String],
+    company_names: &HashMap<String, String>,
+) -> (Vec<MarketEvent>, String) {
+    let tool = Arc::new(WebSearchTool::from_config(&state.core.config));
+    let results = stream::iter(symbols.iter().cloned().map(|symbol| {
+        let tool = Arc::clone(&tool);
+        let company_name = company_names.get(&symbol).cloned().unwrap_or_default();
+        async move {
+            let query = if company_name.trim().is_empty() {
+                format!(
+                    "{symbol} stock company latest material news earnings guidance contract acquisition SEC"
+                )
+            } else {
+                format!(
+                    "{company_name} ({symbol}) latest material company news earnings guidance contract acquisition SEC"
+                )
+            };
+            let response = tokio::time::timeout(
+                Duration::from_secs(15),
+                tool.execute(serde_json::json!({"query": query, "time_range": "day"})),
+            )
+            .await;
+            (symbol, company_name, response)
+        }
+    }))
+    .buffer_unordered(4)
+    .collect::<Vec<_>>()
+    .await;
+
+    let mut completed = 0usize;
+    let mut events = Vec::new();
+    let mut seen_urls = HashSet::new();
+    for (symbol, company_name, response) in results {
+        let value = match response {
+            Ok(Ok(value)) => {
+                completed += 1;
+                value
+            }
+            Ok(Err(error)) => {
+                warn!(%symbol, %error, "portfolio Tavily fallback failed");
+                continue;
+            }
+            Err(_) => {
+                warn!(%symbol, "portfolio Tavily fallback timed out");
+                continue;
+            }
+        };
+        for (index, result) in value
+            .get("results")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            let title = result
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .trim();
+            let summary = result
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .trim();
+            let url = result
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .trim();
+            if title.is_empty()
+                || summary.is_empty()
+                || !url.starts_with("http")
+                || !seen_urls.insert(url.to_string())
+                || !tavily_result_matches_company(title, summary, &symbol, &company_name)
+                || !tavily_result_is_material(title)
+            {
+                continue;
+            }
+            let occurred_at = result
+                .get("published_date")
+                .and_then(serde_json::Value::as_str)
+                .and_then(parse_tavily_published_at)
+                .unwrap_or_else(Utc::now);
+            events.push(MarketEvent {
+                id: format!("tavily:{symbol}:{index}:{}", occurred_at.timestamp()),
+                kind: EventKind::NewsCritical,
+                severity: Severity::Medium,
+                symbols: vec![symbol.clone()],
+                occurred_at,
+                title: title.to_string(),
+                summary: summary.to_string(),
+                url: Some(url.to_string()),
+                source: "Tavily 搜索摘要".to_string(),
+                payload: serde_json::json!({
+                    "source_class": "search_snippet",
+                    "provider": "tavily",
+                    "provider_time_range": "day",
+                    "full_page_content": false,
+                }),
+            });
+        }
+    }
+    let status = if completed == symbols.len() {
+        "live"
+    } else if completed > 0 {
+        "partial"
+    } else {
+        "error"
+    };
+    info!(
+        requested = symbols.len(),
+        completed,
+        events = events.len(),
+        status,
+        "portfolio Tavily fallback completed"
+    );
+    (events, status.to_string())
+}
+
+fn tavily_result_is_material(title: &str) -> bool {
+    let lower = title.to_ascii_lowercase();
+    let routine_or_promotional = [
+        "stock price, news, quote",
+        "stake in",
+        "stake lifted",
+        "shares of",
+        "stock holdings",
+        "stock is a buy",
+        "investor relations",
+        "rsu vesting",
+        "converts rsus",
+        "insider trading",
+    ];
+    if routine_or_promotional
+        .iter()
+        .any(|pattern| lower.contains(pattern))
+    {
+        return false;
+    }
+    [
+        "earnings",
+        "results",
+        "guidance",
+        "revenue",
+        "margin",
+        "contract",
+        "order",
+        "backlog",
+        "acquisition",
+        "merger",
+        "8-k",
+        "10-q",
+        "class action",
+        "investigation",
+        "production",
+        "launch",
+        "approval",
+        "regulation",
+        "ban",
+        "capacity",
+        "data center",
+    ]
+    .iter()
+    .any(|keyword| lower.contains(keyword))
+}
+
+fn tavily_result_matches_company(
+    title: &str,
+    _summary: &str,
+    symbol: &str,
+    company_name: &str,
+) -> bool {
+    let haystack = title.to_ascii_lowercase();
+    let company = company_name.trim().to_ascii_lowercase();
+    if !company.is_empty() && haystack.contains(&company) {
+        return true;
+    }
+    title
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|token| token.eq_ignore_ascii_case(symbol))
+}
+
+fn parse_tavily_published_at(raw: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(raw)
+        .map(|value| value.with_timezone(&Utc))
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+                .ok()
+                .and_then(|date| date.and_hms_opt(0, 0, 0))
+                .map(|value| value.and_utc())
+        })
 }
 
 fn filter_news_events(
@@ -420,8 +727,8 @@ fn resolve_analyzer(state: &AppState) -> Option<CreatedLlmProvider> {
 async fn analyze_events(
     analyzer: &CreatedLlmProvider,
     events: &[MarketEvent],
-) -> HashMap<String, ModelAnalysisItem> {
-    let mut result = HashMap::new();
+) -> AnalysisBatchResult {
+    let mut result = AnalysisBatchResult::default();
     for chunk in events.chunks(12) {
         let input = chunk
             .iter()
@@ -445,14 +752,20 @@ async fn analyze_events(
             Ok(response) => response.content,
             Err(error) => {
                 warn!(%error, "portfolio news model analysis failed");
+                result
+                    .failure_reasons
+                    .insert("upstream_request_failed".to_string());
                 continue;
             }
         };
         let Some(envelope) = parse_model_analysis(&response, chunk) else {
             warn!("portfolio news model returned invalid JSON contract");
+            result
+                .failure_reasons
+                .insert("invalid_output_contract".to_string());
             continue;
         };
-        result.extend(
+        result.analyses.extend(
             envelope
                 .items
                 .into_iter()
@@ -460,6 +773,17 @@ async fn analyze_events(
         );
     }
     result
+}
+
+fn model_status_from_health(health: &ModelAnalysisHealth) -> &'static str {
+    match health.status.as_str() {
+        "healthy" => "live",
+        "partial" => "partial",
+        "not_required" => "not_needed",
+        "unconfigured" => "unconfigured",
+        "pending" => "pending",
+        _ => "error",
+    }
 }
 
 fn analysis_messages(input: &[serde_json::Value]) -> Vec<Message> {
@@ -533,8 +857,9 @@ fn snapshot_for_portfolio(
     events: &[MarketEvent],
     analyses: &HashMap<String, ModelAnalysisItem>,
     source_status: &str,
-    model_status: &str,
+    analysis_health: ModelAnalysisHealth,
 ) -> PortfolioNewsSnapshot {
+    let model_status = model_status_from_health(&analysis_health);
     let symbols = portfolio_symbols(portfolio);
     let weights = portfolio_weights(portfolio);
     let symbol_set = symbols.iter().cloned().collect::<HashSet<_>>();
@@ -583,7 +908,7 @@ fn snapshot_for_portfolio(
         .cloned()
         .collect::<Vec<_>>();
     let counts = counts_for_items(&items);
-    let status = if source_status != "live" {
+    let status = if source_status != "live" && items.is_empty() {
         "data_unavailable"
     } else if items.is_empty() {
         "no_material_news"
@@ -594,7 +919,14 @@ fn snapshot_for_portfolio(
     } else {
         "source_only"
     };
-    let summary = snapshot_summary(status, &counts, &covered_symbols, &missing_symbols);
+    let summary = snapshot_summary(
+        status,
+        model_status,
+        &counts,
+        &covered_symbols,
+        &missing_symbols,
+    );
+    let coverage_items = coverage_items_for_symbols(&symbols, &covered_symbols, source_status);
     let now = Utc::now();
     PortfolioNewsSnapshot {
         report_date: now.with_timezone(&Shanghai).format("%Y-%m-%d").to_string(),
@@ -609,16 +941,42 @@ fn snapshot_for_portfolio(
         status: status.to_string(),
         source_status: source_status.to_string(),
         model_status: model_status.to_string(),
+        analysis_health,
         portfolio_updated_at: portfolio.updated_at.clone(),
         holdings_count: symbols.len(),
         lookback_hours: LOOKBACK_HOURS,
         covered_symbols,
         missing_symbols,
+        coverage_items,
         summary,
         counts,
         items,
         disclaimer: "新闻影响分析用于研究提醒，不构成买卖或仓位建议；请打开原文核实。".to_string(),
     }
+}
+
+fn coverage_items_for_symbols(
+    symbols: &[String],
+    covered: &[String],
+    source_status: &str,
+) -> Vec<PortfolioNewsCoverageItem> {
+    symbols
+        .iter()
+        .map(|symbol| {
+            let (status, label) = if covered.contains(symbol) {
+                ("news_found", "发现重点新闻")
+            } else if source_status == "live" {
+                ("no_material_news", "已检查，近 48 小时无重点新闻")
+            } else {
+                ("source_unavailable", "新闻源未完成覆盖")
+            };
+            PortfolioNewsCoverageItem {
+                symbol: symbol.clone(),
+                status: status.to_string(),
+                label: label.to_string(),
+            }
+        })
+        .collect()
 }
 
 fn item_from_event(
@@ -779,6 +1137,7 @@ fn counts_for_items(items: &[PortfolioNewsItem]) -> PortfolioNewsCounts {
 
 fn snapshot_summary(
     status: &str,
+    model_status: &str,
     counts: &PortfolioNewsCounts,
     covered: &[String],
     missing: &[String],
@@ -786,10 +1145,20 @@ fn snapshot_summary(
     match status {
         "data_unavailable" => "新闻数据源未配置或本次读取失败，今日不生成影响判断。".to_string(),
         "no_material_news" => "近 48 小时没有通过可信来源与重要性门槛的持仓新闻。".to_string(),
-        "source_only" => format!(
-            "发现 {} 条可信持仓新闻，但模型分析未配置；当前只展示来源事实。",
-            counts.total
-        ),
+        "source_only" => match model_status {
+            "pending" => format!(
+                "发现 {} 条可信持仓新闻，已先展示来源事实；影响分析正在增强。",
+                counts.total
+            ),
+            "unconfigured" => format!(
+                "发现 {} 条可信持仓新闻，但模型分析未配置；当前只展示来源事实。",
+                counts.total
+            ),
+            _ => format!(
+                "发现 {} 条可信持仓新闻；模型分析暂不可用，当前只展示来源事实。",
+                counts.total
+            ),
+        },
         _ => format!(
             "近 48 小时覆盖 {} 个持仓、{} 条重点新闻；正面 {}、中性 {}、负面 {}、需立即复核 {}。{}",
             covered.len(),
@@ -815,6 +1184,14 @@ fn waiting_snapshot(portfolio: &Portfolio, symbols: &[String]) -> PortfolioNewsS
     );
     snapshot.holdings_count = symbols.len();
     snapshot.missing_symbols = symbols.to_vec();
+    snapshot.coverage_items = symbols
+        .iter()
+        .map(|symbol| PortfolioNewsCoverageItem {
+            symbol: symbol.clone(),
+            status: "pending".to_string(),
+            label: "等待首次检查".to_string(),
+        })
+        .collect();
     snapshot
 }
 
@@ -837,11 +1214,13 @@ fn empty_snapshot(
         status: status.to_string(),
         source_status: "not_run".to_string(),
         model_status: "not_run".to_string(),
+        analysis_health: model_analysis_health(None, 0, 0, std::iter::empty(), "not_required"),
         portfolio_updated_at: portfolio_updated_at.to_string(),
         holdings_count: 0,
         lookback_hours: LOOKBACK_HOURS,
         covered_symbols: Vec::new(),
         missing_symbols: Vec::new(),
+        coverage_items: Vec::new(),
         summary: summary.to_string(),
         counts: PortfolioNewsCounts::default(),
         items: Vec::new(),
@@ -992,6 +1371,89 @@ mod tests {
     }
 
     #[test]
+    fn model_analysis_health_fails_closed_for_partial_and_legacy_results() {
+        let partial = model_analysis_health(None, 3, 2, ["invalid_output_contract"], "partial");
+        assert_eq!(partial.failed_items, 1);
+        assert!(!partial.decision_use_allowed);
+        assert_eq!(partial.failure_reasons, vec!["invalid_output_contract"]);
+
+        let healthy = model_analysis_health(None, 3, 3, std::iter::empty(), "healthy");
+        assert!(healthy.decision_use_allowed);
+        assert_eq!(healthy.failed_items, 0);
+
+        let legacy = ModelAnalysisHealth::default();
+        assert_eq!(legacy.status, "unknown_legacy");
+        assert!(!legacy.decision_use_allowed);
+    }
+
+    #[test]
+    fn source_only_snapshot_never_claims_model_decision_readiness() {
+        let portfolio = Portfolio {
+            actor: None,
+            user_id: "u".to_string(),
+            holdings: vec![holding("NVDA", 30.0)],
+            updated_at: "2026-08-11".to_string(),
+        };
+        let events = vec![event("keep", "NVDA", 2, "trusted")];
+        let health = model_analysis_health(None, 1, 0, ["upstream_request_failed"], "unavailable");
+        let snapshot = snapshot_for_portfolio(&portfolio, &events, &HashMap::new(), "live", health);
+        assert_eq!(snapshot.status, "source_only");
+        assert!(!snapshot.analysis_health.decision_use_allowed);
+        assert_eq!(snapshot.items[0].analysis_status, "source_only");
+        assert_eq!(snapshot.items[0].impact, "unassessed");
+    }
+
+    #[test]
+    fn tavily_fallback_requires_an_explicit_company_identity_match() {
+        assert!(tavily_result_matches_company(
+            "AMD announces new AI accelerator",
+            "Advanced Micro Devices updated guidance.",
+            "AMD",
+            "AMD"
+        ));
+        assert!(!tavily_result_matches_company(
+            "AI chip market expands",
+            "Several vendors reported demand.",
+            "AMD",
+            "AMD"
+        ));
+        assert!(!tavily_result_matches_company(
+            "Micron take-or-pay deals improve visibility",
+            "This page is filed under Sandisk (SNDK).",
+            "SNDK",
+            "Sandisk"
+        ));
+    }
+
+    #[test]
+    fn tavily_fallback_parses_only_explicit_dates() {
+        assert_eq!(
+            parse_tavily_published_at("2026-08-12")
+                .expect("date")
+                .format("%Y-%m-%d")
+                .to_string(),
+            "2026-08-12"
+        );
+        assert!(parse_tavily_published_at("yesterday").is_none());
+    }
+
+    #[test]
+    fn tavily_fallback_removes_routine_holdings_and_keeps_material_events() {
+        assert!(!tavily_result_is_material(
+            "Fund Has $3 Million Stake in Sandisk"
+        ));
+        assert!(!tavily_result_is_material(
+            "AMD executive reports RSU vesting and tax share withholding"
+        ));
+        assert!(tavily_result_is_material(
+            "Rocket Lab earnings miss and margin outlook raises concerns"
+        ));
+        assert!(tavily_result_is_material(
+            "Bloom Energy class action investigation announced"
+        ));
+    }
+
+    #[test]
     fn higher_weight_ranks_same_news_above_lower_weight() {
         let high = item_from_event(&event("a", "NVDA", 2, "trusted"), "NVDA", Some(50.0), None);
         let low = item_from_event(&event("b", "MSFT", 2, "trusted"), "MSFT", Some(5.0), None);
@@ -1024,6 +1486,23 @@ mod tests {
         };
 
         assert_eq!(portfolio_weights(&portfolio).get("NVDA"), Some(&Some(40.0)));
+    }
+
+    #[test]
+    fn every_holding_gets_an_explicit_news_coverage_state() {
+        let symbols = vec!["NVDA".to_string(), "MU".to_string()];
+        let coverage = coverage_items_for_symbols(&symbols, &["NVDA".to_string()], "live");
+        assert_eq!(coverage.len(), 2);
+        assert_eq!(coverage[0].status, "news_found");
+        assert_eq!(coverage[1].status, "no_material_news");
+        assert!(coverage[1].label.contains("已检查"));
+
+        let unavailable = coverage_items_for_symbols(&symbols, &[], "unconfigured");
+        assert!(
+            unavailable
+                .iter()
+                .all(|item| item.status == "source_unavailable")
+        );
     }
 
     #[test]

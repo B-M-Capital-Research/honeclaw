@@ -482,11 +482,19 @@ pub(crate) fn chat_context_for_user(
     user_id: &str,
     query: &str,
 ) -> Result<Option<String>, String> {
+    let explicitly_requests_library =
+        query.contains("资料库") || query.contains("我上传") || query.contains("我的资料");
     let mut items = list_retrievable(state, user_id)?
         .into_iter()
         .filter(|item| item.uses.contains(&ResearchUse::Chat) && !item.excerpt.trim().is_empty())
         .map(|item| (relevance_score(&item, query), item))
-        .filter(|(score, _)| *score > 0)
+        // One generic lexical overlap such as “分析” or “最新” must not inject
+        // an unrelated long report. Besides wasting context, that report's
+        // tickers are later (correctly) discovered as entities and can turn a
+        // one-company question into an accidental comparison. A direct ticker
+        // match scores 5 and a topic match scores 4; only an explicit request
+        // to search the library may use a weak lexical match.
+        .filter(|(score, _)| *score >= 4 || (explicitly_requests_library && *score > 0))
         .collect::<Vec<_>>();
     items.sort_by(|(score_a, item_a), (score_b, item_b)| {
         score_b
@@ -527,6 +535,57 @@ pub(crate) fn items_for_global_use(
         .collect::<Vec<_>>();
     items.sort_by(|a, b| b.source_date.cmp(&a.source_date));
     Ok(items.into_iter().map(ResearchLibraryItem::from).collect())
+}
+
+/// Complete, immutable source material used by the administrator-only
+/// historical-decision anchor workflow.  The public research-library response
+/// intentionally exposes only a bounded preview; anchor verification must
+/// compare the claimed verbatim excerpt with the complete stored bytes.
+#[derive(Debug, Clone)]
+pub(crate) struct VerifiableGlobalResearchSource {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) filename: String,
+    pub(crate) sha256: String,
+    pub(crate) source_date: String,
+    pub(crate) source_name: String,
+    pub(crate) tickers: Vec<String>,
+    pub(crate) content: String,
+}
+
+pub(crate) fn verifiable_global_text_source(
+    state: &AppState,
+    id: &str,
+) -> Result<Option<VerifiableGlobalResearchSource>, String> {
+    let dir = scope_dir(state, "_global", &ResearchScope::HoneGlobal);
+    let Some(item) = read_manifest(&dir)?
+        .items
+        .into_iter()
+        .find(|item| item.id == id)
+    else {
+        return Ok(None);
+    };
+    if item.parse_status != "ready" {
+        return Err("全局资料尚未成功解析".to_string());
+    }
+    let path = dir.join(&item.stored_filename);
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    let actual_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    if actual_sha256 != item.sha256 {
+        return Err("全局资料内容哈希与清单不一致".to_string());
+    }
+    let content = String::from_utf8(bytes)
+        .map_err(|_| "历史判断锚点目前只接收 UTF-8 文本资料".to_string())?;
+    Ok(Some(VerifiableGlobalResearchSource {
+        id: item.id,
+        title: item.title,
+        filename: item.filename,
+        sha256: item.sha256,
+        source_date: item.source_date,
+        source_name: item.source_name,
+        tickers: item.tickers,
+        content,
+    }))
 }
 
 pub(crate) fn items_for_personal_use(
@@ -1211,5 +1270,17 @@ mod tests {
     fn matching_ticker_and_topic_raise_relevance() {
         assert!(relevance_score(&item(), "NVDA 的 Rubin 进度如何") >= 6);
         assert_eq!(relevance_score(&item(), "宏观就业"), 0);
+    }
+
+    #[test]
+    fn generic_investment_words_do_not_make_an_unrelated_report_relevant() {
+        let mut unrelated = item();
+        unrelated.title = "RKLB 最新财报分析".into();
+        unrelated.excerpt = "Rocket Lab 最新一季收入与订单分析".into();
+        unrelated.tickers = vec!["RKLB".into()];
+        unrelated.topics = vec!["航天".into()];
+
+        assert!(relevance_score(&unrelated, "分析 CRWV 最新一季财报") < 4);
+        assert!(relevance_score(&unrelated, "分析 RKLB 最新一季财报") >= 5);
     }
 }

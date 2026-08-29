@@ -52,6 +52,13 @@ function formatPrice(value?: number | null) {
   return value == null ? "—" : `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
+function decisionGateLabel(status?: string) {
+  if (status === "passed") return "公司决策门禁已通过";
+  if (status === "blocked" || status === "missing" || status === "mismatched") return "公司决策门禁未通过";
+  if (status === "not_applicable") return "本轮非加仓候选";
+  return "等待统一决策快照";
+}
+
 function savedReportContext(snapshot: PositionManagementSnapshot, question: string) {
   const compact = {
     reportDate: snapshot.report_date,
@@ -60,6 +67,7 @@ function savedReportContext(snapshot: PositionManagementSnapshot, question: stri
     frameworkVersion: snapshot.framework_version,
     macro: snapshot.macro_context,
     concentration: snapshot.concentration,
+    portfolioGate: snapshot.portfolio_gate,
     summary: snapshot.summary,
     items: snapshot.items.map((item) => ({
       symbol: item.symbol,
@@ -76,13 +84,14 @@ function savedReportContext(snapshot: PositionManagementSnapshot, question: stri
       frameworkLogic: item.framework_logic,
       evidenceAsOf: item.evidence_as_of,
       evidenceSources: item.evidence_sources,
+      decisionGate: item.decision_gate,
     })),
   };
   return `<!-- HONE_SAVED_POSITION_MANAGEMENT_REPORT
 ${JSON.stringify(compact)}
 END_HONE_SAVED_POSITION_MANAGEMENT_REPORT -->
 基于已保存的仓位管理建议（报告日 ${snapshot.report_date}）回答：${question}
-要求：严格区分当前事实、Hari 逻辑、HONE 集中度规则和推断；不得补造缺失行情、财务、估值或新闻；先说结论，再说明反方与证伪条件；不得自动修改持仓或声称已经下单。`;
+要求：严格区分当前事实、Hari 逻辑、HONE 集中度规则和推断；不得补造缺失行情、财务、估值或新闻；不得把未通过组合门禁的公司候选描述成可加仓；先说结论，再说明反方与证伪条件；不得自动修改持仓或声称已经下单。`;
 }
 
 export function PositionManagementDashboard(props: Props) {
@@ -184,6 +193,33 @@ export function PositionManagementDashboard(props: Props) {
                 <div><strong>{snapshot()?.macro_context.signal === "green" ? "绿灯" : snapshot()?.macro_context.signal === "red" ? "红灯" : snapshot()?.macro_context.signal === "yellow" ? "黄灯" : "待定"}</strong><span>宏观 {snapshot()?.macro_context.score?.toFixed(1) ?? "—"}</span></div>
               </div>
 
+              <Show when={snapshot()?.portfolio_gate}>
+                {(gate) => (
+                  <div class="position-management-portfolio-gate">
+                    <div>
+                      <strong>组合决策准备度：尚未完成</strong>
+                      <span>牛熊总仓位、动态杠铃与板块预算仍有待确认参数；当前不生成加仓候选。</span>
+                    </div>
+                    <div>
+                      <span>组合动作：{gate().portfolio_action_authorized ? "异常开启" : "未授权"}</span>
+                      <span>影子组合：{gate().shadow_portfolio_authorized ? "异常开启" : "未授权"}</span>
+                      <span>真实交易：{gate().trade_authorized ? "异常开启" : "未授权"}</span>
+                    </div>
+                    <details>
+                      <summary>查看三项组合逻辑的证据与缺口</summary>
+                      <For each={gate().rules}>{(rule) => (
+                        <section>
+                          <h3>{rule.label}</h3>
+                          <p>{rule.evidence.length ? `已有：${rule.evidence.join("；")}` : "已有：尚无可用组合证据"}</p>
+                          <p>缺口：{rule.gaps.join("；")}</p>
+                        </section>
+                      )}</For>
+                      <small>{gate().scope}</small>
+                    </details>
+                  </div>
+                )}
+              </Show>
+
               <div class="position-management-summary">
                 <div class="is-review"><strong>{snapshot()?.counts.review ?? 0}</strong><span>立即复核</span></div>
                 <div class="is-reduce"><strong>{snapshot()?.counts.reduce ?? 0}</strong><span>降低暴露</span></div>
@@ -224,6 +260,22 @@ export function PositionManagementDashboard(props: Props) {
                               <span>估值 {item.valuation_position}</span>
                               <span>新闻 {item.news_attention}</span>
                               <span>置信度 {item.confidence === "high" ? "高" : item.confidence === "medium" ? "中" : "低"}</span>
+                            </div>
+                            <div class={`position-management-decision-gate is-${item.decision_gate?.status || "unknown"}`}>
+                              <div>
+                                <strong>{decisionGateLabel(item.decision_gate?.status)}</strong>
+                                <span>{item.decision_gate?.revision_id ? `决策快照 ${item.decision_gate.revision_id}` : "尚无可验证的同标的决策快照"}</span>
+                              </div>
+                              <div>
+                                <span>仅使用已确认逻辑：{item.decision_gate?.candidate_logic_used ? "否，需复核" : "是"}</span>
+                                <span>组合动作授权：{item.decision_gate?.portfolio_action_authorized ? "异常开启" : "未授权"}</span>
+                              </div>
+                              <Show when={item.decision_gate?.confirmed_logic_ids?.length}>
+                                <small>{item.decision_gate?.confirmed_logic_ids.join(" / ")} · {item.decision_gate?.policy_version}</small>
+                              </Show>
+                              <Show when={item.decision_gate?.blocking_reasons?.length}>
+                                <ul><For each={item.decision_gate?.blocking_reasons}>{(value) => <li>{value}</li>}</For></ul>
+                              </Show>
                             </div>
                             <section><h3>为什么这样判断</h3><ul><For each={item.rationale}>{(value) => <li>{value}</li>}</For></ul></section>
                             <div class="position-management-columns">

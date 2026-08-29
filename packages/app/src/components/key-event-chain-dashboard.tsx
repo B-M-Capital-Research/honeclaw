@@ -3,6 +3,7 @@ import { Portal } from "solid-js/web";
 import { getPublicKeyEventChains } from "@/lib/api";
 import type { KeyEventChainSnapshot } from "@/lib/types";
 import "./key-event-chain-dashboard.css";
+import "./model-analysis-health.css";
 
 type Props = { onAsk: (message: string) => void };
 type EvidenceFilter = "all" | "confirmed";
@@ -93,6 +94,7 @@ export function KeyEventChainDashboard(props: Props) {
       reportDate: report.report_date,
       generatedAtBJT: report.generated_at_beijing,
       status: report.status,
+      analysisHealth: report.analysis_health,
       evidenceFilter: evidenceFilter(),
       topic: current,
     };
@@ -100,7 +102,7 @@ export function KeyEventChainDashboard(props: Props) {
 ${JSON.stringify(saved)}
 END_HONE_SAVED_KEY_EVENT_CHAIN -->
 基于已保存的关键事件链回答：${query}
-要求：逐条附原文链接和北京时间；只有 verification_status=confirmed 才可称为已确认里程碑，clue 只能作为待核实线索；区分来源事实、作者观点与 HONE 推断；聚合翻译和管理员研究资料不是一手事实；影响待验证时不得补造结论，不得直接转成买卖或仓位动作。`);
+要求：逐条附原文链接和北京时间；只有 verification_status=confirmed 才可称为已确认里程碑，clue 只能作为待核实线索；source_count>1 表示同一事件的多个来源，不得按来源数重复加权；区分来源事实、作者观点与 HONE 推断；聚合翻译和管理员研究资料不是一手事实；影响待验证时不得补造结论，不得直接转成买卖或仓位动作。`);
     setOpen(false);
     setQuestion("");
   };
@@ -116,14 +118,14 @@ END_HONE_SAVED_KEY_EVENT_CHAIN -->
     <Show when={open()}><Portal><div class="key-chain-backdrop" onClick={() => setOpen(false)}>
       <section class="key-chain-dialog" role="dialog" aria-modal="true" aria-labelledby="key-chain-title" onClick={(event) => event.stopPropagation()}>
         <header><div><p>第一性原理产业图谱</p><h2 id="key-chain-title">关键事件链</h2><span>模型 → 应用 → 数据中心 → 算力 → 光互连 → 存储 → 电力 · 每日 19:55 更新</span></div><button aria-label="关闭关键事件链" onClick={() => setOpen(false)}>×</button></header>
-        <div class="key-chain-meta"><b>{statusLabel(snapshot()?.status ?? "")}</b><span>近 {snapshot()?.lookback_days ?? 30} 天</span><span>{snapshot()?.generated_at_beijing ?? "—"} 北京时间</span><button onClick={() => void load()}>重新读取</button></div>
-        <nav class="key-chain-topics"><For each={snapshot()?.topics ?? []}>{item => <button classList={{ active: topicId() === item.id }} onClick={() => setTopicId(item.id)}><em>{item.layer || "产业主线"}</em><strong>{item.name}</strong><small>{item.confirmed_count ?? 0} 确认 · {item.clue_count ?? item.event_count} 线索</small></button>}</For></nav>
+        <div class="key-chain-meta"><b>{statusLabel(snapshot()?.status ?? "")}</b><span>近 {snapshot()?.lookback_days ?? 30} 天</span><span>{snapshot()?.generated_at_beijing ?? "—"} 北京时间</span><span classList={{ "is-blocked": snapshot()?.analysis_health?.decision_use_allowed === false }}>{snapshot()?.analysis_health?.decision_use_allowed ? `模型分析 ${snapshot()?.analysis_health?.analyzed_items}/${snapshot()?.analysis_health?.requested_items}` : "模型影响门禁关闭"}</span><button onClick={() => void load()}>重新读取</button></div>
+        <nav class="key-chain-topics"><For each={snapshot()?.topics ?? []}>{item => <button classList={{ active: topicId() === item.id }} onClick={() => setTopicId(item.id)}><em>{item.layer || "产业主线"}</em><strong>{item.name}</strong><small>{item.confirmed_count ?? 0} 确认 · {item.clue_count ?? item.event_count} 线索<Show when={(item.deduplicated_source_count ?? 0) > 0}> · 去重 {item.deduplicated_source_count}</Show></small></button>}</For></nav>
         <div class="key-chain-body">
           <Show when={!error()} fallback={<div class="key-chain-empty">{error()}</div>}>
             <Show when={topic()}>{current => <>
-                <section class="key-chain-topic-head"><div><span>{current().layer || "产业主线"}</span><h3>{current().name}</h3></div><p>{current().description}</p><aside><strong>第一性原理：</strong>{current().first_principle}</aside><strong>{current().latest_change}</strong><nav class="key-chain-evidence-filter" aria-label="证据筛选"><button classList={{ active: evidenceFilter() === "all" }} onClick={() => setEvidenceFilter("all")}>全部原链 {current().event_count}</button><button classList={{ active: evidenceFilter() === "confirmed" }} onClick={() => setEvidenceFilter("confirmed")}>只看一手确认 {current().confirmed_count ?? 0}</button></nav></section>
+                <section class="key-chain-topic-head"><div><span>{current().layer || "产业主线"}</span><h3>{current().name}</h3></div><p>{current().description}</p><aside><strong>第一性原理：</strong>{current().first_principle}</aside><strong>{current().latest_change}</strong><nav class="key-chain-evidence-filter" aria-label="证据筛选"><button classList={{ active: evidenceFilter() === "all" }} onClick={() => setEvidenceFilter("all")}>独立事件 {current().event_count}</button><button classList={{ active: evidenceFilter() === "confirmed" }} onClick={() => setEvidenceFilter("confirmed")}>只看一手确认 {current().confirmed_count ?? 0}</button><Show when={(current().deduplicated_source_count ?? 0) > 0}><small>{current().source_count ?? current().event_count} 条来源中合并 {current().deduplicated_source_count} 条重复转载</small></Show></nav></section>
                 <Show when={visibleEvents().length} fallback={<div class="key-chain-empty"><strong>{evidenceFilter() === "confirmed" ? "近 30 天没有一手确认里程碑" : "近 30 天当前来源没有命中事件"}</strong><p>没有事件不等于主题没有变化；待核实线索也不会被自动升级为事实。</p></div>}>
-                  <div class="key-chain-timeline"><For each={visibleEvents()}>{event => <article data-verification={event.verification_status}><time>{event.published_at_beijing} 北京时间</time><div><div class="key-chain-event-meta"><b>{event.source_name}</b><span>{changeLabel(event.change_type)}</span><span>{sourceTierLabel(event.source_tier)}</span><span data-verification={event.verification_status}>{verificationLabel(event.verification_status)}</span><span data-direction={event.direction}>{directionLabel(event.direction)}</span></div><h4>{event.title}</h4><p>{event.excerpt}</p><aside class="key-chain-verification"><strong>证据口径：</strong>{event.verification_note}</aside><aside><strong>影响：</strong>{event.impact}</aside><aside><strong>下一验证点：</strong>{event.next_watch}</aside><div class="key-chain-tickers"><For each={event.tickers}>{ticker => <span>${ticker}</span>}</For></div><a href={event.source_url} target="_blank" rel="noreferrer">{event.verification_status === "confirmed" ? "查看一手原文" : "查看线索原文"} ↗</a></div></article>}</For></div>
+                  <div class="key-chain-timeline"><For each={visibleEvents()}>{event => <article data-verification={event.verification_status}><time>{event.published_at_beijing} 北京时间</time><div><div class="key-chain-event-meta"><b>{event.source_name}</b><span>{changeLabel(event.change_type)}</span><span>{sourceTierLabel(event.source_tier)}</span><span data-verification={event.verification_status}>{verificationLabel(event.verification_status)}</span><span data-direction={event.direction}>{directionLabel(event.direction)}</span><Show when={(event.source_count ?? 1) > 1}><span data-dedup="merged">同一事件 · {event.source_count} 个来源</span></Show><Show when={event.analysis_status !== "model_analyzed"}><span data-analysis="blocked">影响待分析</span></Show></div><h4>{event.title}</h4><p>{event.excerpt}</p><aside class="key-chain-verification"><strong>证据口径：</strong>{event.verification_note}</aside><Show when={(event.source_count ?? 1) > 1}><details class="key-chain-source-cluster"><summary>查看合并依据与全部来源</summary><p>{event.deduplication_note}</p><small title={event.event_fingerprint_sha256}>事件指纹 {event.event_fingerprint_sha256?.slice(0, 12)}…</small><div><For each={event.supporting_sources ?? []}>{source => <a href={source.source_url} target="_blank" rel="noreferrer">{source.source_name} · {source.published_at_beijing} · {sourceTierLabel(source.source_tier)} ↗</a>}</For></div></details></Show><aside><strong>影响：</strong>{event.impact}</aside><aside><strong>下一验证点：</strong>{event.next_watch}</aside><div class="key-chain-tickers"><For each={event.tickers}>{ticker => <span>${ticker}</span>}</For></div><a href={event.source_url} target="_blank" rel="noreferrer">{event.verification_status === "confirmed" ? "查看一手原文" : "查看线索原文"} ↗</a></div></article>}</For></div>
                 </Show>
             </>}</Show>
           </Show>

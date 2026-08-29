@@ -24,12 +24,19 @@ describe("daily valuation lab", () => {
     expect(page).toContain("本日不生成估值");
     expect(page).toContain("methodology_note");
     expect(page).toContain("公司研究卡建议：");
+    expect(page).toContain("估值输入准备度");
+    expect(page).toContain("评级财务复核不等于估值授权");
+    expect(page).toContain("readiness.methods");
+    expect(page).toContain("readiness.missing_inputs");
+    expect(page).toContain("valuation_review_status");
+    expect(page).toContain("估值输入超过 7 天，需重审");
   });
 
   test("supports mobile and dark layouts", () => {
     expect(css).toContain('@media (max-width: 780px)');
     expect(css).toContain('[data-theme="dark"]');
     expect(v2Css).toContain("valuation-lab-method-results");
+    expect(v2Css).toContain("valuation-readiness__methods");
     expect(v2Css).toContain('[data-theme="dark"]');
   });
 });

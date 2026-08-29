@@ -43,11 +43,14 @@ export function filterRatings(
 
 export function coverageLabel(snapshot: CompanyRatingSnapshot) {
   const { coverage, data_status: status } = snapshot;
+  const observedFinancials = coverage.financial_observations ?? coverage.financials;
+  const reviewFinancials = coverage.financials_review_required ?? 0;
+  const financialLabel = `财务证据 ${observedFinancials}/${coverage.companies}（计分 ${coverage.financials}，复核 ${reviewFinancials}）`;
   if (status === "simulation") return `Codex 模拟预览 · 8/8 因子 · 非真实数据`;
   if (status === "live") return `行情、财报与当日估值 ${coverage.companies}/${coverage.companies}`;
   if (status === "stale") return "数据源异常 · 展示上次成功结果";
   if (status === "transcript_only") {
-    return `仅演讲研究基线 · 行情 ${coverage.quotes}/${coverage.companies} · 财报 ${coverage.financials}/${coverage.companies} · 当日估值 ${coverage.valuations ?? 0}/${coverage.companies}`;
+    return `仅演讲研究基线 · 行情 ${coverage.quotes}/${coverage.companies} · ${financialLabel} · 当日估值 ${coverage.valuations ?? 0}/${coverage.companies}`;
   }
-  return `部分更新 · 行情 ${coverage.quotes}/${coverage.companies} · 财报 ${coverage.financials}/${coverage.companies} · 当日估值 ${coverage.valuations ?? 0}/${coverage.companies}`;
+  return `部分更新 · 行情 ${coverage.quotes}/${coverage.companies} · ${financialLabel} · 当日估值 ${coverage.valuations ?? 0}/${coverage.companies}`;
 }

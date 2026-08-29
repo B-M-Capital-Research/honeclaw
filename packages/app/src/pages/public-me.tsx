@@ -9,6 +9,7 @@ import { PublicHoldingsPanel } from "@/components/public-holdings-panel";
 import { PublicSettingsPanel } from "@/components/public-settings-panel";
 import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
 import { PublicAdminUsagePanel } from "@/components/public-admin-usage-panel";
+import { PublicAdminDecisionBrainPanel } from "@/components/public-admin-decision-brain-panel";
 import {
   createStripePortal,
   getPublicAuthMe,
@@ -223,6 +224,7 @@ function AccountView(props: {
           </div>
         </section>
         <Show when={props.user.is_admin}>
+          <PublicAdminDecisionBrainPanel />
           <PublicAdminUsagePanel />
           <PublicAdminWhitelistPanel />
         </Show>

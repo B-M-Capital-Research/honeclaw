@@ -11,7 +11,12 @@ use hone_llm::{LlmProvider, Message};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::earnings_claim::EarningsClaimInput;
 use crate::event::{EventKind, MarketEvent, Severity};
+use crate::operating_kpi_claim::{
+    OperatingKpiClaimInput, operating_kpi_input_is_supported_for_symbol,
+    operating_kpi_input_is_verbatim_in_source, operating_kpi_prompt_for_symbol,
+};
 
 pub const DEFAULT_EARNINGS_TRANSCRIPT_SYSTEM_PROMPT: &str = r#"你是专业股票研究团队的财报电话会审计员。输入是一份公司官方投资者关系页面提供的完整电话会文字稿。只使用输入文字稿，不得补充模型记忆、市场传闻或外部事实。
 
@@ -23,6 +28,8 @@ pub const DEFAULT_EARNINGS_TRANSCRIPT_SYSTEM_PROMPT: &str = r#"你是专业股�
 5. unresolved_questions 只保留会影响投资主线、但 Q&A 仍未回答的具体问题。
 6. 保留原文数字、币种、B/M 和百分比单位；不得擅自换算数量级。证据字段是短摘录式转述，不要大段复制原文。
 7. 所有中文字段要短、可核验。每个数组最多 4 项，evidence_zh 最多 80 个汉字；不要输出电话会版权页、主持流程或安全港声明。
+8. claims 最多 12 项；没有明确期间、原始数值/口径、说话人或位置时不要提取。metric_basis 必须写 GAAP、non-GAAP 或公司明确给出的经营口径。metric_id 只能是 revenue、revenue_growth、gross_margin、operating_margin、free_cash_flow、capital_expenditure、inventory、accounts_receivable、accounts_payable、backlog、rpo、arr、orders、shipments、capacity、utilization、asp、market_share、customer_qualification、customers、retention、usage、tokens、context_length、power_capacity、product_mix、unit_cost、delivery_lead_time。numeric_value 必须逐字出现在 value_text 或 evidence_zh；unit 只能是 %、percentage_points、basis_points、USD、USD_millions、USD_billions、units、customers、days、ratio、MW、GW、GB、TB、PB、EB、tokens。disposition 默认为 active；只有原文明确修正旧口径时用 corrected，明确撤回时用 withdrawn。否则不要填数字或直接不提取该 claim。
+9. operating_kpi_claims 最多 6 项，只能使用本次 Ticker 后附动态目录中的 kpi_id。issuer_metric_name 和 issuer_definition 必须逐字复制文字稿中的公司原始名称/定义，issuer_definition 还必须原样出现在 evidence_quote 或 value_text；找不到定义就不要提取。行业数据不得冒充公司实现值，机会管线不得冒充已签订单，送样/认证/量产必须分开。numeric_value 非空时 unit 只能是 %、percentage_points、basis_points、USD、USD_millions、USD_billions、units、customers、days、weeks、ratio、kW、MW、GW、GB、TB、PB、EB、bits、tokens、calls、modules、ports、wafers、workflows、milestone；不要写 percent。comparison_basis 只能是 year_over_year、sequential_quarter、point_in_time、period_total、period_average、period_end。definition_changed 只有公司明确宣布口径改变时才为 true。
 
 输出一个 JSON object，不要 Markdown：
 {
@@ -31,6 +38,8 @@ pub const DEFAULT_EARNINGS_TRANSCRIPT_SYSTEM_PROMPT: &str = r#"你是专业股�
   "prepared_findings":[{"topic":"主题","finding_zh":"关键增量事实或口径","evidence_zh":"短证据","speaker":"姓名或职务"}],
   "qa_findings":[{"topic":"追问主题","question_zh":"分析师实际追问","answer_quality":"direct|partial|evaded|unclear","answer_zh":"管理层实际回答到哪里","evidence_zh":"短证据"}],
   "commitments":[{"statement_zh":"未来可核验承诺","due_at":"时间或材料","evidence_zh":"短证据"}],
+  "claims":[{"claim_kind":"reported_fact|management_guidance|management_commentary","metric_id":"受支持的规范指标ID","metric_basis":"GAAP|non-GAAP|公司定义口径","period":"财季/日期范围","numeric_value":null,"unit":"原始规范单位；无数值时为空字符串","value_text":"原始值与口径","speaker":"姓名或职务；管理层主张必填","evidence_zh":"短原文证据","source_locator":"prepared remarks或Q&A及说话人","disposition":"active|corrected|withdrawn"}],
+  "operating_kpi_claims":[{"claim_kind":"reported_fact|management_guidance|contract_milestone","kpi_id":"动态目录中的 KPI ID","issuer_metric_name":"公司原始指标名","issuer_definition":"文字稿中逐字定义","period":"明确期间","numeric_value":null,"unit":"原始规范单位","value_text":"原始值与口径","measurement_scope":"产品/分母/客户/期末或平均等边界","comparison_basis":"year_over_year|sequential_quarter|point_in_time|period_total|period_average|period_end","speaker":"管理层主张必填","evidence_quote":"文字稿中的短原文","source_locator":"prepared remarks或Q&A及说话人","definition_changed":false,"disposition":"active|corrected|withdrawn"}],
   "contradictions":[{"statement_zh":"冲突点","evidence_zh":"短证据"}],
   "unresolved_questions":["仍未回答的具体问题"]
 }"#;
@@ -79,7 +88,7 @@ pub struct TranscriptContradiction {
     pub evidence_zh: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EarningsTranscriptReview {
     pub source_scope: String,
     pub management_tone: String,
@@ -89,6 +98,10 @@ pub struct EarningsTranscriptReview {
     pub qa_findings: Vec<TranscriptQaFinding>,
     #[serde(default)]
     pub commitments: Vec<TranscriptCommitment>,
+    #[serde(default)]
+    pub claims: Vec<EarningsClaimInput>,
+    #[serde(default)]
+    pub operating_kpi_claims: Vec<OperatingKpiClaimInput>,
     #[serde(default)]
     pub contradictions: Vec<TranscriptContradiction>,
     #[serde(default)]
@@ -169,8 +182,38 @@ impl EarningsTranscriptReviewer for LlmEarningsTranscriptReviewer {
 
 pub fn apply_earnings_transcript_review(
     event: &mut MarketEvent,
+    mut review: EarningsTranscriptReview,
+    transcript_chars: usize,
+) -> bool {
+    // This compatibility path has no source body to verify against.  Preserve
+    // the ordinary transcript review but fail closed for operating KPI rows.
+    review.operating_kpi_claims.clear();
+    apply_earnings_transcript_review_inner(event, review, transcript_chars, false)
+}
+
+pub fn apply_earnings_transcript_review_with_source(
+    event: &mut MarketEvent,
+    mut review: EarningsTranscriptReview,
+    transcript: &str,
+    transcript_chars: usize,
+) -> bool {
+    let symbol = event
+        .symbols
+        .first()
+        .map(String::as_str)
+        .unwrap_or_default();
+    review.operating_kpi_claims.retain(|claim| {
+        operating_kpi_input_is_supported_for_symbol(symbol, claim)
+            && operating_kpi_input_is_verbatim_in_source(claim, transcript)
+    });
+    apply_earnings_transcript_review_inner(event, review, transcript_chars, true)
+}
+
+fn apply_earnings_transcript_review_inner(
+    event: &mut MarketEvent,
     review: EarningsTranscriptReview,
     transcript_chars: usize,
+    operating_kpi_source_verified: bool,
 ) -> bool {
     if !matches!(event.kind, EventKind::EarningsCallTranscript) || !valid_review(&review) {
         return false;
@@ -199,6 +242,10 @@ pub fn apply_earnings_transcript_review(
             "earnings_transcript_source_chars".to_string(),
             Value::from(transcript_chars as u64),
         );
+        payload.insert(
+            "earnings_transcript_operating_kpi_source_verified".to_string(),
+            Value::Bool(operating_kpi_source_verified),
+        );
     }
     true
 }
@@ -208,9 +255,15 @@ fn build_review_messages(
     event: &MarketEvent,
     transcript: &str,
 ) -> Vec<Message> {
+    let symbol = event.symbols.first().cloned().unwrap_or_default();
+    let system_prompt = format!(
+        "{}{}",
+        system_prompt,
+        operating_kpi_prompt_for_symbol(&symbol)
+    );
     let user = format!(
         "Ticker: {}\nCall title: {}\nCall date: {}\nOfficial source URL: {}\n\nFull transcript:\n{}",
-        event.symbols.first().cloned().unwrap_or_default(),
+        symbol,
         event.title,
         event.occurred_at.to_rfc3339(),
         event.url.as_deref().unwrap_or("unavailable"),
@@ -219,7 +272,7 @@ fn build_review_messages(
     vec![
         Message {
             role: "system".to_string(),
-            content: Some(system_prompt.to_string()),
+            content: Some(system_prompt),
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
@@ -256,6 +309,8 @@ fn parse_review_response(content: &str) -> Option<EarningsTranscriptReview> {
 fn normalize_review(mut review: EarningsTranscriptReview) -> EarningsTranscriptReview {
     review.source_scope = review.source_scope.trim().to_ascii_lowercase();
     review.management_tone = review.management_tone.trim().to_ascii_lowercase();
+    review.claims.truncate(12);
+    review.operating_kpi_claims.truncate(6);
     review.prepared_findings = review
         .prepared_findings
         .into_iter()
@@ -424,6 +479,10 @@ mod tests {
     use hone_llm::provider::ChatResult;
 
     use super::*;
+    use crate::earnings_claim::EarningsClaimDisposition;
+    use crate::operating_kpi_claim::{
+        OPERATING_KPI_POLICY_STATUS, OperatingKpiClaimKind, OperatingKpiComparisonBasis,
+    };
 
     struct StubProvider {
         response: String,
@@ -552,6 +611,17 @@ mod tests {
         assert!(prompt.contains("prepared remarks"));
         assert!(prompt.contains("analyst Q&A"));
         assert!(prompt.contains("Full transcript"));
+        assert!(prompt.contains("operating_kpi_claims 必须输出空数组"));
+    }
+
+    #[test]
+    fn transcript_prompt_is_scoped_to_the_issuer_model() {
+        let mut event = event();
+        event.symbols = vec!["SNDK".into()];
+        let messages = build_review_messages("base", &event, "transcript");
+        let system = messages[0].content.as_deref().unwrap();
+        assert!(system.contains("nand_asp_change"));
+        assert!(!system.contains("token_or_call_volume"));
     }
 
     #[test]
@@ -574,6 +644,8 @@ mod tests {
                 evidence_zh: "仅重申长期目标".into(),
             }],
             commitments: vec![],
+            claims: vec![],
+            operating_kpi_claims: vec![],
             contradictions: vec![],
             unresolved_questions: vec!["利润率恢复时间".into()],
         };
@@ -589,6 +661,58 @@ mod tests {
             Some(42_000)
         );
         assert!(!event.payload.to_string().contains("full transcript"));
+    }
+
+    #[test]
+    fn applied_storage_review_yields_only_a_verbatim_training_kpi_claim() {
+        let mut event = event();
+        event.symbols = vec!["SNDK".into()];
+        event.title = "SNDK FY2026 Q4 earnings call transcript".into();
+        event.url = Some("https://investor.sandisk.com/fy2026-q4-transcript".into());
+        let review = EarningsTranscriptReview {
+            source_scope: "prepared_and_qa".into(),
+            management_tone: "mixed".into(),
+            prepared_findings: vec![TranscriptPreparedFinding {
+                topic: "NAND ASP".into(),
+                finding_zh: "公司披露 NAND 售价环比变化".into(),
+                evidence_zh: "NAND average selling price increased 15% sequentially".into(),
+                speaker: "CFO".into(),
+            }],
+            qa_findings: vec![],
+            commitments: vec![],
+            claims: vec![],
+            operating_kpi_claims: vec![OperatingKpiClaimInput {
+                claim_kind: OperatingKpiClaimKind::ReportedFact,
+                kpi_id: "nand_asp_change".into(),
+                issuer_metric_name: "NAND ASP".into(),
+                issuer_definition: "NAND average selling price".into(),
+                period: "FY2026 Q4".into(),
+                numeric_value: Some(15.0),
+                unit: "%".into(),
+                value_text: "NAND average selling price increased 15% sequentially".into(),
+                measurement_scope: "company NAND products; sequential quarter".into(),
+                comparison_basis: OperatingKpiComparisonBasis::SequentialQuarter,
+                speaker: "CFO".into(),
+                evidence_quote: "NAND average selling price increased 15% sequentially".into(),
+                source_locator: "prepared remarks · CFO".into(),
+                definition_changed: false,
+                disposition: EarningsClaimDisposition::Active,
+            }],
+            contradictions: vec![],
+            unresolved_questions: vec![],
+        };
+
+        let source =
+            "CFO prepared remarks: NAND ASP. NAND average selling price increased 15% sequentially";
+        assert!(apply_earnings_transcript_review_with_source(
+            &mut event, review, source, 42_000
+        ));
+        let claims = crate::operating_kpi_claims_from_event(&event);
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].symbol, "SNDK");
+        assert_eq!(claims[0].kpi_id, "nand_asp_change");
+        assert_eq!(claims[0].policy_status, OPERATING_KPI_POLICY_STATUS);
+        assert_eq!(claims[0].issuer_definition, "NAND average selling price");
     }
 
     #[tokio::test]

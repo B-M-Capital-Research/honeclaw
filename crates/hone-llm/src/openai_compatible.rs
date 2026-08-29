@@ -20,8 +20,8 @@ use futures::stream::BoxStream;
 use serde_json::{Map, Value};
 
 use crate::provider::{
-    ChatResponse, ChatResult, ChatStreamEvent, FunctionCall, LlmProvider, LlmRequestOptions,
-    Message, ToolCall, ToolChoiceMode, chat_stream_events_from_sse_data,
+    ChatResponse, ChatResult, ChatStreamEvent, ChatStreamFinishReason, FunctionCall, LlmProvider,
+    LlmRequestOptions, Message, ToolCall, ToolChoiceMode, chat_stream_events_from_sse_data,
     effective_tool_choice_mode_from_body, explicit_provider_error_text,
 };
 
@@ -538,22 +538,46 @@ where
     .boxed()
 }
 
-/// Normalize the clean terminal boundary used by some OpenAI-compatible
-/// providers (including MiniMax): they emit a typed `finish_reason` and then
-/// close the HTTP/SSE body cleanly without a literal `data: [DONE]` sentinel.
+/// Normalize terminal boundary quirks used by some OpenAI-compatible
+/// providers. Some emit a typed `finish_reason` and then close the HTTP/SSE
+/// body cleanly without a literal `data: [DONE]` sentinel. Others emit
+/// `[DONE]` after a complete content or tool-call payload but omit the typed
+/// finish reason entirely.
 ///
 /// This remains deliberately strict. A synthetic internal `Done` is emitted
-/// only after exactly one typed finish and a clean EOF. Missing or duplicate
-/// finishes, parser/transport errors, and an explicit `Done` never take this
-/// compatibility path, so consumers can continue to reject incomplete streams.
+/// only after exactly one typed finish and a clean EOF. A synthetic finish is
+/// emitted before an explicit `Done` only when the stream has already produced
+/// non-empty content or a tool-call delta, allowing downstream consumers to
+/// validate the assembled response. Empty streams, clean EOF without a finish,
+/// duplicate finishes, and parser/transport errors remain incomplete.
 fn normalize_clean_eof_after_finish<'a>(
     provider_stream: BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>>,
 ) -> BoxStream<'a, hone_core::HoneResult<ChatStreamEvent>> {
     futures::stream::unfold(
-        (provider_stream, 0_u8, false),
-        |(mut provider_stream, finish_count, terminal)| async move {
+        (provider_stream, 0_u8, false, false, false, false),
+        |(
+            mut provider_stream,
+            finish_count,
+            saw_content,
+            saw_tool_call,
+            pending_done,
+            terminal,
+        )| async move {
             if terminal {
                 return None;
+            }
+            if pending_done {
+                return Some((
+                    Ok(ChatStreamEvent::Done),
+                    (
+                        provider_stream,
+                        finish_count,
+                        saw_content,
+                        saw_tool_call,
+                        false,
+                        true,
+                    ),
+                ));
             }
 
             match provider_stream.next().await {
@@ -572,25 +596,86 @@ fn normalize_clean_eof_after_finish<'a>(
                             Err(hone_core::HoneError::Llm(
                                 "stream emitted payload after finish reason".to_string(),
                             )),
-                            (provider_stream, finish_count, true),
+                            (
+                                provider_stream,
+                                finish_count,
+                                saw_content,
+                                saw_tool_call,
+                                false,
+                                true,
+                            ),
                         ));
+                    }
+                    if finish_count == 0 && matches!(&event, ChatStreamEvent::Done) {
+                        let inferred_finish = if saw_tool_call {
+                            Some(ChatStreamFinishReason::ToolCalls)
+                        } else if saw_content {
+                            Some(ChatStreamFinishReason::Stop)
+                        } else {
+                            None
+                        };
+                        if let Some(reason) = inferred_finish {
+                            tracing::debug!(
+                                ?reason,
+                                "[openai_compatible] inferred missing finish reason before Done"
+                            );
+                            return Some((
+                                Ok(ChatStreamEvent::Finish(reason)),
+                                (
+                                    provider_stream,
+                                    1,
+                                    saw_content,
+                                    saw_tool_call,
+                                    true,
+                                    false,
+                                ),
+                            ));
+                        }
                     }
                     let next_finish_count = finish_count
                         .saturating_add(u8::from(matches!(&event, ChatStreamEvent::Finish(_))));
+                    let next_saw_content = saw_content
+                        || matches!(&event, ChatStreamEvent::ContentDelta(content) if !content.is_empty());
+                    let next_saw_tool_call =
+                        saw_tool_call || matches!(&event, ChatStreamEvent::ToolCallDelta { .. });
                     let next_terminal = matches!(&event, ChatStreamEvent::Done);
                     Some((
                         Ok(event),
-                        (provider_stream, next_finish_count, next_terminal),
+                        (
+                            provider_stream,
+                            next_finish_count,
+                            next_saw_content,
+                            next_saw_tool_call,
+                            false,
+                            next_terminal,
+                        ),
                     ))
                 }
-                Some(Err(error)) => Some((Err(error), (provider_stream, finish_count, true))),
+                Some(Err(error)) => Some((
+                    Err(error),
+                    (
+                        provider_stream,
+                        finish_count,
+                        saw_content,
+                        saw_tool_call,
+                        false,
+                        true,
+                    ),
+                )),
                 None if finish_count == 1 => {
                     tracing::debug!(
                         "[openai_compatible] normalized clean EOF after typed finish into Done"
                     );
                     Some((
                         Ok(ChatStreamEvent::Done),
-                        (provider_stream, finish_count, true),
+                        (
+                            provider_stream,
+                            finish_count,
+                            saw_content,
+                            saw_tool_call,
+                            false,
+                            true,
+                        ),
                     ))
                 }
                 None => None,
@@ -739,6 +824,75 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             r#"{"detail":[{"loc":["body","model"],"msg":"invalid model identifier"}],"request":{"tool_choice":"required"}}"#
         ));
+    }
+
+    #[tokio::test]
+    async fn stream_retries_once_when_connection_closes_before_http_response() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        let requests = Arc::new(AtomicUsize::new(0));
+        let requests_for_task = requests.clone();
+        tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await.expect("first request");
+            let _ = read_json_request(&mut first).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            first.shutdown().await.expect("drop first connection");
+
+            let (mut second, _) = listener.accept().await.expect("retry request");
+            let payload = read_json_request(&mut second).await;
+            requests_for_task.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(payload["stream"], true);
+            let body = concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"recovered\"}}]}\n\n",
+                "data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n",
+                "data: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            second
+                .write_all(response.as_bytes())
+                .await
+                .expect("write retry response");
+            second.shutdown().await.expect("close retry response");
+        });
+
+        let provider = OpenAiCompatibleProvider::new(
+            "test-key",
+            &format!("http://{addr}"),
+            "test-model",
+            30,
+            64,
+        )
+        .expect("provider");
+        let events = provider
+            .chat_with_tools_stream(
+                &[Message {
+                    role: "user".to_string(),
+                    content: Some("answer".to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                }],
+                &[],
+                None,
+                ToolChoiceMode::Auto,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<hone_core::HoneResult<Vec<_>>>()
+            .expect("retry stream succeeds");
+
+        assert_eq!(requests.load(Ordering::SeqCst), 2);
+        assert!(events.iter().any(|event| {
+            matches!(event, ChatStreamEvent::ContentDelta(content) if content == "recovered")
+        }));
     }
 
     #[tokio::test]
@@ -1112,6 +1266,80 @@ mod tests {
             vec![ChatStreamEvent::ContentDelta("partial".to_string())]
         );
         assert!(!events.contains(&ChatStreamEvent::Done));
+    }
+
+    #[tokio::test]
+    async fn explicit_done_after_content_infers_stop_finish() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![
+                Ok(ChatStreamEvent::ContentDelta("complete".to_string())),
+                Ok(ChatStreamEvent::Done),
+            ])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("compatible content stream");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ContentDelta("complete".to_string()),
+                ChatStreamEvent::Finish(ChatStreamFinishReason::Stop),
+                ChatStreamEvent::Done,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_done_after_tool_call_infers_tool_calls_finish() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![
+                Ok(ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("call_1".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"symbol":"NVDA"}"#.to_string(),
+                }),
+                Ok(ChatStreamEvent::Done),
+            ])
+            .boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("compatible tool-call stream");
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("call_1".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"symbol":"NVDA"}"#.to_string(),
+                },
+                ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls),
+                ChatStreamEvent::Done,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_done_without_payload_does_not_infer_finish() {
+        let events = normalize_clean_eof_after_finish(
+            futures::stream::iter(vec![Ok(ChatStreamEvent::Done)]).boxed(),
+        )
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .collect::<hone_core::HoneResult<Vec<_>>>()
+        .expect("empty terminal stream");
+
+        assert_eq!(events, vec![ChatStreamEvent::Done]);
     }
 
     #[tokio::test]
@@ -1789,19 +2017,41 @@ impl LlmProvider for OpenAiCompatibleProvider {
             let mut last_error = String::new();
             let mut successful_response = None;
             for client in &self.clients {
-                let response = match client
-                    .http_client
-                    .post(format!("{}/chat/completions", client.base_url))
-                    .bearer_auth(&client.api_key)
-                    .json(&request)
-                    .send()
-                    .await
-                {
-                    Ok(response) => response,
-                    Err(error) => {
-                        last_error = error.to_string();
-                        continue;
+                // A transport failure before any HTTP response is received is
+                // safe to retry: no stream has started and no user-visible
+                // token can have been committed. Luna-compatible gateways have
+                // occasionally reset the connection at this exact boundary;
+                // treating one reset as terminal produced a generic failure
+                // after all research had already completed.
+                let mut response = None;
+                for attempt in 0..=1 {
+                    match client
+                        .http_client
+                        .post(format!("{}/chat/completions", client.base_url))
+                        .bearer_auth(&client.api_key)
+                        .json(&request)
+                        .send()
+                        .await
+                    {
+                        Ok(value) => {
+                            response = Some(value);
+                            break;
+                        }
+                        Err(error) => {
+                            last_error = error.to_string();
+                            if attempt == 0 && is_retryable_transport_error(&last_error) {
+                                tracing::warn!(
+                                    "[openai_compatible] stream connection failed before response; retrying the same client once"
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                                continue;
+                            }
+                            break;
+                        }
                     }
+                }
+                let Some(response) = response else {
+                    continue;
                 };
                 let status = response.status();
                 if status.is_success() {

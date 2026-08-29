@@ -16,6 +16,7 @@ use chrono_tz::Asia::Shanghai;
 use hone_core::ActorIdentity;
 use serde::Serialize;
 
+use super::model_analysis_health::{ModelAnalysisHealth, scope as scope_model_analysis_health};
 use crate::routes::public_finance_calendar::{
     FinanceCalendarEvent, calendar_events_for_range, portfolio_calendar_symbols,
 };
@@ -41,8 +42,12 @@ pub(crate) struct WeeklyBriefItem {
     pub ticker: Option<String>,
     pub source_name: String,
     pub source_url: Option<String>,
+    pub source_count: usize,
+    pub deduplicated_source_count: usize,
+    pub supporting_sources: Vec<super::key_event_chain::KeyEventSourceReference>,
     pub evidence_status: String,
     pub evidence_note: String,
+    pub analysis_status: String,
     pub analysis: String,
     pub attention: String,
 }
@@ -53,6 +58,7 @@ pub(crate) struct WeeklyBriefPayload {
     pub generated_at_beijing: String,
     pub timezone: String,
     pub status: String,
+    pub industry_analysis_health: ModelAnalysisHealth,
     pub summary: String,
     pub previous_week: WeeklyBriefWindow,
     pub next_week: WeeklyBriefWindow,
@@ -147,6 +153,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
     );
 
     let key_snapshot = super::key_event_chain::current_snapshot(state).await;
+    let key_event_analysis_health = key_snapshot.analysis_health.clone();
     for topic in key_snapshot.topics {
         for event in topic.events {
             let date = event.published_at.with_timezone(&Shanghai).date_naive();
@@ -156,6 +163,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
             {
                 continue;
             }
+            let model_analyzed = event.analysis_status == "model_analyzed";
             last_week_items.push(WeeklyBriefItem {
                 id: format!("industry:{}", event.id),
                 date: date.format("%Y-%m-%d").to_string(),
@@ -173,10 +181,22 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
                 ticker: event.tickers.first().cloned(),
                 source_name: event.source_name,
                 source_url: Some(event.source_url),
+                source_count: event.source_count,
+                deduplicated_source_count: event.source_count.saturating_sub(1),
+                supporting_sources: event.supporting_sources,
                 evidence_status: "confirmed".to_string(),
                 evidence_note: event.verification_note,
-                analysis: event.impact,
-                attention: event.next_watch,
+                analysis_status: event.analysis_status,
+                analysis: if model_analyzed {
+                    event.impact
+                } else {
+                    "模型影响分析未完成；当前只能按一手原文确认里程碑本身。".to_string()
+                },
+                attention: if model_analyzed {
+                    event.next_watch
+                } else {
+                    "等待影响分析完成后，再判断产业传导与投资含义。".to_string()
+                },
             });
         }
     }
@@ -184,6 +204,18 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
     sort_and_dedup(&mut last_week_items);
     sort_and_dedup(&mut next_week_items);
     sort_and_dedup(&mut ai_outlook_items);
+    let industry_items = last_week_items
+        .iter()
+        .filter(|item| item.category == "industry")
+        .collect::<Vec<_>>();
+    let industry_analysis_health = scope_model_analysis_health(
+        &key_event_analysis_health,
+        industry_items.len(),
+        industry_items
+            .iter()
+            .filter(|item| item.analysis_status == "model_analyzed")
+            .count(),
+    );
     let confirmed = last_week_items
         .iter()
         .filter(|item| item.evidence_status == "confirmed")
@@ -192,9 +224,12 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
         .iter()
         .filter(|item| item.importance == "high")
         .count();
+    let has_blocked_industry_analysis = last_week_items
+        .iter()
+        .any(|item| item.category == "industry" && item.analysis_status != "model_analyzed");
     let status = if last_week_items.is_empty() && next_week_items.is_empty() {
         "empty"
-    } else if calendar.earnings_status == "ok" {
+    } else if calendar.earnings_status == "ok" && !has_blocked_industry_analysis {
         "live"
     } else {
         "partial"
@@ -205,6 +240,7 @@ async fn build_weekly_brief(state: &AppState, actor: &ActorIdentity) -> WeeklyBr
         generated_at_beijing: now.format("%Y-%m-%d %H:%M").to_string(),
         timezone: "Asia/Shanghai".to_string(),
         status: status.to_string(),
+        industry_analysis_health,
         summary: format!(
             "上周收录 {} 项，其中 {} 项为已确认产业变化；下周有 {} 项日程，{} 项列为重点关注。",
             last_week_items.len(),
@@ -305,10 +341,14 @@ fn official_ai_calendar_items(start: NaiveDate, end: NaiveDate) -> Vec<WeeklyBri
                     ticker: ticker.map(str::to_string),
                     source_name: source_name.to_string(),
                     source_url: Some(source_url.to_string()),
+                    source_count: 1,
+                    deduplicated_source_count: 0,
+                    supporting_sources: vec![],
                     evidence_status: "official_schedule".to_string(),
                     evidence_note:
                         "日期与议程来自主办方或公司官方页面；如官方调整，以最新页面为准。"
                             .to_string(),
+                    analysis_status: "editorial_framework".to_string(),
                     analysis: analysis.to_string(),
                     attention: attention.to_string(),
                 })
@@ -357,6 +397,9 @@ fn calendar_item(event: &FinanceCalendarEvent, date: NaiveDate, phase: &str) -> 
         ticker: event.ticker.clone(),
         source_name: event.source.clone(),
         source_url: source_url(&event.source),
+        source_count: 1,
+        deduplicated_source_count: 0,
+        supporting_sources: vec![],
         evidence_status: if future {
             "scheduled"
         } else {
@@ -369,6 +412,7 @@ fn calendar_item(event: &FinanceCalendarEvent, date: NaiveDate, phase: &str) -> 
             "该日程已发生，但本条没有附带公布结果；需核对官方原文后再判断。"
         }
         .to_string(),
+        analysis_status: "scheduled_context".to_string(),
         analysis,
         attention,
     }

@@ -19,6 +19,12 @@ describe("portfolio news dashboard contract", () => {
     expect(component).toContain("unassessed");
     expect(component).toContain("等待新闻数据源");
     expect(component).toContain("待模型分析");
+    expect(component).toContain("coverage_items");
+    expect(component).toContain("analysis_health");
+    expect(component).toContain("分析门禁关闭");
+    expect(component).toContain("禁止用于仓位动作");
+    expect(styles).toContain(".portfolio-news-coverage");
+    expect(styles).toContain(".portfolio-news-analysis-health");
   });
 
   test("sends only the saved actor report into chat", () => {

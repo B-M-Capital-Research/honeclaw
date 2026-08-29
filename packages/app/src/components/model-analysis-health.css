@@ -1,0 +1,24 @@
+.key-chain-meta .is-blocked,
+.key-chain-event-meta [data-analysis="blocked"],
+.influencer-digest-meta .is-blocked,
+.influencer-digest-body [data-analysis="blocked"],
+.weekly-brief-event-meta [data-analysis="blocked"] {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fff2cf;
+  color: #985f0b;
+  font-weight: 800;
+}
+
+.weekly-brief-coverage.is-model-blocked {
+  background: color-mix(in srgb, #d58b16 13%, var(--card-bg));
+}
+
+[data-theme="dark"] .key-chain-meta .is-blocked,
+[data-theme="dark"] .key-chain-event-meta [data-analysis="blocked"],
+[data-theme="dark"] .influencer-digest-meta .is-blocked,
+[data-theme="dark"] .influencer-digest-body [data-analysis="blocked"],
+[data-theme="dark"] .weekly-brief-event-meta [data-analysis="blocked"] {
+  background: #352b15;
+  color: #e3bd62;
+}

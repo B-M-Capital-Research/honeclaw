@@ -402,3 +402,43 @@ That extra synthesis was not merely slow. It treated `market_date_new_york` as p
 - The finance static contract rejects production use of the legacy finish-terminal mode, verifies each retired entry point is `cfg(test)`, and requires the natural-loop runner switch, bounded history boundary, registered-tool observer boundary, and grounded relationship fixture. Tool-enabled deltas remain hidden, while one final body remains visible and byte-identical in persistence.
 - Full local verification is complete. The complete workspace test passed before the zero-overlap Web-only rebase; exact rebased commit `e25a2879` then passed workspace check, Agent 104/104, channels 643/643, Web 275/275 and the public build, finance contracts 39/39, all CI-safe regressions, formatting, and diff checks. Production rlib object/symbol inspection found no executable finish/terminal/canonical-header path. Exact build, zero-active-chat graceful supervisor restart, PG/object-storage/API/channel/process health checks, and fresh production canaries are still required. Replays must cover `crwv和英伟达有什么关系`, `crwv和nbis的估值怎么看`, a single-ticker/no-coverage case, and a non-finance query. Acceptance requires no finish/terminal/audit operation, ideally no more than five model calls, under-60-second first-visible target, correct Session/quote/exchange language, no unsupported relationship-strength expansion, one output/terminal, byte-identical two-row history, and active chats back to zero.
 - This handoff and the umbrella ticker plan remain `in_progress` and are not archived. Even after Interactive production acceptance, the independent scheduler `800G` / `NAND` / `AST` / `SEC` entity P2 must still be resolved before the umbrella plan can close.
+
+## Phase 15 — GPT Luna Parallel Tool-Call Compatibility (2026-08-12)
+
+### Incident
+
+The local Web query `分析CRWV财报怎么样。` repeatedly ended with the generic processing-failed card. Tavily and the pre-turn DataFetch probes succeeded. LLM audit showed that GPT Luna then emitted valid CRWV identity-search arguments with blank optional `refines_query` / `supersedes_query` fields; the finance guard rejected those blank optionals and drove repeated model rounds. A later parallel tool batch omitted OpenAI `index` fields. The compatible adapter mapped every missing index to zero, so `skill_tool` and `web_search` calls were concatenated into one invalid assistant tool call. Sending that malformed assistant/tool history back to the provider caused the terminal HTTP 400.
+
+### Repair And Verification
+
+- Blank optional refinement-link strings now mean “absent”; required identity fields remain nonblank and two nonblank refinement links remain mutually exclusive.
+- A missing tool-call index first uses the call's stable array position. The Agent-side accumulator additionally separates reused indexes by distinct tool-call IDs, while repeated deltas for the same ID continue on the original call. This covers providers that omit indexes both in parallel arrays and in later single-item chunks.
+- The compatible stream adapter also accepts a clean `[DONE]` after one unambiguous typed finish when this provider omits a literal finish reason; streams without a unique finish remain errors.
+- Focused and full crate tests pass: `hone-llm` 39/39 and `hone-agent` 152/152. The rebuilt local backend was restarted on ports 8077/8088. Two fresh browser replays of the exact CRWV question completed successfully; the final replay finished in about 36 seconds with separate `data_fetch,web_search,web_search` telemetry, one answer, no HTTP 400, and explicit disclosure that quote, valuation, debt and cash-flow data were unavailable.
+
+This phase fixes provider protocol compatibility and the user-visible failure. It does not claim that the current local data configuration supplies complete FMP fundamentals or valuation inputs.
+
+## Phase 126 — Opening Portfolio Governance Specification Independent Review (2026-08-29)
+
+- Added a chain-external, append-only and self-hashed Stage 126 review registry for Stage 125 opening-portfolio governance specifications. The reviewer is excluded from the registrar and complete Stage 51–125 chain.
+- The review uses a second implementation rather than the Stage 125 builder. It reopens the current source chain, independently reproduces registration/specification hashes, and rebuilds provenance, complete accounts/cash/positions/listed options/liabilities/unsettled activity, identity, exact-decimal, corporate-action, cost-basis and independent-valuation prerequisites.
+- Readiness is v123. Admin API, types, panel, historical-governance placement and the unified decision-brain card are connected. Approval opens only a future Stage 127 zero-capability source-artifact receipt implementation registration.
+- No real Stage 125 registration or Stage 126 review was created. No source artifact was received or read, and no opening snapshot, financial-event allowlist, ledger, position, cash, NAV/performance, training/RL/reward, order, broker or trading state exists.
+- Verification passed: Stage 126 Rust 5/5; HONE Web API 1266 passed and 2 credentialed smoke tests ignored; frontend 684/684 with 3410 assertions; finance contracts 49/49; TypeScript, standard/public builds, workspace all-target check, Rust formatting, diff hygiene and zero-financial-state audit.
+
+## Phase 127 — Opening Portfolio Source Artifact Receipt Zero-Capability Contract (2026-08-29)
+
+- Added create-once, self-hashed Stage 127 registration for a future source-artifact receiver contract. It binds the current Stage 126/125 chain and excludes the Stage 126 reviewer plus every prior actor.
+- All 17 confirmations are persisted individually. Future-only semantics cover authenticated admin streaming, bounded original PDF/CSV/JSON artifacts, streaming digest/length, private quarantine, active-content rejection, account pseudonymization, secret redaction, encryption at rest, content-addressed create-new storage, failure cleanup and an append-only untrusted receipt manifest.
+- Registry reads revalidate every stored record against the current independently approved Stage 126 set and exact excluded-actor list. Orphaned, stale, incomplete or drifted records fail closed.
+- Readiness is v124. Admin API, types, panel, historical-governance placement and the unified decision-brain card are connected. Registration opens only a future Stage 128 chain-external implementation review.
+- No real registration, upload endpoint, source bytes, quarantine/artifact, parser/runtime, opening snapshot, financial allowlist, ledger, portfolio state, performance, training/RL, order, broker or trading state was created.
+- Verification passed: Stage 127 Rust 5/5; HONE Web API 1271 passed and 2 credentialed smoke tests ignored; frontend 689/689 with 3432 assertions; finance contracts 49/49; TypeScript, standard/public builds, workspace all-target check, Rust formatting, diff hygiene and zero-financial-state audit.
+
+## Phase 128 — Chain-External Source Artifact Receipt Implementation Review (2026-08-29)
+
+- Added one terminal, append-only, self-hashed review per Stage 127 implementation. The reviewer excludes the registrar and the complete Stage 51–127 actor chain; rejected or changes-required implementations must be rebuilt under a new identity.
+- A second implementation reconstructs the complete Stage 127 contract without calling its builder and independently recomputes every Stage 127/126/125 fingerprint. It revalidates all 17 confirmations, source formats, resource ceilings, authenticated-stream boundary, private quarantine, hashing, active-content rejection, pseudonymization, redaction, encryption, content addressing, cleanup and untrusted manifest semantics.
+- Readiness is v125. Admin API, types, panel, historical-governance placement and the unified decision-brain card are connected. Approval opens only a future Stage 129 isolated receiver-specification registration.
+- No real review, upload endpoint, source bytes, quarantine/artifact, parser/runtime, opening snapshot, financial allowlist, ledger, portfolio state, performance, training/RL, order, broker or trading state was created.
+- Verification passed: Stage 128 Rust 5/5; HONE Web API 1276 passed and 2 credentialed smoke tests ignored; frontend 694/694 with 3453 assertions; finance contracts 49/49; TypeScript, standard/public builds, workspace check, Rust formatting, diff hygiene and zero-financial-state audit.

@@ -1,10 +1,12 @@
 //! Prompt helpers for channel-specific guidance.
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use hone_core::config::HoneConfig;
+use hone_core::investment_decision_context::InvestmentDecisionChatContext;
 use hone_memory::SessionStorage;
 use hone_memory::session::SessionPromptState;
 use serde::Deserialize;
+use std::path::Path;
 use std::sync::OnceLock;
 
 pub const DEFAULT_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】在群聊中禁止要求用户提供持仓、成交价、交易单等敏感信息；如需明细，引导其转为私聊提交。";
@@ -38,6 +40,7 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架】\n\
 - 当前问题只要属于公司、证券、ETF、行业、产业供需、宏观、市场状态、基本面、护城河、估值、组合、仓位、投资复盘或红黄绿灯/评级，就必须在形成最终回答前实际加载并遵循 `hari-invest` Skill；不得只声称已使用。原生 Skill 运行时使用当前可用的原生 Skill 加载机制，函数调用运行时使用 `skill_tool(skill_name=\"hari-invest\")`。\n\
 - `hari-invest` 负责判断框架和输出纪律，不是实时事实源。涉及当前价格、财报、新闻、估值输入、产业状态或组合数据时，仍须按本轮问题调用真实行情、财报、公告、网页或持仓工具核验，并明确区分已核实事实、Hari 已确认逻辑、AI 推断和未知信息。\n\
+- 若本轮附有【HONE 统一点时决策状态】，它是每日评级、持仓工具与对话共享的唯一版本化动作基线。必须先读取该状态；不得仅凭评级分、历史公司卡或模型记忆重建第二套买卖动作。新的一手事实可以使基线加强、削弱或失效，但必须点明新证据、变化方向和新旧版本差异；状态缺失、校验失败或过期时，只能继续研究并列出待核验项，不得沿用旧动作。\n\
 - 交互式投研先服从统一的数据时间与行情口径首行；首行之后的第一段必须直接给出“结论：”并选择机会区、持有区、风险区或数据不足，同时给出高/中/低置信度和一个最核心理由。不得先寒暄、复述问题、说明计划或用“支持 / 部分支持”代替当前判断。\n\
 - 只要核心证据足以区分，就必须明确选边，并说明短期、中期、长期是否不同；次要数据缺失不能成为堆砌正反观点、反复免责声明或退回泛泛框架的借口。只有实体、当前价格、关键财务、主要事件或估值输入等会直接改变结论的证据缺失时，才使用“数据不足”，并说清补齐后如何改变分档。\n\
 - 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
@@ -70,7 +73,7 @@ pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边
 pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪策略】\n\
 - 若用户正在系统研究某家公司，应优先检查当前 actor 用户空间下的 `company_profiles/` 是否已有该公司画像。\n\
 - 若用户问题明显依赖当前 actor 用户空间下的本地持久化信息，也应优先检查本地文件，例如 `company_profiles/`、`uploads/`、`runtime/` 产物或其它用户本地笔记；如果当前阶段暴露的是只读本地工具，应优先使用这些工具，而不是直接声称无法访问文件、历史或记忆。\n\
-- 若尚无画像，且用户是在发起新的系统性公司调研，则默认创建长期画像并沉淀本轮结论；不需要再额外征求一次建档确认。\n\
+- 若尚无画像，且用户是在发起新的系统性公司调研，先完成本轮只读取证与用户可见结论；画像创建/更新只能放到产品独立的安全持久化阶段。投研取证轮不得为了建档调用写工具，更不能让建档动作中断行情、财报、护城河与估值分析。\n\
 - 仅当用户明显只是在问一次性短问题，或明确表示这轮不要沉淀时，才不要创建画像。\n\
 - 若画像已存在，后续研究应优先参考已有画像；出现实质新增事实时才追加事件，而只要长期判断、稳定偏好、共识逻辑或估值结论已经变化，就应直接回写主画像正文或对应 section。\n\
 - 若画像已存在，分析时要显式参考画像中的用户风险偏好、既有看法、估值口味与约束条件，使结论贴合该用户，而不是给出与其长期框架脱节的通用答案。\n\
@@ -79,7 +82,7 @@ pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪
 - 若同类公司之间需要给出不同结论，必须明确说明差异来自哪些公司层面的关键变量，例如产品结构、客户质量、份额趋势、治理、盈利能力、资产负债表、资本配置或估值，而不是把宏观主线本身随意改写。\n\
 - 但不要迎合极端风险偏好；若用户偏好已接近满仓、满融、梭哈、单一催化重注或其它明显过激做法，必须主动降温，把建议收敛到更可执行的风险暴露、仓位节奏、触发条件与证伪条件上。\n\
 - 分析公司时坚持第一性原理，优先看商业模式、竞争优势、盈利质量、估值与产业周期；不要只盯 K 线、短期价格波动或单日涨跌。\n\
-- 只要用户正在研究某家公司，且本轮产出了值得长期复用的内容，就应主动帮用户沉淀到公司画像，不要等用户逐条要求；优先保留用户自己的看法、偏好或约束、你与用户此前已达成一致的判断逻辑，以及本轮形成的估值判断、估值区间或估值锚点。\n\
+- 只要用户正在研究某家公司，且本轮产出了值得长期复用的内容，应在独立安全持久化阶段沉淀到公司画像；当前只读取证与回答阶段只标记为待沉淀，不调用写工具。优先保留用户自己的看法、偏好或约束、你与用户此前已达成一致的判断逻辑，以及本轮形成的估值判断、估值区间或估值锚点。\n\
 - 画像不仅要保留“当前结论”，还应尽量保留“为什么这么判断”、关键证据、来源与本轮研究路径；若当前没有独立 research note 存储层，应把必要的 why / evidence / research trail 写入事件正文。\n\
 - 维护画像与事件时，默认使用用户当前对话语言；仅在用户明确要求或必须保留原始引用/术语时才局部保留其他语言。\n\
 - 主画像应优先维护投资主线、用户视角与偏好、关键经营指标、估值框架与当前估值判断、风险台账与证伪条件；事件更新应围绕投资主线变更日志，而不是价格噪音。\n\
@@ -197,8 +200,8 @@ fn alias_match(input: &str, alias: &str) -> bool {
     }
 }
 
-pub(crate) fn company_research_baseline(user_input: &str) -> Option<String> {
-    let (corpus, index) = company_research_resources();
+pub(crate) fn company_research_symbols(user_input: &str) -> Vec<String> {
+    let (_, index) = company_research_resources();
     let mut symbols = index
         .companies
         .iter()
@@ -209,11 +212,17 @@ pub(crate) fn company_research_baseline(user_input: &str) -> Option<String> {
                     .iter()
                     .any(|alias| alias_match(user_input, alias))
         })
-        .map(|entry| entry.symbol.as_str())
+        .map(|entry| entry.symbol.clone())
         .take(MAX_PROJECTED_COMPANY_CARDS)
         .collect::<Vec<_>>();
     symbols.sort_unstable();
     symbols.dedup();
+    symbols
+}
+
+pub(crate) fn company_research_baseline(user_input: &str) -> Option<String> {
+    let (corpus, _) = company_research_resources();
+    let symbols = company_research_symbols(user_input);
     if symbols.is_empty() {
         return None;
     }
@@ -253,6 +262,143 @@ pub(crate) fn company_research_baseline(user_input: &str) -> Option<String> {
         "【历史公司研究基线】\n以下内容来自此前授权研究材料形成的 `company-thesis-ratings` 压缩公司卡，只用于商业模式、基本面结构、护城河、产业链位置、风险与证伪条件的历史判断基线。它不是当前事实、最新观点或交易指令。必须实际加载 `company-thesis-ratings` 和 `hari-invest` 后再回答。股价、最新财报、指引、订单、新闻、产业状态与估值输入继续使用本轮原有证据工具核验；冲突时以最新一手证据为准，并说明历史逻辑加强、削弱或失效。不得向用户暴露内部逐字稿、文件名或 Skill 路径。\n\n{}",
         sections.join("\n\n")
     ))
+}
+
+const MAX_DECISION_CONTEXT_BYTES: u64 = 512 * 1024;
+
+/// Loads the validated point-in-time decision projection shared by ratings,
+/// portfolio tools, and chat. A matched company without a usable projection
+/// deliberately receives a fail-closed marker so the model cannot recreate an
+/// action from a score or historical prose.
+pub(crate) fn current_investment_decision_context(
+    config: &HoneConfig,
+    symbols: &[String],
+    prompt_time_beijing: DateTime<FixedOffset>,
+) -> Option<String> {
+    if symbols.is_empty() {
+        return None;
+    }
+    let data_root = Path::new(&config.storage.session_sqlite_db_path)
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    let now = prompt_time_beijing.with_timezone(&Utc);
+    let mut sections = Vec::new();
+    for symbol in symbols.iter().take(MAX_PROJECTED_COMPANY_CARDS) {
+        let path = data_root
+            .join("investment_decisions/chat-context/current")
+            .join(format!("{symbol}.json"));
+        let context = std::fs::metadata(&path)
+            .ok()
+            .filter(|metadata| metadata.is_file() && metadata.len() <= MAX_DECISION_CONTEXT_BYTES)
+            .and_then(|_| std::fs::read(&path).ok())
+            .and_then(|bytes| serde_json::from_slice::<InvestmentDecisionChatContext>(&bytes).ok())
+            .filter(|context| context.symbol == *symbol && context.validate_at(now).is_ok());
+        let Some(context) = context else {
+            sections.push(format!(
+                "- {symbol}：统一决策状态缺失或校验失败。本轮不得从评级分、历史公司卡或模型记忆重建买卖动作；只能基于最新一手证据继续研究，并明确列出缺口。"
+            ));
+            continue;
+        };
+        let fresh = context.is_fresh_at(now);
+        let action = if fresh {
+            format!(
+                "{} / {}",
+                zone_label(&context.zone),
+                action_label(&context.action)
+            )
+        } else {
+            "已过期 / 动作不可沿用".to_string()
+        };
+        let join = |values: &[String]| {
+            if values.is_empty() {
+                "无".to_string()
+            } else {
+                values.join("；")
+            }
+        };
+        let valuation = context.valuation.as_ref().map_or_else(
+            || format!("未通过：{}", context.valuation_missing_reason),
+            |value| {
+                format!(
+                    "{} {}，悲观/基准/乐观 {:.2}/{:.2}/{:.2}，现价 {:.2}，方法 {} 种，位置 {}",
+                    value.as_of,
+                    value.currency,
+                    value.bear_case,
+                    value.base_case,
+                    value.bull_case,
+                    value.current_price,
+                    value.method_count,
+                    value.current_position
+                )
+            },
+        );
+        sections.push(format!(
+            "- {symbol} / {name}\n  版本：{revision}；决策时间：{decision_at}；有效至：{fresh_until}；时效：{freshness}\n  冻结动作基线：{action}；置信度：{confidence}；评级：{score:.1}/{light}；数据：{data_status}\n  完整度：{passed}/{total}（方向研究就绪={directional}，组合决策就绪={portfolio}）；缺口：{gaps}\n  商业模式：{business}\n  价值链：{value_chain}\n  护城河假设：{moat}\n  长期主线：{thesis}\n  第一性原理模型：{fp}\n  财务验证：{financial_status}（截至 {financial_as_of}）；已测量：{financial}; 警告：{warnings}; 缺项：{financial_gaps}\n  估值：{valuation}\n  拥挤度：{crowding_status}/{crowding_label}，分数 {crowding_score}；缺项：{crowding_gaps}\n  宏观状态：{market_status}/{market_label}，宏观分 {macro_score}，截止 {market_cutoff}\n  Hari 门禁：{hari_rules}；候选逻辑使用={candidate}；加仓候选授权={increase}; 组合/影子/交易授权=false/false/false\n  当前理由：{rationale}\n  证伪条件：{falsifiers}\n  下一步核验：{next_checks}",
+            symbol = context.symbol,
+            name = context.company_name,
+            revision = context.revision_id,
+            decision_at = context.decision_at.to_rfc3339(),
+            fresh_until = context.fresh_until.to_rfc3339(),
+            freshness = if fresh { "有效" } else { "已过期" },
+            action = action,
+            confidence = context.confidence,
+            score = context.source_rating_score,
+            light = context.source_rating_light,
+            data_status = context.data_status,
+            passed = context.completeness_passed_checks,
+            total = context.completeness_total_checks,
+            directional = context.directional_research_ready,
+            portfolio = context.portfolio_decision_ready,
+            gaps = join(&context.completeness_gaps),
+            business = context.business_model,
+            value_chain = context.value_chain,
+            moat = context.moat_hypothesis,
+            thesis = context.thesis,
+            fp = context.first_principles_model_id.as_deref().unwrap_or("未绑定"),
+            financial_status = context.financial_status,
+            financial_as_of = context.financial_as_of.as_deref().unwrap_or("未知"),
+            financial = join(&context.financial_highlights),
+            warnings = join(&context.financial_quality_warnings),
+            financial_gaps = join(&context.financial_missing_checks),
+            valuation = valuation,
+            crowding_status = context.crowding_status,
+            crowding_label = context.crowding_label,
+            crowding_score = context.crowding_score.map_or_else(|| "未知".to_string(), |value| format!("{value:.1}")),
+            crowding_gaps = join(&context.crowding_missing_checks),
+            market_status = context.market_regime_status,
+            market_label = context.market_regime_label,
+            macro_score = context.macro_score.map_or_else(|| "未知".to_string(), |value| format!("{value:.1}")),
+            market_cutoff = context.market_data_cutoff.as_deref().unwrap_or("未知"),
+            hari_rules = join(&context.hari_rule_statuses),
+            candidate = context.candidate_logic_used,
+            increase = context.increase_candidate_authorized,
+            rationale = join(&context.rationale),
+            falsifiers = join(&context.falsifiers),
+            next_checks = join(&context.next_checks),
+        ));
+    }
+    Some(format!(
+        "【HONE 统一点时决策状态】\n以下是每日评级、持仓工具与对话共享的只读版本化状态，不是实时事实源。先把它作为唯一动作基线，再用本轮行情、SEC/IR、财报和新闻核验；新证据若改变判断，必须明确说明原状态如何被加强、削弱或证伪，不得静默生成第二套动作。过期、缺失或校验失败时禁止沿用动作。\n\n{}",
+        sections.join("\n\n")
+    ))
+}
+
+fn zone_label(zone: &str) -> &'static str {
+    match zone {
+        "opportunity" => "机会区",
+        "hold" => "持有区",
+        "risk" => "风险区",
+        _ => "数据不足",
+    }
+}
+
+fn action_label(action: &str) -> &'static str {
+    match action {
+        "increase_candidate" => "加仓候选",
+        "maintain" => "维持",
+        "reduce_candidate" => "减仓候选",
+        _ => "仅研究",
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -522,6 +668,122 @@ mod tests {
     use hone_memory::SessionStorage;
     use hone_memory::session::SessionPromptState;
     use std::fs;
+
+    fn write_decision_context_fixture(data_dir: &Path) {
+        let path = data_dir.join("investment_decisions/chat-context/current/SNDK.json");
+        fs::create_dir_all(path.parent().expect("decision context parent"))
+            .expect("decision context dir");
+        let head = serde_json::json!({
+            "schema_version": "hone-investment-decision-chat-context-v1",
+            "source_schema_version": "hone-investment-decision-v1",
+            "revision_id": "SNDK-test-revision",
+            "symbol": "SNDK",
+            "company_name": "Sandisk",
+            "theme": "存储",
+            "decision_at": "2026-08-14T01:00:00Z",
+            "fresh_until": "2026-08-15T13:00:00Z",
+            "source_rating_methodology": "hone-company-rating-v8",
+            "source_rating_score": 74.4,
+            "source_rating_light": "yellow",
+            "data_status": "partial",
+            "zone": "insufficient_data",
+            "action": "research_only",
+            "confidence": "medium",
+            "rationale": ["估值仍缺失"],
+            "business_model": "NAND 与企业级 SSD",
+            "value_chain": "NAND/控制器/固件/SSD",
+            "moat_hypothesis": "认证与固件形成切换成本",
+            "thesis": "AI 存储需求增长",
+            "first_principles_model_id": "ai-storage-demand-supply",
+            "first_principles_version": "v1",
+            "first_principles_status": "measurement_incomplete",
+            "financial_policy_version": "financial-v1",
+            "financial_status": "partially_measured",
+            "financial_as_of": "2026-05-02",
+            "financial_highlights": ["收入同比 +20.0%"],
+            "financial_quality_warnings": ["需核对口径"],
+            "financial_missing_checks": ["自由现金流"]
+        });
+        let measurements = serde_json::json!({
+            "valuation": null,
+            "valuation_missing_reason": "缺少两种可复算方法",
+            "crowding_policy_version": "crowding-v1",
+            "crowding_status": "partially_measured",
+            "crowding_score": 41.2,
+            "crowding_label": "中性",
+            "crowding_observations": ["价格路径已测量"],
+            "crowding_missing_checks": ["社交情绪"],
+            "market_regime_status": "observed",
+            "market_regime_label": "balanced",
+            "macro_score": 61.0,
+            "market_data_cutoff": "2026-08-13"
+        });
+        let authority = serde_json::json!({
+            "completeness_policy_version": "completeness-v1",
+            "completeness_status": "research_incomplete",
+            "completeness_passed_checks": 3,
+            "completeness_total_checks": 8,
+            "directional_research_ready": false,
+            "portfolio_decision_ready": false,
+            "completeness_gaps": ["估值缺失"],
+            "hari_policy_version": "hari-gate-v1",
+            "confirmed_logic_ids": ["LOG-V0001"],
+            "hari_rule_statuses": ["LOG-V0001:passed"],
+            "candidate_logic_used": false,
+            "increase_candidate_authorized": false,
+            "portfolio_action_authorized": false,
+            "shadow_portfolio_authorized": false,
+            "trading_authorized": false,
+            "falsifiers": ["企业级需求转弱"],
+            "next_checks": ["复核订单"],
+            "scope": "只读研究状态，不授权交易。"
+        });
+        let mut value = head.as_object().expect("fixture head").clone();
+        value.extend(
+            measurements
+                .as_object()
+                .expect("fixture measurements")
+                .clone(),
+        );
+        value.extend(authority.as_object().expect("fixture authority").clone());
+        fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).expect("write fixture");
+    }
+
+    #[test]
+    fn decision_context_loader_uses_the_shared_revision_and_expires_the_action() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "hone-decision-context-test-{}-{}",
+            std::process::id(),
+            hone_core::beijing_now()
+                .timestamp_nanos_opt()
+                .unwrap_or_default()
+        ));
+        write_decision_context_fixture(&data_dir);
+        let mut config = HoneConfig::default();
+        config.storage.session_sqlite_db_path = data_dir
+            .join("sessions.sqlite3")
+            .to_string_lossy()
+            .to_string();
+        let symbols = company_research_symbols("分析 SNDK 基本面和估值");
+        assert_eq!(symbols, vec!["SNDK"]);
+
+        let current_time = DateTime::parse_from_rfc3339("2026-08-14T10:00:00+08:00").unwrap();
+        let current = current_investment_decision_context(&config, &symbols, current_time)
+            .expect("current decision context");
+        assert!(current.contains("SNDK-test-revision"), "{current}");
+        assert!(
+            current.contains("冻结动作基线：数据不足 / 仅研究"),
+            "{current}"
+        );
+        assert!(current.contains("组合/影子/交易授权=false/false/false"));
+        assert!(current.contains("估值：未通过：缺少两种可复算方法"));
+
+        let stale_time = DateTime::parse_from_rfc3339("2026-08-16T10:00:00+08:00").unwrap();
+        let stale = current_investment_decision_context(&config, &symbols, stale_time)
+            .expect("stale decision context");
+        assert!(stale.contains("已过期 / 动作不可沿用"), "{stale}");
+        let _ = fs::remove_dir_all(data_dir);
+    }
 
     #[test]
     fn company_research_baseline_matches_chinese_alias_and_keeps_current_fact_boundary() {

@@ -829,9 +829,15 @@ impl LlmProvider for MockLlmProvider {
                 Ok(mock_control_response(continue_research))
             } else {
                 state.responses.pop_front().unwrap_or_else(|| {
-                    Err(hone_core::HoneError::Llm(
-                        "no more mock tool responses".to_string(),
-                    ))
+                    let last_prompt = messages
+                        .iter()
+                        .rev()
+                        .find_map(|message| message.content.as_deref())
+                        .unwrap_or_default();
+                    Err(hone_core::HoneError::Llm(format!(
+                        "no more mock tool responses; last_prompt={}",
+                        hone_core::truncate_chars(last_prompt, 600)
+                    )))
                 })
             };
             let incomplete_stream = state.incomplete_stream_calls.contains(&stream_call);
@@ -7923,10 +7929,11 @@ async fn pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract() {
     // The candidate still reaches the Agent as a candidate, not a decision.
     assert!(runtime_input.contains("主 Agent 工具循环"));
     assert!(runtime_input.contains("\"candidate_symbol\":\"NBIS\""));
-    // With no provider credentials every lookup errors, so nothing is preloaded
-    // and the turn degrades to an ordinary Agent-owned turn instead of failing.
-    assert_eq!(preloaded, 0);
-    assert!(!runtime_input.contains("【本轮前置检索结果"));
+    // FMP credentials are intentionally absent, but the public Nasdaq/SEC
+    // fallback should now preload exact-symbol evidence instead of degrading
+    // all the way to an evidence-free turn.
+    assert!(preloaded > 0, "{runtime_input}");
+    assert!(runtime_input.contains("【本轮前置检索结果"));
     // No auxiliary model is involved in enrichment.
     assert_eq!(llm.chat_calls(), 0);
     assert_eq!(llm.chat_with_tools_calls(), 0);
@@ -8618,7 +8625,7 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("以‘推断：’开头")
                 && runtime_input.contains("禁止据此写‘纽交所’或‘收盘价’")
                 && runtime_input.contains("克制的是断言强度而不是覆盖面")
-                && runtime_input.ends_with("真正缺失的口径按缺口如实披露。"),
+                && runtime_input.contains("真正缺失的口径按缺口如实披露。"),
             "{input}: {runtime_input}"
         );
     }
@@ -9634,7 +9641,7 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
         ("检查 0700.HK 股价", AgentTurnOrigin::Heartbeat),
     ] {
         let mut runtime_input = input.to_string();
-        let error = prepare_verified_investment_turn(
+        let result = prepare_verified_investment_turn(
             &core,
             &actor,
             "direct",
@@ -9646,13 +9653,33 @@ async fn scheduled_cross_market_tickers_bypass_auxiliary_entity_chat() {
             &mut 0,
             None,
         )
-        .await
-        .expect_err("test config has no FMP key, so deterministic DataFetch must fail");
-        assert!(error.contains("证券数据源本轮查询失败"), "{input}: {error}");
-        assert!(
-            !error.contains("证券实体解析暂时未能确认"),
-            "{input}: {error}"
-        );
+        .await;
+        match result {
+            Ok(Some(contract)) => {
+                // The public Nasdaq fallback can make a US ticker genuinely
+                // available during this test. A fresh exact-symbol quote is a
+                // valid scheduled contract, not a reason to preserve an old
+                // "FMP missing" expectation.
+                assert_eq!(contract.origin, origin, "{input}");
+                assert_eq!(contract.entities.len(), 1, "{input}: {contract:?}");
+                assert!(
+                    contract.entities[0].quote_timestamp.is_some(),
+                    "{input}: {contract:?}"
+                );
+            }
+            Err(error) => {
+                assert!(
+                    error.contains("证券数据源本轮查询失败")
+                        || error.contains("报价没有可用且足够新的数据源时间戳"),
+                    "{input}: {error}"
+                );
+                assert!(
+                    !error.contains("证券实体解析暂时未能确认"),
+                    "{input}: {error}"
+                );
+            }
+            Ok(None) => panic!("scheduled security turn must resolve or fail closed: {input}"),
+        }
     }
 
     assert_eq!(llm.chat_calls(), 0);

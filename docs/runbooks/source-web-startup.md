@@ -86,6 +86,14 @@ HONE_PUBLIC_DEV_LOGIN=true cargo run -p hone-cli -- start --build
 
 When and only when deployment mode and cloud mode are both `local`, the login card shows **Enter local test account / 进入本地测试账号**. The backend creates or reuses a non-production test identity and issues the normal HttpOnly session cookie; the frontend does not fabricate authentication. The route returns `404` when the flag is absent, deployment mode is not local, or cloud mode is not local. Never add this variable to production service environments.
 
+To exercise administrator-only local workflows such as decision-brain evidence review, opt in separately:
+
+```bash
+HONE_PUBLIC_DEV_LOGIN=true HONE_PUBLIC_DEV_ADMIN=true cargo run -p hone-cli -- start --build
+```
+
+`HONE_PUBLIC_DEV_ADMIN` is ignored unless the same local/local/dev-login gates pass. Local backend startup and each local test login synchronize the dedicated test account to the flag: restarting or logging in without the admin flag removes that test-only administrator role, including for an existing browser session. Never set either development flag in a production service environment.
+
 ## Deploy One Reviewed Source Revision
 
 Use the revision-bound deployment state machine when replacing a long-running source Web/Discord runtime. This is different from an ordinary foreground development start:

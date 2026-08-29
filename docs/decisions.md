@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-08-11
+Last updated: 2026-08-27
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -1656,3 +1656,1636 @@ implementation work.
 - Safety boundary: the switch is honored only when deployment and effective cloud mode are both local. The snapshot, list and company detail all state `Codex 模拟预览 / 非真实数据`; the result is not a current rating, quote, financial statement, order fact or investment recommendation.
 - Data boundary: deterministic scenario inputs are derived from the dated research-card grades, broad theme priors and fixed ticker jitter. They never enter the real daily evidence chain. Simulated valuation provides only a factor score and explicitly does not fabricate bear/base/bull target prices.
 - Exit behavior: removing the environment switch restores the v5 real-data path and its missing-data semantics unchanged. Production must continue to use verified fundamentals, forward evidence, fresh market data and reviewed multi-method valuation.
+
+## D-2026-08-12-01 Normalize Incomplete OpenAI-Compatible Tool Streams At The Adapter Boundary
+
+- Status: Accepted and implemented locally; not deployed to production.
+- Incident: GPT Luna accepted HONE's tool schema but omitted `index` on parallel tool-call deltas and omitted a literal finish reason before a clean `[DONE]`. Mapping every missing index to zero concatenated unrelated tool IDs, names and JSON arguments; replaying that malformed assistant tool-call message produced upstream HTTP 400. Separately, blank strings in optional DataFetch refinement-link fields were rejected even though they represented absent optional metadata.
+- Decision: the OpenAI-compatible adapter uses each parallel array item's stable position when `index` is absent. The Agent accumulator treats a distinct nonempty tool-call ID on an already occupied index as a new call and keeps later deltas with the same ID on the original call. A clean sentinel after one unambiguous typed finish may synthesize the corresponding internal finish; ambiguous, unfinished or post-finish payloads still fail closed. Blank optional refinement links normalize to absent, while required identity metadata remains nonblank and mutually exclusive links remain invalid.
+- Verification: provider parser, stream lifecycle, blank-metadata and reused-index regressions pass. A rebuilt local Web replay of `分析CRWV财报怎么样。` completed successfully in about 36 seconds with separate tool names, one final answer and no HTTP 400.
+
+## D-2026-08-12-02 Keep Daily Investment Dashboards Nonempty Without Manufacturing Evidence
+
+- Status: Accepted and implemented locally; not deployed to production.
+- Incident finding: the local FMP key pool was empty. Company ratings therefore had no current quotes, the portfolio-news worker could block the entire snapshot while waiting on its optional LLM, and position management required both a quote and current quarterly financials before emitting any action. The result was 0/52 quote coverage and eight `insufficient_data` positions even though dated research cards and a real portfolio existed.
+- Quote boundary: company ratings keep FMP as the preferred provider and use Nasdaq's public official quote endpoint only for missing US-market quotes. The fallback may supply symbol-matched price, change and market date; it may not synthesize financial statements, forward estimates or valuation targets. A failed symbol stays explicitly missing, and valuation remains excluded until the existing same-day multi-method review contract passes.
+- News boundary: when FMP news is unavailable, the actor-scoped worker may run bounded Tavily `day` searches for each real holding. Only results whose title explicitly names the ticker or covered company and whose title passes a material-event gate are retained; routine holdings filings, promotional stock articles, generic quote pages and routine RSU/insider records are removed. Tavily content remains a search snippet with its original URL, not a full-page or primary-source fact. Every holding receives one of `news_found`, `no_material_news` or `source_unavailable`.
+- Availability boundary: source facts are atomically persisted before optional model analysis. Analysis is time-bounded, and a timeout or provider failure leaves a truthful `source_only` snapshot rather than blocking the whole daily product. Company-rating refresh immediately rebuilds position advice; the position endpoint also rebuilds from newer cached upstream snapshots on demand.
+- Action boundary: a symbol with a current quote and dated research baseline may receive a low-confidence `持有 / 立即复核 / 降低暴露` result even when quarterly financials are missing, but it can never become an add candidate without current financial, valuation and macro gates. Unknown symbols remain `数据不足`; HONE never silently rewrites a user's ticker.
+- Local acceptance on 2026-08-12: ratings covered 52 companies with 51 current Nasdaq quotes and one explicit unsupported symbol (`SIVEF`); the configured eight-position portfolio received per-symbol news coverage and seven quote-backed position actions. The eighth holding, `APPL`, remained uncovered because it is not a valid covered ticker and was not silently changed to `AAPL`.
+
+## D-2026-08-12-03 Preload Current First-party Evidence Before Investment Reasoning
+
+- Status: Accepted and implemented locally; not deployed to production.
+- Evidence decision: company earnings, valuation, cash-flow, capex, backlog and debt questions preload exact-symbol Nasdaq evidence, normalized SEC Company Facts and the latest earnings-like SEC 8-K/6-K/10-Q plus official exhibit before the model reasons. A newer filing date/reporting period outranks lagging Company Facts. Missing fields remain gaps; third-party exact forecasts, targets and scenario values are excluded unless confirmed by full IR/SEC primary evidence.
+- Skill decision: interactive investment turns server-preload both `hari-invest` and `company-thesis-ratings`; the current company's dated thesis card is repeated adjacent to the current user turn. The card controls historical business model, moat, valuation method and falsifiers, while current prices and facts retain the first-party chain. Runtime audit, not self-reported prose, proves Skill use.
+- Context decision: a weak generic lexical overlap such as “最新” or “分析” cannot inject an unrelated research-library report. Automatic injection requires ticker/topic-strength relevance; explicit “资料库/我上传/我的资料” requests may use broader retrieval. This prevents irrelevant report tickers from expanding a one-company scope and controls Luna prompt size.
+- Reliability decision: an OpenAI-compatible streaming request may retry the same client once only when a retryable transport failure occurs before any HTTP response. Once a response/stream starts, it is never replayed. This recovers transient Luna gateway resets without duplicating visible output or business operations.
+- Acceptance: the unchanged five-question benchmark scored 432/500, average 86.4, minimum 80, with 5/5 pass, zero hard failures, 100% mandatory-Skill audit coverage and 100% accuracy for reported material facts. GPT-5.6 Sol remains a coverage comparator; primary sources remain the judge.
+
+## D-2026-08-13-01 Promote Causal Links Only Through Repeated Point-in-time Evidence
+
+- Status: Accepted and implemented locally; research/training only, not deployed as execution authority.
+- Evidence decision: a structured earnings claim now carries its source event, metric definition/basis, fiscal period and active/corrected/withdrawn disposition. Claims missing the legacy basis remain readable for audit but can never satisfy promotion. Claims are comparable only inside the same metric, definition and period.
+- Lifecycle decision: an explicit correction or withdrawal supersedes prior same-key claims. A later SEC filing may supersede a differing earnings release. Other differing primary claims become an unresolved conflict; HONE must not average them, choose the convenient value or let both independently support confidence.
+- Promotion decision: one human acceptance is only a label. `hone-causal-promotion-v1` requires two active claims, two distinct source events and HTTPS documents, two fiscal periods, at least 45 days between observations, and explicit acceptance of every active claim. A human rejection or unresolved conflict blocks the driver.
+- Policy isolation: promoted causal links may change only the displayed decision confidence. Two promoted drivers raise confidence by at most one level; any conflict or human rejection lowers it by one level. Zone and exposure action are calculated before the adjustment and must remain byte-for-byte equivalent under the same rating, financial and valuation state.
+- Time decision: after a causal review is durably appended to the immutable audit and projected into its training sample, HONE creates a new decision revision. The review timestamp becomes part of that new point-in-time state; no later review is rewritten into an older saved decision.
+- Review boundary: corrected, superseded, conflicted, withdrawn or legacy-unspecified claims cannot receive an accepted causal-link verdict. The administrator surface shows lifecycle, definition, source-event identity, evidence span and promotion reasons before review.
+- Training boundary: this mechanism does not configure a reward, relabel market outcomes, authorize a shadow portfolio, connect a broker or permit autonomous execution.
+
+## D-2026-08-13-02 Backfill SEC Financial Facts as Point-in-time Training Evidence
+
+- Status: Accepted and implemented locally; research/training only.
+- Source decision: use the official SEC ticker map, submissions and Company Facts APIs. A fact is admitted only when its accession matches a 10-Q/10-K record and the event links to the official filing document. FMP and LLM prose are not used to create historical reported values.
+- Time decision: the SEC acceptance timestamp is the observation time. Filing date is only a fallback when the acceptance timestamp is absent. The current pilot corpus covers SNDK, MU and MSFT to compare one storage company with a memory peer and a non-storage platform company.
+- Metric decision: begin with reported revenue, inventory, receivables, payables and property-plant-equipment cash purchases. Preserve the exact US-GAAP tag and source period. Period-over-period changes, ratios and margins will be separate computed evidence and must never overwrite the source claim.
+- Runtime decision: cold-start and daily reruns are idempotent, run independently of FMP, write directly to the research event store and never pass through notification routing. Historical SEC facts are exempt from the short-term event purge because they are sparse calibration evidence.
+- Evaluation decision: administrator evaluation exposes corpus size, source-event/period/symbol coverage, lifecycle conflicts and human causal-review coverage. A populated corpus is only eligible for human causal review; it does not itself promote a driver, alter action, configure reward or authorize execution.
+
+## D-2026-08-13-03 Derive Period Comparisons Without Rewriting Source Facts
+
+- Status: Accepted and implemented locally; research/training only.
+- Representation decision: year-over-year and sequential changes use a separate `computed_comparison` observation with formula version `hone-sec-period-comparison-v1`. The row embeds both original claim identities, periods, values, units, disclosure times and official filing URLs; it never mutates either SEC source claim or quotes a calculated percentage as company language.
+- Comparability decision: both facts must be active numeric reported facts with the same metric, XBRL definition/basis and unit. Year-over-year requires the same fiscal slot one year earlier. Sequential balance-sheet comparisons are allowed for inventory, receivables and payables; revenue is limited to non-year-end Q2/Q1 and Q3/Q2 pairs. Cumulative capex is year-over-year only until standalone-quarter derivation is separately implemented. Zero denominators, distinct-basis rows and lifecycle conflicts fail closed.
+- Point-in-time decision: prior disclosure must precede current disclosure and both must be visible by the decision timestamp. Validation recomputes the percentage, checks the fiscal pairing, formula version, source URLs and Beijing as-of projection. Any mismatch invalidates the snapshot rather than silently repairing it.
+- Policy decision: computed evidence is reviewable but does not mark a driver measured, count toward structured-source promotion, change confidence/action/zone, configure reward or authorize execution. Evaluation deduplicates the same comparison across daily projections and keeps the latest explicit human verdict for calibration.
+
+## D-2026-08-13-04 Use One Chronological Queue for Human Causal Labels
+
+- Status: Accepted and implemented locally; administrator research workflow only.
+- Identity decision: a queue candidate is keyed by symbol, first-principles driver and immutable observation ID. Repeated daily projections do not create new review work. The newest frozen sample containing the observation is the navigation target, while the newest auditable review timestamp determines the displayed accepted/rejected state.
+- Scope decision: the first queue contains structured source claims and deterministic period comparisons. It excludes generic prose and does not invent an LLM priority. Lifecycle-blocked rows come first for rejection, followed by computed comparisons and SEC facts requiring causal attribution, then management assertions requiring later verification.
+- Interaction decision: administrators can filter status and evidence kind, inspect counts, and open the exact replay sample. Writes still use the existing optimistic revision marker and immutable review chain; the queue itself has no mutation endpoint.
+- Training boundary: the queue organizes human labels only. It does not treat positive growth as confirmation, calculate a reward, alter the decision policy, create a shadow holding or authorize an order.
+
+## D-2026-08-13-05 Separate Evidence Truth From Its Investment Effect
+
+- Status: Accepted and implemented locally; research/training only.
+- Label decision: causal-link review has two dimensions. `accepted` means the observation and its relation to the named driver are admissible; it must additionally be labelled `supports`, `falsifies`, `mixed` or `context_only`. `rejected` means the relation itself is invalid and therefore carries no investment effect. Legacy accepted/unclassified labels remain auditable but are policy-inert.
+- Promotion decision: only accepted `supports` claims may satisfy repeated-evidence promotion. Accepted `falsifies` evidence creates `blocked_falsification`, lowers displayed confidence one level and prevents the driver from being promoted. `mixed` and `context_only` are retained for calibration but cannot improve confidence.
+- Policy isolation: effect labels cannot directly change the deterministic research zone, action, valuation, outcome, reward or portfolio. They describe what the evidence did to a specific causal hypothesis; they are not a sentiment score or an order instruction.
+- Interaction decision: the administrator API rejects accepted links without an effect and rejected links with an effect. The review queue reports effect counts and latest labels, while all writes still use the immutable optimistic audit chain rather than a queue-specific mutation path.
+- Calibration decision: administrator evaluation deduplicates labels by symbol, driver and immutable observation, retains only the newest audited verdict, and reports effect distributions by driver and metric. These distributions measure human coverage and disagreement, not predictive accuracy. Market-regime accuracy remains unavailable until regime labels are frozen point-in-time and outcomes mature.
+- Advancement boundary: this improves supervised causal labels only. It does not authorize online reinforcement learning, a shadow portfolio, broker access or autonomous execution.
+
+## D-2026-08-13-06 Freeze Market Regime Before Observing Outcomes
+
+- Status: Accepted and implemented locally; research/training only.
+- Taxonomy decision: `hone-market-regime-v1` maps the existing macro health score to supportive (70–100), balanced (55–69.9), defensive (40–54.9) and stress (below 40). This deterministic taxonomy is fixed before outcome evaluation and cannot be relabelled because a later trade won or lost.
+- Admission decision: the macro report must be generated no later than the decision, be at most 36 hours old, carry a finite 0–100 score, use a non-stale/non-framework snapshot and retain at least one original HTTPS source. Its data cutoff cannot be after the Beijing decision date. Missing or invalid input produces `unavailable`, not a neutral regime.
+- Projection decision: after a successful fresh 20:00 macro refresh, HONE writes a new point-in-time company decision/training revision whose timestamp includes that macro report. The regime is calibration context only; the pre-existing company research zone and exposure action are not recalculated from it in this slice.
+- Calibration decision: persistent causal observations are assigned to the market regime of their earliest frozen sample, not whichever later daily regime makes the label look better. Evaluation may group human support/falsification labels by that regime, but cannot call the distribution predictive accuracy until forward outcomes mature.
+- Compatibility decision: legacy v1 samples without regime fields remain readable as unavailable and are excluded from regime cohorts. No historical macro label is reconstructed from present-day files.
+- Advancement boundary: a market-regime label does not configure reward, create a shadow holding, connect a broker or authorize an order.
+
+## D-2026-08-13-07 Predeclare A Read-only Shadow Policy Before Any Ledger Exists
+
+- Status: Accepted and implemented locally as a research protocol; no shadow portfolio has been started.
+- Contract decision: `hone-shadow-policy-v1` fixes the initial virtual reference notional, benchmark, security scope, concentration/cash limits, rebalance rule, execution timing and slippage before results can be observed. It is long-only common stock, forbids options/leverage/shorting, caps a company at 5%, a theme at 20%, gross exposure at 60%, holds at least 40% cash and limits the portfolio to ten names.
+- Candidate decision: only the latest frozen sample per symbol is considered. Opportunity-zone increase action, medium/high effective confidence, live company data, a fresh reviewed three-scenario valuation, at least 10% expected upside, a non-stress frozen macro regime, no causal conflict/rejection/falsification and explicit human support of that exact decision are all required. Missing one condition produces a named block and no target-weight range.
+- Governance decision: the existing long-horizon evidence gate is an additional prerequisite, but passing it only makes a row eligible for protocol review. The protocol always serializes `authorization=not_authorized` and `execution_mode=read_only_protocol_not_started`; it has no holdings, order, broker or activation state.
+- Weight decision: an otherwise eligible medium-confidence row may show a 2–3% review band and a high-confidence row 3–5%. These are protocol parameters, not holdings or recommendations, and cannot be materialized until reward design, counterfactual evaluation and a separate immutable-ledger authorization are approved.
+- Advancement boundary: this slice cannot simulate fills, compute a portfolio result, configure RL rewards, generate an order draft, connect an account or execute a trade.
+
+## D-2026-08-13-08 Freeze A Reward Proposal Before Optimizing It
+
+- Status: Accepted and implemented locally as an inactive proposal; no reward is configured or computed.
+- Hard-gate decision: point-in-time integrity, material-fact accuracy, risk-policy compliance and complete costed outcomes are prerequisites. A failure makes the sample/episode ineligible; a profitable result cannot compensate for future leakage, factual error or a risk breach.
+- Objective proposal: the candidate mix is 30% multi-horizon SPY-relative return, 25% drawdown/tail risk, 15% thesis calibration and falsification response, 10% turnover/execution cost, 10% concentration/liquidity and 10% decision stability/error attribution. Long-horizon results outrank short-term outcomes, missing data is not imputed, and action semantics remain directional only for increase/reduce candidates.
+- Governance decision: these weights are proposed rather than approved. The serialized contract states `not_approved`, reward computation is false, no approver is present and every training sample remains unconfigured. Approval or correction must later be an immutable governance record attributable to old Wang and the risk owner, never an in-place rewrite made after seeing returns.
+- Counterfactual decision: `hone-counterfactual-evaluation-v1` fixes SPY, cash, equal-weight eligible names, an untrained deterministic quality/value rule and point-in-time human-corrected decisions as comparison families. Evaluation is walk-forward, spans at least eight decision quarters, separates all four frozen macro regimes and keeps a sealed final test set after model, Skill, corpus and threshold versions are frozen.
+- Advancement boundary: this proposal cannot train a policy, assign a reward, open an evaluation test set, start a shadow ledger, generate an order or execute a trade.
+
+## D-2026-08-13-09 Extend SEC Financial Quality Without Rewriting The Base Corpus
+
+- Status: Accepted, implemented and backfilled locally for SNDK, MU and MSFT.
+- Migration decision: the original `sec-companyfacts:{symbol}:{accession}` events remain immutable. New gross-profit, operating-income, operating-cash-flow, cash and long-term-debt facts use a separate `financial-quality-v2` supplement event per filing. The supplement never repeats revenue, working-capital or capital-expenditure claims, so old databases can gain new facts without losing history or inflating review work.
+- Definition decision: every row preserves the exact US-GAAP tag in `metric_basis`. Tag alternatives are tried only when an earlier tag is absent for that filing; distinct cash/debt definitions are not summed, averaged or silently compared. Missing tags remain missing.
+- Comparison decision: instant cash and long-term debt can be compared sequentially when metric/tag/unit match. Gross profit, operating income and cumulative operating cash flow are year-over-year only in this version. Cumulative six- or nine-month cash flow is not mislabeled as a standalone quarter.
+- Local result: 30 supplement events added 149 facts to the original 132, producing 281 point-in-time facts: SNDK 53, MU 108 and MSFT 120. A second run inserted zero and classified all 60 base-plus-supplement events as duplicates.
+- Policy boundary: corpus growth only adds reviewable evidence. It does not compute a margin ratio, mark a causal driver measured, change an action, approve the reward proposal, start a shadow portfolio or authorize execution.
+
+## D-2026-08-13-10 Derive Margins Only From Compatible Same-filing Facts
+
+- Status: Accepted and implemented locally as reviewable deterministic evidence.
+- Formula decision: `hone-sec-same-filing-ratio-v1` derives gross margin from gross profit/revenue and operating margin from operating income/revenue. Both facts must be active SEC reported facts in USD millions and share the exact filing URL, SEC acceptance timestamp and full period text. A split base-v1/financial-quality-v2 event identity is allowed because the original filing provenance is identical.
+- Definition decision: both numerator and denominator preserve their own XBRL definition. HONE does not pretend that different concepts share one basis; it records the two definitions and the formula. Missing facts, different periods/filings, zero revenue and non-finite numbers create no ratio.
+- Audit decision: the ratio row retains numerator/denominator claim IDs, metrics, bases, values, period, publication time and filing URL. Point-in-time validation recomputes the result and rejects changed percentages or provenance. The administrator queue has a distinct profit-ratio filter and requires an explicit relationship/effect review.
+- Local result: the three-company pilot creates 60 ratio candidates—24 MSFT, 24 MU and 12 SNDK—split evenly between gross and operating margins.
+- Policy boundary: a margin level does not automatically prove pricing power, scarcity or an attractive investment. Computed ratios cannot satisfy repeated-source promotion, alter zone/action/confidence, configure a reward, start a shadow ledger or authorize execution.
+
+## D-2026-08-13-11 Treat Margin Direction As A Separate Point-in-time Claim
+
+- Status: Accepted and implemented locally as deterministic review evidence.
+- Comparability decision: `hone-sec-margin-trend-v1` compares gross-margin or operating-margin rows only when numerator and denominator XBRL bases are unchanged. Year-over-year requires the identical fiscal slot one year earlier. Sequential comparison is limited to Q2/Q1 and Q3/Q2; Q1/FY and FY/Q3 are invalid because annual and quarterly margins are different durations.
+- Provenance decision: the trend embeds both complete same-filing ratio traces, distinct SEC URLs, disclosure times, periods and the change in percentage points. The validator recomputes both ratio levels and the difference, rejects future or reordered filings and fails closed when a definition changes.
+- Local result: 66 trend rows are available—MSFT 16 year-over-year plus 12 sequential, MU 16 plus 12 and SNDK 4 plus 6.
+- Interpretation decision: improving margins are evidence of possible pricing, mix, yield or cost improvement, not proof of a moat. Human review must identify whether the change supports, falsifies, mixes or merely contextualizes the named pricing/value-capture driver.
+- Policy boundary: trend direction cannot itself promote a claim, change confidence/action/zone, configure reward, start a shadow ledger or authorize execution.
+
+## D-2026-08-13-12 Freeze Industry-specific Operating KPI Semantics Before Extraction
+
+- Status: Accepted and implemented locally; definitions and review UI only, no automatic KPI extraction yet.
+- Registry decision: `hone-operating-kpi-registry-v1` is embedded in each storage, compute, optical-interconnect, data-center-power, AI-platform and AI-application model. Every entry maps to one existing causal driver and declares its definition, unit, period policy, primary-source order, required context and forbidden inference. A point-in-time snapshot fails when an entry points to an unknown driver or loses these controls.
+- Comparability decision: company-defined ASP, product mix, utilization, ARR, RPO/bookings, token/call volume, unit cost, retention and deployment measures are within-issuer-only unless a future reviewed standard says otherwise. Contract, customer qualification, delivered-capacity and regulatory milestones keep their stage and cancellation context. Only genuinely standardized facts such as SEC capex may be cross-company comparable under their existing XBRL and duration rules.
+- Training decision: the registry is a measurement contract, not an observation. It does not mark a driver measured, provide a causal label, enter reward computation or change zone/action/confidence. Future extraction must store the issuer's verbatim metric name and definition, source URL, publication timestamp, unit, period and any definition-change marker as a separate immutable claim before human effect review.
+- Product decision: the administrator sees the applicable registry on every frozen sample, including why an apparently similar metric must not be compared across issuers and why a single KPI cannot prove moat, pricing power or a buy/sell action.
+
+## D-2026-08-13-13 Admit Issuer Operating KPIs As A Separate Training-only Claim Family
+
+- Status: Accepted and implemented locally for the SNDK/MU storage pilot. The first official-source batch has been source-verified and backfilled; human relationship/effect review remains pending.
+- Admission decision: `hone-operating-kpi-claim-v1` reads only explicit typed arrays from an official earnings release, full earnings-call review, SEC 10-Q/10-K/8-K or tightly tagged company/customer/regulatory primary document. It rejects prose reconstruction, other symbols, unknown KPIs, non-HTTPS provenance, missing locator/scope/period, an issuer definition not literally retained in the source excerpt, an invented number and a numeric unit outside the frozen vocabulary.
+- Semantic decision: company NAND ASP is not an industry spot price, a pipeline is not a signed order, and sample/qualification/production are different milestone states. Issuer-defined rows remain within-company unless the registry says otherwise. A correction, withdrawal or explicit definition change supersedes the older same-key claim; unexplained differences in definition, scope, comparison basis, unit or value are conflicts and cannot be averaged or compared.
+- Training decision: a valid row becomes a distinct `operating_kpi_claim` causal observation and may change only the matching driver's measurement state from unmeasured to partially measured. It remains `training_only_pending_human_review`, cannot satisfy repeated-source promotion, and cannot alter confidence, research zone, exposure action, valuation, reward, shadow policy or execution authorization.
+- Review/evaluation decision: the administrator queue exposes the exact issuer name, verbatim definition, period, scope, comparison, source event and lifecycle. Only active, internally coherent rows are accept-eligible. Offline evaluation deduplicates by symbol/driver/observation and reports lifecycle, company/KPI/definition coverage and the latest immutable human verdict separately from return outcomes.
+- Contract correction: the reviewer and parser now share the same numeric-unit vocabulary. The host also compares the emitted issuer name, definition and evidence quote with the still-ephemeral original source body before setting a verification marker; arrays without that marker are inadmissible. An applied SNDK transcript review is regression-tested through source checking, serialization and deterministic re-extraction so a fabricated self-attested quote cannot pass and a valid row cannot be silently dropped because the prompt said `percent` while the parser required `%`.
+- Backfill decision: the first corpus extension is a checked-in manifest plus a dry-run-first executable, not an ad hoc database edit. It admits only allowlisted SNDK/MU official documents, caps document count and bytes, validates every retained field against the ephemeral original body, re-runs the production parser and requires an explicit write flag. Deterministic event IDs make reruns idempotent. The first write admitted two documents/three claims and inserted two events; the immediate rerun inserted zero. Admission does not constitute a human causal label or an investment conclusion.
+- Local review access: ordinary local development login remains non-administrator. The dedicated local test identity can exercise the administrator evidence queue only when `HONE_PUBLIC_DEV_ADMIN` is separately enabled under the existing local-deployment, local-cloud and explicit-development-login gates. Local backend startup and each development login synchronize the role to the flag, including revocation when the flag is absent, so a one-time test and its existing cookie cannot silently remain privileged after restart.
+
+## D-2026-08-13-14 Record Reward-objective Governance Without Activating RL
+
+- Status: Accepted and implemented locally as immutable governance only; no objective has been approved.
+- Identity decision: `hone-reward-governance-review-v1` fingerprints the proposal's versioned hard gates, six components and counterfactual protocol with SHA-256. Evidence-progress text is excluded from the fingerprint, so reaching a gate cannot silently change the reviewed objective.
+- Audit decision: administrator writes require the shared mutation marker, a per-design single-writer lock and the expected previous review ID. Every record is immutable and forms one root-to-tip chain; a stale request, duplicate root, branch, cycle, disconnected record or changed fingerprint fails closed.
+- Approval decision: requests for changes or rejection can be recorded while evidence is immature. Approval is deliberately named `approved_for_offline_research` and additionally requires the long-horizon evidence gate, one finite weight for every component totalling 100%, confirmation of every hard gate and explicit confirmation of the point-in-time counterfactual protocol.
+- Product decision: the administrator panel exposes the latest rationale and allows request-change, reject or offline-research approval. The approval control remains disabled before the evidence gate. A real runtime request with a complete candidate payload was rejected with HTTP 400 at zero mature 250-session samples and wrote no governance record.
+- Advancement boundary: every governance response keeps reward computation, shadow-portfolio authorization and trading authorization false. This record can authorize later offline implementation work only; it cannot compute a reward, open a test set, create a holding, connect a broker, draft an order or trade.
+
+## D-2026-08-13-15 Separate Realized NAND Demand From Wafer Supply
+
+- Status: Accepted and implemented locally as a versioned storage-model correction; human effect labels remain pending.
+- Semantic decision: issuer-reported NAND bit shipments are evidence of realized sold bit demand. They are not wafer capacity, yield, utilization or effective deliverable supply, and a shipment increase alone does not prove end-demand quality, market share, scarcity, moat or an investment action.
+- Version decision: new storage decisions use `hone-operating-kpi-registry-storage-v2` and model `0.3-realized-demand-separation`, with `nand_bit_shipments_growth` mapped to `realized_bit_demand`. Historical v1 snapshots retain their old mapping and remain valid for immutable replay; applying the v2 version while retaining the v1 supply mapping fails validation.
+- Review decision: review queue, operating-KPI coverage and causal-effect surfaces select the latest semantic location for an unchanged source observation by symbol plus immutable observation ID. An old-driver review cannot silently transfer to a newly mapped driver, and old/new locations cannot inflate evidence counts.
+- Runtime result: MU regenerated on storage-v2 with bit shipments under partially measured realized demand and wafer supply still unmeasured. The action remains `research_only`, confidence remains `medium`, replay returns both v1 and v2 samples, and the current MU operating-KPI queue contains no duplicate legacy supply row.
+- Advancement boundary: the correction changes evidence classification only. It does not create a human support label, promote causal confidence, change valuation/action, approve reward computation, authorize a shadow portfolio or permit trading.
+
+## D-2026-08-13-16 Require A Complete Decision Chain Before Direction Or Portfolio Use
+
+- Status: Accepted and implemented locally as a research-readiness contract.
+- Layer decision: `hone-decision-completeness-v3-financial-quality-gate` evaluates eight named layers independently: first-principles reality validation, company business model/moat/value capture, financial transmission, multi-method three-scenario valuation, falsification/next checks, timing/crowding, frozen market regime and portfolio context. A percentage is a coverage summary, not an investment score.
+- Readiness decision: every directional-research-required layer must pass before the snapshot can claim directional research readiness. Portfolio readiness additionally requires crowding, market regime and user portfolio/risk-budget context. A company-level snapshot deliberately lacks portfolio context and cannot create a position or order.
+- Compatibility decision: v1 and v2 completeness rows remain structurally replayable but are not silently recalculated under v3 semantics. New rows must reproduce the deterministic v3 projection exactly; tampered readiness, count or percentage fails validation.
+- Shadow boundary: the read-only shadow protocol rejects an old policy version, an incomplete directional chain or unmeasured crowding even if a human accepted the thesis. Completeness never authorizes simulation, reward computation, broker connectivity or trading.
+
+## D-2026-08-13-17 Separate SEC Arithmetic From Financial Decision Quality
+
+- Status: Accepted and implemented locally for current SNDK/MU/MSFT projections.
+- Trace decision: `hone-financial-verification-v3-sec-projection-quality-gate` may project financial checks only from active point-in-time SEC claims and deterministic comparisons/ratios. It retains both periods, both original values, formula output, claim IDs and official filing URLs. A missing metric remains missing.
+- Duration decision: duration metrics may compare only when both retained date ranges differ by no more than seven days. A same fiscal slot is necessary but not sufficient; a quarter cannot be compared with a six- or nine-month cumulative row. Ratios still require the same filing, timestamp and exact period.
+- Quality decision: an absolute growth/change of at least 200%, a gross-margin move of at least 40 percentage points or a gross/operating margin outside -100% to 100% triggers deterministic data-quality review. These are anomaly-review thresholds, not bullish/bearish thresholds. The original math remains visible, but any warning blocks a complete financial-transmission status until the filing table, base effect, definition and special items are reviewed.
+- Runtime result: current SNDK and MU SEC projections expose their unusually large revenue, working-capital, cash-flow and margin changes with original bases and remain partial. Direct checks against the official 10-Q XBRL confirm that the selected revenue and profit rows are standalone quarters; the system therefore flags rather than deletes them.
+- Advancement boundary: primary-source provenance proves where a number came from, not what caused it or whether it is investable. Unreviewed arithmetic cannot prove moat, pricing power, structural AI demand, valuation attractiveness, an exposure action, a reward or execution authority.
+
+## D-2026-08-13-18 Measure Price Crowding Without Naming Greed Or Fear
+
+- Status: Accepted and implemented locally as partial point-in-time evidence.
+- Evidence decision: `hone-crowding-v1-price-valuation-partial` uses only fields frozen in the company decision: position inside the 52-week range, current price versus the 50-day average, 50-day versus 200-day average, and current price inside a reviewed three-scenario valuation range no more than seven days old. Every retained component stores its raw percentage, deterministic pressure projection, weight, as-of value and source.
+- Missingness decision: missing components are renormalized rather than imputed. The contract always discloses that return/drawdown/volume history, peer and self valuation percentiles, institutional/short/analyst concentration, social/news attention and options/leverage/flow evidence are absent until separately sourced and validated. Consequently v1 can be `partially_measured` or `unmeasured`, never fully measured.
+- Interpretation decision: the fixed interpolation anchors and weights are a HONE engineering measurement proposal, not an old-Wang investment rule. A rising or expensive security is not automatically “greedy,” and a falling or cheap security is not automatically “fearful.” The output is deliberately labelled price/valuation position pressure, not market psychology.
+- Readiness decision: partial crowding can improve research visibility but cannot pass the completeness timing layer or the shadow-policy gate. It does not change the deterministic research zone, action, confidence, valuation, reward, target weight, holding or order.
+- Source decision: FMP quotes may provide the two moving averages and 52-week range. The Nasdaq official fallback currently provides current price, change and 52-week range; it does not fabricate moving averages. Future options, positioning or attention sources require their own point-in-time contracts and tests before v2 can become fully measured.
+
+## D-2026-08-13-19 Add Daily Price And Volume Path Without Pretending It Is Psychology
+
+- Status: Accepted, implemented and runtime-verified locally as point-in-time market-path evidence.
+- Source decision: `hone-market-history-v1-nasdaq-daily-close` fetches a bounded 430-calendar-day window from Nasdaq's official historical table and retains the exact no-credential source URL, latest complete trading date, session count and price-basis warning. It stores only the compact derived summary, not the remote response body.
+- Calculation decision: deterministic fields are 50/200-session average close, 20/60-session close return, drawdown from the trailing 60-session closing high and the latest five-session average volume as a percentage of the preceding 55-session average. Inputs are sorted and deduplicated by trading date; missing lookback remains missing.
+- Corporate-action decision: Nasdaq's public response does not declare an adjusted-close basis. HONE therefore states that limitation and marks the entire history `review_required` when it is stale, has fewer than 61 sessions or contains an absolute adjacent-close move of at least 45%, which may indicate a split, adjustment discontinuity or major jump. Review-required history remains visible but contributes no averages or crowding component.
+- Crowding decision: `hone-crowding-v2-price-path-partial` predeclares weights for 52-week position (20%), price/50-day (15%), 50/200-day (10%), valuation position (20%), 20-day return (10%), 60-day return (10%), 60-day drawdown (10%) and unusual recent volume confirming the sign of the 20-day return (5%). Missing components are renormalized; interpolation anchors are HONE research proposals, not old-Wang rules.
+- Semantics decision: volume alone is directionless. Only volume above its prior baseline is signed by the already-observed 20-session return, and even that remains a price-path pressure proxy. The contract still cannot classify greed/fear, pass full crowding, alter action/confidence/valuation/reward or authorize a shadow holding/order.
+- Compatibility decision: v1 crowding and completeness v4 remain immutable and replayable. Current rows use completeness v5 so old projections are never silently recomputed under the new price-path contract.
+- Runtime result: the bounded refresh obtained quote and history for 51 of 52 covered symbols; SIVEF remained explicitly unavailable. SNDK and MU each retained 296 valid sessions through 2026-08-12 with source URLs and no quality warning. SNDK projected seven available components and a partial pressure score of 41.2; MU projected seven and 59.1. Both remained `research_only`, completeness v5 and blocked from shadow admission. Concurrent startup requests from company-rating and valuation workers were coalesced into one network refresh.
+
+## D-2026-08-13-20 Keep Short Interest As Ambiguous Context, Not A Directional Score
+
+- Status: Accepted and implemented locally as non-scored point-in-time context.
+- Source decision: `hone-short-interest-v1-nasdaq-settlement` reads Nasdaq's official semi-monthly settlement table and retains the latest and previous shares short, deterministic change, average daily share volume, days to cover, settlement date, observation count and exact source URL. Fewer than two valid rows, a future settlement date or a latest row more than 45 calendar days old prevents admission into the current decision state.
+- Interpretation decision: a high or rising short balance can represent informed negative consensus, stale hedging, relative-value positioning or future squeeze fuel. HONE therefore refuses to map it directly to greed, fear, bullishness, bearishness, moat, valuation or an exposure action.
+- Scoring decision: admitted short interest appears in observations and the administrator evidence panel with an explicit “context only, not scored” label. Adding or removing it must leave the v2 crowding pressure score unchanged. Institutional-holder dates remain mixed and Nasdaq's analyst endpoint may report a label with zero analysts, so neither is admitted in this version.
+- Integrity decision: current snapshots recompute the short-balance change and reject changed numbers, non-HTTPS provenance, invalid volumes/days-to-cover, review-required rows and future evidence. Legacy v1 crowding remains replayable only without this new field.
+- Runtime result: 36 of 52 covered symbols returned two or more usable observations; the other 16 remain explicit source gaps. SNDK's 2026-07-31 balance was 6,823,953 shares, down 13.2% from the prior settlement with one day to cover; MU was 29,892,897 shares, down 17.4% with one day to cover. Both retained the same price-path pressure calculation, stayed `research_only`, remained incomplete and displayed the non-scored context in the administrator UI.
+- Advancement boundary: short-interest context does not complete crowding, pass the timing gate, change action/confidence/valuation/reward, authorize a shadow holding or permit an order.
+
+## D-2026-08-13-21 Keep Options Positioning And Publication Attention Outside The Score
+
+- Status: Accepted, implemented and runtime-verified locally as non-scored point-in-time context.
+- Options source decision: `hone-options-positioning-v1-nasdaq-monthly-open-interest` reads the nearest standard monthly expiry 28–75 days after the request and retains spot/date, expiry, days remaining, call/put open interest and volume, recomputable ratios, contract count and the exact Nasdaq URL. A truncated chain, stale/future date, wrong expiry or missing side is review-only. The public source does not provide a verified implied-volatility or skew field, so HONE does not estimate either.
+- Options interpretation decision: put/call ratios may reflect protection, covered writing, spreads or speculation. They are positioning structure, not a bullish/bearish, greed/fear or exposure-action label.
+- Attention source decision: `hone-news-attention-v1-nasdaq-syndicated-14d` counts deduplicated rows related to the symbol in Nasdaq's multi-publisher aggregation feed and compares the latest three-day publication rate with the prior eleven days. It retains counts, unique publishers, oldest observed date, result cap and source URL. A 100-row result that does not cover the full window is review-only.
+- Attention interpretation decision: publication frequency is not article truth, event independence, investor sentiment or Nasdaq opinion. Multiple publishers may repeat one event, so the context cannot form a direction or action.
+- Scoring and integrity decision: both contexts appear only in observations and the administrator panel with “background evidence, not scored.” Current v2 component identities and weights are unchanged; removing short, options and news context must leave the pressure score identical. Validation recomputes ratios/rates and rejects tampering or future leakage; legacy v1 states cannot carry the new fields.
+- Runtime result: 51/52 symbols returned an option context and all 52 returned a news aggregation response. The final rating snapshot attached 51 news records because SIVEF had no usable quote; 42 were usable and 9 were review-only. SNDK admitted both contexts; MU's 100-row news result did not cover all 14 days and was correctly excluded. SNDK stayed `research_only`, completeness 3/8, reward disabled and shadow unauthorized.
+- Advancement boundary: neither context completes crowding, passes timing/portfolio readiness, changes action/confidence/valuation/reward, authorizes a shadow holding or permits an order.
+
+## D-2026-08-13-22 Admit Institutional 13F Aggregates Only As Stale Background
+
+- Status: Accepted, implemented and runtime-verified locally as non-scored point-in-time context.
+- Source decision: `hone-institutional-holdings-v1-nasdaq-13f-observation` reads Nasdaq's institutional-holdings aggregation and retains the observation date, institutional ownership percentage, holder/share totals, increased/decreased/held and new/sold-out categories, total row count, top-50 sample size, report-period range/count and exact HTTPS source. Nasdaq identifies this page as Form 13-F information; 13F is quarterly and may be filed up to 45 days after quarter end.
+- Integrity decision: the three active holder categories must reconcile exactly to the aggregate holder count and their shares must reconcile within one share to the aggregate share count. Future observation dates, observation age over one day, future report periods, malformed/truncated metadata, changed totals, non-HTTPS provenance or any quality warning prevents admission into the decision state. The returned top 50 rows are used only to disclose period mixture, never to estimate full holder concentration.
+- Interpretation decision: category labels describe how the published 13F comparison table classified positions across filings. They do not establish today's institutional buying/selling, beneficial ownership, hedges, derivatives, conviction or analyst consensus. The administrator card must visibly state the 45-day lag, mixed periods and non-scored boundary.
+- Scoring decision: the v2 crowding formula and completeness v5 remain unchanged. Adding or removing institution context must produce an identical pressure score. It cannot create greed/fear, bullish/bearish direction, an exposure action, a reward or a shadow holding.
+- Runtime result: 50 of 52 covered symbols returned an institutional record; 48 passed reconciliation, SPCX and CBRS were isolated for share mismatches, and SKHY/SIVEF remained explicit source gaps. SNDK displayed 94.07% institutional ownership, 1,802 holders and three periods in its top-50 sample; MU displayed 87.42%, 3,935 holders and three periods. Both remained `research_only` and the UI displayed four separate “背景证据 · 不计分” cards.
+- Analyst boundary: Nasdaq's current SNDK analyst page reports unavailable data and attributes targets to TipRanks. HONE therefore keeps analyst rating/target concentration as a named gap instead of inventing a consensus or combining it with 13F ownership.
+- Advancement boundary: this record cannot complete crowding, satisfy a decision-readiness or shadow gate, approve reward computation, connect a broker or permit an order.
+
+## D-2026-08-13-23 Use A Point-in-time Active Review Batch For Human Causal Labels
+
+- Status: Accepted, implemented and runtime-verified locally; no human effect label has been written yet.
+- Selection decision: `hone-active-review-batch-v1-causal-diversity` presents five pending rows by default. It first selects active issuer operating-KPI claims with unique company/driver pairs, then fills distinct drivers from those focus companies, then other distinct company/driver pairs. Only when those pools are exhausted may it repeat a pair. The complete priority/time queue remains available as a separate administrator view.
+- Leakage decision: selection may read only evidence already frozen no later than the decision timestamp, evidence lifecycle/type, company, driver, observation identity and existing review status. It must never read future prices, returns, outcomes, an investment action, model optimism, reviewer effect labels or reward values. A future-dated row and an already-reviewed row are ineligible.
+- Training decision: the batch is an attention allocator, not a label generator. It does not accept, reject, infer or overwrite any causal effect and cannot change confidence, zone, action, valuation, reward, shadow authorization or execution. After an immutable review is written, the next deterministic batch rolls forward rather than resurfacing the same evidence.
+- Runtime result: the local administrator page returned five rows across SNDK and MU and four drivers. The first three are the SNDK Cloud ASP/GB increase, MU NAND price increase and MU NAND bit-shipment increase; the final two are distinct MU SEC comparisons. The page states the no-future/no-reward boundary and preserves the full 188-row queue for audit.
+
+## D-2026-08-13-24 Compile Human Causal Labels Into A Company-isolated Offline Dataset
+
+- Status: Accepted, implemented and runtime-verified locally as dataset governance only; model training remains unauthorized.
+- Feature decision: `hone-causal-training-dataset-v1-company-isolated` contains only the frozen first-principles model/version, driver/mechanism, observation text and value, evidence date, relationship, source tier and source-event group. Investment action, research zone, confidence, reviewer explanation, corrections, future returns, drawdown and reward are structurally absent from an example.
+- Label decision: the only eligible targets are accepted `supports`, `falsifies`, `mixed`, `context_only` and an explicitly rejected causal relationship. An accepted but unclassified link is excluded. The latest immutable verdict for an exact symbol/driver/observation replaces an earlier projection in the compiled view without rewriting either audit record.
+- Split decision: the company symbol is the indivisible split group and a versioned stable hash assigns the whole company to train (70%), validation (15%) or sealed holdout test (15%). Thus daily revisions and repeated events for one company cannot appear across partitions. The administrator receives counts and a dataset fingerprint, not holdout examples or labels.
+- Readiness decision: the displayed 200-example, 20-company, 8-driver, 100/30/30 partition and three-target-class floors are HONE engineering governance proposals, not old-Wang investment thresholds. Passing them can only make the dataset eligible for a later governance review. `training_authorized` stays false and cannot enable model fitting, RL, reward, shadow positions or execution.
+- Runtime result: with no old-Wang causal-effect labels yet, the page truthfully reports zero eligible/train/validation/holdout examples, company isolation passed, holdout labels sealed and training authorization closed. Decision snapshots and forward outcomes are not counted as substitute labels.
+
+## D-2026-08-13-25 Separate Causal Evidence Review From The Company Thesis
+
+- Status: Accepted and implemented locally; no real old-Wang label was submitted during verification.
+- Write-contract decision: `hone-causal-evidence-review-v1` reviews one exact frozen symbol/sample/driver/observation. It has its own immutable revision chain, optimistic `expected_review_id`, administrator identity, timestamp, verdict, effect and explanation. It cannot carry or mutate thesis verdict, research zone, exposure action, valuation, outcome or reward.
+- Projection decision: replay recovers the newest unbranched causal revision into the sample as a projection. A company-level review may remain `pending` while individually reviewed links carry complete independent provenance. Legacy causal labels inside a completed thesis review remain readable by falling back to that review timestamp.
+- Integrity decision: a missing target, future observation, inactive/corrected/conflicted/withdrawn accepted claim, unclassified accepted effect, classified rejected effect, incomplete provenance, stale optimistic revision or branched/disconnected audit is rejected. Audit is written before the recoverable sample projection.
+- Training decision: independently reviewed links may enter the company-isolated offline causal dataset and calibration views. They still cannot authorize training, compute reward, promote a shadow holding or place an order.
+
+## D-2026-08-13-26 Fail Closed When Model Interpretation Is Incomplete
+
+- Status: Accepted and implemented locally for actor-scoped portfolio news and position-management research.
+- Separation decision: a trusted article may remain visible as a source fact when the configured model is unavailable, times out or violates its output contract. That source-only row must retain `unassessed` impact, horizon and thesis effect; model failure is never interpreted as neutral news or absence of risk.
+- Health contract: every new portfolio-news snapshot stores `hone-model-analysis-health-v1-fail-closed` with the resolved provider/profile/model, requested/analyzed/failed counts, normalized non-secret failure reasons and a deterministic `decision_use_allowed` flag. Legacy snapshots deserialize to `unknown_legacy` and fail closed.
+- Action gate: position management checks news readiness independently for each symbol. A fresh, completed source scan with no material news is usable; a symbol with news is usable only when all of its retained rows are model-analyzed. Missing/stale/partial source coverage or any source-only row forces `review / 等待分析 / low` before hold, increase or reduction logic is evaluated.
+- Scope boundary: verified primary-source facts are not discarded merely because an LLM is down. They may enter an evidence ledger under their own provenance contract, but they cannot supply model-derived impact, direction, action, training target, reward or execution authority.
+
+## D-2026-08-13-27 Reuse One Model-health Contract Across Derived Reports
+
+- Status: Accepted and implemented locally for portfolio news, key-event chains, influencer digest and the derived weekly brief.
+- Shared-contract decision: `model_analysis_health.rs` is the sole v1 constructor for health records and legacy fail-closed defaults. Each report keeps resolved model identity, exact requested/analyzed/failed counts and only normalized failure classes such as timeout, upstream failure, invalid contract or exhausted report budget.
+- Runtime-bound decision: portfolio news, influencer digest and the complete key-event report each have a bounded model budget. Key-event topics share one total budget rather than multiplying timeout by topic count. Once exhausted, remaining source facts are published without impact analysis and no further model wait is incurred.
+- Derived-report decision: weekly brief inherits model identity and scopes health to only the prior-week industry rows it actually includes. If no such row exists, the weekly scope is `not_required`; unrelated failures elsewhere in the 30-day key-event chain must not degrade the weekly calendar. An included source-only milestone retains its primary-source fact but receives an explicit analysis placeholder and makes the weekly report partial.
+- Product boundary: the UI and saved-report chat envelopes carry health and per-item analysis state. Source-only influencer posts cannot acquire stance/counterpoint, source-only milestones cannot acquire investment transmission, and none of these states may become a position action, label, reward or order.
+
+## D-2026-08-13-28 Separate Dataset Approval, Experiment Registration, Blind Evaluation And Deployment
+
+- Status: Accepted and implemented locally as training-governance infrastructure; no experiment has run and no model is deployed.
+- Dataset decision: `hone-causal-dataset-governance-review-v1` binds every administrator verdict to the exact company-isolated dataset policy and SHA-256 fingerprint in one immutable, optimistic, unbranched audit chain. Approval requires all readiness gates plus explicit confirmation of company isolation, sealed holdout labels and future-leakage review. Zero labels, a changed fingerprint, a stale review, a branch or a missing confirmation fails closed.
+- Authorization decision: dataset approval permits only registration of an offline experiment. It does not authorize a training process, preference learning, RL, model deployment, shadow holdings or trading. Any later dataset change immediately makes the approval stale.
+- Experiment decision: `hone-causal-training-experiment-v1` accepts only a frozen-prompt baseline or a supervised causal-evidence classifier with bounded epochs, fixed base-model identity, deterministic seed and the approved fingerprint. Every immutable record is `registered_not_run`; only train/validation are inputs. Holdout access, networking, tools, arbitrary code, production writes, execution, deployment and trading are structurally false. RL is not an accepted algorithm.
+- Evaluation decision: `hone-causal-blind-evaluation-v1` requires at least three random seeds, an independent sealed evaluator, a frozen baseline and six predeclared classification/calibration/generalization gates. Any holdout-label exposure, future leakage, sandbox violation, fingerprint mismatch, missing baseline/evaluator or unstable result blocks advancement. Passing only makes the causal classifier eligible for separate human component review; it cannot replace the investment agent.
+- Drift decision: `hone-causal-component-drift-v1` predeclares source/driver distribution, abstention, calibration and human-disagreement monitoring. Insufficient audited coverage blocks use, warning drift freezes promotion, and a schema change, future leakage or disable-level drift turns the component off. Numeric thresholds are HONE v1 engineering gates, not old-Wang investment rules, and require calibration on real audited data.
+
+## D-2026-08-13-29 Separate Verbatim Judgment, Interpretation, Boundary And Falsifier Before Training
+
+- Status: Accepted and implemented locally as human-label governance; no label was created during implementation.
+- Interview decision: the default administrator path is a one-question-at-a-time distillation flow over one frozen company/driver/observation. It first captures the reviewer's verbatim judgment, then a separately written normalized causal interpretation, applicability boundary and observable falsifier. These fields must not be merged into polished model prose.
+- Confirmation decision: every new independent causal review must explicitly state either `old_wang_confirmed` or `source_checked_not_speaker_confirmed`; there is no default confirmation. A maintainer may preserve and source-check material, but that does not become old-Wang confirmation.
+- Training decision: only a complete distilled record explicitly confirmed by old Wang can compile into `hone-causal-training-dataset-v1-company-isolated`. Source-checked-only, unconfirmed and legacy v1 records remain auditable but are ineligible for supervised training targets.
+- Compatibility decision: new immutable writes use `hone-causal-evidence-review-v2-distilled`; replay accepts the prior v1 audit schema without rewriting it. The projection retains all four distillation fields and confirmation scope. An incomplete new record, empty field, stale optimistic identity, future evidence or invalid relationship/effect still fails closed.
+- Scope boundary: confirmation means the label is faithful to old Wang's current expression; it does not prove the market judgment correct, authorize a reward, train a model, deploy a component, start RL, create a shadow holding or place an order.
+
+## D-2026-08-13-30 Forbid Full-thesis Reviews From Carrying Causal Labels
+
+- Status: Accepted and implemented locally as a write-path isolation rule.
+- Separation decision: the company-thesis endpoint may review the thesis, action correction and error attribution only. It must reject every non-empty `causal_link_reviews` payload, including payloads from stale clients. The current client never serializes that legacy field.
+- Distillation decision: an exact company/driver/observation relationship can be marked reviewed only through `hone-causal-evidence-review-v2-distilled`, with its separate immutable chain, one-question workflow, verbatim judgment, interpretation, boundary, falsifier and explicit confirmation scope.
+- Compatibility decision: legacy thesis audits containing causal labels remain replayable historical evidence, but new writes cannot extend that path. This prevents an incomplete label from disappearing from the pending queue or appearing old-Wang-confirmed without the distillation contract.
+- Scope boundary: path isolation does not create a label, authorize training, start RL, change an investment action, create a shadow holding or permit an order.
+
+## D-2026-08-13-31 Bind Confirmed Hari Logic To The Company Decision Gate
+
+- Status: Accepted and implemented locally as a deterministic research-policy gate; no portfolio or trading authority is granted.
+- Provenance decision: every new company decision freezes `hari-invest@0.1.0`, policy `hone-hari-confirmed-logic-gate-v2-applicability`, and exactly the six confirmed logic IDs `LOG-V0001` through `LOG-V0006`. Candidate, unconfirmed and maintainer-interpreted logic is structurally excluded and exposed as `candidate_logic_used=false`.
+- Admission decision: the existing score-and-valuation policy first computes a provisional zone/action. A provisional increase candidate is admitted only when LOG-V0001 has a first-principles model plus current non-background observations, LOG-V0002 has a traceable moat/thesis baseline plus current supply and value-capture evidence, and LOG-V0006 has current demand and supply evidence. Otherwise the final output fails closed to `research_only / insufficient_data` and lists the exact blocking rule.
+- Portfolio boundary: LOG-V0003, LOG-V0004 and LOG-V0005 are displayed as delegated portfolio gates because a company snapshot lacks total exposure, barbell structure, sector budget, correlations and risk budget. The company layer never converts them into an order or claims portfolio authorization.
+- Interpretation decision: these deterministic evidence mappings are HONE engineering implementations of confirmed qualitative logic, not newly confirmed old-Wang numeric thresholds. Risk/reduce candidates remain visible for human review; this gate only prevents an under-evidenced increase candidate from masquerading as ready.
+- Integrity decision: point-in-time validation recomputes the methodology projection from the frozen company-quality, first-principles and market-regime state and rejects any action-relevant change to logic IDs, status, evidence, gaps, authorization or final action. Historical snapshots with no methodology field remain replayable. V1 remains replayable under its original vacuous-truth authorization field outside increase candidates; v2 instead marks that field false and the UI says the gate is not applicable.
+
+## D-2026-08-13-32 Prevent Position Management From Bypassing The Company Decision Brain
+
+- Status: Accepted and implemented locally as an increase-admission boundary; no portfolio action or trading authority is granted.
+- Single-brain decision: position management must load the same validated point-in-time company decision used by the decision replay. A green rating, current quote, financial coverage, attractive same-day valuation and supportive macro regime may form only a preliminary increase condition; they cannot independently create `increase_candidate`.
+- Admission decision: an increase candidate additionally requires the exact `hone-hari-confirmed-logic-gate-v2-applicability` decision revision for the same symbol and current rating score/light, `candidate_logic_used=false`, a provisional and final increase candidate, an opportunity zone and `increase_candidate_authorized=true`. Any missing, stale-version, mismatched or blocked company decision changes the position result to low-confidence review with named reasons.
+- Risk boundary: this gate prevents unsupported increases; it does not suppress defensive review or reduction triggered by verified negative thesis news, a red company rating, reviewed valuation above the bull case or HONE concentration alerts. Those remain bounded research labels, not orders.
+- Portfolio boundary: the item stores the exact decision revision/time, skill/policy version and all six confirmed logic IDs. `portfolio_action_authorized` must remain false. LOG-V0003/4/5 still require whole-portfolio market, barbell and sector-budget review; passing the company gate only admits the candidate to that later review.
+- Freshness decision: all older position-management snapshots are invalidated by model-version mismatch even if holdings and upstream timestamps are unchanged. The user surface and saved-report envelope expose the gate state and authorization boundary so chat cannot reconstruct an increase from the rating alone.
+
+## D-2026-08-13-33 Make The Confirmed Hari Portfolio Layer An Explicit Fail-closed Gate
+
+- Status: Accepted and implemented locally as portfolio research readiness; no target allocation, shadow holding or trade is authorized.
+- Provenance decision: every new actor position snapshot freezes `hone-hari-portfolio-readiness-v1`, `hari-invest@0.1.0`, exactly `LOG-V0003`, `LOG-V0004` and `LOG-V0005`, and `candidate_logic_used=false`. HONE concentration alert bands remain separately labelled product controls and cannot satisfy a Hari portfolio rule.
+- Market-state decision: LOG-V0003 may retain the current dated macro signal/phase plus observed gross and unallocated portfolio exposure. It cannot convert those observations into bull/bear status, a target gross exposure or a switching schedule because old Wang has not confirmed the exact thresholds or cadence.
+- Barbell decision: LOG-V0004 remains incomplete until every relevant holding has point-in-time evidence for an approved anchor/high-growth-Beta role, and the portfolio has confirmed allocation, correlation and switching rules. Company quality or price volatility alone cannot assign a role.
+- Sector-budget decision: LOG-V0005 may retain current theme exposures, but remains incomplete without a point-in-time sector-opportunity conclusion, within-sector relative quality, risk-correlation review and confirmed budget rules. The existing 15%/25%/45% HONE alerts are not promoted into old-Wang thresholds.
+- Action decision: even when the company decision gate passes, an otherwise preliminary increase becomes low-confidence `review / 组合门禁复核` until the portfolio gate explicitly authorizes candidate admission. The v1 portfolio gate deliberately cannot authorize it while confirmed parameters and classifications are missing. Defensive review/reduce labels remain available, but no result authorizes a portfolio action.
+- Safety decision: the snapshot serializes `increase_candidate_authorized=false`, `portfolio_action_authorized=false`, `shadow_portfolio_authorized=false` and `trade_authorized=false`. The user dashboard and saved-report envelope carry this exact state so downstream chat cannot reinterpret a company candidate as actionable allocation.
+- Freshness decision: the position-management model advances to `hone-position-management-v3-hari-portfolio-gate`; older snapshots must rebuild even if portfolio and upstream timestamps are unchanged.
+
+## D-2026-08-13-34 Bridge SEC Financial Evidence Into Daily Ratings Without Premature Scoring
+
+- Status: Accepted and implemented locally as a display/review bridge; no SEC claim is promoted to a rating factor, action or training target by this change.
+- Incident finding: the rating worker read financials only from the `hone-fundamentals-v1` file emitted by valuation lab. With no FMP key, valuation lab truthfully rewrote that file with zero rows even though the decision engine already held point-in-time SEC claims for SNDK, MU and MSFT. This produced a misleading `0/52` presentation gap between two HONE products.
+- Source decision: `hone-company-rating-v6-sec-evidence-bridge` reads the exact SEC claim ledger and deterministic period/ratio projection already used by the decision engine. It exposes as-of date, original claim IDs, official filing URLs, visible calculations and quality warnings; it does not make a second parser or infer values from prose.
+- Scoring boundary: SEC claims remain `training_only_pending_human_review`. They count as `financial_observations`, never as rating-eligible `financials`, until a separately governed human quality-review path exists. Dynamic growth, pricing-power and financial-quality factors, peer percentiles, score caps and valuation eligibility ignore review-only observations.
+- Quality decision: anomalous SNDK/MU changes remain visible with their existing extreme-change warnings. They are not deleted, averaged, repaired by an LLM or allowed to affect a score. An observation with no derived metric does not enter coverage at all.
+- Product decision: the company detail shows revenue, margins, receivables, payables, inventory, fixed assets, operating cash flow, capital expenditure and free-cash-flow changes when present, plus an explicit review-only label, warnings, calculations and official SEC links. Top-level coverage separates observed, score-admitted and review-required companies.
+- Freshness decision: v5 snapshots normalize as legacy and must rebuild as v6 before the SEC evidence fields can be trusted. FMP computed rows retain precedence when their existing freshness/source/review gates pass; SEC review-only rows fill only a missing observation and are never mixed into an FMP factor.
+- Runtime result: the Beijing 2026-08-13 22:19 refresh returned 52 companies, 51 quotes, three observed SEC financial projections, zero score-admitted financial rows, three review-required rows and zero reviewed valuations. SNDK, MU and MSFT expose dated claims, calculations and official filing URLs while every financial-derived rating factor remains null. SNDK remains `insufficient_data / research_only`; the actor portfolio gate keeps portfolio action, shadow and trade authorization false.
+- Verification: company-rating tests 32 passed; investment-decision tests 83 passed; full Web API 414 passed / 2 ignored; frontend 489 passed, typecheck and production build passed; Rust formatting and diff checks passed.
+
+## D-2026-08-13-35 Require An Exact Immutable Human Review Before SEC Financials Can Score
+
+- Status: Accepted, implemented and runtime-verified locally; no real SEC financial observation was approved during implementation.
+- Review decision: `hone-sec-financial-evidence-review-v1` is a separate administrator-only quality-review path over one exact symbol and evidence fingerprint. Every immutable record freezes the SEC projection, original claim IDs, periods, values, official URLs, calculations, warnings, reviewer, timestamp, verdict, rationale and previous review ID. Optimistic revision IDs plus an unbranched per-symbol audit chain reject stale or competing writes.
+- Approval decision: `approved_for_rating` requires six explicit confirmations: official filings opened; identity, periods and units checked; calculations independently recomputed; corporate actions/restatements checked; quality warnings resolved; and no unresolved material issue. A missing confirmation or short rationale cannot approve. `changes_requested` and `rejected` remain valid audit outcomes but never admit a score.
+- Exactness decision: the current SEC evidence fingerprint is recomputed on every rating run. Any changed value, period, formula, source, claim identity, missing-check state or warning makes an older approval `sec_review_stale_evidence_changed`. An invalid or branched audit fails closed as `sec_review_audit_invalid`. Neither state may reuse the previous factor authorization.
+- Authority decision: an exact approved tip may authorize only growth-quality, pricing-power and financial-quality inputs in the daily company rating. Every review record structurally keeps valuation, training, reward, portfolio action, shadow portfolio and trade authorization false, and it explicitly does not confirm old-Wang logic.
+- Product decision: the administrator decision-brain page shows pending/approved/stale counts, SEC metrics, warnings, calculation traces, source links, fingerprint, six confirmations and three bounded verdicts. Ordinary users cannot read or mutate this workflow; all mutations require the existing public-admin confirmation marker.
+- Runtime result: after rebuilding and restarting the local HONE service, company ratings report `hone-company-rating-v7-reviewed-sec-financials`, 52 companies, 51 quotes, three SEC observations, zero score-admitted financial rows and three review-required rows. SNDK retains its 2026-05-02 SEC evidence and official sources while growth quality, pricing power, financial quality and valuation remain null. No review audit file was created, and the current actor portfolio gate remains incomplete with shadow/trade authorization closed.
+- Verification: full Web API 422 passed / 2 credentialed live tests ignored; frontend 493 passed; frontend typecheck and production build passed; Rust formatting, diff checks and `hone-console-page` build passed. The local frontend and authenticated backend returned HTTP 200; a non-admin request to the review API returned 403 as required.
+
+## D-2026-08-13-36 Expand SEC Coverage Without Re-enabling Notification Channels
+
+- Status: Accepted, implemented and runtime-verified locally as evidence maintenance; no financial observation was approved or scored.
+- Coverage decision: the scheduled SEC Company Facts universe now contains all 52 daily-rating symbols plus NVDA, ANET, ORCL, HPE, SNOW and PLTR for high-priority chat research. Ticker resolution, official submissions, Company Facts, exact accession/form joins and deterministic event IDs remain mandatory. SIVEF is an explicit unresolved SEC ticker-map gap rather than an inferred issuer match.
+- Runtime decision: SEC evidence maintenance is independent from the top-level event notification switch. With `event_engine.enabled=false` and `sec_company_facts.enabled=true`, HONE may open the research event store and run the read-only SEC maintenance task, then exits before constructing notification routing, pollers or Feishu/Discord sinks. With both switches false it does not open the event store.
+- Foreign-issuer decision: audited annual Form 20-F is admitted alongside 10-Q and 10-K when the filing accession, form and US-GAAP XBRL fact match exactly. Form 6-K remains excluded because it can be an unrelated current report and would crowd out audited statements without a statement-level classifier. IFRS-only filings and native-currency normalization remain named gaps; HONE does not convert, relabel or invent them.
+- Runtime result: the 52-symbol historical run resolved 51 symbols, generated 966 events and inserted 756 new rows; its rerun was idempotent. The scheduled 58-symbol run resolved 57 symbols and found 1,136 duplicate events with zero new writes. Form 20-F added 26 ARM/NBIS events; after restart the rating snapshot showed 48/52 companies with review-only financial observations. The remaining explicit gaps are TSM, SKHY, SIVEF and NOK.
+- Authority decision: all 48 observations remain `financials_review_required`; score-admitted financials, reviewed valuations and financial-derived rating factors remain zero/null. This maintenance path cannot send an alert, approve evidence, alter an action, enter training, compute a reward, create a shadow holding or trade.
+- Verification: event engine 607 passed / 13 ignored; Web API 420 passed / 2 credentialed-live ignored; `hone-console-page` built successfully; the authenticated runtime returned 52 companies, 51 quotes, 48 financial observations, zero score-admitted financials and zero reviewed valuations.
+
+## D-2026-08-13-37 Admit IFRS 20-F Facts In One Original Reporting Currency
+
+- Status: Accepted, implemented and locally backfilled as review-only evidence; no financial observation was approved or scored.
+- Accounting decision: an audited Form 20-F may select either `us-gaap`/USD or `ifrs-full` in exactly one allowlisted filed currency. Selection is deterministic by supported metric coverage with a fixed currency preference for ties. Every claim, event payload and locator preserves the selected taxonomy and currency; currencies and taxonomies may not mix within one filing.
+- Calculation decision: IFRS values remain in original filed USD, EUR, TWD or GBP millions. HONE does not fetch an FX rate, translate the values or pretend they are comparable monetary levels. Same-filing gross and operating margin calculations require the numerator and denominator to have the exact same currency unit, filing URL, publication timestamp and period.
+- Gap decision: a ticker-map or transport failure remains `failed_symbols`; a resolved and fetched issuer with no admissible Company Facts is separately reported as `no_supported_financial_facts_symbols`. This distinguishes SIVEF's unresolved identity from SKHY's current lack of supported SEC financial facts. Form 6-K remains excluded until a statement-level classifier can prove that a specific current report contains comparable financial statements.
+- Runtime result: a real TSM/NOK/SKHY/SIVEF run resolved three issuers and generated 34 events: 16 TSM IFRS/USD events and 18 NOK IFRS/EUR events. SIVEF remained unresolved and SKHY was explicitly diagnosed as fetched with no supported financial facts. The immediate rerun inserted zero rows and reported all 34 as duplicates.
+- Authority decision: the new TSM/NOK evidence remains `training_only_pending_human_review`. It may improve visible financial observation coverage but cannot enter a rating factor, valuation, action, label, reward, portfolio decision, shadow portfolio or trade until the existing exact SEC evidence review gate approves the unchanged fingerprint.
+- Runtime verification: after rebuilding and restarting local HONE, the authenticated rating snapshot returned 52 companies, 51 quotes, 50 review-only financial observations, zero score-admitted financials and zero reviewed valuations. TSM and NOK now expose official filing links, dated IFRS calculations and `sec_structured_pending_human_review`; SKHY and SIVEF are the only remaining financial-observation gaps. Event-engine tests passed 609/609 with 13 credentialed/live cases ignored; Web API passed 421/421 with two credentialed-live cases ignored; `hone-console-page` built successfully.
+
+## D-2026-08-13-38 Bind Financial Review And Rating Display To Per-claim Accounting Trace
+
+- Status: Accepted and implemented locally as an auditability upgrade; no financial observation was approved or scored.
+- Trace decision: current financial projections use `hone-financial-verification-v4-source-claim-trace`. Every selected numeric SEC claim carries its exact claim ID, canonical metric, taxonomy/tag basis, period, original numeric value, original filed currency unit, official filing URL and SEC publication timestamp. Current v4 point-in-time validation requires the trace claim-ID and URL sets to equal the projection source sets, rejects duplicate, future, non-HTTPS, non-finite or non-monetary rows, and retains v2/v3 only for historical replay.
+- Review decision: the canonical evidence fingerprint now binds each per-claim accounting basis and original unit. A taxonomy or currency change therefore invalidates an earlier approval even if the displayed percentage is unchanged. Existing review authority remains narrow: rating factors only; valuation, training, reward, portfolio, shadow and trade remain false.
+- Product decision: both the administrator quality-review surface and the ordinary company-rating detail expose the unique accounting standard/original units and every claim's period, value, basis, publication time and corresponding SEC original. A reviewer can no longer confirm units from a UI that hid them.
+- Rating decision: current rating snapshots advance to `hone-company-rating-v8-financial-claim-trace`. Review-only observations remain visible but unscored, and stale snapshots rebuild rather than silently omit the new trace.
+- Verification: Web API passed 422 tests with two credentialed-live cases ignored. The frontend test suite, TypeScript check and public production build passed. After rebuilding and restarting local HONE, the v8 rating API returned 52 companies, 51 quotes, 50 review-only financial observations, zero score-admitted financials and zero valuations. TSM returned 15 IFRS/USD source claims and NOK returned 15 IFRS/EUR source claims; browser verification showed the accounting/unit summary and every period/value/tag/publication-time/SEC-link row. IFRS/EUR and IFRS/USD same-filing calculations remain currency-local with no FX conversion; trace-unit tampering and fingerprint changes are covered by regression tests.
+
+## D-2026-08-14-39 Make Financial Evidence Review A Small Readiness-ranked Batch
+
+- Status: Accepted, implemented and runtime-verified locally as an administrator attention queue; no evidence review was written.
+- Queue decision: the administrator financial-quality surface defaults to `hone-financial-review-readiness-batch-v1`, returning at most five actionable companies. The complete queue remains available explicitly. Single-symbol reads still return that exact company rather than applying the batch limit.
+- Priority decision: ranking means review readiness only, never investment attractiveness. Invalid audit chains come first, followed by evidence changes that stale an earlier review, explicit changes requested, and first-time pending rows. Ties prefer fewer missing checks, fewer unresolved automatic warnings, more retained per-claim traces and finally stable symbol order. Prices, ratings, valuation, outcomes, returns, portfolio weights and investment actions are forbidden ranking inputs.
+- Workflow decision: after any explicit administrator verdict, the active batch is reloaded from the server so a resolved company leaves the actionable batch and the next candidate enters. Only the first active item opens by default; the remaining candidates and the full queue stay readable without forcing dozens of expanded forms into one page.
+- Authority decision: selection cannot approve evidence, create an old-Wang label, authorize valuation/training/reward/portfolio/shadow/trading, or change a rating. It only chooses which existing exact evidence fingerprint a human may inspect next.
+- Runtime result: the authenticated local endpoint reported 50 observed, 50 actionable and zero approved rows; the default batch returned five and `full_queue` returned all 50. Every returned row exposed its rank and reasons. The immutable financial-review audit directory still contained zero records.
+- Verification: Web API passed 424 tests with two credentialed-live cases ignored; the focused frontend/API tests passed 38/38, frontend typecheck and full public production build passed, and `hone-console-page` rebuilt and restarted on ports 8077/8088.
+
+## D-2026-08-14-40 Isolate Global Claim Lifecycle And Derived Evidence By Company
+
+- Status: Accepted, implemented and runtime-verified locally as an evidence-integrity repair; no review verdict, training label or investment action was written.
+- Incident finding: company-level decision construction already scoped claims by symbol, but the global evaluation corpus grouped source-claim lifecycles, operating-KPI lifecycles, period comparisons, same-filing ratios and ratio trends without the issuer symbol. Identically named SEC metrics from different companies could therefore conflict, supersede or compare with each other inside evaluation and future training governance.
+- Isolation decision: every global lifecycle and derived-evidence key now includes the normalized symbol. Comparison and ratio-trend builders also reject a cross-symbol pair even if a caller supplies one. A claim may conflict, supersede, compare or form a ratio trend only with evidence from the same company and compatible metric, accounting basis, unit and period contract.
+- Runtime result: the same 5,009 source claims changed from 2,035 active plus 2,974 conflicted to 5,009 active and zero conflicted. Correct company-local comparisons increased from 316 to 5,442, same-filing ratios from 364 to 930, and ratio trends from 69 to 959. The corpus still has 56 symbols and 1,176 source events; no human label was created.
+- Safety result: all 3,557 decision reviews remain pending, the causal training dataset remains at zero eligible examples and `training_authorized=false`, the long-horizon evidence gate remains unpassed, and all 52 shadow candidates remain blocked. The active causal-review batch still returns five pending rows led by SNDK/MU and does not write an audit.
+- Rating boundary: the separately cached company-rating snapshot remains 52 companies, 51 quotes, 50 review-only financial observations, zero score-admitted financial rows and zero valuations. The repair does not change a company score, valuation, action, portfolio state, reward, shadow holding or trade authority.
+- Verification: a cross-company regression fixture proves that same-period claims never conflict and different-company periods never form comparisons or ratio trends. All 85 investment-decision tests passed; the full Web API passed 425 tests with two credentialed-live cases ignored; Rust formatting, diff checks and `hone-console-page` build passed. The rebuilt service is running on ports 8077/8088.
+
+## D-2026-08-14-41 Bind Every Company Chat To The Versioned Decision State
+
+- Status: Accepted, implemented and runtime-verified locally as a single-decision-state read path; it does not add an investment rule or execution authority.
+- Incident finding: company ratings wrote the point-in-time investment decision and position management already consumed it, but ordinary chat only preloaded Hari Invest, historical company cards and current tool evidence. A chat model could therefore reconstruct a second action from the rating score or historical prose instead of starting from the exact decision revision and its completeness/Hari gates.
+- Contract decision: every current validated company decision now emits a bounded `hone-investment-decision-chat-context-v1` sidecar under the same storage root. It carries the source revision/time, 36-hour expiry, zone/action/confidence, business model, value chain, moat hypothesis, first-principles state, financial observations and gaps, reviewed valuation if any, crowding/macro state, decision completeness, Hari rule statuses, falsifiers and next checks.
+- Read-path decision: company-aware function-calling and native-Codex turns load the exact sidecar for every matched research-universe symbol. A fresh projection is the only frozen action baseline. Current one-source evidence may strengthen, weaken or invalidate it, but the answer must name the change; a missing, invalid or expired projection forbids carrying an old action or rebuilding one from the rating, company card or model memory.
+- Authority decision: the shared projection rejects candidate logic and requires portfolio action, shadow portfolio and trading authorization to remain false. It may retain a company-layer increase-candidate authorization only when the frozen decision itself is exactly `opportunity / increase_candidate`; no chat path may turn that into allocation or an order.
+- Runtime result: restart regenerated all 52 sidecars. SNDK revision `SNDK-1786678112006-hone-company-rating-v8-financial-claim-trace` was frozen at 2026-08-14T03:28:32Z as `insufficient_data / research_only`, completeness 3/8, valuation absent, LOG-V0006 blocked and all portfolio/shadow/trade permissions false. A real public-chat run loaded both company-thesis-ratings and Hari Invest, repeated the same 74.4/yellow frozen baseline, and stated that new evidence did not change the action.
+- Verification: the shared contract rejects malformed time windows, valuation shapes, inconsistent increase authorization and hidden execution authority. Projection, loader, expiry and turn-salience tests pass; the Agent suite passed 153 tests, the full channel suite passed 800 tests with one local OCR case ignored, and Web API passed 426 tests with two credentialed-live tests ignored. The console binary rebuilt cleanly and the source diff check passed.
+
+## D-2026-08-14-42 Reserve The Nine-Section Company Gate For Explicit Deep Requests
+
+- Status: Accepted, implemented and runtime-verified locally.
+- Incident finding: the layered company/Hari prompt contains broad fundamental and valuation language next to every company question. Treating that whole runtime envelope as user intent made identity, clarification and narrow questions eligible for the nine-section deep-company correction path.
+- Decision: the structural deep-company gate reads only the innermost explicit `【用户问题】`. It activates only when the user combines a company-quality question (fundamentals, business model, moat or investability) with a valuation question. A routing marker, historical company card or shared decision state cannot activate it by itself.
+- Safety boundary: deep requests still require distinct business model, moat, scarcity, differentiation, financial transmission, cash flow/capex/debt, valuation, Bull/Base/Bear, falsifiers and action triggers. Unknown, persistent or write-capable tool batches remain zero-execution; when the remaining iteration budget cannot support both corrected evidence collection and synthesis, the Agent moves to a bounded tools-disabled final instead of exhausting the loop.
+- Runtime result: after rebuilding and restarting, the public question `SNDK 是哪家公司？请简短说明。` loaded the company-thesis and Hari skills, verified the current security identity and returned a concise company explanation rather than a forced nine-section report. The full Agent, channel and Web API suites remained green.
+
+## D-2026-08-14-43 Require Immutable Shadow-protocol Governance Before Any Ledger
+
+- Status: Accepted and implemented locally as a governance-only boundary; no shadow ledger, holding, transaction, order or broker path was created.
+- Protocol decision: `hone-shadow-policy-v1` now publishes eight explicit review requirements covering point-in-time immutable revisions, long-only common stock, company/theme caps, gross/cash/position caps, scheduled rebalance and falsification exit, next-session execution and slippage, SPY/counterfactual comparison, and the no-ledger/no-order/no-broker boundary. A SHA-256 fingerprint freezes the policy version, benchmark, constraints, requirements and scope.
+- Governance decision: `/api/public/admin/investment-decisions/shadow-protocol-governance` stores `hone-shadow-protocol-governance-review-v1` records in an immutable optimistic single chain. A future-implementation approval requires the long-horizon evidence gate, the exact current reward-governance approval, a written rationale, every requirement ID and explicit implementation-boundary confirmation. Reward-policy drift immediately makes an earlier approval inapplicable.
+- Authority decision: an approval can only make a future, separately reviewed implementation registration eligible. The API permanently reports `shadow_ledger_enabled=false`, `shadow_portfolio_authorized=false`, `broker_connected=false` and `trading_authorized=false`; changes requested and rejection remain recordable before the evidence gate matures.
+- Product decision: the administrator decision-brain panel exposes the frozen requirements, prior rationale and three governance verdicts. The approval control stays disabled until both upstream gates pass and the human confirms the no-execution boundary.
+- Verification: two focused Rust governance tests passed; the full Web API suite passed 428 tests with two credentialed-live cases ignored; the full frontend suite passed 495 tests; TypeScript, public production build, changed-file formatting and diff checks passed. After rebuilding and restarting, the authenticated administrator endpoint returned eight exact requirements, `insufficient_evidence`, no reward/shadow review and every ledger/portfolio/broker/trading authority false. No governance record was written.
+
+## D-2026-08-14-44 Register A Shadow Implementation Specification Without Starting It
+
+- Status: Accepted and implemented locally as an immutable registry boundary; no implementation, ledger, holding, order or broker path was started.
+- Decision: only the allowlisted `deterministic_replay_specification` may be registered, and only after the exact current long-horizon evidence, reward-governance and shadow-protocol gates pass. The server binds both review IDs, the protocol fingerprint and immutable code revision into a derived specification SHA-256.
+- Safety: every record must remain `registered_not_started` with network, tools, production writes, ledger creation, running, order generation, broker access, shadow authority and trading authority false. Any mutation or duplicate specification makes the registry fail closed.
+- Verification: runtime returned registration disabled, zero records and all runtime authorities false. Web API passed 431 tests plus two ignored credentialed-live cases; frontend passed 497 tests; typecheck, public build, console build, formatting and diff checks passed.
+
+## D-2026-08-14-45 Treat Historical Transcripts As Hash-bound Benchmark Candidates, Not Training Decisions
+
+- Problem: the company corpus named historical transcript files and preserved distilled company baselines, but HONE could not return to the complete source bytes. Treating those summaries as past decisions would invent action semantics, lose source-time provenance and allow hindsight-contaminated evidence to inflate the long-horizon gate.
+- Source decision: authorized transcript files are stored in the administrator-controlled global research library with the original source date, exact file SHA-256 and mapped symbols. The historical-anchor service verifies every claimed excerpt against the complete stored UTF-8 text; a preview, company card, filename or model summary is insufficient.
+- Knowledge decision: every extracted statement starts as an administrator/AI candidate, never as Old Wang confirmation. Confirmation or revision is a separate immutable review bound to the candidate fingerprint and requires explicit confirmation of source time, speaker identity and exclusion of later information. Rejections remain auditable.
+- Integrity decision: candidate identity is deterministically derived from its full fingerprint. Candidate creation and each candidate's review chain use separate short-lived filesystem locks with stale-lock recovery, preventing duplicate creation and competing review tips. Registry reads fail closed unless the original global source still has the same SHA-256/date/ticker/excerpt and the latest review still binds the exact candidate ID and fingerprint.
+- Governance decision: even confirmed items are `hone-historical-anchor-benchmark-only-v1`. They cannot enter the existing decision-training sample set, reward evidence gate, shadow evidence, portfolio actions or trading. A later proposal must reconstruct the point-in-time decision state and freeze an outcome-labeling protocol before these anchors can affect evaluation.
+- Runtime result: 47 complete transcripts covering 52 mapped symbols and dates from 2025-07-17 to 2026-08-06 are present in the local global library. The registry contains zero candidates and zero confirmations; an intentionally fabricated excerpt was rejected with no audit write.
+
+## D-2026-08-14-46 Separate Point-in-time State Reconstruction From Future Outcome Labels
+
+- Status: Accepted and implemented locally as a benchmark-governance boundary; no outcome label, training sample, reward, holding or order was created.
+- Time decision: a confirmed historical anchor must carry the exact time at which the judgment was actually available. Its Shanghai date must equal the original source date and it cannot be later than the review. A file date alone is insufficient.
+- Reconstruction decision: an anchor is not a historical model state. A separate immutable candidate must cover industry thesis, company fundamentals, financial verification, valuation, crowding, market regime and portfolio context. Each component contains exact hash-bound text evidence available no later than the decision time or an explicit missing reason; later documents and inferred gap filling are rejected.
+- Review decision: benchmark eligibility requires a second immutable optimistic review confirming the anchor binding, complete source bytes, availability timestamps, absence of future information, preservation of missingness and faithfulness of all component interpretations. Any current-anchor drift makes the reconstruction stale.
+- Outcome decision: the future protocol is frozen before observing results—20/60/250 common asset/SPY market sessions, FMP adjusted close, asset/benchmark/excess return and maximum drawdown. It remains disabled and structurally separate from the point-in-time state. Benchmark-state approval cannot enable outcome labeling, training, reward, shadow or trading.
+- Verification: the Web API passed 436 tests with two credentialed-live cases ignored; the frontend passed 499 tests plus typecheck and production build, and the console binary built successfully. Runtime currently has zero confirmed anchors, reconstructions or benchmark states, so no result labels were produced.
+
+## D-2026-08-14-47 Govern the Historical Outcome Protocol Before Implementing Labels
+
+- Status: Accepted and implemented locally as protocol governance only; no market data was fetched and no outcome label was generated.
+- Protocol decision: the fixed 20/60/250 common-session asset/SPY adjusted-close protocol has its own deterministic SHA-256 fingerprint. Any change to its version, windows, benchmark, source basis, start/missing-session rule, metrics or future-information rule creates a different protocol.
+- Review decision: `hone-historical-outcome-governance-review-v1` is an immutable optimistic single chain. Approval requires at least one separately approved seven-layer benchmark state plus explicit confirmation that the protocol was frozen before outcomes, asset and SPY use adjusted closes from one source, sessions are common, SPY comparison is retained, future research is isolated and missing prices fail closed.
+- Authority decision: approval only permits a future labeler implementation registration to be reviewed. It cannot read market data, generate or store outcomes, rewrite the point-in-time state, train a model, create reward or shadow evidence, or authorize trading.
+- Product decision: the administrator decision-brain page shows the protocol fingerprint, windows, SPY binding, upstream count and review chain. With zero benchmark states, approval is disabled and the service remains in `waiting_for_benchmark_state`.
+- Verification: the Web API passed 439 tests with two credentialed-live cases ignored; the frontend passed 500 tests; TypeScript, the public production build, the console build and Rust formatting passed. No governance review or outcome label was written.
+
+## D-2026-08-14-48 Discover Historical Action Language Without Creating Decisions
+
+- Status: Accepted and implemented locally as a read-only administrator workflow; it created no candidate, confirmation, label, training input or execution authority.
+- Discovery decision: `hone-historical-anchor-discovery-v1` scans only complete, globally authorized and hash-verified transcript text for explicit action cues. Every result retains source identity, SHA-256, date, ticker scope, exact line locator, bounded verbatim excerpt and a deterministic discovery fingerprint. Per-source and global caps bound the review queue without modifying source bytes.
+- Interpretation decision: a search hit is only `unconfirmed_search_hit`. Conflicting actions, negated language, third-party attribution and audience-question contexts never receive an automatic action prefill. Even a single conservative first-person action hint still requires manual speaker/time confirmation and a separately written candidate thesis; the model does not generate that thesis.
+- Write-boundary decision: discovery is GET-only and cannot call the immutable candidate or review writers. The UI can prefill source fields but deliberately clears the candidate thesis, leaves save disabled until a human writes it, and labels the operation “不保存”. Automatic candidate creation, confirmation, outcome labeling, training, reward, shadow and trading remain false.
+- Runtime result: 47 transcripts produced 78 search hits across 34 sources; only one passed the conservative action-prefill gate. After a real administrator prefill interaction, the registry still held zero candidates and zero confirmed anchors, and no candidate file existed.
+- Verification: the Web API passed 444 tests with two credentialed-live cases ignored; the frontend passed 500 tests; TypeScript, the public production build, the console build, Rust formatting and the source diff check passed.
+
+## D-2026-08-14-49 Prioritize A Small Historical Review Batch Without Confirming Identity
+
+- Status: Accepted, implemented and runtime-verified locally as a read-only attention queue; no candidate, confirmation, outcome, training row, reward or execution authority was created.
+- Selection decision: retain the complete 78-hit discovery queue, but default administrator review to at most five deterministic suggestions. A row must have the transcript's unique dominant speaker label, explicit first-person portfolio/decision context, no audience-question, third-party-attribution, conflicting-action or explicit other-company risk, and unique source/company coverage within the batch.
+- Identity decision: the dominant label is a content-neutral line-count statistic, not Old Wang identity. Every row remains `unconfirmed_search_hit`, displays “identity unconfirmed”, and requires separate source-time, speaker, action and thesis review before a human may save a candidate.
+- Leakage decision: batch ranking cannot read future price, outcome, return, action success, human effect labels or reward. The batch may change attention order only; it cannot create a candidate, populate a thesis, approve a benchmark, enter training, compute reward, authorize shadow use or enable trading.
+- Runtime result: 47 transcripts and all 78 hits remained available; conservative filtering produced three diverse priority rows rather than filling the five-row cap with semantic noise. Candidate and confirmed-anchor counts remained zero and every authority flag remained false.
+- Verification: ten focused historical-anchor tests passed; the full Web API suite passed 449 tests with two credentialed-live cases ignored; the frontend passed 500 tests, TypeScript and production build passed, and the console binary rebuilt successfully.
+
+## D-2026-08-14-50 Screen Historical Transcript Hits Without Creating Or Confirming Decisions
+
+- Status: Accepted, implemented and runtime-verified locally as administrator triage only; its one-shot correction policy is superseded by D-2026-08-14-51 while v1 records remain readable. No screening answer, candidate, investment logic, outcome, training row, reward or execution authority was written during verification.
+- Record decision: each submitted answer creates one immutable `hone-historical-anchor-discovery-screening-v1` record. It binds the exact discovery and review-batch policy versions, suggestion ID, source ID and SHA-256, source locator and verbatim-excerpt SHA-256. A suggestion can be screened only once; duplicate or changed-source submissions fail closed rather than overwrite history.
+- Semantic decision: the only question is whether the verbatim hit is worth continuing into candidate construction. `continue_candidate_review`, `not_decision_context` and `needs_more_context` are routing verdicts, not speaker, action, thesis or Old Wang confirmations. Every candidate, speaker-identity, investment-logic, benchmark, training, reward, shadow and trading authority field is structurally false.
+- Queue decision: the active review batch contains pending rows only and rolls forward after a screening. Continue verdicts form a separate shortlist, but the existing candidate form remains a second manual step with an empty human-written thesis and a later independent confirmation chain. The full discovery queue remains available and nothing is deleted.
+- Runtime result: the rebuilt service returned 47 sources, 34 matched sources, 78 suggestions, three pending active rows, zero screened rows and zero shortlisted rows. No POST was sent; screening, candidate and review directories were absent, candidate and confirmed-anchor counts were zero, and every downstream authority was false.
+- Verification: 12 focused historical-anchor tests passed; the full Web API suite passed 449 tests with two credentialed-live cases ignored; the frontend passed 501 tests; TypeScript, public production build, console build and browser-based local UI inspection passed.
+
+## D-2026-08-14-51 Preserve Historical Screening Context And Corrections As An Immutable Chain
+
+- Status: Accepted, implemented and runtime-verified locally without submitting a screening or correction.
+- Context decision: every discovery suggestion exposes a deterministic source window covering up to two surrounding lines on each side, bounded to 4,000 characters and carrying its own SHA-256. The complete source SHA-256 remains authoritative. Context is evidence for human interpretation only and cannot establish identity, action, thesis or correctness.
+- Correction decision: new writes use `hone-historical-anchor-discovery-screening-v2-correction-chain` under a per-suggestion directory. The first answer has no predecessor; every correction must bind the exact current tip, change the verdict and include a non-empty reason of at most 400 characters. Records are appended, never overwritten or deleted.
+- Integrity decision: v1 flat records remain readable. A v1 row may be the root of a v2 correction chain. Reads require unique IDs, exactly one tip and a connected, acyclic, unbranched history bound to the directory suggestion; stale tips, duplicate verdicts, forks, cycles and disconnected records fail closed. Only the latest valid tip controls pending/shortlist routing.
+- Semantic decision: correcting triage does not expand its authority. Automatic candidate creation, Old Wang identity/action/logic confirmation, benchmark admission, training, reward, shadow and trading remain structurally false.
+- Runtime result: 47 sources, 34 matched sources, 78 suggestions, three active rows, zero screened rows, 78 pending rows and zero shortlisted rows. The screening-file count stayed zero before and after read-only API and browser verification.
+- Verification: 14 focused historical-anchor tests passed; the full Web API suite passed 451 tests with two credentialed-live cases ignored; the frontend passed 502 tests; TypeScript, public production build and console build passed, and the local administrator UI displayed the real context without console errors or a POST.
+
+## D-2026-08-14-52 Deduplicate Key-event Reprints Without Hiding Provenance
+
+- Status: Accepted, implemented and runtime-verified locally as an evidence-identity contract; it does not add investment logic or execution authority.
+- Incident finding: exact-URL deduplication did not prevent syndicated or rewritten copies of the same milestone from becoming several events. Those copies could consume per-topic capacity, inflate weekly counts and later be mistaken for independent first-principles confirmation.
+- Identity decision: `hone-key-event-identity-v1-high-confidence` merges only sources in the same topic and explicit milestone class, within 96 hours, with a shared distinctive entity/product anchor and either the same normalized title or title-token Jaccard of at least 0.80. Viewpoint/unclear items are excluded. Generic headings without an entity anchor, disjoint numeric anchors and items outside the time window must remain separate.
+- Provenance decision: the canonical source is selected deterministically by regulatory, primary, secondary, research and opinion priority, then publication time and URL. Every supporting source remains visible with its own URL, time, tier and verification status. A versioned SHA-256 fingerprint identifies the event; canonical/supporting URL overlap also preserves identity when a better primary source arrives later.
+- Downstream decision: deduplication runs before model analysis and event caps. Key-event counts, weekly-brief industry rows, saved-chat envelopes and decision refreshes consume the unique event once; source count is disclosure, never a weight multiplier. Deduplication cannot upgrade a clue to confirmed evidence or make failed model analysis decision-usable.
+- Compatibility and runtime: legacy snapshots deserialize as `legacy_unassessed`. The rebuilt v3 service produced 92 unique events from 92 current sources and therefore correctly reported zero high-confidence duplicate clusters; all topic/event/source arithmetic, 64-character fingerprints, URL uniqueness and weekly propagation checks passed.
+- Verification: the full Web API passed 456 tests with two credentialed-live cases ignored; focused backend dedup tests passed 17 and weekly tests passed 4. The full frontend, project-native TypeScript check, public production build, console build, Rust formatting and diff checks passed. No label, reward, shadow state, order, broker or trade authority was created.
+
+## D-2026-08-14-53 Admit Analyst Consensus Only as Reconciled Point-in-time Background
+
+- Problem: crowding exposed price path, short interest, options, media activity and 13F background, but the analyst-rating and target-price concentration gap was entirely unmeasured. A single scraped average target would be both incomplete and easy to overinterpret.
+- Decision: `hone-analyst-consensus-v1-nasdaq-observation` preserves the observed date, exact Nasdaq source URL, buy/hold/sell counts, reconciled recommendation total, per-bucket shares, deterministic dominant-bucket concentration, low/consensus/high target prices, range width and historical-month count. Empty, fewer-than-three, future, stale, unordered or internally inconsistent samples are excluded from the decision projection rather than imputed.
+- Policy boundary: `hone-crowding-v3-analyst-consensus-context` carries this record only as non-scored background. Nasdaq does not disclose target-price contributor count, per-observation timestamps or individual target rows, so those remain explicit missing checks. Consensus cannot change crowding score, completeness, valuation, confidence, action, reward, shadow or trading authority. V1 and V2 crowding snapshots remain replayable and reject fields their policy never supported.
+- Runtime: 48 of 52 companies had usable source rows; SKHY, SPCX, SIVEF and FN remained absent. SNDK reconciled to 14 buy, 2 hold and 0 sell recommendations with 87.5% in the dominant bucket; low/consensus/high targets were 1550/2209.38/3050. Its frozen action remained `research_only` and no downstream authority opened.
+- Verification: Web API passed 458 tests with two credentialed-live cases ignored; frontend passed 504 tests, typecheck and the public production build passed, and the rebuilt 8077/8088 runtime completed a real 52-company refresh.
+
+## D-2026-08-16-54 Aggregate First-principles Evidence as a Point-in-time Map, Not an Opportunity Ranking
+
+- Status: Accepted, implemented and runtime-verified locally as administrator research diagnostics only.
+- Projection decision: `hone-first-principles-hypothesis-map-v2-evidence-pathway` selects exactly the newest valid frozen sample per normalized company before grouping the six existing industry models. Historical revision count cannot increase a company's weight.
+- Evidence decision: each model separately reports traceable and strictly measured coverage for demand, effective supply and company value capture. Traceable evidence includes bounded primary context, structured source claims and deterministic computations; measured evidence remains limited to direct metrics, proxies and active operating KPIs. Neither tier is a validated causal thesis. Unique pathway counts deduplicate a cloned observation by normalized company plus immutable observation ID.
+- Integrity decision: the deterministic SHA-256 binds policy/status/latest timestamp, unique source sample IDs, both coverage tiers, unique pathway counts, every grouped blocking statistic and the closed authority fields. Duplicate companies/samples, measured counts above traceable counts, pathway reconciliation failures, tampered fingerprints or enabled ranking/action fail validation.
+- Authority decision: the map is not a cross-industry attractiveness score. Opportunity ranking, return prediction, portfolio construction, shadow authority and trading action remain unavailable; `opportunity_ranking_enabled` and `action_authorized` are structurally false.
+- Runtime and verification: after the final 52-company refresh, the administrator API showed six models and 47 latest mapped company states. Traceable demand existed for 45 companies while strict demand measurement existed for one; the full map fingerprint is `220a34cdb50037fb235a7f7e2dd4f693635ae86f8e3bd124a965d2165aab8a40`. Agent Session passed 150 tests, Web API passed 461 tests with two credentialed-live cases ignored, frontend passed 505 tests, and TypeScript plus the public production build passed. No review label, training authorization, reward, holding, order or trade was created.
+
+## D-2026-08-16-55 Reuse Immutable Causal Review as a Strict Measurement-admission Gate
+
+- Problem: 45 of 47 mapped companies had traceable demand evidence but only one had strict demand measurement, while hundreds of deterministic comparisons and ratios were waiting without an explicit path into the quantitative layer.
+- Admission decision: a deterministic SEC comparison, same-filing ratio or ratio trend becomes only a partial measurement when the immutable single-evidence review is accepted, its effect is `supports` or `falsifies`, and `speaker_confirmation` is `old_wang_confirmed`. Source-checked-only, mixed, context-only, rejected and pending records remain unmeasured.
+- Workflow decision: `hone-first-principles-measurement-backlog-v1-review-admission` groups unresolved latest-company drivers into review-ready, rejected-needs-new-evidence, source-claim metricization, operating-KPI acquisition and no-traceable-evidence states. It reuses the existing review record and does not create a competing approval store.
+- Authority decision: backlog order is review readiness, never investment merit. Measurement admission cannot prove a moat or causal thesis, rank an opportunity, change valuation or action, configure reward, create a shadow holding, place an order or authorize a trade. Ranking and action fields remain structurally false and fingerprint-bound.
+- Runtime and verification: 5,945 frozen samples reduced to 428 latest-company drivers: 133 measured, 62 review-ready, one requiring source-claim metricization, 27 requiring operating KPIs and 205 without traceable evidence. The 295 unresolved rows reconciled exactly and the new map fingerprint was `c83eda8573547a087f88f55f5a0c566959ed2d84a2b215a2f2f8553746b22831`. Web API passed 463 tests with two credentialed-live cases ignored, Agent Session passed 150, frontend passed 506, and typecheck/build/format/diff checks passed.
+
+## D-2026-08-16-56 Use One Symbol-scoped Operating-KPI Catalog for All Six First-principles Models
+
+- Problem: the decision projection already modeled six industries and 34 target operating KPIs, but the event-engine admission prompt and validator still accepted only a six-KPI storage pilot for MU/SNDK. The backlog could identify non-storage measurement gaps while the source pipeline had no legal way to fill them.
+- Catalog decision: `hone-operating-kpi-catalog-v2-six-model-source-bounded` is the sole current admission catalog. It contains 34 KPI-to-driver pairs across storage, compute, optical, power, platform and application and scopes them to 47 currently mapped companies plus reserved NVDA/ANET coverage. Release and transcript prompts expose only the current symbol's entries; unsupported symbols and cross-model KPI IDs fail closed.
+- Source decision: issuer metric name, definition, value text, scope and evidence quote must all be verbatim inside the bounded company-primary or regulatory source. The backfill tool validates the same symbol-scoped catalog, is dry-run-first and keeps a separately audited official-host allowlist; catalog membership alone never authorizes an arbitrary URL fetch.
+- Compatibility decision: the Web current registry must equal the shared catalog's KPI-to-driver pairs. Historical storage v1 records remain replayable by KPI identity without rewriting their original driver mapping, but they cannot be used for current writes.
+- Authority decision: catalog admission remains `training_only_pending_human_review` and measures at most one registered driver. It does not prove a moat or causal thesis, alter valuation/action, rank opportunities, configure rewards, start shadow execution or authorize trading. The measurement backlog now names the exact target KPI IDs required for each unresolved driver.
+- Runtime and verification: the rebuilt local API used map v4/backlog v2 over 6,087 frozen samples, six models, 47 mapped companies and 428 latest drivers. Counts remained honestly unchanged at 133 measured, 62 review-ready, one metricization, 27 operating-KPI acquisition and 205 no-traceable-evidence because no historical source body or new issuer fact was fabricated; target IDs now resolve, including SNDK `nand_bit_shipments_growth`, MSFT `token_or_call_volume`, and GEV `contracted_power_mw`/`energized_power_mw`. Map fingerprint: `5fcf0a11033d840aec60bb6c2f30fbf9763c404f263fd1b67b0e59a9010afba0`. Event-engine 614 tests passed with 13 ignored, Web API 463 with two ignored, frontend 506, TypeScript, production build, console build, format and diff checks passed.
+
+## D-2026-08-16-57 Archive Exact Primary-source Bytes Before Admitting a V2 Operating KPI
+
+- Problem: validating a mutable official URL in memory was not enough for later human review, point-in-time replay or training-data audit. The prior power KPI name also assumed MW even when issuers disclose backlog as RPO dollars, orders or reserved capacity.
+- Artifact decision: a writable v2 manifest must pin the exact source SHA-256 and declare `exact` or `date_only_conservative_end_of_day` time precision. Redirects are disabled, official hosts and format signatures are rechecked, and the exact source bytes are stored content-addressed with create-once semantics. Existing bytes must equal the digest; a collision or tamper fails closed.
+- Semantic decision: current power registries use `generation_equipment_backlog` with the issuer's original unit and RPO/order/reservation definition. Legacy v1 `power_backlog_mw` snapshots remain replayable only after deterministic ID normalization and cannot authorize a current write.
+- Projection decision: operating-KPI attachment is no longer storage-only. Every one of the six models attaches only symbol-matching, registry-matching claims, and artifact metadata is preserved through the public decision and administrator audit UI. An artifact, when present, must have a valid content-address contract and declared time precision.
+- Runtime: the official GE Vernova FY2025 release admitted one $150B RPO backlog claim. Its 311,603 bytes were archived at SHA-256 `edabb6bc60426471c6555e1ea9797fd2e833da2195cfda09a0cc40d4a200afd2`; a second write inserted zero events and verified the same object. GEV's generation-equipment driver became partially measured, raising latest measured drivers from 133 to 134 and reducing no-traceable rows from 205 to 204. No human label, causal promotion, action, reward, shadow holding, order or trade was created.
+
+## D-2026-08-16-58 Keep Storage Adoption Facts Semantically Separate
+
+- Problem: SNDK reports demand realization through several different issuer concepts—bit shipments, data-center revenue growth, product mix, signed supply agreements and RPO. Treating one as another would manufacture precision and make later causal review untrustworthy.
+- Semantic decision: add `data_center_revenue_growth` and `signed_storage_supply_agreements` as distinct storage KPIs mapped only to `enterprise_adoption`. Revenue growth cannot stand in for revenue/bit mix, orders or RPO; an agreement count cannot stand in for order value, backlog or customer count. The current registry is storage v3, while six-entry storage v2 remains replay-only.
+- Source decision: admit only exact-byte SEC sources in the writable v2 fixture. FY2025 Cloud exabytes sold +153% maps to realized bit demand; FY2026 Datacenter revenue +437% and five additional NBM agreements map to enterprise adoption. Presentation-only mix, shipment and RPO facts remain excluded until their exact official bytes can be archived.
+- Validation decision: numeric source matching may recognize only standalone English integer words from zero through twenty. This preserves a verbatim `five` while rejecting substring matches such as `fifty` and unsupported compound numbers; the event and point-in-time validators enforce the same bounded rule.
+- Runtime and authority: SNDK now has exact content-addressed evidence on two demand drivers, but incomplete supply, share/content, financial and valuation layers keep the action at `research_only`. Latest global measurement is 136/428 drivers, with no human causal promotion, training authorization, reward, shadow holding, order or trade created.
+
+## D-2026-08-21-59 Preserve Storage NBM RPO as a Source-bounded Adoption Fact
+
+- Problem: SNDK's FY2026 10-K discloses a large remaining transaction price under New Business Model agreements, but the contracts span Datacenter and Edge customers. Mapping this number to pure data-center orders, revenue, cash or a guaranteed backlog would materially overstate what the issuer disclosed.
+- Catalog decision: add `storage_nbm_remaining_performance_obligations` only to the storage model and map it only to `enterprise_adoption`. The contract preserves NBM scope, billed/unbilled state, expected recognition period and termination/protection caveats. The current storage registry is v4; six-entry v2 and eight-entry v3 remain exact replay contracts.
+- Source decision: the exact 2026 10-K is pinned at 2,223,283 bytes and SHA-256 `d3a07ad05af54962751a21e1eeaa10fdd4420fa4967c9140e2e1f836e6aa66bd`. Verbatim claims record $59.8B of RPO as of 2026-07-03 and two post-balance-sheet NBMs with $31.3B aggregate transaction price. A first write inserted one event and a second inserted zero; both verified the same immutable object.
+- Financial decision: issuer/SEC annual facts may update the point-in-time financial evidence layer, but unreviewed financial observations do not enter the company-rating factor and RPO does not satisfy the multi-method valuation gate. Extreme growth and margin deltas remain visible with explicit source-trace warnings rather than being suppressed or converted into conviction.
+- Runtime and authority: SNDK now carries FY2026 financial evidence plus four distinct storage adoption observations, while product mix remains unmeasured and valuation remains null. Its action stays `research_only`, directional readiness and portfolio readiness are false, and no causal approval, training label, reward, shadow position, order or trading authority was created.
+
+## D-2026-08-21-60 Separate Valuation-input Readiness from Rating Review and Price Targets
+
+- Problem: when FMP is unavailable, the valuation lab previously discarded already verified market and SEC evidence, while reusing a rating-oriented SEC review as valuation authority would create false precision. The decision layer also needed absolute cash/debt/FCF inputs without reviving economically meaningless growth percentages across a negative base.
+- Readiness decision: `hone-valuation-v3-readiness` always projects a method-level readiness contract from the current quote, point-in-time SEC evidence and review status. It may explain available and missing inputs for forward P/E, EV/EBIT, cycle-adjusted DCF and reverse valuation, but only the existing fully reproducible provider path may emit scenarios. SEC observation and `approved_for_rating` are never valuation-use authorization.
+- Financial decision: `hone-financial-verification-v5-valuation-input-preparation` carries exact cash, current XBRL long-term-debt tag, their explicitly incomplete difference, and same-period OCF-minus-capex FCF values. Validation replays every scalar from the frozen source claims. If either FCF period is non-positive, percentage growth is absent and cannot fall back to a stale rating field.
+- Compatibility decision: v4 source-claim snapshots remain replayable under their original shape. Transitional samples that contain the new prepared scalars are checked with the new arithmetic; samples containing the earlier invalid negative-base growth remain invalid. Training/evaluation reads quarantine invalid files individually. Administrator symbol replay also excludes them from usable history, but returns their filenames and validation reasons as explicit quarantine diagnostics instead of failing the entire company view.
+- Authority decision: readiness does not create a valuation, rating factor, action, training label, reward, shadow holding or order. A future valuation-use review must be a separate immutable scope binding exact diluted shares, complete net cash/debt and forward/midcycle assumptions before any target value can be considered.
+
+## D-2026-08-21-61 Bind SEC Valuation Use to an Independent Short-lived Audit Record
+
+- Problem: method readiness and a rating-oriented financial review could not establish that the exact shares, net-cash and forward/midcycle packet used by a valuation had been independently checked. Passing only source labels into daily ratings also could not detect a substituted or expired packet.
+- Admission decision: `hone-sec-valuation-input-review-v1` is an administrator-only immutable single-chain review. Approval requires the exact current SEC evidence fingerprint, a deterministic supplemental-input fingerprint, verified diluted shares and complete net cash/debt, at least two prepared methods among forward P/E, EV/EBIT and cycle-adjusted DCF, first-party/auditable sources, a bounded methodology note and all eight review confirmations. Inputs expire after seven days; evidence change, stale optimistic tip, fork, disconnection, malformed history or missing unit fails closed.
+- Projection decision: an authorized packet may populate the existing multi-method valuation model without pretending that SEC supplied the human forward assumptions. Daily-rating output is now `hone-valuation-v3-reviewed-input-binding` and carries input mode, review ID, input fingerprint, financial-evidence fingerprint and input date. The rating reader reopens the current SEC state and review chain and accepts an SEC-backed valuation only when every binding matches exactly and remains fresh. The provider bundle remains a separate reproducible path, while legacy v2 files are replay-compatible and cannot claim the new authorization.
+- Interface decision: the administrator decision-brain page has a separate valuation-input review form with method readiness and eight confirmations. The public valuation lab exposes financial-review and valuation-review state separately and leaves missing scenarios null.
+- Authority decision: approval authorizes only the exact packet's valuation use. Rating-financial, Old Wang logic, recommendation, training, reward, portfolio, shadow, order and trade authority all remain false. No SNDK approval or target value was fabricated during implementation.
+
+## D-2026-08-21-62 Split Causal Data by Company–source Connected Components
+
+- Problem: `hone-causal-training-dataset-v1-company-isolated` assigned each company independently. The product contract said repeated source events could not cross partitions, but one SEC filing, transcript or industry milestone reused by two companies could still enter both development and sealed holdout data. That leakage could reward memorization and overstate decision-brain generalization.
+- Split decision: `hone-causal-training-dataset-v2-company-source-component-isolated` first builds a bipartite graph between normalized companies and immutable `source_group_id` values. Every connected component, including transitive links such as SNDK ↔ shared storage event ↔ MU ↔ shared HBM event ↔ NVDA, receives one deterministic train, validation or holdout split. The dataset fingerprint binds the new policy and resulting rows.
+- Audit decision: the report exposes company isolation, source-group isolation, connected-component count, cross-company shared-source count and largest component size. Readiness fails closed if either company or source isolation fails. The administrator must explicitly confirm the new source-group boundary before approving experiment registration.
+- Compatibility decision: v1 governance records remain parseable and auditable, but can never authorize the v2 dataset. Current approval additionally requires the current v2 schema, exact policy/fingerprint, all four confirmations and both isolation checks. No holdout rows or labels were exposed.
+- Runtime and verification: the local dataset contains zero Old Wang-confirmed causal labels, zero components, zero governance reviews and zero experiment registrations; experiment, training, preference learning, RL, deployment and trading remain closed. Web API passed 480 tests with two credentialed-live tests ignored; frontend passed 511 tests, TypeScript, public production build, workspace Rust check with the documented desktop resource bypass, formatting and browser UI verification passed. No review, label, reward, shadow state, order or trade was written.
+
+## D-2026-08-21-63 Treat Event IDs, Canonical URLs, Content Hashes and Claim References as Source Aliases
+
+- Problem: an event ID identifies one ingestion record, not necessarily one immutable raw document. Operating-KPI backfill IDs include the company symbol, mirrors can expose the same bytes under different URLs, and derived comparisons can have their own observation IDs. V2 could therefore miss a shared raw source when two companies reached it through different ingestion aliases.
+- Identity decision: `hone-causal-training-dataset-v3-company-source-identity-component-isolated` derives a set of source identities for every example: ingestion event ID, normalized HTTP(S) URL, archived raw-content SHA-256 and every referenced base claim ID. URL normalization removes fragments and explicit tracking parameters, sorts remaining query pairs and preserves business parameters. Invalid/non-web URLs are not admitted as document identities.
+- Split decision: the bipartite graph contains companies and every source alias. Sharing any alias merges the companies transitively, so mirrored documents and raw-versus-derived features cannot cross development and sealed holdout partitions. Artifact hashes connect byte-identical mirrors; claim references connect an original fact to comparisons, ratios and trends derived from it.
+- Governance decision: current governance is `hone-causal-dataset-governance-review-v3`. V1 and V2 records remain structurally auditable under their historical confirmation requirements but cannot authorize the v3 fingerprint. The public report continues to expose aggregate isolation/component counts only and never releases holdout rows or labels.
+- Authority boundary: this is an engineering anti-leakage rule, not an Old Wang investment rule or a training result. With zero Old Wang-confirmed labels, registration, training, preference learning, RL, deployment, shadow and trading all remain closed.
+- Runtime verification: the authenticated local API returned the exact v3 policy and v3 governance schema with zero eligible labels and every downstream authority false. The administrator UI independently rendered company isolation passed, source-identity isolation passed, sealed labels withheld and training authorization closed. Full Web API (482 passed, 2 ignored) and frontend (511 passed) suites plus type, build, workspace, format and diff checks passed.
+
+## D-2026-08-22-64 Separate Source Verification from Causal Judgment
+
+- Problem: a reviewer could previously express a bad extraction or missing source context as a rejected causal relationship. That would convert a source-quality failure into a false negative training label. The default five-row batch also overrepresented one company and one evidence contract while claiming causal diversity.
+- Source decision: `hone-causal-evidence-review-v3-source-verified-distilled` requires a separate source result and note. `evidence_mismatch` and `insufficient_source_context` are immutable audit exclusions with rejected/unclassified semantics and no distilled causal fields. They do not count as reviewed causal effects, measurement admissions or dataset targets.
+- Speaker decision: only a complete source-verified judgment with explicit `old_wang_confirmed_after_source_check` self-attestation may admit measurement or compile into the current causal dataset. Legacy v1/v2 records and the old `old_wang_confirmed` value remain replayable but are ineligible for current training. Maintainer source checks remain non-speaker labels.
+- Attention decision: `hone-active-review-batch-v2-source-and-evidence-diversity` first seeks operating-KPI, computed-comparison, computed-ratio and source-claim rows, then preserves unique company-driver pairs and at most two rows per company before sparse-queue fallbacks. Ranking still cannot read outcomes, prices, actions, effect labels or rewards.
+- Verification: the Web API passed 482 tests with two credentialed-live cases ignored, including active-batch diversity, legacy-label exclusion, source-contract and connected-source split coverage. No review POST, human label, reward, experiment, shadow holding, order or trading authority was created.
+
+## D-2026-08-22-65 Quarantine Invalid History Without Hiding a Company's Valid Replay
+
+- Problem: one legacy SNDK sample correctly failed the current financial-provenance validator, but the administrator's strict symbol replay promoted that single invalid file into an HTTP 500. The review UI therefore hid valid SNDK samples together with the invalid records.
+- Read decision: the administrator replay route now performs the same per-file fail-closed validation as aggregate training reads, returns only valid samples, and separately reports `quarantined_sample_count` plus bounded filename/reason diagnostics. If every record is invalid, the UI says so explicitly rather than pretending the company has no history.
+- Integrity decision: quarantine is not migration, deletion, compatibility approval or error suppression. Invalid records remain on disk for audit, never enter training, evaluation, reward or promotion counts, and exact-file mutation/review paths retain their validation boundaries.
+- Runtime verification: authenticated local SNDK replay displayed one hundred valid histories and three visible quarantine notices. The administrator page reached the source-verification-first causal review flow without a write. Frontend passed 512 tests; Web API passed 482 with two credentialed-live tests ignored; type, workspace, format and diff checks passed.
+- Authority boundary: this is an observability and availability correction. It does not confirm any SNDK fact, approve a causal label, change an action, authorize training/RL/shadow execution or grant trading authority.
+
+## D-2026-08-22-66 Admit Only Source-Review-Ready Evidence to the Active Human Batch
+
+- Problem: the v2 active selector diversified evidence types, but only its first pass excluded blocked rows. Sparse-queue fallback passes could still spend Old Wang's limited review attention on a missing URL, incomplete provenance or future-dated observation. The queue also did not distinguish “available to verify” from “verified and causally relevant.”
+- Admission decision: `hone-investment-evidence-review-queue-v2-source-readiness` projects a deterministic readiness contract for every row. It checks decision-time availability, an openable HTTPS primary locator, source metadata, active lifecycle, and the evidence-specific trace required to locate or recompute a source claim, issuer KPI, period comparison, same-filing ratio or ratio trend.
+- Selection decision: `hone-active-review-batch-v3-source-ready-diversity` filters every selection pass through `source_review_ready && priority != blocked` before applying evidence-kind, company and driver diversity. It still cannot read prices, outcomes, actions, effect labels, human conclusions or rewards.
+- Transparency decision: blocked material remains visible in the full queue with exact `source_review_blockers`; aggregate ready/blocked counts are returned. The UI disables causal review until the source contract is repaired. Numeric evidence and qualitative quotations use different source-check wording.
+- Runtime verification: the authenticated local API returned the v2 queue/v3 selector with 2,805 source-ready pending candidates and a five-row batch spanning SNDK, AMAT, FN and GEV across all four evidence families. A synthetic missing-source regression remained in the full queue with exact blockers and was absent from the active batch. Web API passed 482 tests with two live-credential cases ignored; frontend passed 513 tests plus type, workspace, format and diff checks.
+- Authority boundary: readiness means only that a human can inspect the source. It is not source confirmation, causal acceptance, an Old Wang label, a rating input or action authorization. Training, preference learning, RL, shadow and trading remain closed.
+
+## D-2026-08-22-67 Separate Price-move Attribution from Investment Decisions
+
+- Problem: a user asking only why TEM rose received a full investment report with entry zones, a stop, target ranges and unsupported technical mechanisms. The prompt already prohibited unsolicited actions, but the deep-equity response contract required section 9 action advice and rejected a draft without it. The same answer also exposed semantic failures: indirect Personalis/Moderna evidence became a direct Tempus revenue claim, GAAP net income was promoted before its unrealized-gain quality was disclosed, negative P/E was printed as a multiple, MRD was called early screening, and target/technical numbers lacked reproducible bridges.
+- Routing decision: a single-equity time-sensitive move question without an explicit trade-decision request uses `EquityMove`, not the nine-section `Equity` route. Its five sections cover conclusion, canonical market facts, a causal evidence ledger, relevant fundamental/earnings-quality background, and risks/counterarguments/next verification. If the same user also asks whether to buy, sell, hold, size or stop, the full decision route remains available.
+- Causal decision: every move cause is classified as a direct company event, an indirect industry/related-legal-entity mapping or a background factor and carries a confidence level. Existing per-clause verified date/domain rules apply to section 3. Pending acquisitions, partners and affiliates do not become the issuer or direct revenue merely because the market trades the read-through.
+- Publication decision: pure attribution output rejects buy/hold/add/reduce/sell, stops, target prices and precise entry levels. Negative earnings/EBITDA ratios render as `N/M`; first-use GAAP profit claims expose operating and non-recurring/unrealized quality; scenario targets require formula/share/dilution bridges; technical/flow claims require reproducible dated evidence and consistent values; MRD retains residual-disease/recurrence-monitoring semantics.
+- Safety decision: rejected move prose has a deterministic five-section fallback built only from the verified contract. It can state that attribution confidence is low and name missing verification, but it cannot invent the cause or fall back to trading advice.
+- Verification: all 121 `investment_response_guard` tests passed, including the reported TEM failure modes, route separation and deterministic fallback. `cargo check -p hone-channels --all-targets` passed with one pre-existing dead-code warning.
+
+## D-2026-08-22-68 Separate Sealed Historical Prices from Outcome Computation
+
+- Problem: the legacy company-rating and key-event refresh paths invoked a maturity labeler that fetched later prices and rewrote historical outcome fields as a side effect of ordinary daily product refresh. That bypassed the newly frozen protocol, reviewed implementation and future dry-run authorization chain.
+- Input decision: FMP adjusted closes are now admitted only through `hone-historical-outcome-price-snapshot-v1-fmp-adjusted-close-sealed-input`. A create-once snapshot is bound to one current approved seven-layer reconstruction, one current reviewed labeler implementation, the exact protocol fingerprint and code revision. It freezes normalized-payload, asset-series and SPY-series SHA-256 values plus date bounds and common-session coverage; credentials, returns, drawdowns, labels and rewards are excluded.
+- Authorization decision: `hone-historical-outcome-dry-run-authorization-v1` is an independent optimistic review chain over the exact sealed snapshot and all upstream identities. Approval grants only eligibility to register a later offline dry-run implementation. Running, label writes, training, reward, shadow evidence, orders, broker access and trading remain false.
+- Side-effect decision: company-rating and key-event refresh no longer call the legacy outcome labeler. Historical input ingestion and any future outcome computation must use their dedicated administrator-governed routes; product refresh cannot mutate historical labels.
+- Verification: five snapshot/authorization unit tests and the empirical-readiness test passed. Of 500 Web API tests, the three local-port email mocks were explicitly excluded because this tool sandbox forbids binding their listener; the remaining 495 passed and two credentialed-live tests were ignored. All 517 frontend tests, TypeScript, public/admin production builds, workspace Rust check, formatting and diff checks passed. Runtime browser acceptance was not claimed for the same port restriction.
+
+## D-2026-08-22-69 Register Historical Dry-run Code Before Authorizing Execution
+
+- Problem: an approved sealed-price authorization identified the permitted inputs and labeler, but there was no immutable object describing the exact code that would later perform the isolated calculation. Allowing a runner to appear at the same time as its first execution would collapse specification review and runtime authorization into one unsafe step.
+- Registration decision: `hone-historical-outcome-dry-run-implementation-v1` is create-once and binds the exact authorization review, snapshot and series hashes, reconstruction, reviewed labeler and labeler code revision, protocol fingerprint, symbol/date range and 20/60/250-session coverage. The server projects these fields from the current approved authorization; the client supplies only the selected snapshot, expected fingerprints, implementation name/type and immutable code revision.
+- Sandbox decision: the only implementation kind is deterministic isolated common-session replay. Input/output contracts, metrics, future-information isolation, missing-data failure and four-series concurrency are fingerprinted. Network, tools, production/historical/label/training/reward/shadow writes, order generation, broker access, running and every downstream authority are false; status is always `registered_not_run`.
+- Promotion decision: a current exact registration exposes only eligibility for a future independent run-authorization review. It does not execute code, compute outcomes, create labels, train, score reward, create a shadow portfolio or trade. The empirical-readiness checklist is v4 and adds a seventh, non-running implementation stage.
+- Verification: six implementation-registry unit tests and both empirical-readiness failure-closed tests passed. The Web API library suite passed 501 tests with two credentialed-live tests ignored and three sandbox-incompatible local-port email mocks explicitly filtered; all 517 frontend tests, TypeScript, public and console production builds, the workspace all-target check, Rust formatting and diff hygiene passed. Browser runtime acceptance was not claimed because the current sandbox cannot bind local service ports.
+
+## D-2026-08-22-70 Review Run Authority Without Granting Execution
+
+- Problem: a current `registered_not_run` implementation was eligible for a future run review, but there was no immutable object proving which exact implementation and upstream chain a reviewer inspected. Treating implementation registration itself as execution approval would collapse code review, runtime construction and invocation into one unaudited permission.
+- Review decision: `hone-historical-outcome-dry-run-run-authorization-review-v1` re-projects the exact implementation fingerprint, immutable code revision, prior dry-run authorization, sealed snapshot, seven-layer reconstruction, reviewed labeler and frozen protocol. Every review has its own SHA-256 and exact previous-review SHA-256; optimistic expected-tip checks, single-tip traversal and immutable create-once writes reject stale submissions, tampering, forks, cycles and disconnected history.
+- Approval decision: approval requires ten explicit checks covering implementation identity, current upstream bindings, reproducible code, sealed read-only inputs, deterministic common-session calculations, ephemeral isolated output, resource bounds and zero network/tool/write/order/broker/trading authority. The server also rejects self-approval by the implementation registrant. Approval exposes only `isolated_runner_registration_eligible`; `run_authorized`, execution, output-artifact creation, label generation, training, reward, shadow evidence, orders, broker access and trading remain false.
+- Promotion decision: empirical readiness is v5 and adds an eighth non-running stage. The next admissible object is a create-once isolated-runner specification for another review, not an invocation. Execution authorization, output validation and label admission remain separate later gates.
+- Verification: seven run-authorization-review unit tests, the empirical-readiness test and the outcome-label hard-gate regression passed. With three sandbox-incompatible local-port email mocks filtered, the Web API library suite passed 508 tests with two credentialed-live tests ignored. All 517 frontend tests, TypeScript, public/admin production builds and the workspace all-target Rust check passed; final formatting and diff hygiene were clean. Existing warnings were unchanged, and browser runtime acceptance was not claimed because the current sandbox cannot bind local service ports.
+
+## D-2026-08-22-71 Register a Runner Without Making It Callable
+
+- Problem: an approved run review proved that one exact implementation and upstream chain had been independently inspected, but it did not freeze the future execution artifact or operating-system boundary. Letting the first execution request supply those details would collapse runner construction, authority review and invocation into one unsafe mutation.
+- Registration decision: `hone-historical-outcome-dry-run-isolated-runner-v1` is create-once and binds the exact run-review ID/SHA-256, implementation fingerprint/code revision, sealed price series, reconstruction, reviewed labeler and protocol. It additionally fingerprints a runner artifact SHA-256 and runner code revision; duplicate specifications and stale or changed upstream bindings fail closed.
+- Runtime decision: the specification has no callable entrypoint and inherits no host environment or secrets. Read-only inputs/root filesystem, ephemeral working/output storage, unprivileged execution, no-new-privileges and fixed 300-second, 512-MiB, one-core, one-process and 1-MiB output limits are mandatory. Network, tools, production/history/label/training/reward/shadow writes, orders, broker access, invocation, output creation and trading are all false.
+- Promotion decision: empirical readiness is v6 and adds a ninth non-running stage. A current registration is only eligible for a later independent first-execution authorization review; it cannot invoke the artifact. Output-artifact validation and label admission remain later independent gates.
+- Verification: seven isolated-runner registry tests, the empirical-readiness v6 regression and the outcome-label hard-gate regression passed. The complete Web API library suite passed 518 tests with two credentialed-live tests ignored and no filtering; all 517 frontend tests, TypeScript checking, public/admin production builds, `cargo check -p hone-web-api --tests`, the workspace all-target Rust check, Rust formatting and diff hygiene passed. Existing warnings were unchanged, and browser runtime acceptance was not claimed because the current sandbox cannot reliably bind local service ports.
+
+## D-2026-08-22-72 Authorize One Future First Execution Without Invoking It
+
+- Problem: a runner specification froze the artifact digest and sandbox contract but did not prove that an independent reviewer had located, reproduced and re-hashed the actual artifact immediately before its first use. Allowing invocation from runner registration alone would let a stale or unavailable artifact bypass the final human runtime check.
+- Review decision: `hone-historical-outcome-dry-run-first-execution-authorization-review-v1` is an append-only, self-hashed chain over one exact current runner. It re-projects the runner artifact, code revision, run review, implementation, sealed prices, reconstruction, labeler, protocol and resource limits. Optimistic tip checks and exact previous hashes reject stale submissions, tampering, forks, cycles and disconnected history.
+- Approval decision: approval requires thirteen explicit confirmations, including an independently verified artifact digest, reproducible and currently available artifact, read-only mounts/root, unprivileged execution, ephemeral untrusted output, fixed resources, no host environment/secrets/network/tools/writes/orders/broker/trading, and explicit single-use expiry. The runner registrant cannot approve its own first invocation. Approval expires after 24 hours and grants at most one future invocation.
+- Separation decision: the review registry has no invocation endpoint and does not consume the approval, start a process or create an output. `offline_dry_run_enabled`, execution, output, labels, training, reward, shadow, orders, broker and trading remain false. Empirical readiness is v7 and adds the tenth stage; the next separate implementation is the one-shot isolated invocation record, followed by output validation and label admission.
+- Verification: eight focused first-execution authorization tests, the empirical-readiness v7 regression and the outcome-label hard-gate regression passed. The complete Web API library suite passed 526 tests with two credentialed-live tests ignored; all 517 frontend tests, TypeScript checking, admin/public production builds, `cargo check -p hone-web-api --tests` and the workspace all-target Rust check passed. Existing dead-code, future-compatibility and frontend chunk-size warnings were unchanged; browser runtime acceptance was not claimed because the current sandbox cannot reliably bind local service ports.
+
+## D-2026-08-22-73 Consume One Authorization in a Fixed Capability-isolated Function
+
+- Problem: the approved runner record supplied an artifact digest and sandbox contract, but the repository did not contain a trustworthy arbitrary-code sandbox. Adding a generic binary or shell entrypoint would make the recorded “no filesystem/environment/network/tool capability” claim false and would broaden authority beyond the reviewed deterministic calculation.
+- Execution decision: the first real invocation uses `hone-historical-outcome-dry-run-one-shot-capability-isolated-v1` and the fixed backend `bounded-pure-function-no-ambient-capabilities-v1`. It cannot execute caller-supplied code. It receives only one revalidated sealed snapshot, rejects more than 2,048 points per series or 1,024 common sessions, and computes the frozen 20/60/250-session asset return, SPY return, excess return and asset maximum drawdown.
+- Consumption decision: immediately before claim, the server re-hashes its current executable and requires equality with the independently reviewed runner artifact, reloads the current sealed snapshot and verifies every upstream identity. A create-once claim binds the authorization, runner, artifact, implementation, reconstruction, labeler, protocol, resources, invoker and closed capabilities. The claim is written before computation; any crash or failed computation therefore consumes the authorization and forbids replay.
+- Output decision: the host stages only bounded canonical JSON in a random temporary directory, syncs and reads it back, hashes it and removes the directory. Success and failure both create immutable results with duration, exit status, stdout/stderr hashes and output hash when present. Cleanup failure is preserved as failure rather than falsely marked removed. Every output is explicitly untrusted and has no structural-validation, label-admission, training, reward, shadow, order, broker or trading authority.
+- Promotion decision: empirical readiness is v8 and adds the eleventh execution stage. A completed attempt proves only that one bounded replay ran; it does not prove the output is correct. The next admissible object is an independent structural/integrity validation and deterministic recomputation audit. Label admission remains a later separate review.
+- Verification: nine focused execution-attempt tests and both empirical-readiness regressions passed. The full Web API suite passed 532 tests and ignored two credentialed-live tests; three pre-existing email tests failed only because this sandbox forbids their local listener. Frontend 517 tests, TypeScript, production build and `cargo check -p hone-web-api` passed. Browser runtime acceptance was not claimed because the sandbox cannot bind the local service ports.
+
+## D-2026-08-22-74 Independently Validate and Recompute Before Label Admission
+
+- Problem: a completed capability-isolated execution proved that a bounded calculation ran and produced a hashed artifact, but the producer could still contain a structural or arithmetic defect. Treating that artifact as outcome truth would let one implementation review itself and silently turn a bug into a training label.
+- Independence decision: `hone-historical-outcome-dry-run-output-validation-v1` is create-once and binds the exact claim, result, canonical output, sealed snapshot, protocol and upstream hashes. The validator must differ from the execution invoker, runner registrant, first-execution reviewer and run-authorization reviewer. Replays, stale snapshot bindings, tampering and duplicate attempt validation fail closed.
+- Recalculation decision: `hone-independent-outcome-recomputer-v1-no-execution-code-reuse` separately traverses the sealed asset and SPY series, reconstructs common sessions and recomputes every frozen 20/60/250-session return, excess return and maximum drawdown. Canonical structure, provenance and capability flags are checked before every floating-point value is compared bitwise; one-ULP drift, missing horizons, non-finite values or an invalid positive drawdown produce an immutable failed validation.
+- Promotion decision: a passing validation proves only structural integrity and deterministic agreement for one sealed replay. It does not admit an outcome label or authorize training, reward, shadow evidence, orders, broker access or trading. Empirical readiness is v9 and adds the twelfth stage; a separate outcome-label-admission review remains the next gate.
+- Verification: six focused output-validation tests, the empirical-readiness hard-gate regression, all 541 non-live Web API tests, all 517 frontend tests, TypeScript, the production build, Rust formatting and `cargo check -p hone-web-api` passed. Two credentialed-live tests remained ignored by design. Existing warnings were unchanged, and browser runtime acceptance was not claimed because the sandbox cannot bind local service ports.
+
+## D-2026-08-22-75 Independently Review Applicability and Bias Before Label Materialization
+
+- Problem: deterministic agreement on sealed prices proves arithmetic consistency, but not that a frozen 20/60/250-session outcome is an appropriate label for a particular historical decision. Missing sessions, corporate actions, benchmark mismatch, event-time leakage, sample selection and survivorship bias can all create a technically reproducible but unsuitable training target.
+- Admission decision: `hone-historical-outcome-label-admission-review-v1` is an append-only, self-hashed chain over one exact current passing validation and its claim/result/output/snapshot/protocol identities. The admission reviewer must differ from the validator, invoker, runner registrant and both prior authorization reviewers. Exact previous-tip checks reject stale writes, tampering, replay, forks, cycles and disconnected histories.
+- Review decision: approval requires explicit protocol-applicability, horizon/comparable-session, adjusted-close/corporate-action, SPY-comparability, future-isolation, missingness/sample-selection/survivorship-bias, no-manual-override, no-inferred-action/reward and closed-authority checks. A rationale and known limitations are mandatory; uncertainty cannot be hidden by a boolean approval.
+- Promotion decision: approval exposes only `future_label_materialization_eligible` for the exact output. It does not write a label, begin materialization or authorize training, rewards, shadow evidence, orders, broker access or trading. Empirical readiness is v10 and adds stage thirteen; an immutable, still non-running label-materialization implementation specification is the next separate gate.
+- Verification: eight focused admission-review tests and the empirical-readiness hard-gate regression passed. Frontend source-contract tests and TypeScript checking passed. Browser runtime acceptance was not claimed because the sandbox cannot bind local service ports.
+
+## D-2026-08-22-76 Register a Raw Outcome-envelope Materializer Without Running It
+
+- Problem: an admitted validated output was eligible for future materialization, but no immutable object described exactly which fields could become a label envelope or prohibited an implementation from silently rounding metrics, dropping limitations or inferring investment semantics. Treating admission itself as materialization authority would collapse applicability review, code review and label writing into one unsafe step.
+- Registration decision: `hone-historical-outcome-label-materialization-implementation-v1` is create-once and server-projects one exact current admitted review plus its validation, claim/result/output, sealed snapshot, reconstruction, protocol, symbols, decision time, common-session endpoints, recomputed-metric hash and known limitations. The client supplies only the selected exact binding, implementation name, the single allowed implementation kind and immutable code revision. Content fingerprinting ignores actor/time metadata for duplicate detection but binds every semantic and upstream field.
+- Semantic decision: the only allowed kind is `deterministic_raw_validated_outcome_envelope`. A future implementation may preserve only raw asset return, benchmark return, excess return, maximum drawdown, provenance and known limitations. Deterministic projection, bitwise metric preservation, create-once isolated output, limitation preservation and missing-data failure are mandatory. Manual metric override, rounding-by-recomputation, direction/rating/action/position/reward inference, networking, tools and production/history mutation are forbidden.
+- Promotion decision: status is always `registered_not_run`. Registration grants only eligibility for a later independent run-authorization review. It does not run materialization, write an outcome label, train, compute reward, create shadow evidence, generate an order, access a broker or trade. Empirical readiness is v11 and adds stage fourteen while retaining the global outcome-label-generation blocker.
+- Verification: six focused materializer-registry tests and both empirical-readiness regressions passed. With three sandbox-incompatible local-port email mocks filtered, 552 Web API tests passed and two credentialed-live tests remained ignored by design. All 517 frontend tests, TypeScript, the production build, workspace Rust checking with the documented bundled-resource development skip, Rust formatting and diff hygiene passed. Browser runtime acceptance was not claimed because the sandbox cannot bind local service ports.
+
+## D-2026-08-22-77 Independently Authorize Only Future Materialization-runner Registration
+
+- Problem: a content-addressed materializer specification froze fields and semantics, but allowing its registrant or any actor from the producing execution/validation/admission chain to authorize the next runtime object would let the same evidence chain approve itself. Treating implementation registration as execution authority would also collapse code review, runtime isolation and label writing.
+- Review decision: `hone-historical-outcome-label-materialization-run-authorization-review-v1` is an append-only self-hashed chain over one exact current `registered_not_run` implementation. Every review re-projects implementation/admission/validation/output/snapshot/protocol identities, immutable code revision, limitations and the relevant prior actors. Optimistic tip checks and exact previous hashes reject stale writes, tampering, forks, cycles and disconnected histories.
+- Independence decision: approval is forbidden for the implementation registrant, admission reviewer, validator, execution invoker, prior runner registrant, first-execution reviewer and prior run-authorization reviewer. Eleven explicit confirmations cover reproducibility, exact current bindings, raw-envelope-only semantics, bitwise metric preservation, provenance/limitations, create-once isolation, missing-data failure and zero network/tool/production/semantic/downstream authority.
+- Promotion decision: approval exposes only `materialization_runner_registration_eligible`. It does not register a runner, authorize a run, start materialization, permit a label write, train, reward, shadow, generate an order, access a broker or trade. Empirical readiness is v12 and adds stage fifteen; the next separate object is an immutable isolated materialization-runner specification.
+- Verification: thirteen focused stage-fourteen/fifteen Rust tests and the outcome-label hard-gate regression passed. The complete Web API library suite passed 562 tests with two credentialed-live tests ignored; all 517 frontend tests, TypeScript checking, the public production build, workspace checking with the documented development resource skip and Rust formatting passed. Browser runtime acceptance was not claimed because the sandbox cannot bind local service ports.
+
+## D-2026-08-22-78 Register a Label-materialization Runner Without Making It Callable
+
+- Problem: stage fifteen independently approved only the registration of a future isolated runner. Without a separate immutable runtime object, a later caller could substitute a different artifact, code revision, resource limit or capability surface and falsely claim it was the reviewed materializer.
+- Registration decision: `hone-historical-outcome-label-materialization-isolated-runner-v1` is create-once and content-addressed. It re-projects the exact current stage-fifteen approval plus the materializer, admission, validation, claim/result/output, sealed snapshot/reconstruction/protocol, horizon endpoints, metric hash, limitations and prior actors. The client supplies only that exact binding, runner name/kind, immutable code revision and artifact SHA-256; any semantic duplicate or drift fails closed.
+- Runtime decision: the only runtime is `hone-label-materialization-sandbox-v1-no-ambient-capabilities`. It has no callable entrypoint, inherited host environment, environment variables, secrets, network, external tools, child processes or production/history access. Inputs and root are read-only, work/output are ephemeral, future output must be create-once and separately validated, and time, memory, CPU, process and output limits are fixed. Execution is unprivileged with no-new-privileges.
+- Promotion decision: status is always `registered_not_run`. A current runner may expose only eligibility for a later independent first-execution authorization review. Registration cannot invoke the artifact, start materialization, create an output or label, train, compute reward, create shadow evidence, generate an order, access a broker or trade. Empirical readiness is v13 and adds stage sixteen while retaining the global label hard gate.
+- Verification: seven focused stage-sixteen tests and the empirical-readiness/outcome-label hard-gate regressions passed. The complete Web API suite passed 569 tests with two credentialed-live tests ignored; all 517 frontend tests, TypeScript checking, the production build, workspace Rust checking with the documented development resource skip, Rust formatting and diff hygiene passed. Browser runtime acceptance was not claimed because the sandbox cannot bind local service ports.
+
+## D-2026-08-22-79 Authorize One Future Materialization Invocation Without Invoking It
+
+- Problem: stage sixteen froze an exact isolated materialization runner, but it deliberately had no callable entrypoint. Allowing the registrant or any producing-chain actor to approve its first run would collapse artifact review, evidence review and execution authority; an unbounded or timeless approval could also be replayed after code, data or policy drift.
+- Review decision: `hone-historical-outcome-label-materialization-first-execution-authorization-review-v1` is an append-only self-hashed chain over one exact current runner and its artifact, immutable code revision, resources, materialization approval/implementation, admission, validation, execution output, sealed snapshot/reconstruction/protocol and metric bindings. Exact prior-tip checks reject stale writes, replay, tampering, branches, cycles and disconnected history.
+- Independence decision: approval is forbidden for the materialization-runner registrant, materialization implementation registrant, materialization run reviewer, label-admission reviewer, output validator, original execution invoker, original runner registrant and both original execution-authorization reviewers. Fourteen explicit confirmations cover exact bindings, independent artifact verification and reproducibility, sandbox/resource boundaries, raw-envelope-only behavior, zero ambient/downstream capabilities and single-use expiry.
+- Promotion decision: approval grants exactly one future invocation and expires 24 hours after review. This stage has no invocation endpoint, does not claim or consume the authorization, does not run the materializer and creates no output or label. Training, reward, shadow evidence, orders, broker access and trading remain false. Empirical readiness is v14 and adds stage seventeen while retaining the global outcome-label hard gate.
+- Verification: nine focused stage-seventeen Rust tests, empirical-readiness and outcome-label hard-gate regressions, TypeScript checking and the administrator source-contract suite passed. Full-suite results are recorded in the sealed-input handoff; browser runtime acceptance remains unclaimed in the port-restricted sandbox.
+
+## D-2026-08-22-80 Consume One Authorization Before a Fixed Raw-envelope Projection
+
+- Problem: stage seventeen created a short-lived one-shot allowance, but an invocation without a durable pre-execution claim could be replayed after a crash, and an arbitrary runtime could substitute different logic or silently turn raw returns into a semantic label.
+- Claim decision: `hone-historical-outcome-label-materialization-execution-attempt-claim-v1` is create-once and persisted before projection. It binds the exact authorization, runner/artifact, implementation, admission, validation, original output, snapshot/reconstruction/protocol and metric hashes after the current runtime artifact and complete upstream chain are revalidated. A claim consumes the authorization even when projection later fails; runner or authorization replay is rejected.
+- Execution decision: the only backend is `fixed-raw-validated-outcome-envelope-pure-function-no-ambient-capabilities-v1`. It receives an already independently validated object and bitwise-copies its frozen 20/60/250-session metrics, provenance and known limitations. It cannot access ambient filesystem/environment state, network, tools, child processes, production data, historical mutation or downstream stores. Staged output is create-new, synced, read back, hashed and removed; success and failure both append immutable results.
+- Trust decision: success creates `hone-historical-outcome-label-materialization-untrusted-envelope-v1`, not an outcome label. Direction, rating, action, position and reward are never inferred, and all label/training/reward/shadow/order/broker/trading flags remain false. Empirical readiness v15 adds stage eighteen but remains blocked on a later independent structural, provenance and bitwise validation.
+- Verification: nine focused stage-eighteen tests, both readiness hard-gate regressions, all 587 non-live Web API tests, all 517 frontend tests, TypeScript, the public production build, workspace all-target Rust checking with the documented dev resource skip, Rust formatting and diff hygiene passed. Two credentialed-live tests remain ignored by design; only pre-existing warnings remain.
+
+## D-2026-08-22-81 Independently Validate the Materialized Envelope Before Any Label-write Review
+
+- Problem: stage eighteen produced a create-once, hashed raw envelope, but the producer could still omit provenance, alter a floating-point bit, misstate its schema or accidentally enable a downstream flag. Reusing the projection implementation to validate itself would not provide independent evidence.
+- Independence decision: `hone-historical-outcome-label-materialization-output-validation-v1` is create-once for one exact completed attempt and records the full excluded-actor set. The validator must differ from the materialization invoker and every relevant materializer, runner, admission, validation and original execution registrant/reviewer/invoker. Duplicate validation, stale binding or role overlap fails closed.
+- Validation decision: `hone-independent-materialized-envelope-validator-v1-no-projection-code-reuse` reopens the current admitted source and immutable chain without calling the stage-eighteen projection. It verifies the canonical output hash, envelope structure, all provenance and limitations, closed authority flags and each 20/60/250-session metric by IEEE-754 bit equality. One-ULP drift, invalid horizons, non-finite values, positive maximum drawdown or any binding mismatch creates an immutable failed verdict.
+- Promotion decision: a passing verdict means only `untrusted_envelope_validated=true`. It does not create or admit a formal label, infer investment semantics or authorize label writing, training, reward, shadow evidence, orders, broker access or trading. Empirical readiness is v16 and adds stage nineteen; the next possible object is a separate formal-label-write authorization review, not a label write.
+- Verification: six focused stage-nineteen tests, both readiness/hard-gate paths, all 593 non-live Web API tests, all 517 frontend tests, TypeScript, the public production build, workspace all-target Rust checking, Rust formatting and diff hygiene passed. Two credentialed-live tests remain ignored by design; existing warnings are unchanged, and browser runtime acceptance is not claimed in the port-restricted sandbox.
+
+## D-2026-08-22-82 Review One Future Formal Raw-label Write Without Writing It
+
+- Problem: a passing stage-nineteen envelope is independently validated, but direct writing would collapse evidence validation, schema review and mutation authority. A timeless approval could also be replayed after its exact source or label contract changed.
+- Binding decision: `hone-historical-outcome-label-write-authorization-review-v1` is an append-only self-hashed chain over one exact current validation, claim/result/output, admitted source, snapshot, protocol, recomputed metrics and `hone-historical-outcome-formal-label-v1` contract. Optimistic tip checks, current-source revalidation and exact expected hashes reject replay, forks, stale bindings and contract drift.
+- Independence and semantics decision: the reviewer is excluded from the stage-nineteen validator and every upstream actor preserved by that validation. The fixed label contract carries only raw observed absolute/relative market outcomes, provenance, limitations and immutable bindings; it cannot infer direction, action, position or reward.
+- Authority decision: approval grants at most one future create-once write and expires exactly 24 hours after submission. This module has no writer endpoint, does not consume the authorization and writes no label. Training, reward, shadow evidence, orders, broker access and trading remain false. Empirical readiness v17 exposes this as stage twenty and remains blocked even when an authorization is valid.
+- Verification: eight focused stage-twenty tests, the outcome-label hard-gate regression, all 601 non-live Web API tests, all 517 frontend tests, TypeScript, production build, workspace all-target Rust checking, Rust formatting and diff hygiene passed. Two credentialed-live tests remain ignored by design; only pre-existing warnings remain.
+
+## D-2026-08-22-83 Consume One Authorization Before a Create-once Formal Raw-label Write
+
+- Problem: stage twenty granted one short-lived future write allowance, but a writer that persisted the label before an immutable claim could be replayed after an interruption, and a generic label writer could silently add direction, action, position or reward semantics to the independently validated raw outcome.
+- Consumption decision: `hone-historical-outcome-formal-label-write-claim-v1` is written create-once before the label mutation and binds the exact authorization, stage-nineteen validation, materialized output, admitted source, sealed snapshot, protocol, metric digest, label contract and invoker. The claim immediately consumes the allowance. A success, explicit failure or interrupted claim can never reuse that authorization; stage twenty also excludes claimed authorizations from its eligible projection.
+- Label decision: `hone-historical-outcome-formal-label-v1` permits exactly eight semantic payload fields: asset symbol, benchmark symbol, decision-available time, common-session count, raw validated metrics, source provenance, known limitations and immutable chain bindings. The metric collection preserves the frozen 20/60/250-session asset return, SPY return, excess return and asset maximum drawdown values by IEEE-754 bit pattern. The writer cannot fetch, fill, recompute, round, overwrite or infer direction, rating, action, position size or reward.
+- Isolation decision: labels are create-once objects under `investment_decisions/historical_outcome_formal_labels/objects`, while claims and failures stay in a separate audit store. Labels do not enter training or reward storage and every label/writer authority flag for training, reward, shadow evidence, orders, broker access and trading remains false. Empirical readiness v18 reports actual eligible, claimed, written, failed and incomplete-claim counts, but a written label remains blocked pending a later independent training-admission validation.
+- Verification: five focused stage-twenty-one tests, eight upstream authorization tests, 603 non-live Web API tests with the three sandbox-incompatible local-listener email cases excluded, all 517 frontend tests, TypeScript, production build and workspace all-target Rust checking passed. Two credentialed-live tests remain ignored by design; only pre-existing warnings and the existing frontend chunk-size warning remain.
+
+## D-2026-08-22-84 Independently Validate a Formal Raw Label Before Dataset Assembly
+
+- Problem: a stage-twenty-one label is create-once and contract-bounded, but the writer must not validate its own canonical serialization, exact payload projection or metric preservation. Copying a merely written label into training storage would collapse mutation, admission and dataset governance into one unaudited step.
+- Independence decision: `hone-historical-outcome-formal-label-training-admission-validation-v1` is create-once for one exact label/claim pair. The validator must be absent from the label writer and the complete upstream producer/reviewer actor set. It reopens the exact stage-twenty authorization and current source chain, while `hone-independent-formal-raw-label-validator-v1-no-writer-code-reuse` does not call the writer's label validation helpers.
+- Validation decision: the validator independently recomputes canonical label and claim hashes, requires the fixed eight-field semantic payload, verifies provenance and known limitations, and compares each 20/60/250-session metric by IEEE-754 bit pattern. The validation record also binds the hash of its independently read metric vector to the frozen recomputed-metric digest. Replay, role overlap, stale binding, contract drift, one-ULP change, invalid horizons or any downstream authority fails closed.
+- Promotion decision: a passing immutable record itself admits only that exact label to an isolated `offline_training_dataset_candidate` set. It does not copy bytes to training storage, assemble or version a dataset, authorize or run training, write a target or reward, create shadow evidence, generate orders, access a broker or trade. Empirical readiness v19 exposes the real eligible/validated/admitted/failed counts and remains blocked on a separate versioned offline-dataset assembly and governance stage.
+- Verification: five focused stage-twenty-two tests, both empirical-readiness regressions, 611 Web API library tests passed with two credentialed-live tests ignored, all 517 frontend tests, TypeScript, the production build, workspace all-target Rust checking, Rust formatting and diff hygiene passed. Only the existing dead-code, Rust future-incompatibility and frontend chunk-size warnings remain; browser runtime acceptance is not claimed in the port-restricted sandbox.
+
+## D-2026-08-22-85 Assemble an Immutable Raw-outcome Dataset Without Starting Training
+
+- Problem: stage twenty-two produced independently admitted candidates, but a mutable or selectively assembled dataset would allow sample cherry-picking, silent deletion, lineage drift and later leakage. Treating a candidate pool as a training dataset would also bypass version governance, temporal/source-group splitting and point-in-time feature review.
+- Assembly decision: `hone-historical-outcome-offline-dataset-v1` copies only the exact complete current passing-candidate set into an isolated content-addressed object. Candidate-set, entry, content and manifest SHA-256 values bind every formal-label, claim, validation and upstream identity plus the raw metrics, provenance, limitations and actors. Duplicate labels or conflicting symbol/benchmark/decision-time identities fail closed.
+- Version decision: every later version must name the latest parent and preserve every previous entry byte-for-byte and in the same prefix order; only newly admitted candidates may be appended. Versions are immutable and replayable, and assembly never silently re-sorts or rewrites the prior prefix even when a newly admitted decision has an older timestamp.
+- Authority decision: the object contains no feature vector, semantic target or split assignment. Dataset governance, training, training runs, rewards, shadow portfolios, orders, broker access and trading remain false. Empirical readiness v20 reports assembly eligibility, version count, current candidate-set binding and latest entry count, but remains blocked pending independent dataset governance plus temporal/source-group split and point-in-time feature-join review.
+- Verification: six focused stage-twenty-three tests, both empirical-readiness regressions and all 619 Web API library tests passed (617 passed, two credentialed-live tests ignored). All 517 frontend tests, TypeScript, production build, workspace all-target Rust checking, Rust formatting and diff hygiene passed. Only the existing dead-code, Rust future-incompatibility and frontend chunk-size warnings remain; browser runtime acceptance is not claimed in the port-restricted sandbox.
+
+## D-2026-08-22-86 Independently Govern a Raw-outcome Dataset Before Any Transformation
+
+- Problem: an immutable archive proves which raw outcomes exist, but it does not prove that future train/validation/holdout boundaries prevent the same company, historical event or source family from leaking across partitions. It also does not prove that future feature values existed at the historical decision time. Treating assembly as training readiness would silently authorize look-ahead bias.
+- Review decision: `hone-historical-outcome-offline-dataset-governance-review-v1` is an independent, append-only, self-hashed review chain bound to the exact current dataset content hash, manifest hash, candidate-set hash and optimistic previous tip. The reviewer must be outside the assembler, formal-label writer, independent validator and every actor preserved by the dataset entries. Stale bindings, self-review, replay, tampering, forks, cycles and disconnected history fail closed.
+- Split decision: the frozen future contract builds transitive, indivisible connected components across normalized company, historical-event identity (`reconstruction_sha256`, `snapshot_sha256`, decision time) and source-family identity. A component may enter exactly one of train, validation or sealed holdout under a stable SHA-256 70/15/15 policy. Time order is mandatory, the purge/embargo equals the longest 250-market-session outcome horizon, and holdout labels remain invisible to the future training worker. This review creates no assignment.
+- Feature decision: every future feature must preserve artifact SHA-256, source identity/version and `available_at_utc`, with `available_at_utc <= decision_available_at_utc`. Outcome, label, validation, admission, offline-dataset, future-market-data and split fields are forbidden feature namespaces. Missing or ambiguous availability fails closed; backfill and interpolation are forbidden. This review performs no feature join.
+- Authority decision: approval sets only `future_transformation_spec_registration_eligible=true`. It does not authorize or perform a split, feature join, target assignment, training run, reward, shadow portfolio, order, broker access or trading. A new candidate set makes every prior dataset approval non-current. Empirical readiness v21 and the administrator stage-24 panel expose that distinction explicitly.
+- Verification: seven focused governance tests and the empirical-readiness regression passed; the full Web API suite passed 624 tests with two credentialed-live tests ignored. All 517 frontend tests, TypeScript, both production builds and the workspace all-target Rust check passed. Rust formatting and diff hygiene passed in the final check; browser runtime acceptance is not claimed because this sandbox cannot bind local service ports.
+
+## D-2026-08-22-87 Register the Transformation Contract Before Reviewing or Running It
+
+- Problem: stage twenty-four approved only high-level anti-leakage and point-in-time controls. It did not freeze an executable, content-addressed contract for constructing connected-component partitions or the seven-layer feature bundle, so an implementation could still change algorithms between review and execution.
+- Registration decision: `hone-historical-outcome-offline-dataset-transformation-spec-v1` is create-once and binds one exact current dataset content/manifest/candidate-set hash plus one exact governance review and its split/feature policy hashes. The server generates and hashes both contracts; clients cannot replace their algorithms or schemas. A duplicate registration for the same governance approval is rejected.
+- Split decision: the contract forms transitive connected components from normalized company, historical-event and source-family identities, orders components chronologically by latest and then earliest decision time, and uses SHA-256 only as an equal-time tie-break. It enumerates every chronological contiguous boundary pair and chooses one unique lexicographic integer-deviation objective for 70/15/15, uses the frozen asset/SPY common-session index, applies the exact 250-session purge/embargo, and fails closed if any partition is empty before or after purge. No assignment is generated at registration.
+- Feature decision: the contract allowlists exactly 65 feature IDs inside seven point-in-time namespaces—industry state, company fundamentals, financial state, valuation state, crowding state, macro state and historical actor-scoped portfolio context. Each ID freezes semantics, value type, unit/period/accounting/scope metadata, artifact/source/version/availability provenance, explicit missingness and `available_at_utc <= decision_available_at_utc`. A permitted namespace cannot hide an unlisted or semantically different feature. Later restatements, current holdings, outcome/label/validation/admission/dataset/future-market/split fields, backfill and interpolation are forbidden; no bundle generation or join occurs.
+- Independence and authority decision: the registrar must be absent from the complete dataset actor chain and every governance-review actor, and that full exclusion set is rebound when the registry is read. Registration grants only eligibility for a later independent specification review. Split/join/target assignment, training, reward, shadow evidence, orders, broker access and trading remain false. Empirical readiness is v22 and treats a current registration as reviewed by nobody and run by nobody.
+- Verification: seven focused stage-twenty-five tests and both empirical-readiness hard-gate regressions passed. The full Web API suite passed 631 tests with two credentialed-live tests ignored; all 517 frontend tests, TypeScript, both production builds, workspace all-target checking, Rust formatting and diff hygiene passed. Only the existing dead-code, Rust future-incompatibility and frontend chunk-size warnings remain. Browser runtime acceptance was not claimed because this sandbox cannot bind local service ports.
+
+## D-2026-08-22-88 Independently Review Transformation Semantics Before Implementing Them
+
+- Problem: a content-addressed registration prevents later mutation but does not prove that its algorithms and field meanings are safe. Reviewing only seven namespace names would still allow semantic smuggling, while an underspecified “nearest 70/15/15” rule could produce different partitions in different implementations.
+- Specification correction: stage twenty-five is upgraded in place to exact v2 split and feature contracts. Boundary selection has a unique lexicographic integer objective and deterministic tie-break, the common market-session calendar and 250-session purge/embargo are explicit, empty partitions fail closed, and all 65 permitted feature IDs have frozen point-in-time semantics and provenance requirements.
+- Independent-review decision: `hone-historical-outcome-offline-dataset-transformation-spec-independent-review-v1` is an append-only, self-hashed chain bound to the exact dataset, governance approval, transformation body, split specification, feature specification and review contract. The reviewer must be outside the complete dataset, governance and registrar role chain. A separate expected-semantics catalog audits all 65 IDs and the exact boundary algorithm rather than trusting the registration generator's own assertions.
+- Authority decision: approval means only `future_isolated_transformation_implementation_registration_eligible=true`. It does not register an implementation, generate a manifest or bundle, perform a join, define a target, run training, calculate reward, create shadow evidence, generate an order, access a broker or trade. Stale bindings, missing confirmations, semantic drift, tampering, branching and role overlap fail closed. Empirical readiness is v23.
+- Verification: fourteen focused stage-twenty-five/twenty-six tests and both empirical-readiness hard-gate regressions passed. Full-suite, build and workspace verification are recorded in the stage-twenty-six plan and handoff.
+### D-2026-08-22-89 — 转换实现先做无入口不可变登记，独立复核后仍不能自动运行
+
+- **决定**：第二十七阶段只登记实现工件、代码版本、确定性算法、序列化、输入输出与沙箱合同；记录 create-once、内容寻址，且没有 callable entrypoint。
+- **理由**：规范语义批准不能证明实现忠实或安全。把“实现是什么”与“谁复核实现”“是否允许运行”“谁验证输出”分开，才能阻止登记动作暗含执行权限。
+- **边界**：登记人独立于完整数据集/治理/规范/复核链；环境、密钥、网络、工具、子进程和生产能力均关闭。唯一下一步是独立实现复核，训练和交易相关权限始终为 false。
+
+### D-2026-08-22-90 — 实现复核只能开放未来隔离 runner 规范登记
+
+- **问题**：实现登记的哈希与零能力字段只能证明登记器写了什么，不能独立证明真实工件、代码版本、算法、序列化/schema 和沙箱合同一致。
+- **决定**：第二十八阶段使用与登记器分离的语义审计建立追加式自哈希复核链，排除完整上游和实现登记者，逐项复现工件摘要并验证确定性实现与零能力边界。
+- **权限**：批准只开放未来隔离转换 runner 规范登记资格；不登记 runner、不授权执行、不生成 manifest/bundle、不 join、不定义 target，也不训练、奖励、影子、生成订单、访问券商或交易。
+
+### D-2026-08-22-91 — runner 规范登记不等于首次执行授权
+
+- **决定**：隔离转换 runner 只能以 create-once、内容寻址、`registered_not_run` 的不可变规范登记，并精确绑定当前实现独立批准与完整上游。登记记录必须冻结 runner 工件、代码版本、运行时、只读输入、create-once 输出和静态资源上限。
+- **原因**：把“可部署的规范”与“可以执行的权限”分开，避免登记 API 变成隐藏调用入口，也避免环境、密钥、网络、工具或生产访问通过运行时配置漂移进入转换链。
+- **下一门禁**：唯一允许的下一阶段是独立首次执行授权复核；它必须另行建立一次性、有限时且可审计的授权，而不能修改本 runner 记录。
+- **权限**：当前无调用入口、无执行、无输出；manifest、bundle、join、target、training、reward、shadow、order、broker 和 trading 全部保持 false。
+- **失败关闭**：角色重合、上游漂移、工件/代码/算法/schema 不一致、资源或沙箱越界、链分叉/循环/篡改以及任一下游权限为真都必须拒绝。
+
+### D-2026-08-22-92 — 首次执行授权复核只建立短期单次资格，不提供调用能力
+
+- **决定**：第三十阶段只建立对一个精确、当前且 `registered_not_run` 的隔离转换 runner 的追加式独立复核链。批准绑定完整 runner、工件/代码/沙箱合同与全部上游哈希，并只在提交后 24 小时内授予最多一次未来隔离调用资格。
+- **独立性**：复核者不得是 runner 登记者，也不得出现在数据集、治理、转换规范、规范复核、实现登记、实现复核或此前授权复核角色链中。完整排除集写入自哈希记录，读取时按前序链重建校验。
+- **权限分离**：授权复核注册表没有 claim 或 invocation endpoint，不能消费额度、启动进程、创建输出或批准输出校验。manifest、bundle、join、target、training、reward、shadow、order、broker 与 trading 均保持 false。
+- **下一门禁**：未来执行尝试必须另建 create-once claim，并重新核验未过期、未消费的精确授权与全部当前绑定；任何输出都只能先标记为未验证工件。
+- **失败关闭**：工件摘要未独立复现、代码不可复现、角色重合、绑定/合同漂移、确认缺失、过期、链分叉/循环/断链/篡改或任一执行/下游权限提前打开时拒绝。
+
+### D-2026-08-22-93 — 隔离转换必须先 claim，且输出先保持不可信
+
+- **决定**：第三十一阶段只消费当前、未过期、未 claim 且完整绑定可重开的单次授权；claim 必须先以 create-once 方式保存。claim 后成功或失败均消费授权，结果不可覆盖且不得重放。
+- **理由**：把授权、调用、转换、输出校验和训练用途拆开，才能防止授权重放、链路漂移、未来信息泄漏和“运行成功即训练可用”的越权推断。
+- **边界**：固定纯函数只产生确定性切分与显式缺失特征候选；没有新数据抓取、补值、正式 manifest/bundle、join、目标、训练、奖励、影子、订单、券商或交易权限。
+- **下一门禁**：只能由独立实现重开完整当前链并验证候选结构、边界、purge/embargo、点时缺失和输出哈希；执行结果本身不能自证有效。
+
+### D-2026-08-22-94 — 转换输出必须由不同算法独立重算，验证通过仍不等于正式工件
+
+- **决定**：第三十二阶段只接受一条精确完整的第 31 阶段 claim/result/output，由独立角色建立 create-once、自哈希校验记录。校验器重新打开当前完整数据集、封存快照、runner 和历史精确授权。
+- **算法独立性**：执行层使用并查集，校验层必须用图遍历重新构造传递连通分量，并独立重算边界枚举目标、250 交易日 purge/embargo、65 项显式缺失特征、排除审计与 canonical output 哈希；不能把“执行成功”当作验证证据。
+- **角色独立性**：校验者排除执行调用人、runner 登记/授权复核者、保存的完整上游角色以及数据集和正式标签链参与者。重复校验或角色重合直接拒绝。
+- **权限**：通过只设置 `untrusted_candidate_envelope_validated=true` 于独立记录中，不修改原结果，不创建 official split manifest、feature bundle、join、target 或训练输入。training/reward/shadow/order/broker/trading 继续为 false。
+- **下一门禁**：只能另行设计已验证候选的独立准入和 create-once 正式工件物化，且不得把本校验 API 扩展成隐式物化或训练入口。
+
+### D-2026-08-22-95 — 候选准入与正式工件物化必须分开
+
+- **决定**：第三十三阶段只对一个精确、当前且第 32 阶段独立校验通过的候选建立追加式、自哈希准入复核链。复核记录绑定 validation、claim/result/output、数据集、转换规范与四类重算摘要，并通过乐观链尖阻止覆盖和分叉。
+- **独立性**：复核人排除输出校验、执行、runner、授权、完整上游和此前准入复核角色；批准前必须完成分量、边界、purge/embargo、留出、65 项点时特征、显式缺失、排除审计与正式产物合同检查。
+- **权限**：批准只授予未来 create-once 正式 manifest/feature bundle 物化资格。准入 API 不物化、不 join、不定义 target，也不授权 training/reward/shadow/order/broker/trading。
+- **下一门禁**：正式物化必须另有不可重放入口，且只能复制该精确候选；物化产物仍须由独立校验器复核，不能因准入批准而直接成为训练输入。
+
+### D-2026-08-23-96 — 正式工件物化先 claim、只精确复制且产物默认不可信
+
+- **决定**：第 34 阶段只允许对一条精确、当前且已独立准入的转换候选执行一次 create-once 正式工件物化。claim 必须先落盘；成功、失败或中断都消费资格并留下不可覆盖审计状态。
+- **不可变性**：claim 产生后立即冻结该 attempt 的准入复核链。物化者不得重算、补值或改写，只能把已验证候选精确复制为内容寻址的 official split manifest 与 official feature bundle，并把源候选、validation、admission、dataset 和规范哈希全部带入两个工件及结果。
+- **独立性**：物化者必须排除准入、输出校验、执行和完整上游角色。任一角色重合、链漂移、哈希/结构/体积不一致、重放或下游权限提前开启都失败关闭。
+- **权限**：`official_*_created=true` 只表示文件已形成；`independently_validated_after_materialization=false`。join、target、training、reward、shadow、order、broker、trading 全部为 false。
+- **下一门禁**：只能另建物化后独立输出校验。该校验不能被物化成功替代，也不能顺带连接标签或训练。
+
+### D-2026-08-23-97 — 正式工件必须由独立实现重开并校验，校验通过仍不等于可训练
+
+- **决定**：第 35 阶段对一组完整的 official split manifest 与 official feature bundle 只形成一次 create-once、自哈希独立校验记录。校验器必须重新读取当前准入候选、物化 claim/result 和两个正式文件，独立重算五类摘要并逐字段核对完整绑定。
+- **独立性**：校验者必须排除物化者、准入复核人、候选输出校验人、执行人和保存的完整上游角色；校验实现不得调用第 34 阶段物化器或其校验 helper。
+- **失败关闭**：任一 schema、大小、摘要、组合摘要、源候选精确复制、留出隔离、显式缺失/排除审计或零下游权限不一致，都写入不可变失败记录并阻断后续资格；记录不得覆盖或重放。
+- **权限**：通过只开放未来 feature-label join/target 治理规范登记资格。当前不连接标签、不定义目标、不复制到训练库，也不授权 training、reward、shadow、order、broker 或 trading。
+- **下一门禁**：若继续，只能另建不可变 join/target 语义规范登记；该登记仍不能实际 join 或产生训练样本。
+
+### D-2026-08-23-98 — 先冻结连续结果目标与标签可见性，再讨论 join 实现
+
+- **决定**：第 36 阶段只对一组当前、独立校验通过的正式工件登记一个 create-once、自哈希 join/target 治理规范。规范绑定 exact dataset entry、official split manifest、65 项 feature bundle 和原始结果数据集，不复制或连接任何数据。
+- **连接语义**：每个 `dataset_entry_id` 必须对应唯一切分记录、唯一原始结果条目和每个 allowlist feature 的唯一记录；purged/embargoed 行全部排除。feature `available_at_utc` 必须不晚于历史判断时点，显式缺失保留且不得插值、回填或因缺失删列。
+- **目标语义**：预测目标为 20/60/250 共同交易日的资产收益、相对 SPY 超额收益和最大回撤九维连续向量；250 日超额收益是主监督目标候选，250 日最大回撤是风险目标，其余为路径辅助。保留原始 f64 位，不标准化、winsorize 或排名。
+- **禁止偷换**：本规范不定义买入/持有/卖出类别、仓位、动作阈值或标量奖励。sealed holdout 标签在模型和评测协议冻结前不得向训练或调参开放。
+- **权限**：登记只开放未来独立规范复核资格；不授权或执行 join、不分配目标、不创建训练行，也不训练、奖励、影子、订单、券商或交易。
+- **下一门禁**：只能由完整上游角色之外的另一名复核者独立重算规范正文和语义；复核不能执行 join。
+
+### D-2026-08-23-99 — join/target 规范必须独立复核，批准也只开放未来实现登记
+
+- **问题**：create-once 和内容哈希能证明规范未被静默修改，但不能独立证明连接基数、防泄漏、标签可见性和九维目标语义正确；尤其不能把“250 日超额收益主目标候选”误写成已验证策略或老王确认逻辑。
+- **决定**：第 37 阶段建立追加式、自哈希独立复核链。复核器不调用登记校验函数，而是独立重算 record/body/join/target 指纹，重新核对当前正式工件、65 项 feature 目录、一对一 entry 连接、purge/embargo、点时缺失、禁止输入、sealed holdout 及 20/60/250 日九维连续目标。
+- **独立性**：复核人必须排除规范登记者、正式工件校验/物化/准入/执行完整上游和此前复核人；链尖、前序哈希、角色排除集、规范或工件绑定漂移、分叉、循环和批准后追加记录均失败关闭。
+- **目标边界**：250 日超额收益与 250 日最大回撤分别只是主监督目标和风险目标的工程候选，不构成已确认投资方法、策略有效性、盈利能力或动作标签。规范继续禁止 buy/hold/sell、仓位、阈值、排名和 scalar reward。
+- **权限**：批准只设置未来隔离 join/target 实现登记资格；不登记实现、不执行 join、不打开或分配标签、不创建训练行，也不授权 training、reward、shadow、order、broker 或 trading。实证准备度升级为 v34。
+
+### D-2026-08-23-100 — join/target 实现登记只能冻结零能力合同
+
+- **问题**：规范独立复核只能证明语义和绑定满足当前工程合同，不能证明某段实现忠实、确定或安全；若直接把“规范批准”当作可运行资格，会把工件登记、标签访问、join 执行和训练权限混成一门。
+- **决定**：第 38 阶段只允许对一条当前第 37 阶段批准记录登记一个 create-once、自哈希实现合同。合同精确绑定 review/audit/spec/body/join/target/official-artifact/dataset 哈希，并冻结实现工件 SHA-256、代码版本、严格一对一 join、九维原始 f64 投影、规范化序列化及固定输入输出 schema。
+- **独立性与失败关闭**：登记者必须排除规范登记者、独立复核人和完整上游角色；同一批准记录只能登记一次。角色重合、绑定漂移、重复登记、任一确认缺失、合同或权限位篡改均拒绝。
+- **沙箱**：合同没有可调用入口、环境继承、环境变量、密钥、网络、外部工具、子进程、标签库/训练库或生产读写能力。65 项特征、9 项目标及 20/60/250 日口径固定，但不读取或连接任何数据。
+- **权限**：登记只开放未来独立实现复核资格。runner、标签访问、join、目标分配、joined/training rows、输出验证、训练、奖励、影子、订单、券商和交易全部保持关闭；实证准备度升级为 v35。
+
+### D-2026-08-23-101 — join/target 实现复核必须独立重算，批准只开放 runner 规格登记
+
+- **问题**：实现登记中的哈希、算法身份和零能力位由登记路径生成，不能单独证明真实实现与合同一致，也不能证明实现没有夹带动作、奖励或数据访问能力。
+- **决定**：第 39 阶段建立追加式、自哈希且批准终止的独立复核链。独立审计重新计算实现记录/合同指纹，重绑当前 review/audit/spec/body/join/target/正式工件/数据集，核验严格一对一 join、九维原始 f64 投影、防泄漏、sealed holdout、序列化/schema、资源和零能力沙箱。
+- **独立性与失败关闭**：复核人排除实现登记者、规范登记/复核人和完整生产上游以及此前复核人；链分叉、断链、循环、篡改、绑定漂移、确认缺失或批准后追加记录均拒绝。
+- **权限**：批准只开放未来隔离 join/target runner 规格登记资格。runner、首次执行、标签访问、join、目标分配、joined/training rows、输出校验、训练、奖励、影子、订单、券商和交易全部保持关闭；目标仍是工程候选而非策略真理，实证准备度升级为 v36。
+
+### D-2026-08-23-102 — runner 规格登记不等于首次执行授权
+
+- **问题**：实现审查通过只能证明当前实现合同满足独立审计，不能直接决定以什么运行时、输入输出边界和资源上限运行，更不能把 runner 登记偷换为已经执行 join。
+- **决定**：第 40 阶段只登记 create-once、内容寻址且状态固定为 `registered_not_run` 的隔离 runner 规格。记录精确绑定当前第 39 阶段批准、实现合同及完整上游哈希，并冻结 runner 工件 SHA-256、不可变代码版本、固定运行时、只读输入、create-once 输出和静态资源上限。
+- **独立性与失败关闭**：登记者必须排除实现审查人、实现登记者、规范登记/复核人和完整正式工件上游。同一批准与 runner 内容不能换人或换时间重放；任一绑定、工件、能力、资源或权限位漂移均拒绝。
+- **沙箱**：规格没有可调用入口、宿主环境继承、环境变量、密钥、网络、工具、子进程、标签库/训练库或生产读写能力。单数据集、4096 MiB、300 秒、1000 millicores、单进程与 8 MiB 输出是上限，不是资源预留或执行承诺。
+- **权限**：登记只开放未来独立首次执行授权复核资格。标签访问、join、目标分配、joined/training rows、输出验证、训练、奖励、影子、订单、券商和交易全部为 false；实证准备度升级为 v37。
+
+### D-2026-08-23-103 — 首次执行授权必须短时、单次且没有执行入口
+
+- **问题**：runner 规格和零能力合同只能说明未来执行应受哪些边界约束；若审批端同时提供 claim 或调用能力，就会把独立复核、标签访问、join 执行和结果校验再次合并。
+- **决定**：第 41 阶段建立追加式、自哈希首次执行授权复核链。每次复核精确绑定当前 runner 工件/代码/合同、实现及独立审计、规范及独立审计、join/target 指纹、正式组合工件与数据集内容哈希。
+- **独立性与失败关闭**：复核人排除 runner 登记者、两级实现/规范登记与复核人、完整正式工件上游及此前授权复核人。链尖漂移、分叉、循环、角色重合、任一确认缺失或权限位篡改均拒绝。
+- **授权边界**：批准仅在 24 小时内提供最多一次的未来隔离调用资格。授权注册表没有 claim 或调用入口，不启动进程、不读取通用标签/训练库、不执行 join、不分配目标、不创建 joined/training rows 或输出。
+- **权限**：输出校验、训练、奖励、影子、订单、券商和交易继续为 false；实证准备度升级为 v38。下一门禁只能另建第 42 阶段一次性执行尝试，不能在本阶段实现或暗中触发。
+
+### D-2026-08-23-104 — join/target 一次性执行成功仍只能产生不可信候选
+
+- **问题**：第 41 阶段的短时单次资格不能被直接解释为已经执行；而执行成功也不能被解释为 joined dataset 已正式准入或训练可以开始。
+- **决定**：第 42 阶段在任何数据投影前先 create-once 保存精确 claim。claim 绑定当前未过期授权、runner/实现/规范完整链、独立校验后的 official split/65 项 feature bundle，以及当前原始结果数据集；成功或失败均消费授权并留下不可覆盖结果。
+- **投影合同**：固定纯函数要求 `dataset_entry_id` 一对一、重复/缺失键失败关闭、每个有效条目恰好 65 项一致目录、`available_at <= decision_available_at`、显式缺失和 official purge/embargo 权威不变。只对 train 行公开 20/60/250 日九项原始 f64 位模式；validation 与 sealed holdout 目标值只留下内容承诺，不进入输出向量。
+- **能力边界**：执行层不打开通用标签库或训练库，不生成正式 joined dataset，不写训练数据、奖励或影子仓位，不生成订单，不访问券商，也不交易。输出固定为 `untrusted`，下一步只能由独立实现逐位重算与防泄漏校验。
+- **准备度**：实证准备度升级为 v39；候选执行成功只开放未来独立输出校验资格，不构成训练、策略有效性、盈利能力或老王确认逻辑的证明。
+
+### D-2026-08-23-105 — join/target 输出必须由独立实现逐位重算，通过后仍只是待准入候选
+
+- **问题**：第 42 阶段的执行记录、输出哈希和隐藏标签承诺均由执行路径产生，不能自证一对一连接、65 项点时特征、九维目标位模式与留出隔离没有实现错误或泄漏。
+- **决定**：第 43 阶段只接受一条精确、完整且已结束的 Stage 42 attempt，由完整执行与上游角色链之外的新角色建立 create-once、自哈希校验记录。校验器重新打开当前授权审计、原始结果数据集和独立校验后的 official artifact pair，并独立重算 claim/result/output 指纹、连接键、feature 目录、split/purge/embargo、九项原始 f64 位目标和目标承诺。
+- **算法与角色独立性**：校验算法不得调用 Stage 42 的投影或记录校验 helper；校验人不得是执行调用人或任一上游参与者，排除链必须非空、排序去重并进入记录哈希。重复校验、绑定漂移、任一目标泄漏或承诺不一致都失败关闭。
+- **标签边界**：train 行必须精确包含九项位模式；validation 与 sealed holdout 仍只能核对内容承诺，不得把目标值写入候选或暴露给训练、调参和模型选择。
+- **权限**：通过仅产生 `validated_untrusted_candidate_for_future_admission_review`，开放未来独立候选准入复核资格。正式 joined dataset、training-store copy、training、reward、shadow、order、broker 与 trading 全部保持 false；实证准备度升级为 v40。
+
+### D-2026-08-23-106 — join/target 候选准入批准只开放未来正式数据集物化资格
+
+- **问题**：Stage 43 能证明候选按冻结合同被独立重算，但不能证明它已经适合作为正式 joined dataset，更不能把“技术校验通过”直接升级成训练准入。
+- **决定**：Stage 44 为精确且当前有效的 Stage 43 通过记录建立追加式、自哈希候选准入复核链。复核必须重新绑定 validation/claim/result/output、授权、runner、实现、规范、official split/feature 工件、原始结果数据集、重算行数/排除行数、目标承诺及 feature/target 计数，并逐项完成十二项准入确认。
+- **独立性与失败关闭**：复核人必须排除 Stage 43 校验人、Stage 42 执行人、完整上游角色和此前准入复核人。链尖漂移、分叉、循环、角色重合、绑定/计数/承诺变化或确认缺失都必须写入不可变失败记录并关闭资格；批准是终端记录，批准后不得追加或改写。
+- **权限**：批准只产生 `future_create_once_official_joined_dataset_materialization_eligible=true`。本阶段不创建 official joined dataset、不复制 training store、不训练、不计算 reward、不运行影子组合、不生成订单、不访问券商，也不交易；实证准备度升级为 v41。
+- **下一门禁**：若继续，只能另建 Stage 45 create-once 正式 joined dataset 物化。该物化仍必须与物化后独立校验和训练准入分离。
+
+### D-2026-08-23-107 — 正式 joined dataset 必须先消费 claim，失败也不可重放
+
+- **问题**：Stage 44 的准入记录只证明精确候选可进入未来物化；若物化端可以先读写后登记、失败重试、重新计算或修补候选，就会破坏审计完整性并把技术准入偷换成训练数据。
+- **决定**：Stage 45 对一条当前、精确、已准入候选只允许一次 claim-first、create-once 物化。claim 在读取和复制候选前不可变落盘；成功、失败或中断都消费该资格，禁止覆盖、重放、换人重试或对失败文件就地修复。
+- **精确复制**：物化端重新打开 Stage 44 admission、Stage 43 validation、Stage 42 claim/result/output 及完整上游绑定，只复制已独立重算的 rows、purge/embargo 排除审计和目标承诺。不得重算、插补、回填、标准化或重新解释；validation 与 sealed holdout 的目标值继续隐藏。
+- **独立性与权限**：物化人必须排除准入复核人、输出校验人、执行人和完整上游角色。`official_joined_dataset_created=true` 仍同时要求 `independently_validated_after_materialization=false`、`eligible_for_training_store_copy=false`；训练、奖励、影子、订单、券商与交易全部关闭。
+- **下一门禁**：只能另建 Stage 46 物化后独立逐行、逐位校验；正式文件存在不能替代该校验，也不能自动进入训练库。
+
+### D-2026-08-23-108 — 正式 joined dataset 必须由物化者之外的实现独立重开复核
+
+- **问题**：Stage 45 的 claim、result、dataset 哈希和精确复制标记都由同一物化路径产生，不能自证工件未被实现错误、静默漂移或目标泄漏污染。
+- **决定**：Stage 46 对每个已完成物化只允许一条 create-once、自哈希独立复核记录。校验器自行重开不可变 claim/result/official dataset 与精确 Stage 44 当前准入候选，独立重算三层工件指纹、rows、purge/embargo 排除项和 target commitments；不得调用 Stage 45 物化器或其工件校验 helper。
+- **独立性与失败关闭**：校验人必须排除物化者、Stage 44 准入复核、Stage 43 输出校验、Stage 42 执行及完整上游角色。任一 schema、指纹、当前链绑定、一对一基数、65 项特征、点时/显式缺失、split/purge/embargo、九项原始 f64 位模式、validation/holdout 隐藏或零下游权限不一致，都形成不可变失败记录并关闭该候选。
+- **权限**：通过只产生未来 training-store copy 准入复核资格。当前不复制训练库，不授权 training、reward、shadow、order、broker 或 trading；实证准备度升级为 v43。
+- **下一门禁**：若继续，只能另建独立的训练库复制准入复核；不得把 Stage 46 通过直接解释为已复制、可训练、策略有效或可实盘。
+
+### D-2026-08-23-109 — 训练存储复制准入批准只开放下一道 create-once 复制门禁
+
+- **问题**：Stage 46 只能证明精确正式 joined dataset 按冻结合同独立复算一致；它不能自行判断该数据合同是否适合进入训练存储，更不能把“校验通过”偷换成“已复制、可训练或有效”。
+- **决定**：Stage 47 为每个当前有效的 Stage 46 通过记录建立追加式、自哈希、批准终止的独立准入复核链。复核精确绑定 materialization claim/result/dataset、Stage 46 validation、Stage 44 admission、Stage 43 source validation、原始数据集和 rows/excluded/target commitments 指纹，并完成十二项数据合同与权限确认。
+- **独立性与失败关闭**：复核人必须排除 Stage 46 校验者、Stage 45 物化者、完整上游角色和此前 Stage 47 复核者。链尖漂移、分叉、断链、循环、角色重合、65/9 计数、点时/缺失、切分、目标隐藏或任一哈希变化都拒绝；批准后复核链永久冻结。
+- **权限**：批准只产生 `future_create_once_training_store_copy_eligible=true`。Stage 47 没有复制入口，不写训练存储、不训练、不定义或计算 reward、不运行影子组合、不生成订单、不访问券商，也不交易；实证准备度升级为 v44。
+- **下一门禁**：若继续，只能另建 Stage 48 claim-first、create-once 训练存储复制，并在复制后再由独立实现校验。Stage 47 不证明模型质量、策略收益、老王逻辑有效性或实盘可用性。
+
+### D-2026-08-23-110 — 训练存储复制必须先消费 claim，且复制成功仍不可训练
+
+- **问题**：Stage 47 只批准精确正式数据集进入未来复制门禁；若复制端可以先写后 claim、失败重试、重算或修补内容，就会破坏正式数据集的不可变性，并把“进入隔离存储”偷换成“可训练”。
+- **决定**：Stage 48 对每条当前有效的 Stage 47 准入只允许一次 claim-first、create-once 精确复制。claim 先绑定完整 Stage 47/46/45/44/43 责任链、rows/excluded/target commitments、源数据集摘要与唯一内容寻址目标目录；成功、失败或中断均消费资格，禁止覆盖、重放或换人重试。
+- **精确复制与隔离**：复制只保留 Stage 46 已独立校验的正式 joined dataset，不重算、不修补、不插补、不标准化或重新解释。validation 与 sealed holdout 目标继续隐藏；只授予精确目标目录写入，不开放通用训练存储读写。
+- **权限**：`copied_to_training_store=true` 必须同时保持复制后独立校验、训练登记、训练复核、训练授权、训练启动、reward、shadow、order、broker 与 trading 为 false。实证准备度升级为 v45。
+- **下一门禁**：只能另建由复制者和完整上游之外的新实现执行的 Stage 49 复制后独立逐行、逐位校验；不得在 Stage 48 登记或启动训练。
+
+### D-2026-08-23-111 — 训练存储副本必须由复制者之外的实现独立验真
+
+- **问题**：Stage 48 的 claim、result、副本哈希和“精确复制”标记都由复制路径产生，不能自证落盘内容没有截断、位漂移、绑定错误或留出目标泄漏。
+- **决定**：Stage 49 对每个已完成副本只允许一条 create-once、自哈希独立校验记录。校验器重新打开 Stage 48 claim/result/内容寻址副本与精确 Stage 47 正式数据集，独立重算三层工件、rows、excluded rows 和 target commitments，不调用 Stage 48 的复制或工件校验 helper 自证。
+- **独立性与失败关闭**：校验人必须排除复制者、Stage 47 准入复核者、Stage 46 校验者、Stage 45 物化者及完整上游。任一 schema、指纹、当前链、基数、65 项特征、PIT/显式缺失、split/purge/embargo、九项原始 f64 位、留出目标隐藏或权限位不一致，都写入不可变失败记录并关闭副本。
+- **权限**：通过只产生未来 training-registration admission review 资格，不创建训练登记、不授权或启动训练，也不定义 reward、不运行影子组合、不生成订单、不访问券商、不交易；实证准备度升级为 v46。
+- **下一门禁**：若继续，只能另建独立的训练登记准入复核。复制一致不等于模型有效、策略有效、能够赚钱或可以实盘。
+
+### D-2026-08-23-112 — 训练登记准入批准不等于训练已登记或可运行
+
+- **问题**：Stage 49 只证明精确训练存储副本与已独立校验的正式数据集逐行逐位一致；若复制校验通过便自动创建训练登记，就会把工程一致性偷换成模型有效性，并绕过训练规格、算法、资源、复现和授权审查。
+- **决定**：Stage 50 为每个当前有效的 Stage 49 通过记录建立追加式、自哈希且批准终止的独立准入复核链。复核精确绑定 Stage 49 validation、Stage 48 claim/result/training-store dataset、Stage 47 source dataset、rows、excluded rows 和 target commitments，并完成十二项数据合同与权限确认。
+- **独立性与失败关闭**：复核人必须排除 Stage 49 校验者、Stage 48 复制者、完整上游角色和此前 Stage 50 复核人。链尖漂移、分叉、断链、循环、角色重合、工件/计数/承诺变化或任一确认缺失都拒绝；批准后复核链永久冻结。
+- **权限**：批准只产生 `training_registration_candidate_admitted=true` 与 `future_create_once_training_registration_eligible=true`。Stage 50 不创建训练登记，不授权或启动训练，也不定义 reward、不运行影子组合、不生成订单、不访问券商、不交易；实证准备度升级为 v47。
+- **下一门禁**：若继续，只能另建 Stage 51 claim-first、create-once 训练实验登记。登记仍不证明模型、策略或收益有效，也不得在同一门禁授权或启动训练。
+
+### D-2026-08-23-113 — 训练实验登记必须先消费 claim，且登记不等于训练已复核、授权或运行
+
+- **问题**：Stage 50 只准入一份精确训练存储副本进入未来登记门禁；若登记人可以自行选择算法、随机种子、目标、资源或留出可见性，或者登记成功便自动运行训练，就会破坏可复现比较、产生目标泄漏，并把工程登记偷换成模型有效性。
+- **决定**：Stage 51 对每条当前有效的 Stage 50 准入只允许一次 claim-first、create-once 登记。claim 先绑定完整 Stage 50/49/48 及更早责任链、训练副本与来源数据集摘要、rows、excluded rows、target commitments、65 项特征和九项连续结果目标；成功、失败或中断都消费资格，禁止覆盖、重放或换人重试。
+- **固定实验套件**：服务器固定三种实验臂——零预测冻结基线、岭回归多目标模型、梯度提升多目标模型——且每种都使用确定性种子 17/29/43。训练只拟合 train，模型选择只看 validation，sealed holdout 对训练进程完全隐藏；逐目标、逐种子报告指标，禁止用单一综合分遮蔽失败。
+- **独立性与权限**：登记人必须排除 Stage 50 复核者、Stage 49 校验者、Stage 48 复制者和完整上游角色。登记状态只能为 `registered_not_run`；不创建 runner，不授权或启动训练，不定义标量 reward、投资动作、仓位或排名，也不开放影子、订单、券商与交易。实证准备度升级为 v48。
+- **下一门禁**：若继续，只能由登记者和完整上游之外的新角色建立 Stage 52 独立登记复核；复核通过仍须另行建立训练 runner 与运行授权，不得在 Stage 51 暗中执行。
+
+### D-2026-08-23-114 — 训练实验登记必须独立重算复核，批准仍不等于存在可运行实现
+
+- **问题**：Stage 51 的 claim、固定实验规范、registration 和 result 都由登记路径生成，不能自证三模型臂、随机种子、目标、指标、切分隔离和资源边界没有实现漂移，也不能把 `registered_not_run` 偷换成可训练。
+- **决定**：Stage 52 为每条精确且完成的 Stage 51 登记建立追加式、自哈希、单链尖且批准终止的独立复核链。复核实现不调用 Stage 51 私有校验 helper，而是重新计算 claim、specification、registration、result 的哈希与语义，并重新绑定 Stage 50 admission 及完整上游。
+- **独立性与复核合同**：复核人必须排除 Stage 51 登记人、Stage 50 复核者和完整上游及此前 Stage 52 复核者。十二项确认覆盖 claim-first/create-once 成功、`registered_not_run`、固定三模型臂与 17/29/43、65 项特征、九项原始连续目标、train/validation/sealed-holdout 隔离、逐目标逐种子指标、固定资源上限、确定性重放和无标量 reward/动作/仓位/排名语义。
+- **权限**：批准只产生 `training_experiment_registration_independently_approved=true` 与 `future_training_implementation_registration_eligible=true`。Stage 52 不登记训练实现、不创建 runner、不授权或启动训练，也不开放 reward、shadow、order、broker 或 trading；实证准备度升级为 v49。
+- **下一门禁**：若继续，只能另建 Stage 53 claim-first、create-once 训练实现登记；实现登记后还必须独立复核，之后才可讨论隔离 runner 与一次性运行授权。
+
+### D-2026-08-23-115 — 训练实现登记只冻结无入口合同，不等于 runner、数据访问或训练
+
+- **问题**：Stage 52 只独立批准固定训练实验规范；若下一步直接写可执行入口、读取训练数据或运行模型，就会绕过实现审查，并把“规范已批准”偷换成“训练已授权”。
+- **决定**：Stage 53 为每条当前有效且未消费的 Stage 52 批准建立 create-once、内容寻址训练实现登记。登记精确绑定 Stage 52 review 与 Stage 51 claim/registration/result，冻结不可变代码版本、实现工件 SHA-256、三模型臂、17/29/43、65 项特征、九项原始连续目标、逐目标逐种子指标和固定资源上限。
+- **零能力边界**：实现合同不得包含可调用入口、环境变量、密钥、外网、外部工具、子进程、训练存储读取、生产读写、验证标签拟合可见性或封存集可见性；不得定义标量 reward、投资动作、仓位或排名语义。
+- **独立性与权限**：登记人必须排除 Stage 52 复核者、Stage 51 登记者及完整上游角色。登记状态固定为 `registered_not_reviewed_not_run`；只开放未来独立实现复核，不创建 runner、不授权数据访问或训练、不生成模型工件或指标，也不开放 reward、shadow、order、broker 或 trading；实证准备度升级为 v50。
+- **下一门禁**：若继续，只能另建 Stage 54 独立训练实现复核。复核通过仍不得直接训练，之后还需隔离 runner 登记与单独一次性运行授权。
+
+### D-2026-08-23-116 — 训练实现必须由登记人之外的角色独立复核，批准只开放 runner 规格登记
+
+- **问题**：Stage 53 的实现记录、合同摘要、三模型臂、指标和资源边界均由登记路径生成，不能自证实现工件忠实于 Stage 51–52 合同，也不能把 `registered_not_reviewed_not_run` 偷换成可执行训练程序。
+- **决定**：Stage 54 为每条当前有效的 Stage 53 实现建立追加式、自哈希、单链尖且批准终止的独立复核链。独立审计重新计算实现记录与合同哈希，精确重绑 Stage 52 review 和 Stage 51 claim/registration/result，并逐项复核不可变工件与代码版本。
+- **训练语义与失败关闭**：审计固定三模型臂、17/29/43、65 项特征、九项原始连续目标、train-only 预处理/拟合、validation-only 选择、sealed holdout 隔离、逐目标逐种子指标和固定资源上限；任一指纹、语义、角色或权限位漂移都必须失败关闭。复核人排除 Stage 53 登记人、完整 Stage 51–52 链和此前 Stage 54 复核人。
+- **权限**：批准只产生 `training_implementation_independently_approved=true` 与 `future_isolated_training_runner_registration_eligible=true`。Stage 54 不登记 runner、不开放数据读取、不授权或启动训练、不创建模型工件或指标、不定义 reward、不运行影子组合、不生成订单、不访问券商、不交易；实证准备度升级为 v51。
+- **下一门禁**：若继续，只能另建 Stage 55 create-once、内容寻址、无运行入口的隔离训练 runner 规格登记；runner 登记后仍需独立首次运行授权复核，不得直接读取数据或训练。
+
+### D-2026-08-23-117 — 训练 runner 规格必须无入口登记，首次执行授权保持独立
+
+- **问题**：Stage 54 只证明冻结的训练实现忠实于已批准工程合同；若 runner 登记同时提供调用入口、挂载训练副本或生成模型，就会把“实现获准进入下一门禁”偷换成训练授权，并绕过首次执行时的角色、时间、输入和 sealed-holdout 隔离检查。
+- **决定**：Stage 55 对每条当前有效的 Stage 54 批准最多 create-once 登记一个内容寻址的隔离 runner 规格。登记精确绑定 Stage 54/53/52/51、实现工件与合同、固定实验套件、training-store dataset、rows、excluded rows 和 target commitments；登记人排除完整批准链。
+- **运行合同**：固定运行时 `hone-isolated-nine-target-training-runtime`，只允许未来经新授权后只读挂载精确训练副本，保持 train 拟合、validation 选择和 sealed holdout 隐藏。未来输出也只能 create-once 写入尚未经独立校验的逐目标逐种子候选。资源固定为单实验并行、3600 秒、8192 MiB、4000 millicores、4 个进程和 256 MiB 输出。
+- **零能力与权限**：runner 无可调用入口、不继承宿主环境，没有环境变量、密钥、外网、工具、子进程、训练或生产读写。登记状态固定为 `registered_not_run`，不读取数据、不启动训练、不创建模型或指标，不定义 reward、动作、仓位或排名，也不开放 shadow、order、broker 或 trading；readiness 升级为 v52。
+- **下一门禁**：若继续，只能另建 Stage 56 独立首次执行授权复核。授权复核不得与登记合并，且即使未来批准也必须是精确绑定、限时、最多一次的隔离调用资格，不得直接宣称模型或策略有效。
+
+### D-2026-08-23-118 — 首次训练执行授权必须独立、限时、单次，且批准不等于执行
+
+- **问题**：Stage 55 只冻结一个无入口 runner 规格；若登记人可自行授权、授权没有时限或可重复消费，或者批准时就挂载训练副本并启动训练，就会绕过独立性、输入新鲜度、sealed-holdout 隔离和不可重放边界。
+- **决定**：Stage 56 为每条当前有效的 Stage 55 runner 建立追加式、自哈希、单链尖且批准终止的独立复核链。复核者独立重算 runner、实现、实现复核、实验登记复核及完整数据链摘要，并完成十六项硬确认。
+- **时间与次数**：批准 verdict 固定为 `approved_for_one_future_isolated_training_invocation`，从记录时间起精确 24 小时有效，最多允许未来消费一次；过期、链尖漂移、上游摘要变化、角色重合或任一确认缺失都失败关闭。批准后不得再追加复核记录。
+- **权限**：Stage 56 没有 claim 或调用入口，不读取或挂载训练数据，不运行训练，不生成模型、指标或输出，不开放 validation/holdout、reward、shadow、order、broker 或 trading；readiness 升级为 v53。
+- **下一门禁**：若继续，只能另建 Stage 57 claim-first 一次性隔离训练执行尝试。成功、失败或中断都必须消费精确授权，输出仍是不可信候选，必须另经独立校验。
+
+### D-2026-08-23-119 — 一次性训练必须先消费授权，且 train 拟合结果不得冒充模型有效性
+
+- **问题**：Stage 56 只授予精确 runner 在 24 小时内最多一次的未来资格。若执行先读数据后写 claim、失败后可重试，或直接用 train 拟合指标选模，就会破坏单次授权、产生目标泄漏，并把“代码能拟合”偷换成“模型有效”。
+- **决定**：Stage 57 调用必须先 create-once 写入不可变 claim，再读取精确绑定且已独立校验的 training-store dataset；成功、失败或中断全部消费授权，禁止并发、重放、覆盖和自动续期。当前运行制品、runner、实现、实验套件或数据摘要任一漂移都在读取前失败关闭。
+- **拟合合同**：预处理统计和模型拟合只看 train；观测值按 train 均值/尺度标准化，缺失继续保留为缺失并进入独立 missing indicator。固定运行零预测、L2 岭回归和有界确定性梯度提升三臂以及 17/29/43 三种子，九项目标分别建模。
+- **留出隔离与输出**：validation 和 sealed holdout 标签继续隐藏，不做 validation 选模。成功只产生 9 个内容寻址候选与 81 条逐目标逐种子 train-only 诊断；输出写入一次性临时目录、回读核对并删除，正式模型库和指标库不写入。
+- **权限**：Stage 57 的候选全部标记为未验证，只开放未来独立输出校验资格。它不定义或写入 reward，不运行影子组合，不生成订单，不访问券商，不交易；readiness 升级为 v54。
+- **下一门禁**：若继续，只能另建 Stage 58 独立训练输出校验，由执行角色和完整上游之外的新实现逐模型、逐诊断、逐位重算。校验通过前不得访问 validation/holdout、选择模型、声称预测或策略有效，也不得进入奖励、组合或交易。
+
+### D-2026-08-23-120 — 训练输出必须由第二实现全量逐位复算，通过仍不等于可选模
+
+- **问题**：Stage 57 自身能够验证结构和内容哈希，但同一实现自证无法发现算法实现与冻结合同共同漂移。若只抽查摘要、复用 Stage 57 私有 helper，或容忍浮点近似，就可能把错误权重、树阈值或诊断带入 validation 选模。
+- **决定**：Stage 58 由执行者和完整上游之外的新角色，create-once 重开精确 claim/result/envelope、完整 Stage 51–57 链、独立校验训练副本和冻结套件。验证器拥有独立的预处理、岭回归求解、梯度提升和诊断实现，不调用 Stage 57 私有拟合或验证函数。
+- **复算合同**：必须从原始 train 行复算 65 项预处理、三臂三种子对应的 9 个模型工件以及逐目标的 81 项 train-only 诊断；模型参数、阈值、叶值、指标、工件指纹和输出指纹全部按 f64 位模式或 SHA-256 精确比较。任一不一致形成不可变失败记录并关闭后续资格。
+- **留出隔离**：validation 和 sealed holdout 目标在本阶段必须继续为 `None`，不得为复算、诊断、选择或错误报告打开。通过只证明冻结 train-only 产物可重现，不证明泛化、策略、收益或老王投资逻辑有效。
+- **权限**：通过只开放未来 validation 评估实现登记资格，不直接访问 validation、不选模、不访问 sealed holdout、不写模型/指标库，不开放 reward、shadow、order、broker 或 trading；readiness 升级为 v55。
+- **下一门禁**：若继续，只能另建 Stage 59 validation 评估实现登记。实现登记、独立实现复核、runner、限时单次授权、validation 执行和输出校验仍需分门，sealed holdout 与交易权限继续关闭。
+
+### D-2026-08-23-121 — validation 评估规则必须在标签访问前预注册，且不得挑种子或用综合分遮蔽失败
+
+- **问题**：Stage 58 只证明 train-only 工件可被第二实现逐位复现。若先看 validation 结果再选择指标、阈值、随机种子或统计方法，就会产生验证集过拟合；若只给一个综合分，也会掩盖某个时间尺度、收益目标或回撤目标失败。
+- **决定**：Stage 59 在任何 validation 标签访问前，为一条精确 Stage 58 通过记录登记不可变、内容寻址且无入口的评估实现合同。合同绑定 Stage 57 输出、九个三臂三种子工件、65 项预处理、九项目标及完整数据/责任链。
+- **固定统计合同**：每个目标、算法和种子分别报告 MAE、相对零预测 MAE 改善、配对 component-block bootstrap、Holm 修正 q 值、Spearman、方向准确率和校准斜率。固定 10,000 次 bootstrap、54 项 family-wise correction、5% 最低 MAE 改善、100 行/20 component 最小样本；样本不足只能输出 `insufficient_evidence`。
+- **反挑选边界**：同一 algorithm-target 必须 17/29/43 三个种子全部达标，不得选择表现最好的种子。目标逐项判定并显式保留失败；禁止用综合分宣称整个模型有效。两个候选均达标时只使用预注册中位 MAE 与固定 ridge tie-break。
+- **权限**：Stage 59 只开放未来独立实现复核资格。当前没有入口、validation 标签访问、评估、调参、选模、sealed holdout、模型/指标库、reward、shadow、order、broker 或 trading；readiness 升级为 v56。
+
+### D-2026-08-23-122 — validation 评估实现必须由链外角色独立复算后才能登记 runner
+
+- **背景**：Stage 59 已在标签访问前冻结统计合同，但同一登记路径验证自己的哈希和语义，不能替代职责分离的独立审计。
+- **决定**：Stage 60 由 Stage 57–59 和完整上游之外的新角色，独立重算实现记录、合同和候选集合指纹，并逐项复核 3×3×9 工件/目标矩阵、逐目标指标、component-block bootstrap、Holm、效果/诊断/样本门槛、三种子稳健性与禁止综合分遮蔽。
+- **审计链**：复核记录只能追加、自哈希、单根、单链尖、无分叉/断链/循环；批准为终端。退回或拒绝不开放后续资格，任何上游、实现、合同、工件或审计漂移都失败关闭。
+- **权限**：批准只设置未来隔离 validation-evaluation runner 规格登记资格。当前无入口、标签访问、评估、选模、sealed holdout、模型/指标库、reward、shadow、order、broker 或 trading；readiness 升级为 v57。
+- **下一门禁**：若继续，只能另建 Stage 61 无入口、内容寻址、create-once 的隔离 validation-evaluation runner 规格登记。登记仍不得直接打开标签或运行评估。
+
+### D-2026-08-24-123 — validation 评估 runner 必须无入口登记，首次执行授权继续分离
+
+- **问题**：Stage 60 只独立批准冻结的 validation 评估实现。如果 runner 登记同时提供入口、挂载标签或直接运行评估，就会把“实现通过审计”偷换成“已授权看标签与选模”，并绕过 sealed holdout、角色隔离和单次授权检查。
+- **决定**：Stage 61 为每条当前有效的 Stage 60 批准最多 create-once 登记一个内容寻址隔离 runner。记录精确绑定 Stage 60/59/58/57、实现与合同、九个候选工件及完整数据责任链；登记人排除完整批准链。
+- **运行合同**：当前 runner 无入口、挂载、环境、密钥、网络、工具、子进程或生产权限。未来经另一道授权后也只能只读挂载精确 validation features/labels 与九个候选；training 更新禁止，sealed holdout 永久隐藏。输出只能是 create-once、未验证的逐目标逐种子指标、bootstrap/Holm 诊断和逐目标建议，禁止综合分或全局有效性声明。
+- **权限**：状态固定为 `registered_not_run`。Stage 61 不读取标签、不评估、不选模、不写模型/指标库，不定义 reward，不运行影子组合，不生成订单、不访问券商、不交易；readiness 升级为 v58。
+- **下一门禁**：若继续，只能另建 Stage 62 独立首次执行授权复核。授权必须与登记、标签挂载和实际评估调用分离，并且不得开放 sealed holdout 或投资执行权限。
+
+### D-2026-08-24-124 — validation 首次执行授权必须独立、限时、单次且不包含执行
+
+- **问题**：Stage 61 只登记无入口 runner。若授权审查同时建立 claim、挂载 validation 标签或运行评估，就会让审批者直接成为执行者，绕过角色隔离、单次消费和输出独立校验。
+- **决定**：Stage 62 对精确 Stage 61 runner 建立追加式、自哈希、单根无分叉且批准终止的复核链。复核人排除 Stage 61–57、完整上游和此前复核者；请求和记录精确绑定 runner、Stage 60 review/审计、Stage 59 实现/合同/九候选集合、Stage 58 validation 与 Stage 57 output。
+- **确认合同**：十六项确认必须同时成立，包括不可变工件、未来精确只读 validation/候选挂载、sealed holdout 隔离、固定 3×3×65×9 协议、无训练更新、create-once 未验证输出、固定资源、无环境/密钥/网络/工具/子进程/生产访问以及审批、执行、输出校验、选择职责分离。
+- **时间与权限**：批准只在记录时间后 24 小时内提供最多一次未来隔离调用资格，批准终止且不可续期。Stage 62 不建立 claim 或调用入口，不挂载或读取 validation 标签，不评估、不选模、不生成输出、不写模型/指标库，不访问 sealed holdout，不开放 reward、shadow、order、broker 或 trading；readiness 升级为 v59。
+- **下一门禁**：若继续，只能另建 Stage 63 claim-first 单次隔离 validation 评估尝试。成功、失败或中断都必须消费授权，输出仍是不可信候选并须独立校验。
+
+### D-2026-08-24-125 — validation 评估必须先消费授权，只投影 validation，并逐目标保留失败
+
+- **问题**：Stage 62 只给出 24 小时、一次性的未来资格。如果执行在 claim 前读取标签、失败后重试、把完整原始数据交给 worker，或用综合分/最好种子掩盖某个目标失败，就会破坏授权消费、sealed holdout 隔离和预注册统计边界。
+- **决定**：Stage 63 必须先 create-once 写入不可变 claim，再允许宿主标签代理重开精确原始结果数据集。claim 一旦落盘，后续读取、评估、输出或清理失败都形成不可变失败结果并永久消费授权；禁止覆盖、重放和自动续期。
+- **数据隔离**：宿主代理只按 Stage 48 独立校验副本的 validation entry ID 投影 65 项点时特征和九项目标给固定 worker，sealed holdout entry ID 显式排除。当前实现是进程内能力隔离，不把它描述为 OS/容器级沙箱；未来若需要更强进程边界，必须另立实现和审计门禁。
+- **统计合同**：精确运行三算法、17/29/43 三种子和九目标，共 81 条指标；54 个候选—目标—种子检验使用同种子零预测基线、official component 整块 bootstrap 与 Holm 修正。逐目标门禁包含最小改善、秩相关、方向、校准、最小样本和三个种子全通过；禁止挑种子、调参、综合分、全局模型有效性或正式候选选择。
+- **输出与权限**：成功只产生回读核验、内容寻址且待独立复算的不可信 envelope；临时目录必须删除。Stage 63 不更新训练/预处理，不写模型或指标库，不访问 sealed holdout，不定义 reward，不运行 shadow，不生成订单、不访问券商、不交易；readiness 升级为 v60。
+- **下一门禁**：若继续，只能建立 Stage 64 链外独立 validation 输出复算校验。通过之前，任何 recommendation 都不得进入正式选模、评级、仓位或投资执行。
+
+### D-2026-08-24-126 — validation 评估输出必须由链外第二实现逐位复算，且通过不等于选模
+
+- **问题**：Stage 63 同时生成预测、指标、统计检验和逐目标建议。如果直接信任执行路径自报的哈希、数值或 recommendation，同一个实现错误可以同时污染输出和自检，且容易把“建议”误当成正式选择。
+- **决定**：Stage 64 由 Stage 63 执行者及 Stage 51–63 完整上游角色之外的新管理员，对同一 attempt create-once 产生不可覆盖的通过或失败记录。校验器独立重开上游链、训练副本、原始 outcome 和九候选，不调用 Stage 63 的预测、统计或 recommendation helper 自证。
+- **精确性**：第二实现必须重建 validation-only 投影，重放 3 算法×3 种子×9 目标，逐 f64 位模式复算 81 条指标、54 项 component-block bootstrap/Holm 检验和 9 条逐目标建议。原 envelope 与重算 envelope 指纹、顺序、计数和内容必须全等；一位不同即失败。
+- **数据和权限边界**：sealed holdout entry 不得进入校验投影，特征和标签都不可读。Stage 64 不更新训练/预处理，不写模型或指标库，不建 reward、shadow、order，不访问 broker 或 trading。
+- **通过含义**：通过只证明精确 Stage 63 输出在冻结合同下可由另一条路径重现，并只开放未来逐目标候选准入复核资格。它不证明模型泛化、投资逻辑有效、收益、正式选模或实盘能力；readiness 升级为 v61。
+- **下一门禁**：若继续，只能另建逐目标候选准入复核。任何目标失败、证据不足或三种子不一致必须单独保留，不得用综合分、其他目标或全局结论遮蔽。
+
+### D-2026-08-24-127 — 候选准入必须逐目标独立审核，批准只开放 sealed-holdout 协议复核
+
+- **问题**：Stage 64 证明冻结 validation 输出可复现，但九项目标的证据质量和候选通过情况可能不同。若用总体分、平均分或其他目标的成功替代单项目标证据，就会把失败、样本不足或种子不稳健的目标错误带入下一阶段。
+- **决定**：Stage 65 将每条 Stage 64 通过记录精确拆成九个内容寻址目标包。每个目标只绑定自身三算法×17/29/43 三种子的九条指标、逐目标 recommendation、目标包哈希和 recommendation 哈希，并建立追加式、自哈希、单根单链尖、批准终止的独立复核链。
+- **准入条件**：目标必须恰有九个唯一 algorithm-seed 组合、没有 official selection 或 `insufficient_evidence`；推荐只能是 ridge 或 boosted，且三个冻结种子全部通过预注册门槛。服务端必须从 f64 位模式独立重算推荐算法三种子的中位 MAE，并与冻结 recommendation 精确一致。任何一项不满足都不得批准。
+- **职责与权限**：复核人排除 Stage 64 校验者、Stage 63 执行者和完整 Stage 51–64 责任链及该目标此前复核者。退回或拒绝可以追加后续复核，批准后该目标链永久冻结。
+- **通过含义**：批准只设置 `future_sealed_holdout_evaluation_protocol_review_eligible=true`，不是正式候选选择，也不读取 sealed holdout、不写模型/指标库、不创建 reward、shadow、order，不访问 broker 或 trading；readiness 升级为 v62。
+- **下一门禁**：若继续，只能另建 sealed-holdout 评估协议复核。协议复核仍不得挂载或执行 sealed holdout；数据访问、执行授权、单次执行和输出独立校验必须继续分门。
+
+### D-2026-08-24-128 — sealed-holdout 评估协议必须在数据访问前逐目标冻结并独立复核
+
+- **问题**：Stage 65 只证明单项目标候选满足冻结的 validation 准入合同。若看到 sealed holdout 后才确定算法、种子、指标、门槛、检验族或样本不足处理，或允许结果反馈后重试，就会产生留出集过拟合并把一次性确认测试变成调参集。
+- **决定**：Stage 66 为每条当前有效的 Stage 65 逐目标准入记录生成内容寻址协议，并建立追加式、自哈希、单根单链尖、批准终止的独立复核链。协议精确绑定 Stage 51–65、候选集合、训练副本、rows、target commitments、validation projection、目标包、recommendation、65 项特征顺序和预处理指纹。
+- **确认性合同**：每个目标只冻结 Stage 65 建议的一种算法与 17/29/43 三个种子；三个种子形成恰好三项确认性假设，固定 official-component 整块 10,000 次 bootstrap 与 Holm family-wise 校正。相对 MAE、Spearman、方向、校准及 100 行/20 component 最小样本门槛均不可变，三个种子必须全部通过，样本不足失败关闭。
+- **反反馈与职责**：协议规定 sealed holdout 只能在未来另经门禁后一次性使用；禁止跨目标综合、反馈复用、调参、重新拟合、重选候选或改阈值。复核人排除 Stage 65 复核人、完整上游及此前 Stage 66 复核人。
+- **权限**：批准只设置 `future_sealed_holdout_evaluation_implementation_registration_eligible=true`。Stage 66 不读取、挂载、解密、投影或执行 sealed holdout，不正式选模、不写模型/指标库，不创建 reward、shadow 或 order，不访问 broker 或 trading；readiness 升级为 v63。
+- **下一门禁**：若继续，只能另建 sealed-holdout 评估实现登记。实现登记仍不得访问数据或执行评估；实现独立复核、隔离 runner、一次性授权、执行及输出独立校验继续分门。
+
+### D-2026-08-24-129 — sealed-holdout 评估实现登记必须是不可变且零能力的合同
+
+- **问题**：Stage 66 只批准逐目标确认性协议。若实现登记同时带有调用入口、数据挂载或 adapter，就会让“代码身份已冻结”越权成为“可以读取并运行 sealed holdout”，也会绕过独立实现复核、runner 和单次授权。
+- **决定**：Stage 67 对每条当前有效的 Stage 66 批准最多 create-once 登记一个内容寻址实现。记录精确绑定 Stage 51–66、Stage 65 admission、validation 输出、候选集合、训练副本、目标包、recommendation、sealed split commitment、65 项特征顺序和预处理，并保存不可变工件 SHA、代码 revision、理由和局限。
+- **实现合同**：每条记录只允许一个目标、一种已批准算法、17/29/43 三个种子、65/1 输入输出、三项确认性假设、固定指标/门槛、10,000 次 official-component bootstrap、Holm 校正、样本不足失败关闭和三个种子全通过。禁止调参、重拟合、重选候选或跨目标综合。
+- **零能力边界**：登记不含 callable entrypoint、input mount、sealed-holdout adapter、特征/标签访问或评估权限。未来输出仍只能 create-once、先视为不可信并另经独立验证；模型/指标库、reward、shadow、order、broker 和 trading 全部关闭。
+- **下一门禁**：登记只开放未来 Stage 68 独立实现复核。复核通过之后仍需另建 runner、单次访问授权、执行和输出校验；任何门都不能自动打开下一门或正式选模。readiness 升级为 v64。
+
+### D-2026-08-24-130 — sealed-holdout 评估实现批准必须来自链外独立复核且不授予运行能力
+
+- **问题**：Stage 67 只冻结实现身份与零能力合同。若登记人可自行批准，或复核只相信登记摘要而不重算实现、合同和协议指纹，就可能让漂移代码进入未来 holdout runner；若批准同时打开数据或执行权限，也会绕过后续隔离和一次性授权门禁。
+- **决定**：Stage 68 为每个当前 Stage 67 实现建立追加式、自哈希、单根单链尖且批准终止的复核链。复核者排除登记人、Stage 66 复核者、Stage 51–67 完整上游和此前 Stage 68 复核者；服务端独立重算实现记录、合同与协议 SHA-256，并精确复核单目标/单算法、17/29/43、65/1、固定指标和门槛、10,000 次 official-component bootstrap、固定 seed、恰好三项 Holm family、最小样本、三种子全过及 one-shot 无反馈规则。
+- **权限**：批准只设置未来 Stage 69 无入口隔离 runner 登记资格。Stage 68 不读取或评估 sealed holdout，不提供 runner、挂载、adapter、调用额度或输出，不正式选模、不写模型/指标库，不创建 reward、shadow 或 order，不访问 broker 或 trading；readiness 升级为 v65。
+- **下一门禁**：若继续，只能另建 Stage 69 无入口隔离 sealed-holdout evaluation runner 规格。runner、一次性访问/执行授权、执行、输出链外校验和正式选择必须继续分门。
+
+### D-2026-08-24-131 — sealed-holdout 评估 runner 必须先登记为无入口规范，且每条批准复核最多一个
+
+- **问题**：Stage 68 只证明实现与冻结协议一致。若 runner 登记同时创建入口、挂载 sealed holdout、取得环境能力或直接执行，就会把“实现通过复核”越权解释为“获准查看试卷并选模”；若同一批准复核可登记多个 runner，也会产生实现漂移和隐性重试路径。
+- **决定**：Stage 69 对每条当前有效 Stage 68 批准最多 create-once 登记一个不可变、内容寻址、`registered_not_run` 的隔离 runner 规格。记录精确绑定 Stage 68 review/audit、Stage 67 implementation/contract、Stage 66 protocol review、目标包、recommendation、所选算法三种子承诺、sealed split commitment、65 项特征顺序、预处理、目标、算法和 17/29/43。
+- **隔离合同**：当前没有 callable entrypoint、输入或候选工件挂载、环境继承、密钥、网络、工具、子进程、生产读写或 sealed-holdout 特征/标签访问。未来也只有新的链外独立、限时、一次性授权，才能精确只读挂载一个目标的 holdout 与一种算法的三个候选；训练、validation、跨目标读取、反馈复用、调参、重拟合和重选候选继续禁止。
+- **输出与资源**：未来输出只能 create-once 保存单目标三种子确认性指标、component-block bootstrap/Holm 诊断和逐种子门禁状态，先视为不可信并另行独立校验；不得生成跨目标综合分、全局有效性、正式选择、reward 或动作。runner 固定单并发、8192 MiB、4000 mCPU、3600 秒、4 个进程及 256 MiB 输出上限。
+- **权限与下一门禁**：Stage 69 登记不是访问或执行，不创建 claim，不读取 sealed holdout，不评估、不正式选模、不写模型/指标库，也不开放 reward、shadow、order、broker 或 trading。readiness 升级为 v66；若继续，只能另建 Stage 70 链外独立的一次性访问与执行授权复核。
+
+### D-2026-08-25-132 — sealed-holdout 首次执行授权必须链外独立、限时、单次且批准不等于执行
+
+- **问题**：Stage 69 只登记了无入口 runner。若 runner 登记者或完整上游参与者可以自行授权，或授权时直接创建 claim、挂载/读取 sealed holdout、运行评估，就会把“执行身份已冻结”越权解释为“已经获准看试卷并运行”，也会失去一次性能力的审计边界。
+- **决定**：Stage 70 为每个当前绑定有效且 `registered_not_run` 的 Stage 69 runner 建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核者排除 Stage 69 登记者、Stage 68 复核者、Stage 67 登记者、Stage 66 复核者、Stage 51–69 完整责任链以及该 runner 此前 Stage 70 复核者。
+- **精确绑定**：服务端重新投影并验证 runner specification/artifact/code/contract、Stage 68 review/audit、Stage 67 implementation/contract/artifact/code、Stage 66 protocol review/protocol、候选集、目标包、recommendation、所选算法三种子承诺、sealed split commitment、65 项特征顺序、预处理、target ID、algorithm ID 和 17/29/43；十六项确认有一项缺失即不得批准。
+- **能力边界**：批准只设置提交后 24 小时内、最多一次的未来隔离调用资格。Stage 70 没有 claim 或 invocation endpoint，不挂载、解密、投影或读取 sealed-holdout 特征/标签，不消费资格、不运行评估、不创建输出，也不授权其他目标或未限定访问。
+- **下游边界**：批准不等于泛化、收益、老王逻辑、公司评级或操盘能力；正式选模、模型/指标库、reward、shadow、order、broker 与 trading 继续关闭。readiness 升级为 v67；若继续，只能另建 Stage 71 claim-first 单次执行尝试，且输出仍须链外独立校验。
+
+### D-2026-08-25-133 — sealed-holdout 执行必须先声明后解封、单目标单算法、任何终态均消耗且输出默认不可信
+
+- **问题**：有了 Stage 70 一次性授权后，若执行器先读取 holdout 再创建审计记录、允许失败重试、同时查看多个目标或算法，或把首次指标直接用于正式选模，就会产生看答案后改口、隐性调参和跨目标信息泄漏。
+- **决定**：Stage 71 在任何 holdout 重开前 create-once 固化 claim，并原子消费精确 Stage 70 授权；成功、失败或中断均不可重试。claim 精确绑定一个 runner、一个已准入目标、一个冻结算法、种子 17/29/43、sealed split、65 项特征顺序、预处理和候选制品。
+- **执行边界**：服务端重算完整 Stage 57–70 绑定后，仅投影该目标 holdout；逐种子计算冻结确认指标和 component-block bootstrap/Holm 门禁，不允许训练更新、反馈复用、调参、重拟合、重选候选、跨目标聚合或替换零预测基准。
+- **输出边界**：成功只产生内容寻址、临时、默认不可信的确认信封并删除临时挂载；失败只保留有界错误与已消费 claim。两者都不正式选模、不写模型/指标库，也不开放 reward、shadow、order、broker 或 trading。
+- **下一门禁**：readiness 升级为 v68。只有 Stage 72 链外独立输出校验可以读取合格的不可信信封并重新复算；Stage 71 本身不能把任何结果晋级为投资能力。
+
+### D-2026-08-25-134 — sealed-holdout 确认结果必须由责任链外第二实现逐位复算，复现不等于有效
+
+- **问题**：Stage 71 即使按冻结合同产生结果，执行器仍可能在投影、预测、统计或序列化上存在共同实现错误。若直接把它作为正式模型证据，就会形成自己出题、自己判卷，并把可复现性误当成预测有效性。
+- **决定**：Stage 72 对每个完整 Stage 71 attempt 最多写一条 create-once 独立验证记录。验证人排除 Stage 71 执行者和 Stage 51–70 完整责任链；验证器不调用 Stage 71 helper，而使用 Stage 64 第二实现重新打开精确原始数据和冻结工件。
+- **复算合同**：独立重构单目标 sealed-holdout 投影，重新运行同一算法的 17/29/43 三种子，逐位核对 MAE、相对改善、Spearman、方向准确率、校准斜率、official-component 10,000 次 bootstrap、三项 Holm、样本门槛、预注册阈值以及 claim/result/output/envelope SHA-256。
+- **失败与权限**：任何指纹、输入、统计或权限差异都形成不可覆盖失败记录。通过只证明该不可信确认可由第二路径复现，并只开放未来 Stage 73 裁决复核资格；不代表模型有效、收益成立、老王逻辑已确认或可正式选模、写库、评级、调仓、影子、下单、访问券商或交易。
+- **准备度**：readiness 升级为 v69。Stage 73 若继续，必须把“统计复现”“经济意义”“投资哲学一致性”和“是否准入下一实验”分开裁决。
+
+### D-2026-08-25-135 — 可复现结果必须再经独立经济裁决，人工不得覆盖定量失败
+
+- **问题**：Stage 72 只能证明相同输入和冻结实现可由第二路径得到相同输出。若把“逐位可复现”自动升级为正式模型，就会忽略样本和独立分量不足、效应量过小、目标缺乏经济意义、选择偏差、市场状态依赖和无法证伪等问题；反过来，若人工可以覆盖预登记定量失败，也会破坏封存留出集的确认性。
+- **决定**：Stage 73 为每条 Stage 72 独立验证通过的确认结果建立追加式、自哈希、单根单链尖且批准终止的裁决链。裁决者排除 Stage 72 验证者、Stage 71 执行者、Stage 51–72 完整责任链和此前裁决者，并精确绑定 validation、claim/result/output/envelope、目标、算法、17/29/43、sealed split、投影、65 项特征与预处理。
+- **定量硬门槛**：只有 Stage 72 可复现、确认状态为预登记通过、证据非不足、三个种子与三项指标全部通过、且单目标/单算法和无反馈边界成立时，才允许选择批准。任一失败或证据不足只能退回或拒绝，人工不能覆盖。
+- **人工裁决合同**：必须分别记录统计解释、经济解释、已知局限、证伪条件与下一实验约束，并确认样本/独立分量、多重检验、效应量、目标经济相关性、覆盖偏差和失败模式；同时明确可复现不等于泛化、盈利或操盘能力，未确认的 Hari/老王逻辑不得被冒充为裁决依据。
+- **权限与下一门禁**：批准只开放未来 Stage 74 受控影子实验设计规范登记。Stage 73 不正式选模、不写模型/指标库、不反馈训练或 reward，不创建或运行影子账本、仓位、订单，不访问券商或交易。readiness 升级为 v70。
+
+### D-2026-08-25-136: Stage 74 只登记冻结的前向影子实验设计，不运行影子组合
+
+- **决定**：只有 Stage 73 已裁决结果可进入 create-once Stage 74。登记人排除裁决者和 Stage 51–73 完整责任链，记录自哈希并精确绑定 adjudication/validation/claim/result/output/envelope、候选集、训练副本、目标、算法、17/29/43、sealed split、投影、65 项特征和预处理。
+- **固定设计**：反事实为现金、SPY 总回报、合格股票等权和冻结规则基线；虚拟本金 100 万美元，仅多头普通股，单股 5%、主题 20%、总仓 60%、现金至少 40%、最多 10 个持仓；每周调仓，下一完整交易日调整后收盘价模拟，每边 25bp 滑点。
+- **观察与失败关闭**：至少 252 个交易日、40 个独立信号、12 家公司、4 个市场季度；六项指标分开报告、做多重检验、不建综合分、不提前晋级。点时泄漏、哈希/语义变化、数据不足、未登记参数变化或成本/基准不可得会停止未来实验，停止后不能原地重启。
+- **权限**：登记只开放 Stage 75 独立设计复核，不正式选模、不物化模型、不写指标库、不反馈训练/reward，不创建或运行影子账本、持仓、订单，不连接券商或交易。readiness 升级为 v71。
+
+### D-2026-08-25-137: Stage 75 必须由责任链外角色独立复核设计，通过也只能登记零能力实现
+
+- **问题**：Stage 74 只证明一份前向实验设计已不可变登记。若登记人自行批准，或复核只看摘要而不独立重算指纹、点时/退市偏差、反事实和执行语义，就可能把设计错误带入影子盘，并把“可复核”越权解释为“可运行”。
+- **决定**：Stage 75 为每条当前有效 Stage 74 设计建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核者排除登记人、Stage 73 裁决者、Stage 51–74 完整责任链和此前复核者；并独立复算 registration/design 指纹及全部上游绑定。
+- **复核合同**：逐项审查点时成分股、幸存者/退市偏差、无前视泄漏，SPY/现金/等权/冻结规则反事实，信号、调整后价格、分红、成本、调仓，长仓/集中度/现金边界，252 日与样本覆盖，分项指标、多重检验、停止与证伪。未确认 Hari/老王逻辑不得作为已确认规则。
+- **修改与批准**：要求修改或拒绝必须新建 Stage 74 设计，禁止原位覆盖或重启；批准只设置未来 Stage 76 零能力影子实现规格登记资格，不等于正式选模、模型有效、收益成立或可以运行影子组合。
+- **权限**：不物化模型、不写指标库、不训练、不反馈、不生成 reward，不实现或运行影子账本、持仓、订单，不连接券商或交易。readiness 升级为 v72。
+
+### D-2026-08-25-138: Stage 76 只登记纯规格，不能伪装成可执行影子实现
+
+- **问题**：Stage 75 只批准设计进入下一道登记。若 Stage 76 接受任意二进制哈希、入口或运行环境，就会在缺少独立代码复核和运行授权时暗中形成可执行能力，并可能把设计批准误解为影子盘授权。
+- **决定**：Stage 76 只生成 create-once、自哈希、内容寻址的纯规格合同，不接收或声称存在可执行工件。登记人排除 Stage 75 复核者、Stage 74 登记者和 Stage 51–75 完整责任链；合同精确嵌入已批准设计并独立重算 review/registration/design 指纹。
+- **确定性语义**：冻结点时只读输入、信号投影、长仓现金约束状态转移、成交与成本、分红、四类反事实、检查点、分项指标、多重检验和停止规则；未来输出只是不可信、create-once 的观察信封，不包含订单意图或券商载荷。
+- **零能力**：无入口、可执行工件、runtime、mount、adapter、环境继承、密钥、网络、工具、子进程、生产读写、模型/指标库、训练反馈、综合 reward、影子账本、持仓、订单、券商或交易。
+- **下一门禁**：登记只开放 Stage 77 独立实现复核，不开放 runner 或影子运行。readiness 升级为 v73。
+
+### D-2026-08-25-139: Stage 76 实现不能自证正确，Stage 77 通过也不是运行授权
+
+- **问题**：内容寻址只证明 Stage 76 记录没有被静默修改，不能证明登记者正确实现了 Stage 74 设计。若同一责任链自行复核，或只比对一个摘要哈希，就可能把错误的点时、交易成本、组合、观察门槛或权限语义带入未来 runner；若把复核通过直接解释为可运行，又会绕过隔离 runner 规格和执行授权。
+- **决定**：Stage 77 建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核者排除 Stage 76 登记人、Stage 75 复核者、Stage 74 登记者、Stage 51–76 完整责任链及此前 Stage 77 复核者。
+- **独立复算合同**：第二路径重算实现记录、实现合同、设计复核、设计登记和设计规格五层指纹，精确重绑目标、算法、三种子、sealed split/projection、65 项特征与预处理；并审查点时/退市/禁止前视、执行/成本/分红/调仓/反事实、长仓与集中度/现金边界、观察门槛、六项分开指标、多重检验、停止/证伪和未来不可信输出。
+- **修改与失败关闭**：任一指纹、上游绑定、确定性语义或零权限位不一致都拒绝批准。要求修改或拒绝不得覆盖旧记录或原位重启，必须从新的上游设计、独立设计复核和 Stage 76 登记重新形成责任链。
+- **权限与下一门禁**：批准只开放未来 Stage 78 隔离影子 runner 规格登记。Stage 77 不创建 runner、不挂载输入、不生产读写、不运行影子盘、不写模型/指标库或训练/reward，不建账本/持仓/订单、不接券商或交易。readiness 升级为 v74。
+
+### D-2026-08-25-140: Stage 78 只登记 runner 规格，不能虚构 runner 工件或执行能力（已被 D-142 取代）
+
+- **问题**：Stage 77 只批准一个零能力实现进入 runner 规格登记。若 Stage 78 要求一个任意 artifact SHA、代码版本或入口，会暗示并不存在的可执行工件已经准备好，并可能在首次执行授权之前形成挂载、数据访问或运行能力。
+- **决定**：Stage 78 登记 create-once、自哈希的 runner specification，而非 runner 程序。登记人排除 Stage 77 复核者、Stage 76 登记者和 Stage 51–77 完整责任链；记录完整嵌入已批准实现合同并绑定 review/audit/implementation/design 全部指纹。
+- **未来运行边界**：只冻结未来点时、只读、内容寻址和白名单输入；create-once、不可信、独立验证且不含订单/券商载荷的输出；只读根目录、临时工作区、非特权身份、无新增权限及 CPU/内存/时长/进程/输出上限。
+- **零能力与下一门禁**：没有可执行工件、入口、runtime、挂载、数据访问、环境/密钥/网络/工具/子进程、生产读写、模型/指标库、训练/reward、影子运行、账本/持仓/订单、券商或交易。登记只开放 Stage 79 独立首次影子执行授权复核。readiness 升级为 v75。
+
+### D-2026-08-25-141: Stage 79 首次影子执行授权必须链外独立、限时单次且不得虚构执行工件（工件部分已被 D-142 取代）
+
+- **问题**：Stage 78 只有 runner 规格，没有程序、工件、入口或 runtime。若首次授权直接假定一个可执行 artifact、附加输入或启动影子盘，就会越过实现与数据访问边界；若登记者或完整上游参与者自批，也会失去职责隔离。
+- **决定**：Stage 79 为每个当前有效 Stage 78 规格建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核者排除 Stage 78 登记人、Stage 77 复核者和 Stage 51–78 完整责任链；服务端重算 runner spec/contract、implementation/contract/review/audit 及 design 全链哈希。
+- **授权合同**：十五项确认全部成立时，批准只在提交后 24 小时内提供最多一次的未来 Stage 80 claim-first 隔离影子执行尝试资格。拒绝、要求修改、过期、角色重叠、绑定漂移或任一确认缺失均失败关闭；批准记录终止该 runner 的 Stage 79 复核链。
+- **零能力**：Stage 79 没有 execution endpoint、input manifest、点时数据访问、shadow run、输出、账本、持仓、模型/指标库、训练反馈、reward、订单、券商或交易能力，也不会为 Stage 78 虚构程序、工件、入口、runtime 或挂载。
+- **下一门禁**：readiness 升级为 v76。若继续，只能另建 Stage 80 先写 claim、再消费精确短时授权的单次尝试；任何未来输出必须保持不可信并另经责任链外独立校验。
+
+### D-2026-08-26-142: 任何首次执行授权都必须先绑定并独立复核精确可执行工件
+
+- **发现的问题**：边界审计对照 Stage 69–71 后确认，旧 Stage 78 明确没有程序、工件、代码版本或 runtime，旧 Stage 79 却可批准未来 Stage 80 执行尝试。即使 Stage 80 再校验当前二进制，也没有已授权的工件摘要可供比较，因此授权无法证明未来执行的是哪份代码。
+- **决定**：在没有任何真实 Stage 78/79 记录的前提下，直接升级两层 schema/policy。Stage 78 v2 必须 create-once 绑定有效的可执行工件 SHA-256、不可变代码版本和固定 runtime 身份；Stage 79 v2 必须由完整责任链之外的复核者独立复现工件摘要，并确认精确代码版本可复现且工件可获得。
+- **失败关闭**：无效摘要、摘要漂移、代码版本漂移、工件不可获得、角色重叠或任何上游指纹变化都不得产生未来执行资格。旧 v1 记录若意外出现会因 schema/policy 不匹配而拒绝读取，不得静默升级。
+- **权限保持关闭**：绑定可执行工件不等于注册 callable entrypoint、挂载输入或授权运行。Stage 78/79 仍不得创建 claim、读取点时数据、启动 shadow、写账本/持仓/模型/指标、反馈训练/reward、生成订单、访问券商或交易。
+- **下一门禁**：只有精确工件已登记且已独立复核的 24 小时单次授权，未来 Stage 80 才可实现 claim-first 尝试；Stage 80 必须在任何输入读取前写不可变 claim，并再次验证当前执行二进制摘要与 Stage 78 工件完全一致。
+
+### D-2026-08-26-143: 首次受控影子执行只能初始化前向观察，不能伪造已完成绩效
+
+- **问题**：Stage 79 只批准一次未来点时执行资格。首次调用时尚未经历 21/63/126/252 个真实前向交易日；若立即给出这些指标，就会把历史回看或虚构数据冒充前向验证。
+- **决定**：Stage 80 必须先不可变 claim、永久消费精确授权，再校验当前二进制和已冻结全链。它只对决策时点可见、白名单、内容寻址输入进行冻结投影，按种子 17/29/43 的候选均值确定性排名并初始化虚拟观察配置。
+- **输入与组合边界**：输入信封绑定候选集、65 项特征顺序、预处理摘要、SPY 基准、来源可用时间和每个 symbol 的冻结主题；状态转移同时实施单股 5%、主题 20%、总敞口 60%、现金至少 40%、最多 10 个持仓。
+- **输出语义**：首次输出必须报告 0 个已观察前向交易日，21/63/126/252 日绩效为空，且始终标记为不可信、待责任链外独立校验。任何失败、中断、摘要漂移或输入错误都不得重放同一授权。
+- **权限**：不得创建真实账本或持仓、模型/指标存储、训练反馈、reward、订单意图、券商载荷、券商访问或交易。Stage 80 完成最多只开放 Stage 81 独立输出校验，不证明策略、收益、评级、仓位建议或自主操盘有效。
+
+### D-2026-08-26-144: Stage 81 必须重交原始点时输入并用第二实现复算，不能让 Stage 80 自证
+
+- **问题**：Stage 80 为避免扩大敏感数据持久化范围，只保存输入 manifest、claim 和初始化输出，不保存完整点时输入。若 Stage 81 只读取 Stage 80 输出再核对摘要，就会形成同一路径自证，无法发现投影、预测、排序或权重实现错误。
+- **决定**：校验者必须重新提交与 Stage 80 claim 完全相同的内容寻址点时输入。Stage 81 先独立重算 manifest，再重开精确 Stage 79 授权和 Stage 71 冻结训练工件，使用不调用 Stage 80 投影/预测/权重 helper 的第二实现逐位复算完整初始化信封。
+- **职责隔离**：校验者排除 Stage 80 executor 和完整 Stage 51–80 责任链；同一 attempt 只允许一条不可变验证记录。任何差异形成永久失败记录，不允许调整输入后重试同一 attempt。
+- **通过语义**：只证明 0 个前向交易日的初始化输出可复现，最多开放未来前向观察协议登记。不得把通过解释为模型有效、收益成立、评级或仓位建议，更不得创建账本、持仓、反馈、reward、订单、券商访问或交易权限。
+## Stage 82：受控前向观察协议登记（2026-08-26）
+
+- 新增 create-once、自哈希、按 Stage 81 validation 唯一绑定的前向观察协议 registry。登记人排除 Stage 81 校验者、Stage 80 executor 与 Stage 51–81 完整责任链；角色重叠、重复登记或任一哈希漂移均失败关闭。
+- 协议只允许独立复核批准后自然到来的未来美股交易日，禁止回填和追溯改写；每周周期必须先形成不可变 claim，随后才可打开该时点、内容寻址、白名单来源输入。
+- 冻结证券与 SPY 同市场时点观察、官方主上市交易所日历、下一完整交易日复权收盘模拟成交、单边 25bp 成本、原始价格/拆股/分红/公司行动证据及追加式更正。
+- 原样继承 Stage 74 的四类反事实、只做多和 5%/20%/60%/40%/10 项边界、21/63/126/252 日检查点、252 日/40 信号/12 公司/4 季度最低样本、六项分开指标、多重检验与停止规则；不允许提前计算绩效或提前晋级。
+- 登记后仅开放未来责任链外 Stage 83 协议独立复核；当前不开始观察、不创建账本/持仓/绩效，不写模型/指标库，不反馈训练/reward，不生成订单、不接券商、不交易。readiness 升级为 `hone-empirical-validation-readiness-v79-controlled-shadow-forward-observation-protocol-registration-gate`。
+
+本轮没有真实 Stage 78–82 上游记录，因此没有提交真实协议登记，也没有产生观察、账本、持仓、绩效、订单或交易产物。
+
+验证：Stage 82 聚焦 Rust 3/3；HONE Web API 全量 1095 项中 1093 项通过、2 项真实凭据/live 测试按设计忽略；前端全量 526/526、2608 个断言；管理端决策大脑契约 40/40、889 个断言；金融自动化契约 49/49；TypeScript、生产构建、`cargo check -p hone-web-api`、Rust fmt 和 diff hygiene 全部通过。
+
+### D-2026-08-26-145: Stage 82 前向观察协议不能自证正确，Stage 83 批准也不能开始观察
+
+- **问题**：Stage 82 的自哈希只证明记录未被静默修改，不能证明登记人正确继承了完整 Stage 74 设计、自然前向、交易日历、来源保管、公司行动、成本、样本门槛和停止规则。若登记人或上游角色自行复核，或批准后直接开始观察，会绕过职责隔离与零能力实现门禁。
+- **决定**：Stage 83 为每条当前协议建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核者排除 Stage 82 登记人与 Stage 51–82 完整责任链；第二路径独立重算登记、协议和完整 Stage 74 设计三层指纹。
+- **复核合同**：十六项确认覆盖禁止回填、周度 claim-first/create-once、官方日历/半日市/停牌、SPY 同步、点时来源、原始/复权价格、公司行动、追加更正、下一完整交易日、25bp 成本、反事实、只多边界、检查点、252/40/12/4 门槛、分项指标、多重检验与停止/证伪。
+- **权限边界**：批准只开放未来 Stage 84 零能力观察实现规格登记；不开始观察、不建账、不写持仓/绩效/模型/指标，不反馈训练或 reward，不生成订单、不接券商、不交易。readiness 升级为 v80。
+
+### D-2026-08-26-146: Stage 84 必须先冻结零能力实现合同，不能把协议批准直接变成观察程序
+
+- **问题**：Stage 83 只证明协议和设计经责任链外复核，不能证明未来观察程序会确定性执行同一日历、来源、公司行动、成本、组合、指标和停止语义。若批准后直接挂载数据或开始观察，会把协议治理与运行能力混为一体。
+- **决定**：Stage 84 只登记 create-once、自哈希、零能力实现规格。登记人排除 Stage 83 复核人与完整 Stage 51–83 责任链，并独立重算复核、登记、协议和设计指纹；合同冻结八类纯函数标识以及未来输入/claim/不可信输出 schema 名称。
+- **失败关闭**：任何上游哈希、目标、算法、代码版本声明、函数标识或权限边界漂移都拒绝；重复登记和角色重叠同样拒绝。未来 schema 仅为字符串合同，本阶段不得创建或挂载其实例。
+- **权限边界**：规格没有可执行工件、入口、runtime、挂载、适配器、环境、密钥、网络、工具、子进程或生产读写，不观察、不建账、不写持仓/绩效/模型/指标，不反馈训练/reward，不下单、不接券商、不交易。readiness 升级为 v81；下一步只能做 Stage 85 独立实现复核。
+
+### D-2026-08-26-147: Stage 84 实现必须经过责任链外独立复核后才能考虑隔离 runner 规格
+
+- **问题**：Stage 84 由实现登记人声明零能力合同及确定性函数标识，不能由同一责任链自行证明绑定、实现语义和权限边界正确。若直接进入 runner 规格，会把自证当成独立验证。
+- **决定**：Stage 85 建立追加式、自哈希、单根单链尖且批准终止的独立复核链。复核人排除 Stage 84 登记人、Stage 51–84 完整责任链及此前所有 Stage 85 复核人，并独立重算实现记录、实现合同、Stage 83 复核、Stage 82 登记、Stage 82 协议和 Stage 74 设计六层指纹。
+- **失败关闭**：角色重叠、上游漂移、链分叉、批准后追加、自然前向/禁止回填、官方日历、点时托管、追加更正、纯函数标识、未来 schema 未实例化或零能力边界任一项不满足，都不得批准。
+- **权限边界**：批准只开放未来 Stage 86 隔离 runner 规格登记，不创建 runner、观察、账本、持仓、绩效、模型/指标写入、训练反馈、reward、订单、券商或交易能力。readiness 升级为 v82。
+
+### D-2026-08-26-148: Stage 86 必须绑定可复现 runner 工件，但工件存在不等于获得执行能力
+
+- **问题**：Stage 85 只证明零能力观察实现经责任链外复核；若 Stage 86 不绑定精确工件和复现程序，未来授权无法确认审核对象与运行对象一致。反过来，若仅因工件存在就创建入口或 runtime，又会把规格治理偷换成执行授权。
+- **决定**：Stage 86 只能为一条当前 Stage 85 批准 create-once 登记自哈希隔离 runner 规格，精确绑定 runner 工件 SHA-256、不可变代码版本、固定 runtime 身份、工件复现程序及 Stage 85/84/83/82/74 完整哈希链。
+- **隔离合同**：登记人排除 Stage 85 复核者、Stage 84 登记者和 Stage 51–85 完整责任链；未来输入只读、点时、内容寻址且白名单化，周期必须 claim-first/create-once，更正只追加，输出 create-once、不可信、独立验证且不含订单意图或券商载荷。
+- **权限边界**：工件身份已绑定，但没有 callable entrypoint，runtime 未实例化，也没有 mount、适配器、数据访问、环境继承、密钥、网络、工具、子进程、生产读写、观察、账本、持仓、绩效、模型/指标、训练反馈、reward、订单、券商或交易能力。登记只开放未来 Stage 87 责任链外首次执行授权复核；本轮没有创建真实 Stage 86 记录。readiness 升级为 v83。
+- **验证**：Stage 86 聚焦 Rust 3/3；Web API 1109 通过、2 个凭据型 live 测试按设计忽略；前端 530/530、决策大脑 44/44、金融契约 49/49；TypeScript、生产构建、workspace all-target check、Rust fmt 与 diff hygiene 通过。
+
+### D-2026-08-26-149: Stage 87 工件复现必须提交独立摘要证据，授权候选与执行继续分离
+
+- **问题**：仅让复核者勾选“已独立复现工件”无法证明被审核的二进制与 Stage 86 冻结对象一致；同时，若首跑批准直接创建入口、claim 或 mount，会把治理审核偷换成实际观察执行。
+- **决定**：Stage 87 建立 append-only、自哈希、批准终止的独立复核链。请求必须提交独立复现的 runner 工件 SHA-256 和复现证据，并精确重绑 Stage 86/85/84/83/82/74。摘要不一致、角色重叠、上游漂移、分叉或批准后续写均失败关闭。
+- **授权语义**：批准最多签发 24 小时内一次未来 Stage 88 claim-first 尝试候选；Stage 87 本身不创建或消费 claim，不提供调用入口，不实例化 runtime，不挂载或读取数据，也不写观察、账本、持仓、绩效、模型或指标。
+- **权限边界**：训练、reward、订单、券商和交易继续关闭；当前没有创建真实 Stage 87 记录。readiness 升级为 v84。
+- **验证**：Stage 87 聚焦 Rust 3/3、readiness 1/1；Web API 1112 通过、2 个凭据型 live 测试按设计忽略；前端 531/531、决策大脑 45/45、金融契约 49/49；TypeScript 与生产构建通过。
+
+### D-2026-08-26-150: Stage 88 必须先永久消费授权，再验证零行情初始化清单
+
+- **问题**：若先解析清单、复核二进制或接触数据再写 claim，失败请求可以反复试探；若把 day-0 初始化说成已经完成前向观察，又会伪造时间、收益和决策能力。
+- **决定**：Stage 88 先 create-once 落盘内容寻址 claim 并永久消费精确 Stage 87 授权，之后才复核当前二进制与初始化清单。失败、中断和清单错误都不得重放；Stage 87 eligibility 必须同步识别已 claim 授权。
+- **输出语义**：成功最多产生一份不可信的零行情初始化收据，固定 0 行行情、0 个自然前向交易日、无持久 runtime、无数据访问、无观察、无账本、无持仓、无绩效；未来 Stage 89 独立验证前不能形成任何收益、评级、训练或晋级结论。
+- **权限边界**：模型/指标存储、训练反馈、reward、订单、券商和交易继续关闭。本轮没有创建真实 Stage 88 记录；readiness 升级为 v85。
+
+### D-2026-08-26-151: Stage 89 必须从不可变收据独立重建 manifest 与唯一预期收据
+
+- **问题**：Stage 88 v1 收据只有 manifest 哈希，却缺少官方日历 URL 和四个协议位；若 Stage 89 依赖调用者重交 manifest 或复用执行器校验函数，就不能证明旧输出可由责任链外路径完整复算。
+- **决定**：把 Stage 88 收据升级为可重建 manifest 的 v2；Stage 89 排除 executor、Stage 87 reviewer 与完整上游，独立重算 claim/result/receipt 指纹、自收据重建 manifest，并从精确 Stage 87–74 链构造唯一预期收据。验证记录 create-once、自哈希，失败不得覆盖或重放。
+- **授权语义**：通过只开放未来首个自然前向周期授权复核资格，不等于启动 runtime、读取行情或开始观察；二进制部分只核验 Stage 88 已持久化证明位与 Stage 86/87 工件摘要的精确绑定，不用后来部署的当前二进制冒充历史执行证明。
+- **权限边界**：0 行行情、0 个自然前向交易日、0 个 runtime/观察/账本/持仓/绩效；模型/指标、训练、reward、订单、券商和交易继续关闭。readiness 升级为 v86，本轮没有创建真实 Stage 89 记录。
+
+### D-2026-08-26-152: Stage 90 授权窗口从首个合格自然周期起算且行情适配器保持分离
+
+- **问题**：沿用 Stage 87 的 24 小时窗口可能在周度协议下错过首个合格交易周期；但在授权复核中直接开放日历或行情读取，又会把治理动作与未来观测执行混在一起。
+- **决定**：Stage 90 对精确 Stage 89 零行情初始化收据建立 append-only、自哈希、批准终止的独立复核链。授权 `not_before=max(submitted_at, observation_not_before)`，随后固定 7 天、最多一次，只开放未来 claim-first 周期尝试候选。
+- **角色与能力边界**：复核者排除 Stage 89 validator、Stage 88 executor、Stage 87 reviewer 和完整既有责任链。当前复核不读日历或行情、不授权行情适配器；未来适配器必须另经明确、只读、内容寻址白名单授权。Stage 91 未实现，本轮没有创建真实 Stage 90 记录、前向观察或交易数据。
+
+### D-2026-08-26-153: Stage 91 必须先不可逆领取任务，再考虑独立行情适配器授权
+
+- **问题**：若在领取首周期任务之前解析交易日历或读取行情，操作者可以根据后来数据选择是否消费 Stage 90 授权，形成选择性启动和隐性回填；若任务领取直接携带数据权限，又会把授权消费与观察执行混为一体。
+- **决定**：Stage 91 只建立 claim-first、create-once、内容寻址的不可执行任务。claim 精确绑定 Stage 90–88 关键摘要并在写入时永久消费授权；同一授权不得重领，后续失败或未运行也不恢复。
+- **职责隔离**：领取者排除 Stage 90 reviewer 与完整既有责任链；服务端验证实际角色集合、当前授权窗口和精确哈希绑定，不能仅依赖界面勾选。
+- **权限边界**：任务固定等待后续单独、明确、只读、内容寻址白名单的行情适配器授权。Stage 91 不解析日历、不读取行情、不提供执行入口、不启动 runtime/观察，不建账、不写持仓/绩效/模型/指标，不训练或反馈 reward，不生成订单、不接券商、不交易。readiness 升级为 v88；本轮没有创建真实 claim。
+
+### D-2026-08-26-154: Stage 92 只批准固定只读适配器合同，真实数据收据必须另行 claim-first
+
+- **问题**：Stage 91 已永久领取首周期任务，但若合同批准同时发起请求，复核者会同时成为数据执行者；若来源、查询参数、凭据、股票集合或时间窗口不冻结，又会重新引入选择性取数、泄漏、密钥暴露和隐性回填。
+- **决定**：Stage 92 只建立 create-once、自哈希、7 天有效的独立适配器合同复核，以覆盖周末与休市日。复核者排除 Stage 91 claimant 与 Stage 51–91 完整责任链；固定 GET、FMP 历史价格与 NYSE 官方日历路径、`apikey/from/to` 参数、证券/SPY 同步和有限数据类别，未来股票集合与时间窗口必须内容寻址。
+- **证据与凭据边界**：凭据必须脱敏、不得持久化或返回，并排除在规范请求摘要之外；未来请求、响应、来源正文、抓取时间和来源可用时间须分别留痕，原始载荷保留且更正只追加。禁止重定向、非 HTTPS、任意 URL/股票和追溯回填。
+- **权限边界**：批准只开放未来 Stage 93 claim-first、create-once 只读数据收据资格；本阶段不解析日历、不发请求、不读行情、不启动 runtime/观察，不建账、不写持仓/绩效/模型/指标，不训练或反馈 reward，不生成订单、不接券商、不交易。readiness 升级为 v89；本轮没有创建真实授权或数据收据。
+
+### D-2026-08-26-155: Stage 93 必须先冻结选择，再单次取得未信任原始数据
+
+- **问题**：若客户端能在看见行情后选择股票、日期或是否消费授权，会形成选择性启动和隐性回填；若 claim 与 HTTP 请求同时发生，网络失败可被反复试探；若把原始响应直接当成交易日、收益或持仓事实，又会绕过来源验证与观察协议。
+- **决定**：Stage 93 在任何请求前 create-once 写入 claim，永久消费精确 Stage 92 授权。股票只能从 Stage 81 已独立验证的初始影子组合推导，固定加入 SPY；窗口只能从 Stage 92 授权后的下一纽约自然日至执行日推导。客户端只提交预期摘要、理由和确认，不能提交股票、日期、URL 或凭据。
+- **请求与凭据**：专用 client 禁止重定向，只能访问固定 FMP 历史价格与 NYSE 日历 GET。规范请求保存 `apikey=REDACTED` 并排除真实凭据；FMP Key 仅在 claim 后于内存中注入 wire URL，所有错误映射为有限无凭据错误码。每响应 16 MiB、总计 64 MiB。
+- **证据保管**：原始响应逐份 create-once 保存，收据绑定规范请求、响应正文、来源正文、字节数、HTTP 状态、内容类型、抓取时间、来源可用时间依据与相对路径；registry 回读复验内容哈希。失败和中断同样消耗授权且不得重放。
+- **权限边界**：成功只开放未来 Stage 94 责任链外独立验证资格，仍是未信任外部原始证据。Stage 93 不解析日历或行情行，不开始观察，不创建账本/持仓/绩效/模型/指标，不训练或反馈 reward，不生成订单、不接券商、不交易。本轮没有创建真实 Stage 88–93 记录或调用外部行情接口；readiness 升级为 v90。
+
+### D-2026-08-26-156: Stage 94 只验证原始回执完整性，不能把字节一致偷换成行情正确
+
+- **问题**：Stage 93 保存了未信任原始字节，但若仍由执行器自行确认、仅相信已存摘要，或在独立复核前直接解析价格，会让损坏载荷、路径漂移、凭据泄漏和执行器偏差进入自然前向观察；同时，“JSON 可打开”不代表交易日与行情语义正确。
+- **决定**：新增责任链外 create-once Stage 94。验证者排除 Stage 93 executor、Stage 92 reviewer 与 Stage 51–93 完整责任链；服务端重新打开精确上游记录，并以独立实现重算 claim/result/receipt/request/body/source/raw payload 指纹及固定脱敏请求。
+- **保管与凭据**：逐份重新打开 raw bytes，复核内容寻址路径、字节数和 SHA-256，并扫描持久 JSON 与 raw bytes，禁止当前配置凭据落盘。缺失、篡改、越界、泄漏或摘要漂移均形成永久失败终态，不允许覆盖或重试成通过。
+- **语义边界**：通过仅表示保管完整且响应满足最小 FMP JSON / NYSE HTML 信封，不表示日期、价格、复权、分红、拆股、公司行动或来源发布日期正确。它只开放未来零能力 parser 规格独立复核资格。
+- **权限边界**：Stage 94 不解析行情、不启动观察、不创建账本/持仓/绩效/模型/指标，不训练或反馈 reward，不生成订单、不接券商、不交易。本轮没有创建真实 Stage 88–94 记录或调用外部行情接口；readiness 升级为 v91。
+
+### D-2026-08-26-157: 公司行动必须来自显式端点，parser 先冻结规格再实现
+
+- **问题**：单一 legacy 历史价格响应不能独立证明原始价、拆股调整价、分红调整价、分红事件和拆股事件；若只看 adjusted close 或由价差推断公司行动，后续收益可能在静默回退、前填、去重或复权误差中失真。直接写 parser 又会让实现先于可审计合同。
+- **决定**：Stage 92–94 来源合同升级为 v2，每个 subject 与 SPY 固定请求 FMP stable 三类价格序列、显式 dividends、显式 splits，并另取 NYSE 官方日历；legacy 路径由回归测试禁止。Stage 95 只由服务端登记 create-once、自哈希的零能力规格，客户端不能供应解析规则。
+- **解析边界**：严格 UTF-8/schema/date/finite-number，重复、越界、缺失和畸形失败关闭；不允许去重、前填、插值、未调整价回退或推断公司行动。SPY 必须覆盖每个官方交易日，subject 缺失形成显式 gap；三类价格序列不得互相替换，来源可用时间仍待单独验证。
+- **权限边界**：Stage 95 没有 parser 代码、工件、入口、runtime、原始载荷读取或生产写入，只开放未来 Stage 96 责任链外规格复核资格。readiness 升级为 v92；本轮没有创建真实 Stage 88–95 记录、调用外部行情接口或生成观察/绩效/训练/交易事实。
+
+### D-2026-08-26-158: Stage 96 必须用第二实现重建来源合同与合成向量
+
+- **问题**：Stage 95 自哈希和合成向量仍由同一实现生成；若独立复核只核对勾选项或复用同一 helper，路径遗漏、查询参数漂移、向量错误或越权位可能自洽地通过。
+- **决定**：Stage 96 复核者排除 Stage 95 registrar、Stage 94 validator、Stage 93 executor 与完整责任链。服务端第二实现独立重算 validation/claim/result/receipt/registration/specification，并独立重建每个证券与 SPY 的五类 FMP stable 请求、NYSE 官方日历请求及八组合成向量输入/预期输出哈希。
+- **失败语义**：任一哈希、来源路径、查询顺序、显式公司行动、SPY/日历覆盖、失败关闭或权限位漂移都不能批准。要求修改或拒绝为不可覆盖终态，必须回到上游重建规格。
+- **权限边界**：批准只开放未来零能力 parser 实现登记资格；本阶段不提供 parser 工件、入口、runtime 或原始载荷访问，不创建解析行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。readiness 升级为 v93；本轮没有创建真实 Stage 88–96 记录或调用外部行情接口。
+
+### D-2026-08-26-159: Stage 97 只能登记确定性实现契约，不能交付可运行 parser
+
+- **问题**：Stage 96 已独立批准解析规格，但若下一步直接上传源码、开放入口或读取真实载荷，规格批准者的静态结论会被未经独立复核的实现细节绕过，也会把“有实现设计”偷换成“行情已正确解析”。
+- **决定**：Stage 97 只允许新的责任链外角色 create-once 登记自哈希零能力实现契约。契约逐哈希绑定 Stage 96 review、Stage 95 registration/specification、全部上游摘要、显式价格/公司行动/NYSE 来源和八组合成向量，并冻结八个纯确定性函数标识与 canonical schema。
+- **实现边界**：契约不携带源码或可执行制品，不提供 entrypoint/runtime，不挂载或读取原始载荷，不继承环境、secret、网络、工具、子进程或生产读写能力。任何未来输出都必须内容寻址、create-once、非可信并独立验证。
+- **权限边界**：登记只开放 Stage 98 责任链外独立实现复核资格；隔离 runner 仍不可登记。Stage 97 不创建日历/行情行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。readiness 升级为 v94；本轮没有创建真实 Stage 88–97 记录或调用外部行情接口。
+
+### D-2026-08-26-160: Stage 98 必须独立重算实现契约，通过也只能开放 runner 规格登记
+
+- **问题**：Stage 97 虽然冻结了零能力实现契约，但由同一登记路径生成的 implementation 与 contract 哈希仍可能一起自洽地遗漏来源、函数、schema、失败关闭或权限边界。
+- **决定**：Stage 98 必须由完整责任链之外的新角色，使用独立重算路径核验 implementation/contract、Stage 96 review、Stage 95 registration/specification，以及八个函数、canonical schema、显式来源/公司行动/日历/对账和八组合成向量。
+- **失败语义**：任何哈希或语义不一致、角色冲突、`source_available_at` 被错误宣称已验证、权限位开放或确认缺失都不得批准；要求修改或拒绝为不可覆盖终态，必须重建上游契约。
+- **权限边界**：批准只开放未来 Stage 99 隔离 parser runner 规格登记资格；不交付源码/可执行工件、入口、runtime、原始载荷读取或解析能力，不创建观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。readiness 升级为 v95；本轮没有创建真实受控影子记录或调用外部行情接口。
+
+### D-2026-08-26-161: Stage 99 只冻结隔离 runner 规格，拟议工件身份不等于程序存在
+
+- **问题**：Stage 98 已批准零能力实现合同，但若在登记 runner 时同时上传或运行工件，会把静态合同批准直接越级成真实载荷访问；若不绑定工件身份，后续授权又无法证明审查的是同一程序。
+- **决定**：Stage 99 只允许新的责任链外角色登记 create-once、自哈希 runner 规格，精确绑定 Stage 93–98 全链，并冻结拟议工件 SHA-256、代码版本、复现步骤、固定 runtime 身份和资源上限。记录逐项保存全部确认，不能只依赖汇总确认位。
+- **隔离边界**：源码、可执行工件、entrypoint 和 instantiated runtime 保持不存在；未来输入限于 Stage 94 已验证的只读内容寻址载荷，未来输出必须 create-once、非可信并独立验证。禁止环境继承、secret、网络、工具、子进程、生产 I/O、市场解释和订单意图。
+- **权限边界**：登记只开放未来 Stage 100 责任链外首次执行授权复核资格，不产生执行权或数据读取权，不创建解析行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。readiness 升级为 v96；本轮没有创建真实 Stage 99 记录或调用外部行情接口。
+
+### D-2026-08-27-162: Stage 100 必须由服务端重哈希真实只读工件，手填摘要不能授权
+
+- **问题**：Stage 99 只冻结拟议工件身份。如果 Stage 100 继续沿用“管理员提交一个相同 SHA”的旧式证明，复核无法证明工件实际存在、字节可复现或隔离合同对应同一程序；审批后工件被替换也可能继续保留资格。
+- **决定**：服务端从 runner ID 与冻结摘要派生唯一保管目录，只接受只读、非空、有界、非符号链接的 `runner.artifact` 和自哈希 `manifest.json`，并自行读取字节、重算 SHA-256/长度。manifest 必须绑定 Stage 99 runner/spec/contract、代码版本、source bundle、复现步骤、runtime 和独立构建者。
+- **持续绑定**：工件构建者与 Stage 100 reviewer 必须分离并排除完整既有责任链。每次读取 registry 或生成未来 claim 候选时重新核对当前工件与已批准 review；文件删除、替换、变为可写或内容漂移立即撤销资格。
+- **权限边界**：批准只有 24 小时且最多一次，只开放未来 Stage 101 claim-first 尝试候选；不创建入口/runtime，不挂载或读取行情载荷，不运行 parser、不生成解析行或任何观察、组合、绩效、训练、reward、订单、券商与交易事实。readiness 升级为 v97；本轮没有创建真实工件、manifest、授权记录或调用外部行情接口。
+
+### D-2026-08-27-163: Stage 101 必须先永久消费授权并冻结唯一输入，执行仍须另设门禁
+
+- **问题**：即使 Stage 100 已核验工件，如果允许在声明前查看或替换原始输入，操作者仍可根据数据选择是否运行、选择哪组载荷或反复试探；如果 claim 路由同时运行 parser，又会把不可逆选择、数据访问和输出生成混成一个无法独立审计的动作。
+- **决定**：Stage 101 只建立 create-once、自哈希的首次执行尝试声明。服务端在任何 runtime、载荷读取或 parser 调用前永久消费精确 Stage 100 授权，并从 Stage 94/93 不可变链冻结唯一输入 manifest；客户端不能提交股票、日期、请求、路径、载荷或其摘要。
+- **持续绑定**：声明只接纳仍未过期、未消费且当前工件/manifest 持续通过 Stage 100 校验的授权；记录固定绑定 Stage 100 artifact 与 Stage 94 validation、Stage 93 claim/result/receipt、SPY、自然前向窗口、规范请求和 raw-payload custody 元数据。失败、过期、中断或未执行均不得恢复授权。
+- **权限边界**：Stage 101 没有执行按钮、entrypoint、runtime、raw-payload mount/read 或解析输出。它只开放未来独立 Stage 102 单次执行门禁候选，不创建日历/行情行、观察、账本、持仓、绩效、模型/指标、训练、reward、订单、券商或交易事实。readiness 升级为 v98；本轮没有创建真实声明或调用外部行情接口。
+
+### D-2026-08-27-164: Stage 102 使用受信任进程内解释器，不执行任意工件
+
+- **决定**：`runner.artifact` 必须是严格声明式 JSON，只能绑定已批准 Stage 97 合同中的八个函数 ID、schema、代码版本和摘要。Stage 102 重新核验工件身份后，由 HONE 内部确定性解释器解析固定 Stage 94 载荷；禁止把 artifact 作为 OS 进程、脚本、动态库或命令启动。
+- **原因**：Stage 99/100 已绑定未来工件身份，但没有定义可安全执行任意二进制的 ABI。直接 spawn 会引入与“无网络、无环境、无 secret、无工具、无子进程”相冲突的代码执行面，也无法证明同一语义。声明式绑定既保留独立复现和内容寻址，又把能力限定在可审计解析函数内。
+- **结果语义**：任何工件或载荷读取前先 create-once 写入 start marker，从该时刻起 claim 不可重试；进行中的 marker 不再显示为待执行。每条 Stage 101 claim 最多一个终态结果；显式失败直接固化，进程异常中断则在 Stage 99 固定 wall-clock 截止点后保守恢复为 `execution_interrupted_without_terminal_result` 失败终态。格式、摘要、覆盖、解析或输出写入失败都会消费 claim；成功输出仍为 untrusted、create-once、最大 8 MiB，必须进入 Stage 103 独立验证。
+- **日历语义**：NYSE 官网不是逐交易日 API，而是年度假日表与提前收市脚注。解释器在严格校验年份覆盖后，从工作日减去官方假日并应用明确的 1:00 p.m. 脚注；同时保留 Stage 95 合成逐日表兼容路径，二者都不进行网络回退或日期猜测。
+
+### D-2026-08-27-165: Stage 103 必须使用不依赖 Stage 102 解析助手的第二实现验证完整输出
+
+- **问题**：Stage 102 输出、行哈希和自检均由同一执行路径生成；若独立校验只重算文件摘要或复用同一 parser helper，系统性解析错误仍可能自洽通过。
+- **决定**：Stage 103 由完整责任链外角色重新打开固定 raw payload 和 Stage 102 output，以不调用 Stage 102 解析助手的第二实现全量重解析 FMP 三类价格、分红、拆股及 NYSE 假日/提前收市规则，独立重算行哈希、覆盖、缺口和完整输出并做精确相等比较。
+- **失败语义**：同一 attempt 只能有一个 create-once 终态；输入、manifest、字段、顺序、行、摘要、覆盖或完整对象任一不一致均永久失败，不能覆盖或重试成通过。
+- **权限边界**：通过只开放 Stage 104 观察输入准入复核候选；`source_available_at` 仍未验证，不开始自然前向观察，不创建账本/持仓/绩效/模型/训练/reward/订单/券商或交易。readiness 升级为 v100；本轮没有创建真实校验记录。
+
+### D-2026-08-27-166: Stage 104 用 HONE 保管时间建立保守可用下限，不伪造供应商发布时间
+
+- **问题**：Stage 93 收据只证明 HONE 在何时取得并保管原始响应，不能证明供应商首次发布数据的时间。若把保管时间写成 provider publication time，会制造虚假的 point-in-time 精度；若完全不用时间，又无法约束观察输入不得事后回填。
+- **决定**：Stage 104 由完整责任链之外的新管理员，对精确 Stage 91–103 链做 append-only、自哈希准入复核。服务端重新核对每份载荷的 `retrieved_at_utc`，并把最新保管取得、parser 完成、Stage 103 独立校验和 Stage 104 提交时间的最大值保存为保守 `admitted_available_at_utc`；`provider_publication_time_verified` 永远为 false，直到未来存在独立证据。
+- **结构门槛**：至少一个官方交易日；SPY 三套价格完整；每个标的/交易日/价格口径必须恰好由真实行或显式 gap 覆盖；分红、拆股和三套价格分开；禁止填充、跨序列替代、输出重写、纠错回填或历史补录。记录读取时重新计算审计，不能只相信持久化布尔位。
+- **权限边界**：批准只接纳精确输入并开放 Stage 105 create-once 观察物化规格登记，不等于观察已开始。账本、持仓、绩效、模型/指标、训练、reward、订单、券商和交易全部关闭。readiness 升级为 v101；本轮没有创建真实记录、读取生产载荷或调用外部行情接口。
+
+### D-2026-08-27-167: Stage 105 先冻结观察物化语义，不直接生成自然前向观察
+
+- **问题**：输入结构完整且已准入，不代表三种价格口径、标的缺口、SPY 完整性、公司行动和初始组合的会计含义已经明确。直接写观察会制造不可审计的收益事实。
+- **决定**：新增 create-once、自哈希的零能力规格登记层，只描述如何把精确 Stage 104 输入确定性投影成未来非可信 observation envelope；没有实现、工件、入口、runtime 或输入挂载。
+- **物化合同**：三价格口径分别保留；标的缺失只记显式 gap；SPY 缺失、重复、越界、摘要漂移、填充、插值、跨口径替代一律失败关闭。Stage 88 初始组合只按摘要绑定，不重算、不调仓、不记账、不计算绩效。
+- **point-in-time**：供应商发布时间仍未验证；Stage 104 的保守 available-at 和 limitation 原样保留，不升级成来源发布时间事实。
+- **权限边界**：登记只产生 Stage 106 责任链外规格独立复核资格。观察、账本、持仓、绩效、训练、reward、订单、券商和交易继续关闭；readiness 升级为 v102。
+
+### D-2026-08-27-168: Stage 106 必须用责任链外第二实现重建规格，不能只复核自报哈希
+
+- **问题**：Stage 105 登记的自哈希和自报字段只能证明记录内部一致，不能证明其物化语义忠实于当前 Stage 104 已准入输入。复用同一构造器也会把共同实现错误伪装成一致。
+- **决定**：新增 append-only、自哈希的独立复核链。责任链外 reviewer 使用第二实现从当前 Stage 104 源完整重建规格，不调用 Stage 105 构造器，并与登记逐字段精确比较。
+- **复核范围**：重新计算登记/规格哈希，核验官方 session、股票与 SPY、三价格口径、显式缺口、公司行动分离、十进制/顺序/摘要/路径、Stage 88 初始分配绑定，以及供应商发布时间未验证时的保守 available-at 限制。
+- **权限边界**：批准是终态，只开放 Stage 107 零能力实现登记候选。实现、工件、入口、runtime、生产输入、观察、账本、持仓、绩效、模型/训练/reward、订单、券商和交易均继续关闭；readiness 升级为 v103。
+- **证据边界**：本增量不创建真实复核、观察或绩效记录，不调用外部行情，也不把 custody time 解释为供应商发布时间。
+
+### D-2026-08-27-169: Stage 107 先登记零能力实现契约，复核通过前不落地实现
+
+- **决定**：只登记 create-once、自哈希的确定性函数、schema、路径、摘要与失败关闭语义；不接受源码/可执行工件，不提供入口、runtime 或输入读取。
+- **原因**：先把 Stage 105/106 独立批准的物化口径变成可审计边界，防止实现阶段暗改交易日、价格、缺口、公司行动或 available-at。
+- **权限边界**：登记只开放 Stage 108 责任链外独立实现复核；观察、账本、持仓、绩效、训练、reward、订单、券商与交易继续关闭。
+
+### D-2026-08-27-170: Stage 108 必须由完整责任链外第二实现复核观察物化契约
+
+- **问题**：Stage 107 implementation 与 contract 由同一登记路径生成；即使各自自哈希，也可能共同遗漏函数、schema、缺口、公司行动、available-at 或零权限边界。
+- **决定**：Stage 108 reviewer 必须排除 Stage 107 registrar、Stage 106 reviewer、Stage 51–107 完整责任链和同链既有 reviewer。服务端独立重算 Stage 107 implementation/contract、Stage 106 review/audit、Stage 105 registration/specification 指纹，并逐项复核八个纯函数与完整物化语义。
+- **失败语义**：任一哈希、当前绑定、交易日、标的/SPY 三口径、显式 gap、公司行动、初始分配、保守 available-at、内容寻址输出或权限位漂移均不得批准；要求修改或拒绝必须回到上游重建不可变实现契约。
+- **权限边界**：批准只开放未来 Stage 109 隔离观察物化 runner 规格登记资格。Stage 108 没有工件、入口、runtime、输入读取、观察、账本、持仓、绩效、模型/训练/reward、订单、券商或交易能力；readiness 升级为 v105。
+
+### D-2026-08-27-171: Stage 109 只登记隔离 runner 规格，执行必须另行授权
+
+- **问题**：即使 Stage 108 已独立批准实现语义，直接提交工件或运行仍会把“合同正确”错误升级为“可以接触生产输入并产生观察”。运行身份、工件重现性、输入只读性、输出不可覆盖性和资源边界必须先被冻结。
+- **决定**：新增 create-once、自哈希 runner 规格登记。registrar 排除 Stage 108 reviewer、Stage 107 registrar 和 Stage 51–108 完整责任链；服务端重新绑定当前 Stage 108/107/106/105/104/103/102/101 与 cycle claim。规格固定未来工件 SHA-256、immutable revision、reproduction procedure、非特权 runtime、Stage 104 内容寻址只读输入、create-once untrusted output 和严格资源上限。
+- **失败语义**：上游、工件身份、代码 revision、复现程序、runtime、挂载、输出、资源或零权限位任一漂移即失败关闭；同一 implementation 只能有一条登记，不能覆盖或隐式执行。
+- **权限边界**：登记只开放未来 Stage 110 责任链外首次执行授权复核。当前无工件、entrypoint、runtime 实例、输入读取、观察、账本、持仓、绩效、模型指标、训练、reward、订单、券商或交易能力；readiness 升级为 v106。
+
+### D-2026-08-27-172: Stage 110 授权必须建立在服务端重哈希工件与 24 小时单次边界上
+
+- **问题**：Stage 109 只冻结拟议工件身份。若 reviewer 可以手填摘要，或授权时不重新打开 custody 中的真实工件，错误/替换工件仍可能获得输入访问候选；若授权没有时限和单次消费语义，也会形成可重放执行权。
+- **决定**：服务端从 runner ID 与冻结工件摘要派生内容寻址目录，只接受只读常规 `runner.artifact` 和自哈希 `manifest.json`；独立读取并重算工件 SHA-256、长度，核对代码版本、runtime、复现程序及 Stage 101–109 全链。builder、Stage 109 registrar 和完整上游角色全部排除于 reviewer。
+- **失败语义**：symlink、可写/空/超限文件、manifest 自哈希或绑定无效、工件摘要/长度漂移、reviewer 冲突、任一确认缺失都失败关闭。已批准 review 不能追加；工件后续漂移立即失去 future-claim eligibility。
+- **权限边界**：批准只在 24 小时内开放最多一次未来 Stage 111 claim-first 候选。Stage 110 不 claim、不提供 execution endpoint、不启动 runtime、不挂载或读取 Stage 104 输入，不生成观察、账本、持仓、绩效、模型/训练/reward、订单、券商或交易；readiness 升级为 v107。
+
+### D-2026-08-27-173: Stage 111 声明必须永久消费 Stage 110，失败也不得恢复资格
+
+- **问题**：Stage 110 已把授权限定为 24 小时和最多一次，但原 registry 的“已消费集合”仍为空。若执行入口先出现、声明与执行合并，或失败后恢复授权，操作者仍能重复选择是否运行、观察输入后重试或绕过一次性边界。
+- **决定**：新增 create-once、自哈希的 Stage 111 claim-first 记录。在任何 entrypoint、runtime、Stage 104 input mount/read 或观察物化运行前，服务端永久消费精确 Stage 110 review，并嵌入完整授权、runner、工件/manifest、Stage 104/103/102/101 与 cycle-claim 责任链。客户端只能提交预期摘要、声明理由和边界确认，不能选择或替换输入、标的、日期、路径、工件或执行参数。
+- **不可恢复语义**：同一 Stage 110 review 只能出现一次 claim；claim 文件 create-once，重复、重放、角色冲突、过期或任何绑定漂移均失败关闭。声明后 `retry_allowed=false`、`release_allowed=false`、`authorization_restoration_allowed=false`；即使后续 Stage 112 未执行、失败或中断，授权也不返还。
+- **权限边界**：Stage 111 只建立一次性尝试身份，没有 execution endpoint、callable entrypoint、runtime、输入挂载/读取、物化输出或 observation envelope。它最多开放未来独立 Stage 112 单次执行门；账本、持仓、绩效、模型/指标、训练、reward、订单、券商和交易继续关闭。readiness 升级为 v108；本轮没有创建真实 claim、读取生产输入或运行工件。
+
+### D-2026-08-27-174: Stage 112 只解释声明式物化程序，输出必须保持非可信
+
+- **问题**：Stage 111 已永久消费授权，但若 Stage 112 直接 spawn 工件、接受客户端路径/参数，或在读取输入后允许重试，就会形成代码执行、输入挑选和结果选择偏差；若成功输出直接成为投资事实，也会绕过独立验证。
+- **决定**：start marker 必须在任何工件或输入读取前 create-once 写入。`runner.artifact` 只接受严格声明式 JSON，精确绑定合同、代码版本、八个函数 ID 与五个 schema，由 HONE 受信任进程内确定性解释器执行；禁止 command、entrypoint、网络、环境、secret、工具和子进程。服务端重新核验 Stage 110 工件/manifest，并重新打开和重哈希精确 Stage 104-admitted Stage 102 output。
+- **失败语义**：工件、manifest、Stage 104/103/102/101/cycle 任一绑定漂移，official sessions、SPY 三价格口径、标的 price/gap 异或、公司行动、十进制、来源行哈希或初始分配任一不一致都失败关闭。失败、超时和中断永久消费 claim；不允许 retry、release、overwrite 或 authorization restoration。
+- **权限边界**：成功只写 create-once、内容寻址、`untrusted` observation envelope，并等待 Stage 113 责任链外第二实现校验。Stage 112 不创建账本、持仓、净值、绩效、训练、RL、reward、订单、券商或交易能力；readiness 升级为 v109，本轮零真实执行记录。
+
+### D-2026-08-27-175: Stage 113 必须独立重投影完整观察 envelope，不能让执行器自证
+
+- **问题**：只重哈希 Stage 112 文件或复用同一 materializer helper，会让实现缺陷在执行和验证两侧同时成立；若校验通过直接写入影子绩效或训练，也会绕过证据准入。
+- **决定**：Stage 113 validator 必须位于 Stage 51–112 完整责任链之外，重新打开 exact Stage 112 result/output 与 Stage 104-admitted Stage 102 input，使用独立第二投影重算 sessions、三价格口径、显式 gaps、dividends/splits、Stage 88 initial allocation、available-at、逐行哈希、规范排序和完整 envelope SHA-256。源码契约禁止调用 Stage 112 materializer helper。
+- **失败语义**：角色冲突、保管或指纹漂移、来源矩阵不完整、任何行/排序/完整 envelope 不一致均形成 create-once、append-only 的失败记录；不得覆盖、换验证者重试或修改 Stage 112 输出。
+- **权限边界**：精确一致只开放 Stage 114 观察证据准入复核候选。Stage 113 不创建账本、持仓、绩效、模型指标、训练、RL、reward、订单、券商或交易；readiness 升级为 v110，本轮零真实验证记录。
+
+### D-2026-08-27-176: Stage 114 只把精确 envelope 准入为分离证据，不执行账本转换
+
+- **决定**：只有当前 Stage 113 责任链外独立验证通过、且在 Stage 114 提交与读取时再次通过终态重哈希和完整独立重投影的 exact Stage 112 envelope，才可被责任链外 reviewer 准入为正式观察证据。
+- **责任隔离**：reviewer 排除 Stage 113 validator、Stage 112 executor 与 Stage 51–113 完整责任链；复核记录 append-only、自哈希、批准终态冻结，退回或拒绝不得被原责任人覆盖。
+- **数据语义**：准入记录与原 envelope 分离。原 envelope 继续 `untrusted`/immutable；Stage 104 custody-time floor 与 provider publication time 未验证限制完整保留，禁止重新抓取、填充、替代、改写、修正和历史回填。
+- **权限边界**：批准只开放 Stage 115 observation-ledger transition specification registration。Stage 114 不建账、不写持仓、不算 NAV/绩效、不训练/RL/reward、不生成订单、不接券商、不交易；readiness 升级为 v111。
+
+### D-2026-08-27-177: Stage 115 必须先冻结会计映射，且 Stage 88 不能冒充开仓组合
+
+- **问题**：已准入观察证据仍不是组合会计状态。若把 Stage 88 初始化绑定当作持仓，或用观察标的、价格和权重推断本金、现金、股数，会凭空制造组合；若混用 adjusted price 与分红/拆股事件，还会重复计算公司行动。
+- **决定**：Stage 115 只登记确定性转换规格。opening portfolio snapshot 必须单独准入；没有该快照时允许的财务事件类型为空。证券估值只使用 raw unadjusted close，SPY dividend-adjusted 仅用于非会计基准总回报；显式 gap 阻断 NAV/绩效，禁止填补、插值或跨口径替代。
+- **纠错语义**：事件身份必须精确十进制、append-only、幂等；错误只能用新准入证据支持的 superseding/reversal 事件追加修正，绝不覆盖历史。dividend/split 在独立持仓与生效条款验证前只保留 notice 身份。
+- **完整性与权限**：每次读取重新验证 Stage 114/113/112 当前链、完整重投影和 registrar 排除名单；漂移失败关闭。登记只开放 Stage 116 独立规格复核，不创建 ledger/event、position、cash、NAV/performance、model/training/RL/reward、order、broker 或 trading；readiness 升级为 v112。
+
+### D-2026-08-27-178: Stage 116 必须用第二套实现重建会计规格，不能让登记者自证
+
+- **问题**：Stage 115 的登记记录和规格由同一路径生成；仅检查自报布尔位或文件哈希，无法证明 opening portfolio、价格口径、gap、公司行动、十进制和双分录语义没有共同遗漏。
+- **决定**：Stage 116 reviewer 必须排除 Stage 115 registrar 与 Stage 51–115 完整责任链。服务端使用不调用 Stage 115 builder 的第二套实现，从当前 Stage 114 正式证据重建完整规格，独立复算 registration/specification/audit 哈希并逐字段比较。
+- **失败语义**：Stage 88 被误当 opening positions、默认/推断本金或持仓、adjusted price 入证券会计、gap 被补值、公司行动双计、非精确十进制、非幂等/非 append-only、纠错覆盖历史、双分录或 available-at 漂移，任一项都失败关闭。要求修改或拒绝必须登记新的上游规格。
+- **权限边界**：批准只开放未来 Stage 117 零能力实现登记资格。Stage 116 不创建实现、账本、事件、持仓、现金、NAV/绩效、模型指标、训练/RL/reward、订单、券商或交易能力；readiness 升级为 v113。
+
+### D-2026-08-28-179: Stage 117 实现登记必须保持零能力，且 opening portfolio 不能由实现层补造
+
+- **问题**：规格独立批准并不等于实现可执行，更不等于已经存在开仓组合。若实现登记携带源码、工件、runtime 或从 Stage 88 推断本金、现金和持仓，就会在没有独立证据准入与执行复核时提前制造财务事实。
+- **决定**：Stage 117 只登记 create-once、自哈希的纯合同。它必须精确绑定当前 Stage 116 approval，并冻结当前来源、opening prerequisite、非财务观察投影、raw/adjusted 分离、gap/NAV、公司行动、精确十进制/幂等/双分录以及 append-only 纠错/available-at 八类函数语义与 canonical schema。
+- **责任与完整性**：registrar 排除 Stage 116 reviewer 和完整 Stage 51–116 责任链；每次读取重新验证上游 review/audit/registration/specification 与合同指纹。任何绑定、角色、函数、schema 或自哈希漂移均失败关闭。
+- **权限边界**：源码、工件、入口、runtime、输入、环境、secret、网络、工具、子进程、生产 I/O、opening snapshot、ledger/event、position、cash、NAV/performance、model/training/RL/reward、order、broker、trading 全部为 false。登记只开放 Stage 118 独立实现复核，readiness 升级为 v114。
+
+### D-2026-08-28-180: Stage 118 必须用责任链外第二实现重建账本转换合同
+
+- **问题**：Stage 117 implementation record 与 contract 由同一路径生成。只核验记录自哈希或复用同一 builder，无法发现 opening snapshot 前置门、价格口径、gap/NAV、公司行动、十进制、幂等、双分录、纠错或 authority boundary 的共同实现缺陷。
+- **决定**：Stage 118 reviewer 排除 Stage 117 registrar、Stage 116 reviewer、Stage 51–117 完整责任链及同链既有 reviewer。服务端使用不调用 Stage 117 builder 的第二套实现，从当前 Stage 116/115/114 来源重建完整合同，独立复算 implementation/contract、review/audit、registration/specification 哈希并逐字段比较八个纯合同函数和 canonical schemas。
+- **失败语义**：任何角色、当前链绑定、哈希、函数、schema、opening prerequisite、raw/adjusted、gap/NAV、公司行动防双计、精确十进制、幂等、双分录、append-only 纠错、available-at 或零权限位漂移都失败关闭。要求修改或拒绝必须回到上游重建不可变合同，不能原地覆盖。
+- **权限边界**：批准只开放 Stage 119 隔离 runner 规格登记候选。Stage 118 不提供源码、工件、入口、runtime、输入挂载/读取，不创建 opening snapshot、ledger/event、position、cash、NAV/performance、model/training/RL/reward、order、broker 或 trading；readiness 升级为 v115。
+
+### D-2026-08-28-181: Stage 119 只冻结未来 runner 规格，opening snapshot 缺失时金融事件白名单必须为空
+
+- **问题**：Stage 118 独立批准了实现合同，但这不代表可执行工件、runtime 或开仓组合已经存在。若登记 runner 时顺带创建工件、读取观察输入，或允许在没有 opening portfolio snapshot 时生成财务事件，就会越过独立执行授权和组合初始化证据门。
+- **决定**：Stage 119 只登记 create-once、自哈希 runner 规格。它精确绑定 Stage 118/117/116/115/114，冻结拟议工件 SHA-256、不可变代码 revision、复现程序、固定非特权 runtime、Stage 114 内容寻址只读输入、create-once 不可信候选输出和严格资源上限，但不提供工件或入口。
+- **缺失数据语义**：opening portfolio snapshot 当前不存在，`financial_event_allowlist` 必须为空；未来任何财务事件都必须先获得单独独立准入的 opening snapshot。无快照时未来输出最多是非权威的非财务观察 notice 候选，不能声称 ledger、position、cash、NAV 或 performance。
+- **权限边界**：登记只开放 Stage 120 责任链外首次执行授权复核候选。源码、工件、入口、runtime、mount/read、生产 I/O、ledger/event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 和 trading 继续关闭；readiness 升级为 v116。
+
+### D-2026-08-28-182: Stage 120 必须由服务端重哈希真实工件，批准只产生限时一次的 Stage 121 claim 候选
+
+- **背景**：Stage 119 只冻结了未来工件身份与隔离合同。若 Stage 120 接受人工填写摘要、复用上游责任人或直接提供执行入口，登记的哈希无法证明被审核的真实字节，也会绕过先认领后执行的单次权限边界。
+- **决定**：Stage 120 只从 runner 派生的内容寻址保管区读取只读常规 `runner.artifact` 与自哈希 `manifest.json`，由服务端计算工件 SHA-256/长度并核对 immutable revision、runtime、复现步骤和 Stage 114–119 完整绑定。reviewer 排除 Stage 119 registrar、artifact builder 与 Stage 51–119 完整责任链；记录 append-only、自哈希，批准终态冻结。
+- **权限边界**：授权最多 24 小时且只能使用一次，批准仅开放 Stage 121 claim-first 候选。opening portfolio snapshot 仍缺失、金融事件 allowlist 仍为空；未来尝试最多生成非金融 notice candidate，不得产生权威 ledger event、position、cash、NAV/performance、训练/RL、订单、券商或交易状态。
+- **后果**：真实工件或 manifest 缺失、符号链接/可写、摘要/长度/合同漂移时 registry 保持 pending 或失败关闭。本阶段不创建工件、不执行、不挂载或读取输入，也不恢复或消费授权。
+
+### D-2026-08-28-183: Stage 121 必须先原子消费授权，认领与执行永久分离
+
+- **背景**：Stage 120 只签发一次性限时资格。若 runner 在认领记录持久化之前启动，或允许失败后返还授权，就会出现重复执行、竞态和事后补记责任链。
+- **决定**：Stage 121 只能创建 create-once、自哈希的元数据 claim；服务端持锁核对未过期 Stage 120 授权和完整 Stage 51–120 绑定，先持久化永久消费，再允许未来独立 Stage 122 被设计。claimant 必须独立于 Stage 120 reviewer、artifact builder、Stage 119 registrar 与完整先前责任链。
+- **权限边界**：Stage 121 不提供 execution endpoint、entrypoint、runtime、mount/read、candidate output 或 financial-state write。retry、release 与 authorization restoration 永久关闭；opening snapshot 缺失时财务事件白名单保持为空。
+- **后果**：Stage 120 以持久化 Stage 121 claims 作为消费真相源。同一授权不能再次出现为 eligible；即使未来执行失败、中断、取消或从未开始，也不能返还。
+
+### D-2026-08-28-184: Stage 122 只解释已审核声明式程序，缺少期初组合时只产出未受信非财务候选
+
+- **背景**：Stage 121 已永久消费执行资格，但直接运行任意工件、在读取后补写 start marker，或把市场观察直接记入财务账本，都会重新引入代码执行、重复执行与虚构期初状态风险。
+- **决定**：Stage 122 在读取任何工件或输入前 create-once 写入 start marker，随后重新验证 exact claim、Stage 120 工件/manifest、Stage 119 合同和 Stage 114 admitted output。工件只允许严格声明式 JSON，由服务端在进程内解释固定八函数；禁止 command、entrypoint、动态代码、网络、secret、子进程和任意文件访问。
+- **权限边界**：opening portfolio snapshot 仍缺失且 financial-event allowlist 为空，因此成功只能写入内容寻址、精确十进制、canonical、幂等的未受信非财务 notice candidate。不得创建 authoritative ledger event、position、cash、NAV/performance、训练/RL/reward、订单、券商或交易状态。
+- **后果**：成功候选必须等待 Stage 123 责任链外独立验证；失败、中断或超时永久消耗 claim 且不可重试。本阶段只交付执行门能力，未创建真实 start/result/candidate 或影子账本。
+
+### D-2026-08-28-185: Stage 123 必须用第二套投影实现验证完整候选，不能以重算文件哈希代替独立验证
+
+- **背景**：Stage 122 的候选即使内容寻址且自哈希，也只能证明持久化内容未被静默修改，不能证明 notice identity、十进制、排序或完整投影逻辑本身正确。若验证器复用执行器 helper，会让同一个缺陷同时通过生成与验证。
+- **决定**：Stage 123 由责任链外 validator 重新打开 exact Stage 114 evidence 和 Stage 122 candidate，在不调用 Stage 122 projector helper 的前提下，独立重建七类允许的非财务 notice、identity、精确十进制、canonical ordering 与 complete candidate fingerprint，并与持久化候选逐字段精确比较。
+- **权限边界**：验证记录 create-once、append-only、自哈希且不可覆盖；失败永久关闭该 attempt。通过只产生供 Stage 124 准入复核的已独立验证候选，不改变候选的 untrusted 属性，不补造 opening portfolio snapshot，不发布财务账本或开放训练、RL、订单、券商与交易权限。
+- **后果**：Stage 122 单实现错误不能仅凭相同哈希进入下一门。当前只交付验证能力，未创建真实 validation、candidate admission、shadow ledger 或任何财务状态。
+
+### D-2026-08-29-186: Stage 124 只准入分离的非财务观察证据，下一门直接治理外部来源期初组合快照
+
+- **背景**：Stage 123 可以证明 Stage 122 非财务候选与独立第二投影精确一致，但“验证正确”不等于“可以写入财务账本”。系统仍没有独立准入的期初组合；继续把 Stage 88 初始化来源解释成持仓会制造本金、现金、股数和绩效。
+- **决定**：Stage 124 使用新的完整责任链外 reviewer 重开当前 Stage 123/122/114/112 绑定，建立唯一线性、append-only、自哈希的准入链。批准只新增分离的正式非财务观察证据记录，原 candidate 继续 untrusted/immutable。
+- **下一门**：Stage 124 通过后不再追加一层非财务物化门，直接开放 Stage 125“外部来源期初组合快照治理规格登记”，以解决影子组合真正缺失的财务前置条件。
+- **权限边界**：本决定不准入 opening snapshot，不创建 authoritative ledger event、position、cash、NAV/performance、model/metric、training/RL/reward、order、broker 或 trading 状态，也不把工程晋级写成老王确认投资逻辑。
+
+### D-2026-08-29-187: Stage 125 只冻结外部来源期初组合快照契约，来源文件与财务状态必须继续为空
+
+- **背景**：Stage 124 已能准入分离的正式非财务观察证据，但影子账本仍缺少真实期初组合。若从研究观点、关注标的、默认本金、对账单展示市值或 Stage 88 初始化来源推断现金、持仓和股数，会制造虚假财务状态及不可审计绩效。
+- **决定**：Stage 125 只允许责任链外 registrar 登记 create-once、自哈希规格。规格精确绑定当前 Stage 124/123/122/114/112，冻结外部券商/托管或已核验组合会计系统来源、匿名组合范围、报告币种、有效 IANA 时区、快照时点、完整账户数，以及账户、现金、持仓、上市期权、负债和未结算活动的 canonical schema。
+- **估值与完整性**：数量和金额必须为精确十进制及有符号数量；证券身份和公司行动必须先对账。对账单市值只能作信息参考，不能成为会计 mark；NAV 前必须另行取得完整独立行情、FX 和衍生品估值。缺失、歧义、未支持资产或部分账户均失败关闭，不允许默认、补值或推断。
+- **责任与权限边界**：registrar 排除 Stage 124 reviewer 与完整既有责任链。登记不接收、上传、读取或解析来源文件，不物化或准入 opening snapshot，不创建金融事件白名单、账本、持仓、现金、NAV/绩效、模型/训练/RL/reward、订单、券商或交易权限；只开放 Stage 126 责任链外独立规格复核。
+
+### D-2026-08-29-188: Stage 126 必须由第二实现重建期初组合治理规格，批准也只开放零能力接收实现登记
+
+- **背景**：Stage 125 的 create-once、自哈希登记只能证明已登记内容可追溯，不能证明来源、完整账户、证券身份、精确十进制及估值前置合同本身正确。若复核器复用 Stage 125 builder，同一缺陷可能同时通过登记和复核。
+- **决定**：Stage 126 由责任链外 reviewer 重开当前 Stage 125/124/123/122/114/112 绑定，并以不调用 Stage 125 builder 的第二实现独立重建完整规格、重算 registration/specification hash，再逐字段验证原始来源、匿名化、账户/现金/持仓/上市期权/负债/未结算活动、成本基础、公司行动和 append-only 纠错合同。
+- **估值边界**：对账单市值继续只能作信息参考。复核必须确认 NAV 前另需完整独立行情、FX 和衍生品估值；缺失、默认、推断、部分准入或未支持资产均不能通过。
+- **权限边界**：复核记录 append-only、自哈希并排除 registrar 及 Stage 51–125 完整责任链。批准只开放 Stage 127“零能力来源工件接收实现登记”，当前仍不得接收或读取来源文件、运行 parser、物化或准入期初组合、创建账本/持仓/现金/NAV/绩效、训练/RL/reward、订单、券商或交易状态。
+
+### D-2026-08-29-189: Stage 127 只登记来源工件接收合同，逐项确认与当前来源必须可重验
+
+- **背景**：Stage 126 独立批准了治理规格，但还没有安全的来源文件接收实现。若登记阶段直接开放上传、保存真实字节或运行 parser，就会在实现尚未独立复核时扩大数据和财务权限；若只保存一个“确认完成”总开关，则无法审计每一项安全约束。
+- **决定**：Stage 127 只登记 create-once、自哈希的零能力实现合同，精确绑定当前 Stage 126 review/audit 与 Stage 125 registration/specification。登记记录永久保存 17 项逐项确认，冻结未来仅限管理员认证流、单工件 64 MiB、单 receipt 256 MiB、最多 64 个工件，以及流式 SHA-256/长度、私有隔离、格式/魔数/安全结构、主动内容拒绝、账号匿名化、secret 脱敏、静态加密、内容寻址 create-new、失败清理和 append-only 未受信 receipt manifest。
+- **完整性**：registrar 排除 Stage 126 reviewer 与完整既有责任链。每次读取都必须重新验证每条登记仍属于当前独立批准 Stage 126 集合、精确重验来源绑定和排除人员名单；孤立、过期、确认缺失或哈希漂移均整体失败关闭。
+- **权限边界**：当前没有上传端点、来源字节、工件存储写入、parser/runtime、网络/secret/子进程、快照物化/准入、financial-event allowlist、账本、持仓、现金、NAV/绩效、模型/训练/RL/reward、订单、券商或交易能力。登记只开放 Stage 128 责任链外实现独立复核。
+
+### D-2026-08-29-190: Stage 128 必须由责任链外第二实现终结复核 Stage 127 接收合同
+
+- **背景**：Stage 127 只登记了未来来源工件接收合同。若由原登记者自证、复用 Stage 127 builder，或允许同一实现反复复核直至通过，就无法发现实现与登记合同共同携带的错误，也会形成审批试探通道。
+- **决定**：Stage 128 reviewer 必须排除 Stage 127 registrar 与完整 Stage 51–127 责任链；第二实现不得调用 Stage 127 builder，必须独立重建完整合同并重算 implementation/contract、Stage 126 review/audit 与 Stage 125 registration/specification 摘要，重新验证 Stage 127 全部 17 项确认、来源格式、资源上限、私有隔离、流式哈希、主动内容拒绝、匿名化/脱敏、静态加密、内容寻址、失败清理及未受信 manifest。
+- **终结性**：每个 Stage 127 implementation 只允许一个 terminal review。批准、退回或拒绝均 append-only 且不可覆盖；退回或拒绝后必须由上游生成新的 implementation id，不能在原记录上追加“修正后批准”。
+- **权限边界**：Stage 128 不提供上传入口，不接收、读取、保存或解析来源字节，不运行 runtime/network/secret/tool/subprocess，不创建快照、金融白名单、账本、持仓、现金、NAV/绩效、模型、训练/RL/reward、订单、券商或交易能力。批准只开放 Stage 129 隔离来源工件接收器规格登记。
+
+### D-2026-08-29-191: Stage 129 只冻结未来隔离接收器规格，真实工件与执行授权必须继续分离
+
+- **背景**：Stage 128 已独立批准零能力接收实现，但批准合同不等于已经存在可信工件、runtime 或上传能力。若登记接收器时顺带生成工件、开放上传、读取来源字节或写 receipt，会绕过真实工件复核与首次执行授权门。
+- **决定**：Stage 129 只登记 create-once、自哈希规格，精确绑定 Stage 128 review/audit、Stage 127 implementation/contract、Stage 126 review/audit 与 Stage 125 registration/specification；同时冻结拟议工件 SHA-256、不可变代码 revision、复现程序、固定非特权 runtime、管理员鉴权流式原始 PDF/CSV/JSON 输入及 create-once 未受信 manifest 输出。
+
+### D-2026-08-29-192: Stage 130 首次执行授权必须由服务端重哈希真实接收器工件
+
+- **决定**：Stage 130 不接受客户端路径、工件字节或单独 SHA 声明。服务端只能从 Stage 129 `isolated_receiver_id + proposed_receiver_artifact_sha256` 派生保管目录，并重新读取只读常规 `receiver.artifact`、验证自哈希 `manifest.json`、摘要、长度、不可变 revision、runtime 和复现步骤。
+- **责任分离**：复核者必须独立于 Stage 51–129 全链、Stage 129 登记人和工件构建者；批准记录为 append-only，批准后终止复核链，24 小时内最多一次且只开放 Stage 131 claim-first 候选。
+- **权限边界**：Stage 130 没有上传端点、可执行入口或来源文件读取能力；不创建 receipt、期初组合快照、金融事件白名单、账本、持仓、现金、净值/绩效、模型、训练/RL/reward、订单、券商或交易状态。
+
+### D-2026-08-29-193: Stage 131 必须先永久消费授权，再允许任何来源字节出现
+
+- **决定**：Stage 131 只创建 claim-first、create-once、自哈希元数据记录。服务端必须在 claim 前重新取得当前未过期、未消费的 Stage 130 授权并复核接收器工件与 manifest；claim 落盘后该授权永久失去资格。
+- **不可恢复**：并发领取、重复 review、角色重叠、摘要漂移或过期均失败关闭。claim 后无论未来成功、失败、中断或未执行，都不得释放、恢复或重试授权。
+- **权限边界**：Stage 131 不打开上传流，不接收或读取来源字节，不启动 runtime，不创建 receipt/快照/财务状态，也不开放训练、奖励、订单、券商或交易能力；只开放未来 Stage 132 独立单次接收门。
+
+### D-2026-08-29-194: Stage 132 必须先落不可恢复起始标记，再加密接收为未受信凭证
+
+- **决定**：管理员 multipart 请求的首字段必须是有上限的 JSON 元数据；服务端在读取任何文件字段字节前重新核验精确 Stage 131 claim、角色分离和接收合同，并 create-once 持久化 start marker。start 一旦存在，成功、失败、中断或恢复都永久消费 claim，禁止重试。
+- **托管**：只接收原始 provider PDF/CSV/JSON，并受 64 件、64 MiB/件、256 MiB/receipt 上限约束。内容必须先通过格式/魔数/结构/主动内容/敏感字段筛查，再以 AES-256-GCM 加密、按明文 SHA-256 内容寻址和 create-new 方式提交；原始文件名、客户端路径、账户号和凭据不得持久化或记录。
+- **审计**：成功只生成 create-once、脱敏、自哈希、untrusted receipt。失败形成 `failed_claim_consumed`；由于失败可能发生在读取部分流之后，结果必须保守记录来源字节“可能已读取”，不得宣称已证明零读取。
+- **权限边界**：Stage 132 不解析财务行、不物化或准入 opening snapshot、不开放 financial-event allowlist，不创建 ledger/event/position/cash/NAV/performance/model/training/RL/reward/order/broker/trading 状态。只有 Stage 133 责任链外独立验证可以继续处理 receipt。
+
+### D-2026-08-29-195: Stage 133 必须独立认证解密，但不能把完整 receipt 当作真实持仓
+
+- **背景**：Stage 132 receipt 由接收实现自证格式、哈希、加密和脱敏。若 Stage 133 只核对 manifest 字段、复用 Stage 132 helper，或验证后直接生成持仓，就既不能发现共同实现错误，也把保管完整性错误升级成了财务真实性。
+- **决定**：Stage 133 validator 必须排除 Stage 132 executor、Stage 131 claimant 与 Stage 51–132 完整责任链；用第二实现重新打开 exact claim/result/receipt/ciphertext，自行派生 AES-256-GCM nonce/AAD 并认证解密，重算明文内容地址、格式安全结构、敏感字段和脱敏证据。每个 receipt 只允许一个 create-once、自哈希终态。
+- **配置恢复**：密钥缺失、格式错误或指纹不匹配在终态前失败，让管理员修复运行配置；责任链、manifest、密文、认证解密或明文漂移则写入不可覆盖失败终态，不能试错到通过。
+- **权限边界**：验证通过只证明 receipt 的加密保管与内容完整性，不证明文件内持仓数字真实。它只开放 Stage 134 零能力期初快照物化实现登记，不解析金融行、不物化/准入快照，也不创建 financial allowlist、ledger/position/cash/NAV/performance、model/training/RL/reward、order/broker/trading 权限。
+
+### D-2026-08-29-196: Stage 134 只登记确定性期初快照物化合同，完整性失败必须阻断整份快照
+
+- **背景**：Stage 133 只证明加密 receipt 与保管链完整，仍未证明文件中的账户、现金和持仓数字真实。若 Stage 134 直接运行 parser，允许部分账户通过，或用默认值补齐歧义，就会在实现尚未独立复核前制造貌似完整的财务状态。
+- **决定**：Stage 134 只登记 create-once、自哈希的零能力实现合同。registrar 必须排除 Stage 133 validator、Stage 132 executor、Stage 131 claimant 与 Stage 51–133 完整责任链，并精确绑定 validation、result、claim、receipt 与 Stage 125 specification。未来 parser/materializer 只能接受已独立验证的内容寻址 receipt，且只能使用确定性 PDF/CSV/JSON adapter。
+- **数据合同**：未来输出必须完整覆盖账户、现金、持仓、上市期权、负债和未结算活动；金额与数量使用精确十进制字符串和有符号数量，不得使用 binary float；证券身份优先级与公司行动对账固定；每行绑定来源工件 SHA-256 和来源位置，不得泄露真实账户或凭据。缺失、歧义、不支持资产、部分账户、手填、默认或推断都使整份快照失败。
+- **估值与晋级边界**：对账单市场价值仅作信息字段，不得直接形成 NAV 或绩效。即使未来物化成功，输出也只能是 create-once、untrusted candidate，须分别通过独立输出验证和准入。当前登记只开放 Stage 135 责任链外实现复核。
+- **权限边界**：Stage 134 没有 key/input read、解密、parser/runtime、输出、快照、financial allowlist、ledger/position/cash/NAV/performance、model/training/RL/reward、order/broker/trading 权限。
+
+### D-2026-08-29-197: Stage 135 必须用第二实现重建物化合同，批准也不能获得输入或执行能力
+
+- **背景**：Stage 134 由 registrar 创建零能力物化合同。若复核只比较登记字段、调用同一个 builder 或顺便运行 parser，共同实现错误无法被发现，审查也会意外成为财务状态入口。
+- **决定**：Stage 135 reviewer 必须排除 Stage 134 registrar、Stage 133 validator、Stage 132 executor、Stage 131 claimant 与 Stage 51–134 完整责任链。第二实现不得调用 Stage 134 builder，必须独立重建 10 个固定函数、完整输入输出与失败合同，重算 Stage 125/131/132/133/134 的全部哈希和绑定，并重新验证 Stage 134 的 18 项确认。
+- **数据边界**：审查必须再次确认完整账户、现金、持仓、上市期权、负债、未结算活动、精确十进制字符串、有符号数量、证券身份优先级、公司行动对账、逐行工件摘要/来源位置和整份快照失败语义；对账单市值仍只作信息字段。
+- **晋级与权限边界**：只有明确独立批准才开放 Stage 136 隔离物化器规格登记。Stage 135 没有 key/input read、receipt 解密、parser/runtime、output/candidate/snapshot、financial allowlist、ledger/position/cash/NAV/performance、model/training/RL/reward、order/broker/trading 权限。
+- **完整性与资源边界**：registrar 排除 Stage 128 reviewer 和 Stage 51–128 完整责任链。每次读取重新验证当前批准绑定、完整排除名单、8 个接收函数及 64 MiB/256 MiB/64 件上限；任何漂移、缺项、重复或上游失效都使 registry 失败关闭。
+- **权限边界**：当前没有上传入口、来源字节、工件、入口、runtime、挂载、输入读取、存储写入或 receipt；不物化快照、不开放金融事件白名单，也不创建账本、持仓、现金、NAV/绩效、模型、训练/RL/reward、订单、券商或交易状态。登记只开放 Stage 130 责任链外首次执行授权复核。

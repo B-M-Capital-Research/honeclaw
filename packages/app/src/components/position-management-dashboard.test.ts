@@ -17,12 +17,20 @@ describe("position management dashboard contract", () => {
     expect(component).toContain("methodology_note");
     expect(component).toContain("证伪条件");
     expect(component).toContain("数据日期");
+    expect(component).toContain("公司决策门禁已通过");
+    expect(component).toContain("组合动作授权");
+    expect(component).toContain("decisionGate: item.decision_gate");
+    expect(component).toContain("组合决策准备度：尚未完成");
+    expect(component).toContain("portfolioGate: snapshot.portfolio_gate");
+    expect(component).toContain("不得把未通过组合门禁的公司候选描述成可加仓");
   });
 
   it("never claims execution when sending the saved report", () => {
     expect(component).toContain("HONE_SAVED_POSITION_MANAGEMENT_REPORT");
     expect(component).toContain("不得自动修改持仓或声称已经下单");
     expect(component).toContain("不得补造缺失行情、财务、估值或新闻");
+    expect(component).toContain("组合动作授权：{item.decision_gate?.portfolio_action_authorized ? \"异常开启\" : \"未授权\"}");
+    expect(component).toContain("真实交易：{gate().trade_authorized ? \"异常开启\" : \"未授权\"}");
   });
 
   it("supports mobile and dark surfaces", () => {
