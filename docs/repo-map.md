@@ -1439,3 +1439,11 @@ The public-chat page also fences bootstrap reconciliation with sync/send generat
 - 路由/readiness：`crates/hone-web-api/src/routes/mod.rs` 提供 GET 与 `/{implementation_id}/review`；`crates/hone-web-api/src/routes/investment_decisions.rs` 使用 readiness v132，只有独立批准才产生 Stage 136 隔离物化器规格登记候选。
 - 前端：`packages/app/src/components/public-admin-opening-portfolio-snapshot-materialization-implementation-review-panel.tsx` 及 `.test.ts`，并接入 `api.ts`、`api.test.ts`、`types.ts`、历史治理页和统一决策大脑卡片。
 - 存储：`investment_decisions/opening-portfolio-snapshot-materialization-implementation-reviews/{implementation_id}/{review_id}.json`。当前目录不存在、零真实审查；没有 key/input read、receipt 解密、parser/runtime、快照、财务、训练或交易状态。
+
+## HONE 默认投资内核
+
+- `skills/hari-invest/SKILL.md` 是普通投资问答的默认决策入口；`references/kernel-manifest.md` 固定版本、来源层级、默认调用顺序、SNDK 方法迁移和未授权范围。
+- `references/investment-frameworks.md` 保留六条 L4 老王逻辑，并把深度个股传导链明确标成产品方法；`logic-index.md`、`provenance.md` 和 `CHANGELOG.md` 分别负责逻辑状态、来源/截止日期和产品版本。
+- `skills/hari-invest/evals/evals.json` 保存正常、缺信息、反方、隐私、SNDK 迁移和自主执行边界测试；`tests/regression/ci/test_hari_invest_conversation_contract.sh` 保证这些分层不会从默认提示或 Skill 包中丢失。
+- `crates/hone-channels/src/prompt.rs` 把 Hari 设为投资轮必需内核，并强制深度个股使用需求—供给/替代—价值捕获—财务兑现—情景/反向估值—条件动作链。`turn_builder.rs` 负责必需 Skill 集合，`investment_response_guard.rs` 负责数据、估值和 SNDK 专项质量门。
+- `skills/company-thesis-ratings/` 只提供历史公司基线；`crates/hone-core/src/investment_decision_context.rs` 只提供版本化点时动作基线；二者都不能替代本轮一手证据。

@@ -2610,3 +2610,14 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: HONE Tools 193/1 ignored; Portfolio News 12/12; finance automation contracts 49/49; Channels/Web API compile; real exhausted-Tavily runtime and Browser chat acceptance
 - Current conclusion: Tavily is no longer a single point of failure. `web_search` automatically degrades to DuckDuckGo's official non-JavaScript HTML search with no second key, a 15-second request bound, five-minute failure cooldown, three-result cap and the unchanged snippet-only evidence contract. Actual provider provenance reaches portfolio news.
 - Next entry point: if public volume outgrows the HTML route, configure a contracted secondary search API ahead of it while retaining SEC/Nasdaq/company IR as the current financial truth sources.
+
+### oldwang Default Investment Kernel Integration
+
+- Status: done locally; repository push authorized, no production deployment
+- Date: 2026-08-29
+- Active parent plan: `docs/current-plans/hone-investment-decision-brain.md`
+- Handoff: `docs/handoffs/2026-08-29-oldwang-investment-kernel-integration.md`
+- Decision / ADR: `docs/decisions.md#d-2026-08-29-199-keep-confirmed-philosophy-analysis-methods-and-current-facts-as-separate-kernel-layers`
+- Related regressions: `tests/regression/ci/test_hari_invest_conversation_contract.sh`; Hari product evals; SNDK 491-round ledger
+- Current conclusion: Hari Invest 0.3.0 is the default HONE investment kernel. Six L4 Hari rules remain authoritative; the SNDK causal/financial/valuation chain is a method transfer; company cards remain historical baselines; current facts stay tool-owned; candidate and autonomous-execution material remains outside confirmed logic.
+- Next entry point: complete explicit distillation promotion before adding any new Hari rule, and obtain separate authorization before production, training, broker or trading changes.

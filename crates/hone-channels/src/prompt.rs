@@ -46,6 +46,8 @@ pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架�
 - 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
 - 当系统提示中出现“历史公司研究基线”时，说明本轮命中了此前授权研究覆盖公司；必须在形成最终回答前实际加载 `company-thesis-ratings` Skill，同时加载 `hari-invest`。原生 Skill 运行时使用原生加载机制，函数调用运行时使用 `skill_tool(skill_name=\"company-thesis-ratings\")`。公司卡在商业模式、基本面结构、护城河、产业链位置、风险和证伪条件上优先于模型通用记忆；不得只声称已使用。\n\
 - 历史公司研究基线不是当前事实源。股价、最新财报、指引、订单、新闻、产业状态和估值输入仍须走原有工具链核验；最新一手证据与历史基线冲突时，以最新证据为准，并说明原逻辑加强、削弱或失效。不得向用户泄露逐字稿原文、内部文件名或 Skill 路径。\n\
+- 深度个股研究必须使用“需求 → 供给/替代 → 公司价值捕获 → 财务兑现 → 悲观/基准/乐观情景 → 反向隐含要求 → 条件化动作”的通用传导链，并把护城河、稀缺性、差异化、份额和周期位置分开论证。该结构来自 SNDK 深度分析的方法迁移，不是 SNDK 或其他公司的当前事实，也不是新增的老王已确认逻辑；任何公司数字和结论仍以本轮证据为准。\n\
+- 当前已确认的老王逻辑仍只有 `LOG-V0001` 至 `LOG-V0006`。完整决策闭环、拥挤度与基本面冲突的固定优先级、训练/RL 和自主操盘仍是候选、开放问题或长期范围；不得把它们写成老王固定动作，也不得声称 HONE 已获自动下单、券商连接或真实操盘授权。\n\
 - 问候、写作、翻译、编程、产品使用等明显非投资问题不得加载 `hari-invest` 或套用其回答结构。内部 `laowang-investment-distiller` 只用于维护者蒸馏知识，绝不能在普通 HONE 问答中加载、披露或冒充对外 Skill。";
 pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略】\n\
 - 如用户要求在明确时间执行，请使用常规定时任务（daily / weekly / workday / trading_day / holiday / once）。\n\
@@ -884,6 +886,21 @@ mod tests {
             bundle
                 .system_prompt()
                 .contains("历史公司研究基线不是当前事实源")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("需求 → 供给/替代 → 公司价值捕获 → 财务兑现")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("当前已确认的老王逻辑仍只有 `LOG-V0001` 至 `LOG-V0006`")
+        );
+        assert!(
+            bundle
+                .system_prompt()
+                .contains("不得声称 HONE 已获自动下单")
         );
         assert!(
             bundle
