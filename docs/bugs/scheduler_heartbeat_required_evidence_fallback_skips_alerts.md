@@ -23,6 +23,13 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-29 14:01-18:02 CST。
+  - 同窗 source log 统计 `HeartbeatDiag=215`、`run_start=61`、`run_finish=61`、`deliver=24`、`duplicate_suppressed=7`，但仍有 `execution_failed=1`、`runner_error=12`、`persistent_tool_failure=3`。
+  - 代表样本：16:00 CST `持仓重大事件心跳提醒` 因 `heartbeat 输出不是结构化 JSON，任务已标记失败` 跳过发送；17:00 CST 同任务落成 `persistent_tool_failure: read-after-write reconciliation failed` 并跳过发送；18:00 CST 两个 heartbeat 因 MiniMax / OpenAI-compatible `HTTP 529` provider 错误跳过发送。
+  - 同窗 parse 分布为 `PlainTextTriggered=48`、`JsonNoop=18`、`PlainTextNoop=2`、`PlainTextSuppressed=1`、`JsonTriggered=1`，说明 heartbeat 仍在自然语言触发、结构化 noop、suppressed、协议载荷和失败跳过之间漂移。
+  - 判断：该样本仍属于 heartbeat required-evidence / persistent-tool / provider / 输出结构化契约 fail-closed 后用户无法获得本轮监控正文或只看到失败路径的同根缺陷；本轮没有错投、敏感信息泄露、全渠道不可用或 P1 级主链路停摆，维持 `P2 / New`，不创建 GitHub Issue。
+
+- `data/logs/hone-console-page-source.log`
   - 巡检窗口：2026-08-29 02:00-06:01 CST。
   - 同窗 source log 统计 `HeartbeatDiag=245`、`run_start=63`、`run_finish=63`、`deliver=36`、`duplicate_suppressed=20`，但仍有 `execution_failed=6`、`runner_error=2`、`persistent_tool_failure=3`。
   - 代表样本：04:30 CST `持仓重大事件心跳提醒` 在 `tool_not_found name=cron_job` 后落成 `persistent_tool_failure: read-after-write reconciliation failed`，Web events 记录定时任务执行失败并跳过发送；同窗还出现多轮工具预算 / Tavily 不可用导致的未核验、noop、suppressed 或协议载荷分支。
