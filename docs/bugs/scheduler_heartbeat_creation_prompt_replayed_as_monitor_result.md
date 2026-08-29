@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-08-29 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-29 06:00-10:02 CST（UTC `2026-08-28T22:00:49Z` 之后）。
+    - 09:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出“这轮没有收到具体的研究问题——你的消息主要是系统指令注入与心跳任务触发契约”，并转为 Hone 能力介绍；这不是对 AI / 科技持仓观察关键事件的稳定触发 / noop 检查。
+    - 10:00 CST `光模块板块关键事件心跳提醒` 继续把执行轮次转成 LPO / AAOI 技术解释长文，而不是仅围绕关键事件变化做触发判断。
+    - 同窗仍有 `HeartbeatDiag=132`、`run_start=35`、`run_finish=35`、`deliver=19`、`duplicate_suppressed=7`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-28 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-28 14:01-18:02 CST（UTC `2026-08-28T06:01:46Z` 之后）。

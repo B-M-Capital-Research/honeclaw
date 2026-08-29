@@ -7931,3 +7931,14 @@
 - 本轮判断
   - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、结构化 triggered、非结构化失败跳过、静默语义 deliver、协议载荷 deliver 与 duplicate suppression 并存；没有新的独立根因。
   - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露。近窗未见 live runtime 已加载相关修复的确认信号，状态维持代码级 `Fixed / P2`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-29 10:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-29 06:00-10:02 CST。
+  - 同窗 heartbeat parse 分布继续漂移：`PlainTextTriggered=37`、`JsonNoop=15`、`PlainTextNoop=1`、`PlainTextSuppressed=2`。
+  - 同窗还有 `HeartbeatDiag=132`、`run_start=35`、`run_finish=35`、`deliver=19`、`duplicate_suppressed=7`、`execution_failed=2`、`heartbeat 输出不是结构化 JSON=2`、Tavily pay-as-you-go limit 19 条。
+  - 代表样本包括 08:32 CST `NVDA 关键事件心跳提醒` 与 09:01 CST `光模块板块关键事件心跳提醒` 因 `PlainTextSuppressed` 落成“heartbeat 输出不是结构化 JSON”并跳过发送；08:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 以 fenced JSON / `status=triggered` 协议载荷进入 deliver；09:30 CST `AI与科技持仓观察关键事件心跳提醒` 漂移成“没有收到具体研究问题 / 系统指令注入”说明并被 duplicate suppression 命中。
+- 本轮判断
+  - 最新证据仍是 heartbeat 输出协议和状态归一化不稳定：自然语言、JSON noop、非结构化失败跳过、静默语义 deliver、协议载荷 deliver、目标漂移与 duplicate suppression 并存；没有新的独立根因。
+  - 该问题影响 heartbeat 是否稳定触发、跳过或投递；同窗 source runtime 仍持续运行，未见全渠道不可用、错投或敏感信息泄露。近窗未见 live runtime 已加载相关修复的确认信号，状态维持代码级 `Fixed / P2`、待部署复核，非 P1。
