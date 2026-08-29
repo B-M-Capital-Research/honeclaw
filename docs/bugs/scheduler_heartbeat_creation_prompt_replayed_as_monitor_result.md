@@ -18,6 +18,16 @@
 
 ## 修复进展
 
+- `2026-08-29 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-29 18:01-22:02 CST（UTC `2026-08-29T10:01:22Z` 之后）。
+    - 20:00、21:00、21:30 CST `NVDA 关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却反复输出“你输入了一个数字 1，无法判断具体意图”，并列出查询标的、查看持仓、设置提醒等直聊菜单；这不是对 NVDA 关键事件的稳定触发 / noop 检查。
+    - 21:00 / 21:30 CST `AI与科技持仓观察关键事件心跳提醒` 转成 Apple 与 NVIDIA 关系分析；同窗多轮 heartbeat 还明写工具上限、未核验和旧行情口径。
+    - 同窗仍有 `HeartbeatDiag=204`、`run_start=56`、`run_finish=56`、`deliver=24`、`duplicate_suppressed=11`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
 - `2026-08-29 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 巡检窗口：2026-08-29 14:01-18:02 CST（UTC `2026-08-29T06:01:21Z` 之后）。
