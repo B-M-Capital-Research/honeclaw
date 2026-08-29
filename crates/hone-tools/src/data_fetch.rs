@@ -1170,6 +1170,8 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
 
     let mut summaries = Vec::with_capacity(windows.len());
     let mut previous_close: Option<f64> = None;
+    let mut previous_regular_close: Option<f64> = None;
+    let mut latest_regular_date: Option<NaiveDate> = None;
     for (date, _, session, open, close, high, low, volume, _) in windows {
         let mut summary = serde_json::json!({
             "date_new_york": date.format("%Y-%m-%d").to_string(),
@@ -1183,6 +1185,45 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         if let Some(reference) = previous_close.filter(|reference| *reference > 0.0) {
             summary["pct_change_vs_prev_session_close"] =
                 serde_json::json!(round_to_hundredths((close - reference) / reference * 100.0));
+        }
+        // `pct_change_vs_prev_session_close` compares each window with the one
+        // immediately before it, so for a regular window its denominator is the
+        // same day's pre-market close, not the previous regular close. Publish an
+        // explicit close-to-close basis per session type so a daily move is never
+        // read off the adjacent-window number.
+        match *session {
+            "pre" => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    summary["pct_change_vs_previous_regular_close"] = serde_json::json!(
+                        round_to_hundredths((close - reference) / reference * 100.0)
+                    );
+                    summary["previous_regular_close"] = serde_json::json!(reference);
+                    summary["canonical_change_basis"] =
+                        serde_json::json!("premarket_close_vs_previous_regular_close");
+                }
+            }
+            "regular" => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    summary["pct_change_close_to_close"] = serde_json::json!(round_to_hundredths(
+                        (close - reference) / reference * 100.0
+                    ));
+                    summary["previous_regular_close"] = serde_json::json!(reference);
+                    summary["canonical_change_basis"] =
+                        serde_json::json!("regular_close_vs_previous_regular_close");
+                }
+                previous_regular_close = Some(*close);
+                latest_regular_date = Some(*date);
+            }
+            "post" if latest_regular_date == Some(*date) => {
+                if let Some(reference) = previous_regular_close.filter(|value| *value > 0.0) {
+                    summary["pct_change_vs_regular_close"] = serde_json::json!(
+                        round_to_hundredths((close - reference) / reference * 100.0)
+                    );
+                    summary["canonical_change_basis"] =
+                        serde_json::json!("postmarket_close_vs_same_day_regular_close");
+                }
+            }
+            _ => {}
         }
         previous_close = Some(*close);
         summaries.push(summary);
@@ -1198,7 +1239,7 @@ fn normalize_extended_hours_bar(ticker: &str, response: &Value) -> Result<Value,
         "low": latest.5,
         "volume": latest.6,
         "hone_session_summaries": summaries,
-        "hone_session_policy": "每个窗口的 pct_change_vs_prev_session_close 由服务端按该窗口收盘价与上一窗口收盘价算出，是这些时段涨跌幅的唯一可发布来源。展示某个时段的涨跌时，价格与涨跌幅必须取自同一个窗口对象；不要跨窗口拼接，也不要拿 quote 的价格去配这里的百分比。",
+        "hone_session_policy": "涨跌幅只能取自窗口对象自己的字段，价格与涨跌幅必须来自同一个窗口；不要跨窗口拼接，也不要拿 quote 的价格去配这里的百分比。按时段选字段：常规交易日涨跌用 regular 窗口的 pct_change_close_to_close（本日常规收盘相对上一常规收盘），盘前用 pct_change_vs_previous_regular_close，盘后用 pct_change_vs_regular_close，各窗口的 canonical_change_basis 已写明其口径。pct_change_vs_prev_session_close 只描述相邻窗口之间的变化，regular 窗口的这个数分母是当日盘前收盘，绝不能当成日涨跌幅。",
         "hone_now_new_york": now_new_york.format("%Y-%m-%d %H:%M %Z").to_string(),
         "hone_now_session": extended_hours_session(now_new_york.time()),
     }))
@@ -1476,7 +1517,7 @@ fn attach_quote_change_basis(fields: &mut serde_json::Map<String, Value>, provid
         // longer produce yesterday's regular change. Publishing one anyway is
         // exactly the mistake this block exists to stop.
         basis["cannot_prove"] = Value::String(
-            "本 quote 只能证明上面这一个涨跌幅。若还要展示常规时段涨跌，必须另取 extended_hours 中 session=regular 窗口的 pct_change_vs_prev_session_close，不能把本块的数字改个名字充当。".to_string(),
+            "本 quote 只能证明上面这一个涨跌幅。若还要展示常规时段涨跌，必须另取 extended_hours 中 session=regular 窗口的 pct_change_close_to_close（该窗口 canonical_change_basis 为 regular_close_vs_previous_regular_close），不要用同一窗口的 pct_change_vs_prev_session_close——它的分母是当日盘前收盘。也不能把本块的数字改个名字充当。".to_string(),
         );
     }
 
@@ -3775,6 +3816,60 @@ mod tests {
                 .get("pct_change_vs_prev_session_close")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn regular_daily_change_does_not_use_the_premarket_close_as_denominator() {
+        // `pct_change_vs_prev_session_close` walks adjacent windows, so on a
+        // regular window its denominator is the same day's pre-market close.
+        // The daily move has to come from `pct_change_close_to_close`.
+        let payload = normalize_extended_hours_bar(
+            "mrvl",
+            &serde_json::json!([
+                {"date":"2026-08-20 15:59:00","open":250.0,"close":251.01,"high":252.0,"low":249.0,"volume":5000},
+                {"date":"2026-08-21 09:29:00","open":252.0,"close":252.48,"high":253.0,"low":251.5,"volume":400},
+                {"date":"2026-08-21 15:59:00","open":249.0,"close":237.04,"high":250.0,"low":233.28,"volume":9000},
+                {"date":"2026-08-21 19:59:00","open":237.0,"close":236.10,"high":237.2,"low":235.8,"volume":600}
+            ]),
+        )
+        .expect("normalized MRVL session payload");
+
+        let summaries = payload["hone_session_summaries"]
+            .as_array()
+            .expect("session summaries");
+        let regular = summaries
+            .iter()
+            .find(|summary| {
+                summary["date_new_york"] == "2026-08-21" && summary["session"] == "regular"
+            })
+            .expect("August 21 regular session");
+        assert_eq!(regular["pct_change_vs_prev_session_close"], -6.12);
+        assert_eq!(regular["pct_change_close_to_close"], -5.57);
+        assert_eq!(regular["previous_regular_close"], 251.01);
+        assert_eq!(
+            regular["canonical_change_basis"],
+            "regular_close_vs_previous_regular_close"
+        );
+
+        let pre = summaries
+            .iter()
+            .find(|summary| summary["date_new_york"] == "2026-08-21" && summary["session"] == "pre")
+            .expect("August 21 pre-market session");
+        assert_eq!(pre["pct_change_vs_previous_regular_close"], 0.59);
+
+        let post = summaries
+            .iter()
+            .find(|summary| {
+                summary["date_new_york"] == "2026-08-21" && summary["session"] == "post"
+            })
+            .expect("August 21 post-market session");
+        assert_eq!(post["pct_change_vs_regular_close"], -0.4);
+
+        let policy = payload["hone_session_policy"]
+            .as_str()
+            .expect("session policy");
+        assert!(policy.contains("pct_change_close_to_close"));
+        assert!(policy.contains("绝不能当成日涨跌幅"));
     }
 
     #[test]

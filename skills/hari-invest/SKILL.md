@@ -44,6 +44,29 @@ description: HONE 的美股投资判断与自然对话 Skill。用于股票分�
 
 ## 资源路由
 
+### 先按问题类型接力，再谈本 skill 的 references
+
+本 skill 负责**判断纪律与输出契约**，不负责某一维怎么取数、怎么算。系统会在每个投研轮强制加载它，
+所以它常常是模型唯一加载的 skill——那正是要避免的情况：**判断纪律到位、执行口径缺席，答案就会停在
+「持有区（中置信度）」而给不出算出来的价格区间**。本轮问题落在下表哪一行，就把对应 skill 一起加载
+（函数调用运行时用 `skill_tool(skill_name="...")`）：
+
+| 本轮问题 | 除本 skill 外还要加载 |
+|---|---|
+| 深度个股（分析一下 X / X 怎么样 / 值得建仓吗） | `stock_research`（九段结构、收口纪律、以及它内部的视角 skill 路由表） |
+| 估值、贵不贵、合理价、目标价区间 | `valuation-audit` |
+| 为什么涨/跌、异动归因、大盘与宏观 | `market_analysis` |
+| 板块推荐、多标的选股与配比 | `sector-to-stock` |
+| ETF / 基金 | `etf-analysis` |
+| 投行评级、目标价、研报 | `analyst-coverage` |
+| 单独追问护城河 / 稀缺与差异化 / 底层公式 / 财务质量 | `moat`、`scarcity-differentiation`、`first-principles`、`fundamentals` |
+| 持仓复核、仓位与成本价 | `position_advice`、`portfolio_management` |
+
+上表只给指针。**取哪些字段、判定锚点、产出格式一律以被指向的 skill 为准，本 skill 不重写它们的口径。**
+若本轮系统提示已经给出【本轮相关技能提示】，以那份提示与本表的并集为准，不要因为本 skill 已加载就停下。
+
+### 本 skill 自己的 references
+
 - 世界观与表达底线：`references/soul.md`
 - 六个投资框架：`references/investment-frameworks.md`
 - 问题与框架映射：`references/logic-index.md`
