@@ -550,8 +550,14 @@ impl HoneBotCore {
             let project_root =
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             registry.register(Box::new(hone_tools::RestartHoneTool::new(project_root)));
+            // 行业树的研究底稿编译在二进制里，改一句话本来要重新构建再发一次版。
+            // 这个工具把改动写进数据目录的追加式日志，研究台与每轮注入下一次读取即生效。
+            registry.register(Box::new(hone_tools::IndustryMapEditTool::new(
+                self.config.storage.data_root(),
+                actor.user_id.clone(),
+            )));
             tracing::info!(
-                "[HoneBotCore] 管理员 {} 已注册专属工具 (restart_hone)",
+                "[HoneBotCore] 管理员 {} 已注册专属工具 (restart_hone, industry_map_edit)",
                 actor.user_id
             );
         }

@@ -119,63 +119,11 @@ const COMPANY_RESEARCH_INDEX_JSON: &str =
     include_str!("../../../skills/company-thesis-ratings/references/company-index.json");
 const MAX_PROJECTED_COMPANY_CARDS: usize = 8;
 
-const INDUSTRY_MAP_JSON: &str =
-    include_str!("../../../skills/industry-map/references/industry-map.json");
 /// 行业块是公司卡之外的第二份每轮注入，两块叠加就是这一轮的固定开销。一家公司常常
 /// 同时落在两行（博通既是 AI 芯片也是网络），第三行开始基本是噪声。
 const MAX_PROJECTED_INDUSTRIES: usize = 2;
 /// 只带最该盯的那几条；`core_watch` 完整清单在 `industry-map` skill 里，模型要展开时自己加载。
 const MAX_PROJECTED_INDUSTRY_WATCH: usize = 3;
-
-#[derive(Debug, Deserialize)]
-struct IndustryMapCorpus {
-    industries: Vec<IndustryEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct IndustryEntry {
-    id: String,
-    name: String,
-    #[serde(default)]
-    aliases: Vec<String>,
-    #[serde(default)]
-    ai_valuation_logic: IndustryLogic,
-    #[serde(default)]
-    core_watch: Vec<IndustryWatch>,
-    #[serde(default)]
-    members: Vec<IndustryMemberEntry>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct IndustryLogic {
-    #[serde(default)]
-    driver_chain: String,
-    #[serde(default)]
-    multiple_anchor: String,
-    #[serde(default)]
-    anti_pattern: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct IndustryWatch {
-    what: String,
-    #[serde(default)]
-    cadence: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct IndustryMemberEntry {
-    symbol: String,
-    name: String,
-}
-
-fn industry_map_corpus() -> &'static IndustryMapCorpus {
-    static CORPUS: OnceLock<IndustryMapCorpus> = OnceLock::new();
-    CORPUS.get_or_init(|| {
-        serde_json::from_str(INDUSTRY_MAP_JSON)
-            .expect("embedded industry map must remain valid JSON")
-    })
-}
 
 #[derive(Debug, Deserialize)]
 struct CompanyResearchCorpus {
@@ -278,10 +226,12 @@ fn alias_match(input: &str, alias: &str) -> bool {
 /// 本该用行业的量价驱动来写，而不是每家公司重讲一遍 AI 故事。
 ///
 /// 传导链还没定稿的行业不注入：空块占着 token 却什么都没说，还会让模型以为这一行没有逻辑。
-pub(crate) fn industry_baseline(user_input: &str) -> Option<String> {
-    let corpus = industry_map_corpus();
+pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -> Option<String> {
+    // 底稿 + 管理员在对话里改出来的那份日志：研究台看到什么，这里就注入什么。
+    // 数据根由调用方给：这个模块没有状态，而改动日志和研究台读的必须是同一份。
+    let (map, _) = hone_core::industry_map::load(data_root);
     let mut sections = Vec::new();
-    for industry in &corpus.industries {
+    for industry in &map.industries {
         if industry.ai_valuation_logic.driver_chain.trim().is_empty() {
             continue;
         }
@@ -308,11 +258,22 @@ pub(crate) fn industry_baseline(user_input: &str) -> Option<String> {
             lines.push(format!("  本轮命中的成员：{}", matched_members.join("、")));
         }
         lines.push(format!("  需求传导链：{}", logic.driver_chain));
-        if !logic.multiple_anchor.trim().is_empty() {
-            lines.push(format!("  倍数锚：{}", logic.multiple_anchor));
+        // 注入读短版：长版是给研究台页面看的，整段注入每轮要多花上千 token。
+        let anchor = if logic.multiple_anchor_short.trim().is_empty() {
+            &logic.multiple_anchor
+        } else {
+            &logic.multiple_anchor_short
+        };
+        if !anchor.trim().is_empty() {
+            lines.push(format!("  倍数锚：{anchor}"));
         }
-        if !logic.anti_pattern.trim().is_empty() {
-            lines.push(format!("  这一行的估值反模式：{}", logic.anti_pattern));
+        let anti = if logic.anti_pattern_short.trim().is_empty() {
+            &logic.anti_pattern
+        } else {
+            &logic.anti_pattern_short
+        };
+        if !anti.trim().is_empty() {
+            lines.push(format!("  这一行的估值反模式：{anti}"));
         }
         let watch = industry
             .core_watch
@@ -752,7 +713,7 @@ mod tests {
 
     #[tokio::test]
     async fn industry_map_ships_aliases_and_members_for_every_industry() {
-        let corpus = industry_map_corpus();
+        let corpus = hone_core::industry_map::base_map();
         assert!(!corpus.industries.is_empty());
         for industry in &corpus.industries {
             assert!(!industry.aliases.is_empty(), "{} 没有别名", industry.id);
@@ -764,13 +725,16 @@ mod tests {
     async fn industry_baseline_stays_silent_until_a_driver_chain_is_written() {
         // 传导链是这块内容存在的理由。只有成员名单的行业注入进去，等于用 token 换一句
         // 「这家公司属于存储」——模型本来就知道。
-        let corpus = industry_map_corpus();
+        let corpus = hone_core::industry_map::base_map();
         for industry in &corpus.industries {
             if !industry.ai_valuation_logic.driver_chain.trim().is_empty() {
                 continue;
             }
             for member in &industry.members {
-                let hit = industry_baseline(&format!("{} 的估值", member.symbol));
+                let hit = industry_baseline(
+                    &format!("{} 的估值", member.symbol),
+                    std::path::Path::new("/nonexistent"),
+                );
                 if let Some(text) = hit {
                     assert!(
                         !text.contains(&industry.name),
@@ -784,8 +748,14 @@ mod tests {
 
     #[tokio::test]
     async fn industry_baseline_is_absent_for_questions_outside_the_tree() {
-        assert!(industry_baseline("帮我把这句话翻译成英文").is_none());
-        assert!(industry_baseline("你好").is_none());
+        assert!(
+            industry_baseline(
+                "帮我把这句话翻译成英文",
+                std::path::Path::new("/nonexistent")
+            )
+            .is_none()
+        );
+        assert!(industry_baseline("你好", std::path::Path::new("/nonexistent")).is_none());
     }
 
     #[tokio::test]

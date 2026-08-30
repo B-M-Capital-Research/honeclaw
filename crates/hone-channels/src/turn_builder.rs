@@ -177,7 +177,9 @@ impl<'a> PromptTurnBuilder<'a> {
         if let Some(company_research) = crate::prompt::company_research_baseline(user_input) {
             prompt_options.extra_sections.push(company_research);
         }
-        if let Some(industry) = crate::prompt::industry_baseline(user_input) {
+        if let Some(industry) =
+            crate::prompt::industry_baseline(user_input, &self.core.config.storage.data_root())
+        {
             prompt_options.extra_sections.push(industry);
         }
         let related_skills = if use_native_codex_turn_input {

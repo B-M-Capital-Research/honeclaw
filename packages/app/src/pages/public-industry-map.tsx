@@ -22,6 +22,19 @@ function marketCap(value: number | undefined) {
   return `${(value / 1e8).toFixed(2)} 亿`;
 }
 
+/** 改动时间只给到分钟：卡片要的是「什么时候改的」，不是精确时刻。 */
+function editedAt(value: string | undefined) {
+  if (!value) return "";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return value;
+  return at.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function changePercent(value: number | undefined) {
   if (value == null || !Number.isFinite(value)) return "";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
@@ -129,6 +142,43 @@ export default function PublicIndustryMapPage() {
                         </p>
                       </header>
 
+                      <Show when={data().recent_edits.length > 0}>
+                        <section class="industry-edits" aria-label="最近改动">
+                          <h2>
+                            最近改动
+                            <span class="industry-edits-count">
+                              共 {data().edit_count} 次
+                            </span>
+                          </h2>
+                          <p class="industry-edits-note">
+                            管理员在对话里改的行业内容会记在这里，研究台与后续对话的行业注入同时生效。
+                          </p>
+                          <ul>
+                            <For each={data().recent_edits}>
+                              {(edit) => (
+                                <li>
+                                  <button
+                                    type="button"
+                                    class="industry-edits-jump"
+                                    onClick={() => setSelected(edit.industry)}
+                                  >
+                                    {edit.industry_name}
+                                  </button>
+                                  <span class="industry-edits-summary">{edit.summary}</span>
+                                  <span class="industry-edits-meta">
+                                    <span>{editedAt(edit.at)}</span>
+                                    <span class="industry-edits-by">{edit.by}</span>
+                                  </span>
+                                  <Show when={edit.note}>
+                                    <p class="industry-edits-why">{edit.note}</p>
+                                  </Show>
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                        </section>
+                      </Show>
+
                       <div class="industry-map-body">
                         <nav class="industry-tree" aria-label="行业树">
                           <div class="industry-tree-root">{data().root.name}</div>
@@ -143,7 +193,12 @@ export default function PublicIndustryMapPage() {
                                     aria-current={industry.id === selected() ? "true" : undefined}
                                     onClick={() => setSelected(industry.id)}
                                   >
-                                    <span class="industry-tree-name">{industry.name}</span>
+                                    <span class="industry-tree-name">
+                                      {industry.name}
+                                      <Show when={industry.last_edited_at}>
+                                        <span class="industry-tree-dot" title="有管理员改动" />
+                                      </Show>
+                                    </span>
                                     <span class="industry-tree-count">
                                       {industry.members.length}
                                     </span>
@@ -160,11 +215,18 @@ export default function PublicIndustryMapPage() {
                         >
                           {(industry) => (
                             <section class="industry-detail">
-                              <h2>{industry().name}</h2>
+                              <h2>
+                                {industry().name}
+                                <Show when={industry().last_edited_at}>
+                                  <span class="industry-detail-edited">
+                                    最近改动 {editedAt(industry().last_edited_at)}
+                                  </span>
+                                </Show>
+                              </h2>
                               <p class="industry-detail-lead">{industry().one_liner}</p>
 
                               <h3>相关公司</h3>
-                              <p class="industry-detail-note">按市值降序；未上市或非美股的公司排在最后，只作产业链位置参考。</p>
+                              <p class="industry-detail-note">按市值降序；本轮未取到行情的排在最后。树里只收美股与 ADR。</p>
                               <table class="industry-members">
                                 <thead>
                                   <tr>
@@ -178,12 +240,10 @@ export default function PublicIndustryMapPage() {
                                 <tbody>
                                   <For each={industry().members}>
                                     {(member) => (
-                                      <tr classList={{ "is-unlisted": !member.listed }}>
+                                      <tr>
                                         <td class="industry-symbol">{member.symbol}</td>
                                         <td>{member.name}</td>
-                                        <td>
-                                          {member.listed ? marketCap(member.market_cap) : "非美股"}
-                                        </td>
+                                        <td>{marketCap(member.market_cap)}</td>
                                         <td>
                                           <Show when={member.price != null} fallback="—">
                                             {member.price?.toFixed(2)}

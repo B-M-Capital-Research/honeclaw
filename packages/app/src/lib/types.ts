@@ -1073,15 +1073,24 @@ export type IndustrySource = {
   takeaway: string;
 };
 
-/** 成员按市值降序；非美股上市的成员没有 market_cap，排在最后。 */
+/** 成员按市值降序；本轮没取到行情的排在最后。树里只收美股（含 ADR）。 */
 export type IndustryMember = {
   symbol: string;
   name: string;
   role: string;
-  listed: boolean;
   market_cap?: number;
   price?: number;
   change_percent?: number;
+};
+
+/** 管理员在对话里改行业树时记下的一条：谁、何时、改了什么、为什么。 */
+export type IndustryEdit = {
+  at: string;
+  by: string;
+  industry: string;
+  industry_name: string;
+  summary: string;
+  note: string;
 };
 
 export type Industry = {
@@ -1089,6 +1098,8 @@ export type Industry = {
   name: string;
   parent: string;
   one_liner: string;
+  /** 这一行最近一次被改动的时间；从未改过时缺省。 */
+  last_edited_at?: string;
   ai_valuation_logic: IndustryAiValuationLogic;
   core_watch: IndustryCoreWatch[];
   members: IndustryMember[];
@@ -1103,6 +1114,9 @@ export type IndustryMapSnapshot = {
   market_data_available: boolean;
   root: { id: string; name: string; summary: string };
   industries: Industry[];
+  /** 最近若干条改动，倒序。 */
+  recent_edits: IndustryEdit[];
+  edit_count: number;
 };
 
 export type CompanyRating = {

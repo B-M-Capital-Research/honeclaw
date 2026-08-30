@@ -1,12 +1,15 @@
 //! GET /api/public/industry-map — AI 数据中心行业树。
 //!
-//! 树本身是静态研究资产（`skills/industry-map/references/industry-map.json`），与
-//! `company-thesis-ratings` 的公司卡同一处理方式：`include_str!` 编进二进制，改数据要重新构建。
-//! 唯一的动态部分是成员公司的市值——它决定每一行的公司排序，所以必须取实时行情，
-//! 不能把市值写进静态文件（写进去当天就过期，而排序会跟着一起错）。
+//! 树的模型、编译进二进制的底稿、以及管理员在对话里改出来的那份改动日志，都在
+//! `hone_core::industry_map`：channels 进程做每轮注入时读的是同一份，两边不会各看各的。
+//! 本模块只负责这一层加不上去的东西——成员公司的市值。
 //!
-//! 非美股上市的成员（韩交所的海力士、深交所的中际旭创等）拿不到 FMP 行情，它们排在
-//! 有市值的公司之后并显式标注，而不是被悄悄丢掉：它们在树里的作用是解释这一行的供给格局。
+//! 市值决定每一行的公司排序，所以必须取实时行情，不能写进静态文件（写进去当天就过期，
+//! 而排序会跟着一起错）。取不到时整棵树照常返回，只是失去排序并在页面上说明。
+//!
+//! 树里只收美股（含 ADR）。非美股的同行——海力士、三星、中际旭创、鸿海——在产业上确实绕不开，
+//! 但它们进不了本产品的判断范围（`hari-invest` 的适用范围是美国市场上市的公司、ETF 与 ADR），
+//! 摆在表里只会让读者以为可以据此下判断。它们的供给格局作用由各行的传导链与关注点承载。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,79 +21,19 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::warn;
+
+use hone_core::industry_map::{IndustryMap, IndustryMember, RECENT_EDIT_LIMIT};
 
 use crate::routes::public_finance_calendar::fetch_fmp_json_once;
 use crate::state::AppState;
 
-const INDUSTRY_MAP_JSON: &str =
-    include_str!("../../../../skills/industry-map/references/industry-map.json");
 /// 市值只用来排序，分钟级新鲜度足够；这条缓存同时挡住研究台反复打开时的重复外呼。
 const MARKET_CAP_CACHE_TTL: Duration = Duration::from_secs(600);
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct IndustryRoot {
-    pub id: String,
-    pub name: String,
-    pub summary: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub(crate) struct AiValuationLogic {
-    #[serde(default)]
-    pub driver_chain: String,
-    #[serde(default)]
-    pub key_variables: Vec<Value>,
-    #[serde(default)]
-    pub multiple_anchor: String,
-    #[serde(default)]
-    pub anti_pattern: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct IndustryMember {
-    pub symbol: String,
-    pub name: String,
-    pub role: String,
-    /// 缺省视为美股上市：树里绝大多数成员是美股，非美股的那几家显式写 false。
-    #[serde(default = "default_true")]
-    pub listed: bool,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct Industry {
-    pub id: String,
-    pub name: String,
-    pub parent: String,
-    #[serde(default)]
-    pub one_liner: String,
-    #[serde(default)]
-    pub aliases: Vec<String>,
-    #[serde(default)]
-    pub ai_valuation_logic: AiValuationLogic,
-    #[serde(default)]
-    pub core_watch: Vec<Value>,
-    #[serde(default)]
-    pub members: Vec<IndustryMember>,
-    #[serde(default)]
-    pub sources: Vec<Value>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct IndustryMapFile {
-    pub schema_version: u32,
-    pub generated_at: String,
-    pub root: IndustryRoot,
-    pub industries: Vec<Industry>,
-}
-
-/// 成员 + 本轮市值，`market_cap` 缺失表示这一家本轮没有可用行情（非美股或上游未覆盖）。
+/// 成员 + 本轮市值，`market_cap` 缺失表示上游本轮没有覆盖这一家。
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct RankedMember {
     #[serde(flatten)]
@@ -103,36 +46,16 @@ pub(crate) struct RankedMember {
     pub change_percent: Option<f64>,
 }
 
-pub(crate) fn industry_map() -> &'static IndustryMapFile {
-    static MAP: OnceLock<IndustryMapFile> = OnceLock::new();
-    MAP.get_or_init(|| {
-        serde_json::from_str(INDUSTRY_MAP_JSON).expect("industry-map.json must parse at build time")
-    })
-}
-
-/// 树里每一家美股成员的代码，去重后保持稳定顺序，用于一次批量取行情。
-fn listed_symbols() -> Vec<String> {
-    let mut seen = Vec::new();
-    for industry in &industry_map().industries {
-        for member in &industry.members {
-            if member.listed && !seen.iter().any(|s: &String| s == &member.symbol) {
-                seen.push(member.symbol.clone());
-            }
-        }
-    }
-    seen
-}
-
-fn cache() -> &'static Mutex<Option<(Instant, HashMap<String, MarketFact>)>> {
-    static CACHE: OnceLock<Mutex<Option<(Instant, HashMap<String, MarketFact>)>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(None))
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MarketFact {
     pub market_cap: Option<f64>,
     pub price: Option<f64>,
     pub change_percent: Option<f64>,
+}
+
+fn cache() -> &'static Mutex<Option<(Instant, HashMap<String, MarketFact>)>> {
+    static CACHE: OnceLock<Mutex<Option<(Instant, HashMap<String, MarketFact>)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
 }
 
 /// GET /api/public/industry-map
@@ -144,8 +67,11 @@ pub(crate) async fn handle_get_industry_map(
         return response;
     }
 
-    let facts = market_facts(&state).await;
-    let map = industry_map();
+    let data_root = state.core.config.storage.data_root();
+    let (map, edits) = hone_core::industry_map::load(&data_root);
+    let last_edited = hone_core::industry_map::last_edited(&edits);
+    let facts = market_facts(&state, &map).await;
+
     let industries = map
         .industries
         .iter()
@@ -159,6 +85,27 @@ pub(crate) async fn handle_get_industry_map(
                 "core_watch": industry.core_watch,
                 "sources": industry.sources,
                 "members": rank_members(&industry.members, &facts),
+                "last_edited_at": last_edited.get(&industry.id),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // 面板上的「最近改动」卡片：只要尾部几条，且只带摘要不带正文。
+    let recent = edits
+        .iter()
+        .rev()
+        .take(RECENT_EDIT_LIMIT)
+        .map(|edit| {
+            json!({
+                "at": edit.at,
+                "by": edit.by,
+                "industry": edit.industry,
+                "industry_name": map
+                    .industry(&edit.industry)
+                    .map(|item| item.name.clone())
+                    .unwrap_or_else(|| edit.industry.clone()),
+                "summary": edit.op.summary(),
+                "note": edit.note,
             })
         })
         .collect::<Vec<_>>();
@@ -170,11 +117,13 @@ pub(crate) async fn handle_get_industry_map(
         "market_data_available": !facts.is_empty(),
         "root": map.root,
         "industries": industries,
+        "recent_edits": recent,
+        "edit_count": edits.len(),
     }))
     .into_response()
 }
 
-/// 按市值降序；没有市值的排在最后并保持文件里的原顺序，便于人工维护时对照。
+/// 按市值降序；本轮没取到市值的排在最后并保持文件里的原顺序，便于人工维护时对照。
 pub(crate) fn rank_members(
     members: &[IndustryMember],
     facts: &HashMap<String, MarketFact>,
@@ -202,12 +151,25 @@ pub(crate) fn rank_members(
     ranked
 }
 
-async fn market_facts(state: &AppState) -> HashMap<String, MarketFact> {
+/// 树里每一家成员的代码，去重后保持稳定顺序，用于一次批量取行情。
+fn member_symbols(map: &IndustryMap) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for industry in &map.industries {
+        for member in &industry.members {
+            if !seen.iter().any(|item| item == &member.symbol) {
+                seen.push(member.symbol.clone());
+            }
+        }
+    }
+    seen
+}
+
+async fn market_facts(state: &AppState, map: &IndustryMap) -> HashMap<String, MarketFact> {
     if let Some(cached) = cached_facts() {
         return cached;
     }
     let pool = state.core.config.fmp.effective_key_pool();
-    let symbols = listed_symbols();
+    let symbols = member_symbols(map);
     if symbols.is_empty() || pool.keys().is_empty() {
         return HashMap::new();
     }
@@ -297,26 +259,37 @@ fn quote_base_url(base_url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hone_core::industry_map::base_map;
 
     #[test]
-    fn shipped_industry_map_parses_and_hangs_every_industry_off_the_root() {
-        let map = industry_map();
-        assert_eq!(map.schema_version, 1);
-        assert!(!map.industries.is_empty());
-        for industry in &map.industries {
-            assert_eq!(
-                industry.parent, map.root.id,
-                "{} 的 parent 必须是根节点",
-                industry.id
-            );
-            assert!(!industry.members.is_empty(), "{} 没有成员", industry.id);
-            assert!(!industry.aliases.is_empty(), "{} 没有别名", industry.id);
+    fn every_member_is_a_plain_us_ticker() {
+        // 树里只收美股（含 ADR）。带交易所后缀的代码取不到 FMP 行情，也不在本产品的判断
+        // 范围内（`hari-invest` 的适用范围是美国市场上市的公司、ETF 与 ADR），摆进表里
+        // 只会让读者以为可以据此下判断。
+        for industry in &base_map().industries {
+            for member in &industry.members {
+                assert!(
+                    !member.symbol.contains('.') && !member.symbol.contains(':'),
+                    "{} 里的 {} 不是美股代码",
+                    industry.id,
+                    member.symbol
+                );
+                assert!(
+                    member
+                        .symbol
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'),
+                    "{} 里的 {} 不是规范的美股代码写法",
+                    industry.id,
+                    member.symbol
+                );
+            }
         }
     }
 
     #[test]
     fn industry_ids_and_member_symbols_are_unique_within_their_scope() {
-        let map = industry_map();
+        let map = base_map();
         let mut ids = map.industries.iter().map(|i| &i.id).collect::<Vec<_>>();
         ids.sort();
         let before = ids.len();
@@ -337,25 +310,21 @@ mod tests {
 
     #[test]
     fn members_sort_by_market_cap_and_unpriced_members_keep_file_order_at_the_end() {
-        // 非美股成员没有行情，它们必须留在表里（解释供给格局），只是排在有市值的后面。
         let members = vec![
             IndustryMember {
-                symbol: "000660.KS".into(),
-                name: "SK 海力士".into(),
-                role: "HBM 份额领先".into(),
-                listed: false,
+                symbol: "STX".into(),
+                name: "希捷".into(),
+                role: "近线 HDD".into(),
             },
             IndustryMember {
                 symbol: "MU".into(),
                 name: "美光".into(),
                 role: "一体化".into(),
-                listed: true,
             },
             IndustryMember {
                 symbol: "SNDK".into(),
                 name: "闪迪".into(),
                 role: "企业级 NAND".into(),
-                listed: true,
             },
         ];
         let facts = HashMap::from([
@@ -382,7 +351,7 @@ mod tests {
                 .iter()
                 .map(|m| m.member.symbol.as_str())
                 .collect::<Vec<_>>(),
-            ["MU", "SNDK", "000660.KS"]
+            ["MU", "SNDK", "STX"]
         );
         assert!(ranked[2].market_cap.is_none());
     }

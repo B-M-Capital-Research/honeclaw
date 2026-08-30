@@ -180,10 +180,6 @@
   white-space: nowrap;
 }
 
-.industry-members tr.is-unlisted td {
-  color: var(--hone-ink-500);
-}
-
 .industry-symbol {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -302,4 +298,114 @@
   .industry-tree-node {
     width: auto;
   }
+}
+
+/* 最近改动：行业树的内容可以被管理员在对话里直接改，这张卡是「改了什么」的唯一入口。
+   放在树上面而不是折叠进详情，是因为读者需要先知道自己看到的内容动过，再去看内容。 */
+
+.industry-edits {
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  padding: 0.85rem 1rem;
+}
+
+.industry-edits h2 {
+  margin: 0 0 0.2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-edits-count {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.industry-edits-note {
+  margin: 0 0 0.6rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-500);
+}
+
+.industry-edits ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.industry-edits li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-edits-jump {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--hone-link);
+  font-size: var(--hone-text-sm);
+  cursor: pointer;
+}
+
+.industry-edits-jump:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-edits-summary {
+  color: var(--hone-ink-800);
+}
+
+.industry-edits-meta {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.6rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.industry-edits-by {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industry-edits-why {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.55;
+  color: var(--hone-ink-600);
+}
+
+/* 树上那一点：告诉读者这一行的内容动过，不用点进去才知道。 */
+.industry-tree-dot {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--hone-coral-500);
+}
+
+.industry-detail-edited {
+  margin-left: 0.6rem;
+  font-size: var(--hone-text-2xs);
+  font-family: var(--hone-font-label);
+  color: var(--hone-ink-400);
 }
