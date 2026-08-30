@@ -253,10 +253,7 @@ impl AgentSessionListener for SseSessionListener {
                 let snippet = &safe_message[..i];
                 let _ = self
                     .tx
-                    .send((
-                        "run_error".into(),
-                        json!({ "message": snippet }),
-                    ))
+                    .send(("run_error".into(), json!({ "message": snippet })))
                     .await;
             }
             AgentSessionEvent::Done { response } => {
@@ -399,7 +396,17 @@ fn public_progress_fragment(detail: &str, max_chars: usize) -> Option<String> {
             character.is_alphanumeric()
                 || matches!(
                     character,
-                    '.' | '-' | '、' | ',' | ' ' | '/' | ':' | '％' | '%' | '（' | '）' | '，'
+                    '.' | '-'
+                        | '、'
+                        | ','
+                        | ' '
+                        | '/'
+                        | ':'
+                        | '％'
+                        | '%'
+                        | '（'
+                        | '）'
+                        | '，'
                         | '·'
                 )
         })
@@ -591,8 +598,9 @@ fn public_tool_status_text(
         return match subject {
             Some(query) if !english => format!("正在检索：{query}"),
             Some(query) => format!("Searching: {query}"),
-            None => localized(reply_language, "正在进行搜索引擎查询", "Searching the web")
-                .to_string(),
+            None => {
+                localized(reply_language, "正在进行搜索引擎查询", "Searching the web").to_string()
+            }
         };
     }
     if label.starts_with("data_fetch") {
@@ -957,13 +965,19 @@ mod tests {
         use super::public_tool_status_text;
 
         for (label, expected) in [
-            ("web_search query=\"CoreWeave IPO\"", "正在检索：CoreWeave IPO"),
+            (
+                "web_search query=\"CoreWeave IPO\"",
+                "正在检索：CoreWeave IPO",
+            ),
             ("data_fetch search NBIS", "正在确认 NBIS 对应的公司或证券"),
             ("data_fetch quote NBIS", "正在读取 NBIS 实时行情"),
             ("data_fetch snapshot NBIS", "正在读取 NBIS 实时行情"),
             ("data_fetch news NBIS", "正在读取 NBIS 相关新闻"),
             ("data_fetch financials NBIS", "正在读取 NBIS 财务与财报数据"),
-            ("data_fetch extended_hours NBIS", "正在读取 NBIS 盘前盘后行情"),
+            (
+                "data_fetch extended_hours NBIS",
+                "正在读取 NBIS 盘前盘后行情",
+            ),
             ("data_fetch quote", "正在读取实时行情"),
             ("portfolio view", "正在读取你的持仓与关注"),
             ("cron_job list", "正在处理你的提醒设置"),
@@ -974,7 +988,13 @@ mod tests {
             assert_eq!(text, expected, "{label}");
             // No internal tool name or argument syntax may survive into the
             // user-visible string.
-            for leaked in ["web_search", "data_fetch", "portfolio", "cron_job", "query="] {
+            for leaked in [
+                "web_search",
+                "data_fetch",
+                "portfolio",
+                "cron_job",
+                "query=",
+            ] {
                 assert!(!text.contains(leaked), "{label} leaked {leaked}: {text}");
             }
         }
@@ -1030,11 +1050,8 @@ mod tests {
         assert!(text.contains("美股盘前"), "{text}");
         assert!(text.contains("21:05"), "{text}");
 
-        let (_, verified) = public_progress_status(
-            "preturn.identity.done",
-            None,
-            Some("Tempus AI（TEM）"),
-        );
+        let (_, verified) =
+            public_progress_status("preturn.identity.done", None, Some("Tempus AI（TEM）"));
         assert!(verified.contains("已核对标的"), "{verified}");
         assert!(verified.contains("Tempus AI（TEM）"), "{verified}");
 
@@ -1103,7 +1120,9 @@ mod tests {
         assert_eq!(public_progress_detail(None), None);
         // Clock facts keep their time separators and full-width punctuation.
         assert_eq!(
-            public_progress_detail(Some("北京时间 2026-08-20 21:05，美股盘前（距盘中 25 分钟）")),
+            public_progress_detail(Some(
+                "北京时间 2026-08-20 21:05，美股盘前（距盘中 25 分钟）"
+            )),
             Some("北京时间 2026-08-20 21:05，美股盘前（距盘中 25 分钟）".to_string())
         );
         // Length is bounded so a long list cannot flood the status line.
