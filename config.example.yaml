@@ -533,6 +533,21 @@ cloud:
     # trimming whitespace it must be 32..1024 UTF-8 bytes. Never put the
     # secret bytes themselves in this YAML file.
     secret_env: "HONE_COMMUNITY_EDGE_HMAC_SECRET"
+  media_delivery:
+    # off | shadow | prefer. `shadow` mints capabilities so the edge can be
+    # exercised while clients keep using the origin proxy; only `prefer` moves
+    # image bytes onto hone-claw.com/_media/v1/*.
+    mode: "off"
+    # Read cookie lifetime, clamped to 60..3600 seconds. Must not exceed the
+    # Worker's MAX_READ_TOKEN_LIFETIME_SECONDS.
+    read_ttl_secs: 900
+    # Single-use upload capability lifetime, clamped to 30..300 seconds. Must not
+    # exceed the Worker's MAX_WRITE_TOKEN_LIFETIME_SECONDS.
+    write_ttl_secs: 120
+    # Name of the environment variable holding the HMAC secret shared with the
+    # hone-public-media-edge Worker. After trimming it must be 32..1024 UTF-8
+    # bytes. Never put the secret bytes themselves in this YAML file.
+    secret_env: "HONE_MEDIA_EDGE_HMAC_SECRET"
   postgres:
     database_url: ""
     database_url_env: "DATABASE_URL"

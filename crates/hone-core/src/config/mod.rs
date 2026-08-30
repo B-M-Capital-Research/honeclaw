@@ -48,8 +48,8 @@ pub use mutation::{
 };
 pub use server::{
     CloudConfig, CommunityDeliveryConfig, CommunityDeliveryMode, EmailConfig, FmpConfig,
-    LoggingConfig, NanoBananaConfig, OssConfig, PostgresConfig, SearchConfig, SecurityConfig,
-    StorageConfig, ToolGuardConfig, WebConfig,
+    LoggingConfig, MediaDeliveryConfig, MediaDeliveryMode, NanoBananaConfig, OssConfig,
+    PostgresConfig, SearchConfig, SecurityConfig, StorageConfig, ToolGuardConfig, WebConfig,
 };
 pub use yaml::{
     diff_yaml_value, merge_yaml_value, read_merged_yaml_value, read_yaml_value,

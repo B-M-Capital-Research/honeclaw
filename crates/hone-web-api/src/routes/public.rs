@@ -38,8 +38,8 @@ use crate::types::{
 
 /// Upper bounds enforced when users upload files through the public chat.
 /// Kept conservative so a misbehaving client can't fill disk with a single request.
-const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
-const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
+pub(crate) const PUBLIC_UPLOAD_MAX_FILES: usize = 4;
+pub(crate) const PUBLIC_UPLOAD_MAX_BYTES: usize = 10 * 1024 * 1024;
 const PUBLIC_HISTORY_PAGE_SIZE: usize = 20;
 const PUBLIC_ACTIVE_STATE_CACHE_CONTROL: &str = "private, no-store, max-age=0";
 
@@ -1529,7 +1529,7 @@ fn sanitize_user_id(raw: &str) -> String {
     }
 }
 
-fn sanitize_attachment_name(raw: &str) -> String {
+pub(crate) fn sanitize_attachment_name(raw: &str) -> String {
     let stem = Path::new(raw)
         .file_name()
         .map(|value| value.to_string_lossy().to_string())

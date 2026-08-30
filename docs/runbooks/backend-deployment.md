@@ -17,6 +17,7 @@ The public entrypoint is split into two layers:
 - `hone-claw.com`: Cloudflare Pages serves the static public web bundle
 - `hone-claw.com/api/public/*`: Cloudflare Worker proxies public API requests to the backend origin
 - `origin.hone-claw.com`: backend origin hostname used by Cloudflare, not a user-facing entrypoint
+- `hone-claw.com/_media/v1/*`: Cloudflare Worker reads and writes chat image objects directly in R2; these bytes never reach the backend origin
 
 Do not document private host location, workstation names, tunnel provider internals, credentials, or concrete process owner details in public files. Use “backend origin” or “managed backend host” in public-facing documentation.
 
@@ -880,6 +881,164 @@ For a single resource/version that must stop being served, use this order:
 
 Immutable R2 bytes/descriptors may remain for forensics and rollback; the per-request active-index gate, not object deletion, is the revocation authority. Shared resource cache entries expire within one hour, but revocation never waits for that TTL because the active index is checked before cache lookup.
 
+## Public Media Edge Rollout
+
+Chat image attachments move browser <-> nearest Cloudflare PoP <-> R2. The
+backend origin in us-central1 only mints short-lived signed capabilities; it
+never carries image bytes on either leg. Before this path existed, a pasted
+screenshot crossed the Pacific to be stored and crossed back in full to render a
+72px thumbnail.
+
+Components:
+
+- `workers/public-media-edge` — Worker on `hone-claw.com/_media/v1/*`, R2 binding
+  `MEDIA_BUCKET` -> the existing private `honeclaw` bucket.
+- `POST /api/public/media/session` — issues the `hone_media_edge` read cookie.
+- `POST /api/public/media/upload-grant` — issues one single-use upload
+  capability per file and refreshes the read cookie in the same response.
+- `cloud.media_delivery` in backend config; secret in
+  `HONE_MEDIA_EDGE_HMAC_SECRET`.
+
+### Authorization model
+
+Reads and writes are deliberately authorized differently.
+
+| | Read | Write |
+| --- | --- | --- |
+| Carrier | `hone_media_edge` cookie, `HttpOnly; Secure; SameSite=Strict; Path=/_media/v1/` | `X-Hone-Media-Token` request header |
+| Scope | the caller's own `public-uploads/<user>/` prefix | one exact object key |
+| Also bound to | — | content type, byte ceiling |
+| Lifetime | `read_ttl_secs`, clamped 60..3600 | `write_ttl_secs`, clamped 30..300 |
+| Reuse | until expiry | single use: the edge refuses to overwrite an existing object |
+
+Why a cookie for reads rather than a signed URL: a capability in a query string
+leaks through `Referer`, browser history, and any intermediary's access log.
+Why a header for writes: the client must not choose the key, and a custom header
+cannot be set by a cross-site form, so it doubles as the CSRF guard. The Worker
+answers no CORS preflight and rejects any request whose `Origin` is not
+`https://hone-claw.com`.
+
+What the Worker enforces independently of the origin's signature:
+
+- Key shape: exactly `public-uploads/<owner>/<day>/<stored-name>`, every segment
+  matching `[A-Za-z0-9._-]+` and never `.` or `..`; `%` anywhere is rejected, so
+  there is no second decoding pass to disagree about.
+- Ownership: the requested key must start with the signed `pfx`, and `pfx` must
+  itself be a two-segment owner root under the configured upload prefix. A grant
+  that authenticates one tenant while minting a key for another fails here even
+  though its signature is valid.
+- Content type: `image/png`, `image/jpeg`, `image/webp`, `image/gif` only.
+  **`image/svg+xml` is excluded and must stay excluded** — an SVG served from
+  `hone-claw.com` is same-origin script, so accepting one would turn the upload
+  box into stored XSS.
+- Magic bytes: the leading bytes must match the signed content type, so a token
+  signed for `image/png` cannot be used to store HTML or SVG.
+- Size: `Content-Length` is required and checked against the token's ceiling, and
+  the body is read through a cap so a lying `Content-Length` cannot exhaust
+  memory. The declared and actual lengths must agree.
+- Responses carry `Content-Security-Policy: default-src 'none'; sandbox`,
+  `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+  `Referrer-Policy: no-referrer`, and `Content-Disposition: inline`.
+
+The token wire format is pinned by matching golden vectors on both sides
+(`routes::public_media::tests` and `workers/public-media-edge/test`). A change to
+claim order or encoding on either side fails a test instead of silently breaking
+uploads in production.
+
+### Fail-closed defaults
+
+- `MEDIA_EDGE_DISABLED` absent disables the Worker. Activation is an explicit
+  `MEDIA_EDGE_DISABLED=false`, preserved across deploys by `keep_vars`.
+- A missing, short, or oversized secret returns `503`; so does an unbound bucket.
+- Backend `mode: "off"` issues no capabilities at all.
+- The client falls back to the origin proxy (`/api/public/upload`,
+  `/api/public/image`) whenever the edge is off, a grant is refused, or a `PUT`
+  is not acknowledged. A `PUT` counts as acknowledged only on `201` with a JSON
+  `{"ok":true}` body, because a missing Worker route makes Pages answer
+  `/_media/v1/*` with the SPA shell and a `200`.
+
+### Deployment record
+
+2026-08-30: `hone-public-media-edge` deployed and activated on
+`hone-claw.com/_media/v1/*` (version `8ddb8edc-2f31-4d5e-b1d3-d405ee8ecf92`),
+bound to R2 bucket `honeclaw`, `MEDIA_EDGE_DISABLED=false`, secret
+`MEDIA_EDGE_HMAC_SECRET` installed.
+
+Deployed with a scoped API token named `hone-media-edge-deploy` rather than
+`wrangler login`: three permissions only — account `Workers Scripts:Edit` and
+`Workers R2 Storage:Edit`, zone `Workers Routes:Edit` limited to hone-claw.com.
+The OAuth flow was rejected for this purpose because it grants 29 scopes
+including Pages:Write, Email Sending, Connectivity Directory Admin, and a
+persistent refresh token. Note that a runtime variable set in the dashboard does
+not reach the running Worker until the next deploy; `keep_vars: true` preserves
+it, so `wrangler deploy` is the way to activate it.
+
+Verified live against the deployed Worker (self-test objects removed afterwards):
+
+| Case | Result |
+| --- | --- |
+| GET, no cookie | `401 missing_media_session` |
+| GET, valid cookie, own prefix, absent object | `404 not_found` |
+| GET, valid cookie, another tenant's key | `403 object_outside_session_scope` |
+| GET, expired / wrong-audience / over-broad `pfx` / tampered signature | `401` |
+| GET, duplicated cookie header | `401` |
+| Read cookie presented as an upload token | `401 invalid_upload_token` |
+| PUT, no token | `401 missing_upload_token` |
+| PUT, SVG bytes under an `image/png` token | `415 unsupported_image_format` |
+| PUT, body over the token's ceiling | `413 upload_too_large` |
+| PUT, token key ≠ request path | `403 upload_token_key_mismatch` |
+| PUT, valid | `201 {"ok":true}` |
+| PUT, replayed token | `409 object_already_exists` |
+| Read back | `200`, `image/png`, `inline`, `nosniff`, CSP, bytes identical |
+
+**The backend half is not deployed yet**, so no capability is minted in
+production and the edge 401s every request. The client keeps using the origin
+proxy until `cloud.media_delivery.mode` is set. `HONE_MEDIA_EDGE_HMAC_SECRET`
+must be installed on the origin with the exact bytes already held by the Worker
+before switching the mode; a mismatch fails closed.
+
+### Rollout order
+
+1. Deploy the Worker with `MEDIA_EDGE_DISABLED` absent and confirm every
+   `/_media/v1/*` request returns the Worker-owned `503`.
+2. Install the same secret in both places — Worker secret
+   `MEDIA_EDGE_HMAC_SECRET` and backend `HONE_MEDIA_EDGE_HMAC_SECRET`. Generate
+   with `openssl rand -base64 48`. It is a secret, never a Worker var.
+3. Confirm `workers/public-media-edge/wrangler.jsonc` still binds `MEDIA_BUCKET`
+   to `bucket_name = honeclaw`, the active `HONE_OSS_BUCKET`. Do not create a
+   public duplicate bucket and do not hand the browser a bucket URL.
+4. Set backend `cloud.media_delivery.mode: "shadow"` and restart. Capabilities
+   are minted; clients still use the origin proxy.
+5. Set `MEDIA_EDGE_DISABLED=false` on the Worker and verify by hand:
+
+```bash
+curl -i https://hone-claw.com/_media/v1/o/public-uploads/x/y/z.png
+curl -i -X OPTIONS https://hone-claw.com/_media/v1/o/public-uploads/x/y/z.png
+```
+
+   Expect `401 {"error":"missing_media_session"}` for the first and
+   `405` with `Allow: GET, HEAD, PUT` for the second. A Pages HTML body or a
+   Cloudflare-branded error is a stop condition: the route is not bound.
+
+6. Move backend to `mode: "prefer"` and restart. Paste an image in a logged-in
+   browser and confirm in devtools that the `PUT` goes to `/_media/v1/o/...`,
+   returns `201`, and that no `/api/public/upload` request follows.
+7. Confirm the send path still works end to end: the chat turn must accept the
+   `oss://` path and the model must receive the image.
+
+### Rollback
+
+Fastest first:
+
+1. Backend `cloud.media_delivery.mode: "off"` and restart — clients return to the
+   origin proxy on their next call; already-stored objects keep rendering through
+   `/api/public/image`.
+2. Or remove `MEDIA_EDGE_DISABLED` from the Worker — every `/_media/v1/*` request
+   becomes `503` and the client falls back on error.
+3. Rotating `HONE_MEDIA_EDGE_HMAC_SECRET` invalidates every outstanding cookie
+   and upload capability immediately. Rotate the Worker secret and the backend
+   env together; a mismatch is fail-closed, not fail-open.
+
 ## Worker Route
 
 The Cloudflare Worker must route:
@@ -1004,6 +1163,9 @@ The runtime also recognizes the validated Codex ACP `1.1.7` structured response 
 - Do not commit API tokens, tunnel tokens, runtime databases, or exported production config.
 - Prefer documenting stable host roles over physical or personal infrastructure details.
 - If the backend origin moves, update the Worker origin hostname or DNS target first, then rerun the verification commands above.
+- The media edge secret (`HONE_MEDIA_EDGE_HMAC_SECRET` / Worker `MEDIA_EDGE_HMAC_SECRET`) is the whole authorization boundary for chat image objects. Keep it out of YAML and out of Worker vars, and rotate both sides together.
+- Never add `image/svg+xml` to the media edge content-type allowlist. Objects are served from `hone-claw.com`, so an SVG there is same-origin script.
+- Do not add CORS headers to `/_media/v1/*`. Same-origin-only is what keeps a leaked upload capability unusable from another site.
 
 ## Rollback
 

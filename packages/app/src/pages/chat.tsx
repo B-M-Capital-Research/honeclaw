@@ -78,6 +78,8 @@ import {
   sendPublicChat,
   sendPublicFinanceCalendar,
   uploadPublicAttachments,
+  ensurePublicMediaEdgeSession,
+  publicMediaEdgeObjectPath,
 } from "@/lib/api";
 import { buildApiUrl } from "@/lib/backend";
 import {
@@ -294,11 +296,26 @@ function AccountButton(props: {
   );
 }
 
-function publicAttachmentUrl(att: PublicChatAttachment): string {
-  if (att.previewUrl) return att.previewUrl;
+function publicAttachmentOriginUrl(att: PublicChatAttachment): string {
   return buildApiUrl(
     `${PUBLIC_IMAGE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
   );
+}
+
+/**
+ * Where to load an attachment from. Prefers the media edge, which serves the
+ * object out of R2 at the nearest Cloudflare PoP instead of round-tripping it
+ * through the origin in us-central1.
+ *
+ * Every caller pairs this with {@link publicAttachmentOriginUrl} as a fallback:
+ * the edge read cookie is short-lived, so a tab left open past its expiry — or
+ * an edge that is turned off mid-session — must degrade to the origin proxy
+ * rather than to a broken image.
+ */
+function publicAttachmentUrl(att: PublicChatAttachment): string {
+  if (att.previewUrl) return att.previewUrl;
+  const edgePath = publicMediaEdgeObjectPath(att.path);
+  return edgePath ? buildApiUrl(edgePath) : publicAttachmentOriginUrl(att);
 }
 
 function renamePasteFile(file: File) {
@@ -337,6 +354,8 @@ function assistantMarkdownClass(white = false) {
 
 function ProgressiveMessageImage(props: {
   src: string;
+  /** Retried once when `src` fails, so an expired edge session is invisible. */
+  fallbackSrc?: string;
   alt: string;
   testId?: string;
   aspectRatio?: string;
@@ -345,6 +364,13 @@ function ProgressiveMessageImage(props: {
 }) {
   const [loaded, setLoaded] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
+  const [usingFallback, setUsingFallback] = createSignal(false);
+  const currentSrc = () =>
+    usingFallback() && props.fallbackSrc ? props.fallbackSrc : props.src;
+  createEffect(() => {
+    props.src;
+    setUsingFallback(false);
+  });
   return (
     <span
       class="public-chat-media-frame"
@@ -357,7 +383,7 @@ function ProgressiveMessageImage(props: {
     >
       <img
         data-testid={props.testId}
-        src={props.src}
+        src={currentSrc()}
         alt={props.alt}
         loading="lazy"
         decoding="async"
@@ -366,7 +392,13 @@ function ProgressiveMessageImage(props: {
           setLoaded(true);
           setFailed(false);
         }}
-        onError={() => setFailed(true)}
+        onError={() => {
+          if (props.fallbackSrc && !usingFallback()) {
+            setUsingFallback(true);
+            return;
+          }
+          setFailed(true);
+        }}
       />
       <Show when={failed()}>
         <small>{CONTENT.chat_page.composer.finance_calendar_image_failed}</small>
@@ -491,6 +523,7 @@ function ImageMosaic(props: {
                 <ProgressiveMessageImage
                   testId="user-attachment-image"
                   src={publicAttachmentUrl(img)}
+                  fallbackSrc={publicAttachmentOriginUrl(img)}
                   alt={img.name}
                   aspectRatio="1 / 1"
                   objectFit="cover"
@@ -516,6 +549,7 @@ function ImageMosaic(props: {
         <ProgressiveMessageImage
           testId="user-attachment-image"
           src={publicAttachmentUrl(props.images[0]!)}
+          fallbackSrc={publicAttachmentOriginUrl(props.images[0]!)}
           alt={props.images[0]!.name}
           aspectRatio="4 / 3"
           flush
@@ -1118,6 +1152,15 @@ function AttachPreview(props: {
                   <img
                     src={publicAttachmentUrl(item)}
                     alt={item.name}
+                    onError={(event) => {
+                      // Same one-shot degrade as ProgressiveMessageImage: if the
+                      // edge read cookie has lapsed, fall back to the origin
+                      // proxy instead of showing a broken thumbnail.
+                      const fallback = publicAttachmentOriginUrl(item);
+                      if (event.currentTarget.src !== fallback) {
+                        event.currentTarget.src = fallback;
+                      }
+                    }}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -2939,6 +2982,18 @@ export default function PublicChatPage() {
     });
   });
 
+  createEffect(() => {
+    if (authState() !== "ready") return;
+    // The read cookie is short-lived by design, so renew it while the tab is
+    // open. Each renewal is a small POST; the image bytes themselves never come
+    // back through the origin.
+    void ensurePublicMediaEdgeSession();
+    const timer = setInterval(() => {
+      void ensurePublicMediaEdgeSession();
+    }, 300_000);
+    onCleanup(() => clearInterval(timer));
+  });
+
   const refreshPushUnread = async () => {
     try {
       const payload = await getPublicPushes(undefined, 1);
@@ -4252,6 +4307,14 @@ export default function PublicChatPage() {
         <div class="lightbox-overlay" onClick={() => setLightbox(null)}>
           <img
             src={publicAttachmentUrl(lightbox()!.images[lightbox()!.index]!)}
+            onError={(event) => {
+              const fallback = publicAttachmentOriginUrl(
+                lightbox()!.images[lightbox()!.index]!,
+              );
+              if (event.currentTarget.src !== fallback) {
+                event.currentTarget.src = fallback;
+              }
+            }}
             class="lightbox-img"
           />
           <button class="lightbox-close">×</button>
