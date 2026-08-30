@@ -997,6 +997,20 @@ proxy until `cloud.media_delivery.mode` is set. `HONE_MEDIA_EDGE_HMAC_SECRET`
 must be installed on the origin with the exact bytes already held by the Worker
 before switching the mode; a mismatch fails closed.
 
+2026-08-30（后端半边）：`37d8fbaa` 上线到 GCE `instance-20260731-081043`。
+`cloud.media_delivery` 写进 `/srv/honeclaw/config.yaml`（先落 `off`，再翻到 `shadow`），
+`HONE_MEDIA_EDGE_HMAC_SECRET` 装进 `/etc/hone/runtime.env`（600 root:root，`openssl rand -base64 48`，
+64 字节）。两个后端端点已验活：`POST /api/public/media/session` → `401`、
+`/api/public/media/upload-grant` → `415`（都不是 404，说明路由挂上了）。
+Worker 侧外部复验：`GET /_media/v1/o/...` 无 cookie → `401` 且带 CSP / CORP / nosniff / Referrer-Policy，
+`OPTIONS` → `405 Allow: GET, HEAD, PUT`（无 CORS 预检），路由绑定正常。
+
+**卡在最后一步**：origin 的密钥是这次新生成的，Worker 上还是旧的那份。
+Cloudflare 的 secret 写入后读不回来，所以两边对齐只能靠轮换——已在 origin 侧生成，
+Worker 侧需要用同样的字节跑一次 `wrangler secret put MEDIA_EDGE_HMAC_SECRET`。
+在这之前**刻意停在 `shadow`**：`prefer` 下客户端会先试边缘、签名不匹配被拒、再回落到 origin 代理，
+结果和现在一样但每次上传多一个来回。密钥对齐后再翻 `prefer`。
+
 ### Rollout order
 
 1. Deploy the Worker with `MEDIA_EDGE_DISABLED` absent and confirm every
