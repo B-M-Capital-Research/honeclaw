@@ -357,32 +357,49 @@ type TrendWindow = (typeof TREND_WINDOWS)[number][0];
  *    next question ("the Nasdaq rallied, why is the score flat?") reads as a
  *    bug. SP500 already contributes 0.06 to the score as a confirmation
  *    dimension; counting the same factor twice here would inflate it.
+ * 3. One line is **not** the two-line comparison. The server sends a row it
+ *    could not fetch as a named placeholder with no points instead of dropping
+ *    the whole payload, so this component draws what it has, names what is
+ *    missing, and withdraws the relative-strength reading — rather than the
+ *    section vanishing heading and all, which reads as a broken panel (the
+ *    same rule the alerts empty state follows).
  */
 function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
   const [window, setWindow] = createSignal<TrendWindow>("1y");
 
   const years = () => TREND_WINDOWS.find(([key]) => key === window())?.[2] ?? 1;
 
+  // A series the server could not fetch arrives as a named row with no points.
+  // It stays out of the drawing and is named above the chart instead of taking
+  // the section down with it. `line` keeps the row's position in the full
+  // server list, so a series holds its colour on the days the other is missing.
+  const drawable = createMemo(() =>
+    props.series.map((item, line) => ({ ...item, line })).filter((item) => item.points.length >= 2),
+  );
+  const missing = createMemo(() => props.series.filter((item) => item.points.length < 2));
+
   /** Both lines cut to the window and rebased to 100 at its first shared date. */
   const lines = createMemo(() => {
-    const axis = props.series[0]?.points ?? [];
+    const axis = drawable()[0]?.points ?? [];
     if (axis.length < 2) return undefined;
     const end = new Date(`${axis[axis.length - 1].period}T00:00:00Z`);
     const from = new Date(end);
     from.setUTCFullYear(from.getUTCFullYear() - years());
     const cutoff = from.toISOString().slice(0, 10);
-    const rebased = props.series.map((item) => {
-      const points = item.points.filter((point) => point.period >= cutoff);
-      const base = points[0]?.value;
-      return {
-        ...item,
-        points:
-          base && base !== 0
-            ? points.map((point) => ({ ...point, value: (point.value / base) * 100 }))
-            : [],
-      };
-    });
-    if (rebased.some((item) => item.points.length < 2)) return undefined;
+    const rebased = drawable()
+      .map((item) => {
+        const points = item.points.filter((point) => point.period >= cutoff);
+        const base = points[0]?.value;
+        return {
+          ...item,
+          points:
+            base && base !== 0
+              ? points.map((point) => ({ ...point, value: (point.value / base) * 100 }))
+              : [],
+        };
+      })
+      .filter((item) => item.points.length >= 2);
+    if (!rebased.length) return undefined;
     const values = rebased.flatMap((item) => item.points.map((point) => point.value));
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -433,6 +450,15 @@ function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
           </For>
         </div>
       </header>
+      <Show when={missing().length > 0 && drawable().length > 0}>
+        <p class="daily-signal-market__note is-partial">
+          {missing()
+            .map((item) => item.label)
+            .join("、")}
+          本次未取得，图上只有 {drawable().length} 条线：这条线自身的走势仍然可读，
+          但没有另一条做对照，这一屏不能当相对强弱看。
+        </p>
+      </Show>
       <Show
         when={lines()}
         fallback={<p class="daily-signal-market__empty">本次快照没有可对照的指数序列。</p>}
@@ -461,8 +487,8 @@ function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
                 )}
               </Show>
               <For each={chart().series}>
-                {(item, index) => (
-                  <polyline class={`daily-signal-market__line is-line-${index()}`} points={item.path} />
+                {(item) => (
+                  <polyline class={`daily-signal-market__line is-line-${item.line}`} points={item.path} />
                 )}
               </For>
             </svg>
@@ -473,8 +499,8 @@ function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
             </div>
             <ul class="daily-signal-market__legend">
               <For each={chart().series}>
-                {(item, index) => (
-                  <li class={`is-line-${index()}`}>
+                {(item) => (
+                  <li class={`is-line-${item.line}`}>
                     <i />
                     <span>
                       <strong>{item.label}</strong>
@@ -493,7 +519,7 @@ function MarketTrend(props: { series: DailySignalMarketTrend[] }) {
       </Show>
       <p class="daily-signal-market__note">
         FRED 日频收盘价，截至 {asOf() ?? "—"}（T+1，非实时报价）。图上是指数点位归一化后的相对走势，
-        不是 QQQ / SPY 基金的价格或净值。两条线取共同交易日与共同起点，因此斜率可以直接对比；
+        不是 QQQ / SPY 基金的价格或净值。两条线同时画出时取共同交易日与共同起点，因此斜率可以直接对比；
         标普 500 在 FRED 只授权滚动 10 年，10 年窗口以此为准。
       </p>
     </section>

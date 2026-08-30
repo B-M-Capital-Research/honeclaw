@@ -8654,6 +8654,11 @@ fn append_agent_entity_discovery_context(
                 "\n【本轮候选种子均为低置信】上述候选全部来自弱语法信号，没有一个带有 $ 代码、`股票代码/ticker` 标注或明确的行情、财报、持仓绑定。它们同样可能是宏观、资金流、仓位、策略、指标、行业或产品缩写（例如 CTA、RSI、QT、TTM），不得默认当成证券代码。请先判断用户原问题的真实主题：若主题并非这些代码本身，就直接围绕真实主题使用 web_search 等开放检索工具取证并作答，不要为这些候选建立实体路线；若确需确认某个候选是不是证券，最多用一次 search 核验，核验不成立即放弃该候选并继续回答用户原问题，绝不能把整轮预算耗在实体解析上。",
             );
         }
+        // A macro indicator is not one of those candidates: this turn should
+        // reach the official bundle, not an identity search.
+        runtime_input.push_str(
+            "\n上述判断不适用于落在宏观指标名单里的候选（政策利率、各期限国债收益率、CPI/PCE、就业、GDP、VIX 等）：不为它们发 exact-symbol search，本轮第一次取数直接用 `data_fetch(macro)`；同一句里点名的公司、ETF 与显式代码语法仍按实体路线核验。",
+        );
     }
     // Session alignment is server clock arithmetic, injected every turn: the
     // reported failure quoted a completed regular session for an after-hours

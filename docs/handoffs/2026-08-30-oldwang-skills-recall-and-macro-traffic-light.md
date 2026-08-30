@@ -146,7 +146,8 @@ financial_conditions）**根本不可能报警**，`alerts` 为空却同屏显�
 「美国 30 年期国债收益率 亮红灯：健康分 23.6，口径 2026-08-27（日频）。」
 
 **QQQ / SPY**：FRED **没有 QQQ / SPY 本身**（只收指数不收 ETF），但 `NASDAQ100` 可用且与
-已在用的 `SP500` 同为 T+1。所以做成独立的相对走势图，两条线按共同基期归一化到 100，
+已在用的 `SP500` 同为 T+1。所以做成独立的相对走势图，两条线同时画出时按共同基期归一化到 100
+（只取到一条时的降级契约见文末「宏观红绿灯二轮修正」），
 带 1 年 / 3 年 / 10 年切换，文案写「纳斯达克 100 指数（QQQ 跟踪标的）」，
 **display_only、不进健康分**——`SP500` 已作为「市场确认」占 0.06 权重，再加一条就是把
 「美股涨不涨」记两遍；而且 `macro_specs` 的权重合计必须为 1.0（有测试断言），
@@ -217,3 +218,51 @@ hari-invest 契约 PASS；前端 `525 pass / 0 fail`、`tsc` 干净、`vite buil
 5. 生产上另外几个自定义 skill（`fed_rate_cut_analysis` / `business_model_analysis` /
    `gold_analysis`）都要求「纯文本、不要 Markdown」，与其它所有 skill 的输出契约冲突；
    `gold_analysis` 还与仓库 `gold-analysis` 重复。本轮未动。
+
+## 宏观红绿灯二轮修正
+
+代码全部在 `crates/hone-web-api/src/routes/daily_signals.rs` 与
+`packages/app/src/components/daily-signal-dashboard.{tsx,css}`。
+
+**15 分钟重试从未跑过。** `refresh_all` 每轮都写盘；FRED 全挂那天写出的是
+`preserve_success_when_incomplete` 复制的昨天数据、盖上今天日期、`status="stale"`。旧判定
+`latest_is_date`（`report_date == date && status != "framework_only"`）读成「今天已完成」，
+`worker_wake_at` 于是直接给下一个 20:00。准确的缺口形状是：磁盘上只要出现过一份带分数的快照，
+`INCOMPLETE_RETRY_SECS` 就再也不会触发；只有从未成功过的机器还落在 `framework_only` 上会重试。
+改成 `snapshot_is_complete`：`report_date` 对上、`model_version` 是当前版本、且 `status` 是
+`live` / `partial`。`partial` 仍算完整——它今天确实出了分，否则缺一条序列的日子会整天每 15 分钟重抓。
+
+**重试有上界（运维可见）。** 重试第一次真的会跑，就必须封顶：`MAX_INCOMPLETE_RETRIES = 4`，
+按 `report_date` 计数、跨天归零。每轮 macro 是 17 条 `fredgraph.csv`（无 api key、按 UA 限流、
+每条最多 3 次尝试），AI 是 4 份 SEC companyfacts；不封顶时上游长期不可达会变成 ~96 轮/天的长期轮询。
+超过 4 次后睡到下一个 20:00。日志 `daily signal worker waiting` 现在带 `retries` 字段。
+
+**`next_refresh_at` 只有一个真相源。** `refresh_all` 在写盘前统一回填为 `worker_wake_at(...)`（含重试预算）；
+`generate_macro_report` / `generate_ai_report` 里那两处只是占位，不要直接消费它们的返回值。
+`framework_report`（一份快照都没有时）同样返回重试时刻而不是明天 20:00。
+
+**`market_trend` 的对外契约变了。** 原来是全有或全无（`collect::<Option<Vec<_>>>()`）：
+NASDAQ100 缺一次就把已抓到的 SP500 一起丢掉，前端 `<Show when={market_trend?.length}>` 于是连
+h3「市场确认」一并不挂载，组件自己的空态文案永远渲染不到。现在**本次未取得的行仍然下发**，
+带 `label`、`points` 为空、`as_of` / `base_period` / `latest_value` 三个 Option 同时为 `None`；
+消费方按「三个 Option 全空 = 本次未取得」判定。一条都没抓到时仍返回空数组（没有轴，也没有可点名的行），
+那一档 section 依旧整体不挂载。前端画有点的、点名没点的，并当场收回「相对强弱」这个读法；
+配色按序列在完整列表里的位置取，缺哪一条都不会让另一条换颜色。`sources` 也过滤掉空行，
+避免给本次没抓到的序列挂 FRED 链接。
+
+**VIX 卡的措辞对齐了它真正在跑的规则。** `vix_health_score` 只读 level，但 VIX 此前与
+DGS10/DGS30/FEDFUNDS 共用 `is_financial_risk` 分支：reason 说「近三个月变化」、threshold 说
+「且继续上行」、trend_label 按 ±0.25 翻转——同档内 +1.0 的移动会让卡片写「风险上升」而分数纹丝不动。
+拆成 `is_rate_risk` / `is_volatility_band`，VIX 标签改按 `vix_band` 跨档判定（同档记「同档持平」），
+分档边界抽成 `vix_band` 单一来源。**分数与权重一个都没动。**
+
+**顺带修掉「较一周」。** `apply_comparisons` 取 `history.get(6)`；重试轮跑时今天的 history 文件
+已经存在，第 7 项就只剩 6 天前。改成先滤掉与本轮同 `report_date` 的那份再取第 7 项。
+
+**验证（提交前须全绿）**：`rustfmt --edition 2024 --check crates/hone-web-api/src/routes/daily_signals.rs`
+（CI 的第一道 Rust 门禁，见 `scripts/ci/check_fmt_changed.sh`）、`cargo check -p hone-web-api`、
+`cargo test -p hone-web-api --lib`、`bunx tsc -p tsconfig.json`、
+`bun test --preload ./happydom.ts ./src/components/daily-signal-dashboard.test.ts`。
+
+**留给下一轮**：重试封顶 4 次是拍的。上游抖动超过一小时时，当天分数会停在 stale 等 20:00，
+值班应当看到的是 stale 而不是持续轮询；真出现这种日子再按日志调 `MAX_INCOMPLETE_RETRIES`。

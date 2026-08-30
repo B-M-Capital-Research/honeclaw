@@ -23,7 +23,9 @@ aliases:
   - moat
   - competitive-moat
   - switching-cost
-  - network-effect
+  - network-effect  - 壁垒在哪
+  - 凭什么赚钱
+  - 拿到订单
 allowed-tools:
   - data_fetch
   - web_search

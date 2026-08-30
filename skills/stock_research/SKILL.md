@@ -27,7 +27,8 @@ aliases:
   - 技术能力
   - 介绍一下
   - 看下
-  - 增长空间
+  - 增长空间  - 长期持有
+  - 投资逻辑
 allowed-tools:
   - data_fetch
   - web_search

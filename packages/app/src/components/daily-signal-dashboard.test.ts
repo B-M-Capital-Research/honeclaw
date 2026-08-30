@@ -89,4 +89,33 @@ describe("daily signal dashboard contract", () => {
     // load() survives for exactly two callers: first paint and error retry.
     expect(code).toContain("onMount(() => void load())");
   });
+
+  test("labels the market chart as an index, never as the ETF", () => {
+    expect(code).toContain("仅展示，不参与健康分");
+    expect(code).toContain("跟踪该指数");
+    expect(code).toContain("不是 QQQ / SPY 基金的价格或净值");
+    expect(code).not.toContain("基金价格");
+  });
+
+  test("degrades the market chart to one line instead of hiding the section", () => {
+    // A row the server could not fetch arrives with no points. It must be
+    // named rather than blanking the chart, the relative reading has to be
+    // withdrawn while it is missing, and the warning needs a style that
+    // separates it from the boilerplate footnote below the chart.
+    expect(code).toContain("const drawable = createMemo");
+    expect(code).toContain("const missing = createMemo");
+    expect(code).toContain("不能当相对强弱看");
+    expect(code).not.toContain("props.series[0]?.points");
+    expect(styles).toContain(".daily-signal-market__note.is-partial");
+    // Colour follows the row's position in the server list, not its position
+    // after filtering, so a line does not change colour on a degraded day.
+    expect(code).toContain("is-line-${item.line}");
+    expect(code).not.toContain("is-line-${index()}");
+    // Nothing fetched at all still returns an empty list and the section is
+    // gated on that upstream, so this fallback covers only the case where the
+    // selected window leaves a drawn row with fewer than two points.
+    expect(code).toContain(
+      'fallback={<p class="daily-signal-market__empty">本次快照没有可对照的指数序列。</p>}',
+    );
+  });
 });

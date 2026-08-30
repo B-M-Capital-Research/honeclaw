@@ -14,7 +14,8 @@ aliases:
   - 调仓建议
   - position advice
   - rebalance advice
-  - OWCW
+  - OWCW  - 继续拿着
+  - 该不该加
 allowed-tools:
   - portfolio
   - data_fetch

@@ -1,7 +1,7 @@
 ---
 name: ETF Analysis
 description: 股票型 ETF 的可复算估值分析——按持仓权重把前十成分股的合理估值区间加权汇总成 ETF 层面的合理价区间，并披露覆盖率。用于"这只 ETF 现在能不能买 / 贵不贵 / 适不适合建仓"这类需要算出数的问题
-when_to_use: 用户点名一只股票型宽基或主题 ETF（QQQ、SPY、SMH、IGV、ARKK 这类）并问值不值得买、适不适合建仓、现在贵不贵、还有多少空间、怎么看时使用。只问报价、费率、规模或成分名单的轻问题留在 stock_research 的 ETF 路线；杠杆/反向 ETF 的持有期衰减走 options-analysis；黄金与贵金属 ETF 的宏观驱动走 gold-analysis；多只 ETF 之间的配比与仓位走组合口径，不在这里定比例
+when_to_use: 用户点名一只股票型宽基或主题 ETF（QQQ、SPY、SMH、IGV、ARKK 这类）并问值不值得买、适不适合建仓、现在贵不贵、还有多少空间、怎么看时使用。只问报价、费率、规模或成分名单的轻问题留在 stock_research 的 ETF 轻问题路线；杠杆/反向 ETF 的持有期衰减走 options-analysis；黄金与贵金属 ETF 的宏观驱动走 gold-analysis；多只 ETF 之间的配比与仓位走组合口径，不在这里定比例
 user-invocable: true
 context: inline
 aliases:

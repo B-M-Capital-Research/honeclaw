@@ -5,7 +5,7 @@ when_to_use: 用户问某家公司下次财报怎么看、这次财报要盯哪�
 user-invocable: true
 context: inline
 aliases:
-  - 财报前瞻
+  - 财报前
   - 财报预期
   - 预期差
   - 市场预期差
@@ -18,7 +18,7 @@ aliases:
   - 超预期还是低于预期
   - 财报后怎么走
   - earnings-preview
-  - earnings-readout
+  - earnings-readout  - 业绩好不好
 allowed-tools:
   - data_fetch
   - web_search

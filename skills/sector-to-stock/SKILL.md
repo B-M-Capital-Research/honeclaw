@@ -27,7 +27,7 @@ aliases:
   - 选股
   - 最适合建仓
   - 低估的股票
-  - 哪些公司
+  - 哪些公司  - 还能上车
 allowed-tools:
   - data_fetch
   - web_search

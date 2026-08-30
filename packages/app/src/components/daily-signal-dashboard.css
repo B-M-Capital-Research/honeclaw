@@ -427,6 +427,17 @@
   font-size: var(--hone-text-2xs);
   line-height: 1.6;
 }
+/* A missing line changes how the chart may be read, so it follows the alerts
+   rule rather than the footnote it sits above — same left rail, darker ink.
+   Sharing the footnote's grey would render the warning identically to the
+   boilerplate and it would be skipped on a scan, which is the same failure as
+   the section disappearing, only quieter. */
+.daily-signal-market__note.is-partial {
+  margin: 10px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--hone-signal-orange);
+  color: var(--hone-ink-800);
+}
 /* Ten dimensions are ten rows of the same shape — a table, not ten cards.
    As cards they cost twenty borders, twenty 16px corners and a white fill
    apiece, and because each row sized its own columns the scores never lined

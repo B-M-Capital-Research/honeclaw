@@ -135,6 +135,29 @@ pub const MACRO_INDICATORS: &[MacroIndicator] = &[
         aliases: &["消费者信心", "消费者信心指数", "consumer confidence"],
         collides_with_listing: false,
     },
+    MacroIndicator {
+        canonical: "volatility_index",
+        display: "CBOE 波动率指数",
+        agency: "cboe.com",
+        aliases: &["VIX", "波动率指数", "恐慌指数", "volatility index"],
+        collides_with_listing: true,
+    },
+    MacroIndicator {
+        canonical: "treasury_yield",
+        display: "美国国债收益率",
+        agency: "treasury.gov",
+        // `国债收益率` is a substring alias and also matches other sovereigns;
+        // a match is confidence context, never a source label for `display`.
+        aliases: &[
+            "10年期美债",
+            "30年期美债",
+            "十年期美债",
+            "美债收益率",
+            "国债收益率",
+            "treasury yield",
+        ],
+        collides_with_listing: true,
+    },
 ];
 
 #[derive(Clone, Copy)]

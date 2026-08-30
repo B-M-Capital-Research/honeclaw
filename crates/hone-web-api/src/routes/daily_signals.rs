@@ -31,6 +31,12 @@ const FRED_CSV_BASE: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const FRED_USER_AGENT: &str = "honeclaw/0.15 (+https://github.com/B-M-Capital-Research/honeclaw)";
 const SEC_COMPANYFACTS_BASE: &str = "https://data.sec.gov/api/xbrl/companyfacts";
 const INCOMPLETE_RETRY_SECS: i64 = 15 * 60;
+/// Retries one report date gets before the worker goes back to waiting for
+/// 20:00. Each one re-fetches 17 FRED series and four SEC companyfacts
+/// documents, so an uncapped fifteen-minute loop would repeat that ~96 times on
+/// a day upstream is unreachable, against endpoints that throttle by user
+/// agent. Four covers a typical upstream blip.
+const MAX_INCOMPLETE_RETRIES: u32 = 4;
 /// Points kept per market-confirmation line. Ten years of daily closes is ~2500
 /// observations per series; at this cap the wire cost stays near the existing
 /// sparkline budget while a one-year window still draws from ~35 points.
@@ -365,27 +371,49 @@ pub(crate) async fn daily_signal_worker(state: Arc<AppState>) {
     let today = report_date(Utc::now());
     let missing = [ReportKind::Macro, ReportKind::Ai]
         .into_iter()
-        .any(|kind| !latest_is_date(&state, kind, &today));
+        .any(|kind| !latest_is_complete(&state, kind, &today));
     if missing {
-        refresh_all(&state, false).await;
+        refresh_all(&state, false, 0).await;
     }
+    // Retries are counted per report date, so a day upstream is unreachable
+    // cannot turn into an all-day poll; the counter resets when the date rolls.
+    let mut retry_date = String::new();
+    let mut retries = 0_u32;
     loop {
         let now = Utc::now();
+        let today = report_date(now);
+        if retry_date != today {
+            retry_date = today.clone();
+            retries = 0;
+        }
         let scheduled = next_refresh(now);
+        // Whether today's file *exists* is not the question. `refresh_all`
+        // writes on every pass, and on a day FRED is unreachable the file it
+        // writes is `preserve_success_when_incomplete`'s copy of yesterday —
+        // stamped with today's date and `status = "stale"`. The old date test
+        // excluded only `framework_only`, so it still caught a machine that had
+        // never scored anything, but read those restamped days as finished:
+        // once one scored snapshot existed on disk, the fifteen-minute retry
+        // could no longer fire. The question is whether the file on disk
+        // carries a score this run computed.
         let incomplete = [ReportKind::Macro, ReportKind::Ai]
             .into_iter()
-            .any(|kind| !latest_is_date(&state, kind, &report_date(now)));
-        let next = worker_wake_at(now, incomplete);
+            .any(|kind| !latest_is_complete(&state, kind, &today));
+        let next = worker_wake_at(now, incomplete, retries);
         let wait = (next - Utc::now())
             .to_std()
             .unwrap_or_else(|_| Duration::from_secs(60));
-        info!(next_refresh = %next, incomplete, "daily signal worker waiting");
+        info!(next_refresh = %next, incomplete, retries, "daily signal worker waiting");
         tokio::time::sleep(wait).await;
-        refresh_all(&state, next == scheduled).await;
+        let scheduled_run = next == scheduled;
+        if !scheduled_run {
+            retries += 1;
+        }
+        refresh_all(&state, scheduled_run, retries).await;
     }
 }
 
-async fn refresh_all(state: &AppState, force: bool) {
+async fn refresh_all(state: &AppState, force: bool, retries: u32) {
     let lock = REFRESH_LOCK.get_or_init(|| Mutex::new(()));
     let Ok(_guard) = lock.try_lock() else {
         info!("daily signal refresh already running; duplicate skipped");
@@ -394,7 +422,7 @@ async fn refresh_all(state: &AppState, force: bool) {
 
     for kind in [ReportKind::Macro, ReportKind::Ai] {
         let today = report_date(Utc::now());
-        if !force && latest_is_date(state, kind, &today) {
+        if !force && latest_is_complete(state, kind, &today) {
             continue;
         }
         let prior = read_latest(state, kind)
@@ -409,7 +437,14 @@ async fn refresh_all(state: &AppState, force: bool) {
             prior.as_ref(),
             &read_history_reports(state, kind, 8).await,
         );
-        let final_report = preserve_success_when_incomplete(prior, generated);
+        let mut final_report = preserve_success_when_incomplete(prior, generated);
+        // The panel prints this field as 「下次 XX-XX 20:00 更新」. Now that the
+        // retry can actually fire, an incomplete day's next wake is fifteen
+        // minutes out — until that day's retry budget is spent — so the promise
+        // is written from the same function the worker sleeps on. A complete
+        // report gets the value it always had.
+        final_report.next_refresh_at =
+            worker_wake_at(Utc::now(), !has_fresh_score(&final_report), retries);
         if let Err(error) = write_report(state, kind, &final_report).await {
             warn!(kind = kind.slug(), "daily signal write failed: {error}");
         } else {
@@ -509,11 +544,18 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
         url: "https://fred.stlouisfed.org/".to_string(),
         source_type: "primary_aggregator".to_string(),
     }];
-    sources.extend(market_trend.iter().map(|series| SourceLink {
-        label: format!("FRED · {}", series.id),
-        url: format!("https://fred.stlouisfed.org/series/{}", series.id),
-        source_type: "reference_series".to_string(),
-    }));
+    sources.extend(
+        // A row the fetch missed rides along as an empty placeholder so the
+        // panel can name it; it must not also be listed as a source we read.
+        market_trend
+            .iter()
+            .filter(|series| !series.points.is_empty())
+            .map(|series| SourceLink {
+                label: format!("FRED · {}", series.id),
+                url: format!("https://fred.stlouisfed.org/series/{}", series.id),
+                source_type: "reference_series".to_string(),
+            }),
+    );
     DailySignalReport {
         kind: "macro".to_string(),
         title: "宏观红绿灯".to_string(),
@@ -533,6 +575,8 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
+        // Placeholder: `refresh_all` overwrites this with `worker_wake_at`
+        // before the report is written. Do not consume `generate_*` directly.
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status,
@@ -737,41 +781,54 @@ fn market_trend_tracker(id: &str) -> &'static str {
     }
 }
 
-/// Two index lines on one shared date axis, rebased by the client.
+/// One or two index lines on one shared date axis, rebased by the client.
 ///
-/// The dates are intersected first and then sampled once, so both lines land on
-/// exactly the same observation dates. That is what makes rebasing to a common
-/// base exact instead of approximate, and it means a reader comparing the two
-/// slopes is comparing the same trading days. FRED grants only a rolling ten
-/// years of `SP500` while `NASDAQ100` goes back further, so the shared base is
-/// whichever series starts later — taking each series' own first point would
-/// silently compare two different baselines.
+/// The dates are intersected first and then sampled once, so the lines that are
+/// drawn land on exactly the same observation dates. That is what makes
+/// rebasing to a common base exact instead of approximate, and it means a
+/// reader comparing two slopes is comparing the same trading days. FRED grants
+/// only a rolling ten years of `SP500` while `NASDAQ100` goes back further, so
+/// the shared base is whichever drawn series starts later — taking each series'
+/// own first point would silently compare two different baselines. With one
+/// line drawn there is no second baseline to get wrong, and the client
+/// withdraws the relative reading instead of the chart.
 ///
-/// Returns nothing unless every series is available: a relative chart with one
-/// line is not a comparison, and a rebased line without its counterpart invites
-/// exactly the misreading the chart exists to prevent.
+/// A series the fetch missed comes back as a named row with no points rather
+/// than taking the chart down with it. Dropping the S&P line because the Nasdaq
+/// request failed removed the whole section, heading included — the same
+/// disappearing-block failure the alerts empty state was written to prevent
+/// (「整段消失会被读成 UI 坏了」), and the component's own empty-state sentence
+/// could never mount to explain it. Nothing fetched at all is still nothing: no
+/// axis, and no row worth naming.
 fn market_trend_series(fetched: &HashMap<String, FredSeries>) -> Vec<MarketTrendSeries> {
     let specs = market_trend_specs();
-    let sources = specs
-        .iter()
-        .map(|spec| fetched.get(spec.id))
-        .collect::<Option<Vec<_>>>();
-    let Some(sources) = sources else {
-        return vec![];
-    };
-    let mut common = sources[0]
-        .points
-        .iter()
-        .map(|point| point.period.clone())
-        .collect::<Vec<_>>();
-    for source in &sources[1..] {
+    // Intersected over the series that did arrive, so the lines that are drawn
+    // still share one date axis and one base.
+    let mut common: Option<Vec<String>> = None;
+    for spec in &specs {
+        let Some(source) = fetched.get(spec.id) else {
+            continue;
+        };
         let have = source
             .points
             .iter()
             .map(|point| point.period.as_str())
             .collect::<std::collections::HashSet<_>>();
-        common.retain(|period| have.contains(period.as_str()));
+        common = Some(match common.take() {
+            Some(mut common) => {
+                common.retain(|period| have.contains(period.as_str()));
+                common
+            }
+            None => source
+                .points
+                .iter()
+                .map(|point| point.period.clone())
+                .collect(),
+        });
     }
+    let Some(mut common) = common else {
+        return vec![];
+    };
     common.sort();
     common.dedup();
     if common.len() < 2 {
@@ -781,31 +838,37 @@ fn market_trend_series(fetched: &HashMap<String, FredSeries>) -> Vec<MarketTrend
     let base_period = common.first().cloned();
     specs
         .iter()
-        .zip(sources)
-        .map(|(spec, source)| {
-            let by_period = source
-                .points
-                .iter()
-                .map(|point| (point.period.as_str(), point.value))
-                .collect::<HashMap<_, _>>();
-            let points = indices
-                .iter()
-                .filter_map(|index| {
-                    let period = common.get(*index)?;
-                    Some(TrendPoint {
-                        period: period.clone(),
-                        value: *by_period.get(period.as_str())?,
-                    })
+        .map(|spec| {
+            let points = fetched
+                .get(spec.id)
+                .map(|source| {
+                    let by_period = source
+                        .points
+                        .iter()
+                        .map(|point| (point.period.as_str(), point.value))
+                        .collect::<HashMap<_, _>>();
+                    indices
+                        .iter()
+                        .filter_map(|index| {
+                            let period = common.get(*index)?;
+                            Some(TrendPoint {
+                                period: period.clone(),
+                                value: *by_period.get(period.as_str())?,
+                            })
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .collect::<Vec<_>>();
+                .unwrap_or_default();
             MarketTrendSeries {
                 id: spec.id.to_string(),
                 label: spec.label.to_string(),
                 tracker: market_trend_tracker(spec.id).to_string(),
                 // The last *drawn* date, not the series' own last observation:
                 // the label has to describe the line the reader is looking at.
+                // All three stay empty on a missing row, so a placeholder can
+                // never be mistaken for a line that happens to be flat.
                 as_of: points.last().map(|point| point.period.clone()),
-                base_period: base_period.clone(),
+                base_period: (!points.is_empty()).then(|| base_period.clone()).flatten(),
                 latest_value: points.last().map(|point| point.value),
                 points,
             }
@@ -1103,7 +1166,13 @@ fn macro_dimension(series: &FredSeries, fetched_at: DateTime<Utc>) -> SignalDime
     }
     let score = score.map(round1);
     let signal = signal_for_health(score);
-    let is_financial_risk = matches!(series.spec.id, "DGS10" | "DGS30" | "FEDFUNDS" | "VIXCLS");
+    // VIX is deliberately not in this set. `vix_health_score` reads the level
+    // and nothing else, so the shared wording below — 「近三个月变化 …」 as the
+    // reason and 「且继续上行」 as the threshold — is true of the three rate rows
+    // and false of this one: a +1.0 three-month move inside a single band left
+    // the score untouched while the card printed 风险上升.
+    let is_rate_risk = matches!(series.spec.id, "DGS10" | "DGS30" | "FEDFUNDS");
+    let is_volatility_band = series.spec.id == "VIXCLS";
     // Core PCE and unemployment already score inverted above — banded on the
     // inflation level, and 100 minus the growth score. The label did not follow:
     // it took the generic growth branch, so accelerating inflation read 改善 on
@@ -1111,13 +1180,24 @@ fn macro_dimension(series: &FredSeries, fetched_at: DateTime<Utc>) -> SignalDime
     // same. Nothing here touches a score; this only makes the words agree with
     // the number that is already correct.
     let is_inverted_level = matches!(series.spec.id, "PCEPILFE" | "UNRATE");
-    let trend_label = if is_financial_risk {
+    let trend_label = if is_rate_risk {
+        // 0.25 is a policy step on a rate quoted in percent; the same 0.25 on a
+        // VIX quoted in points is noise, which is the other half of why VIX
+        // cannot share this branch.
         if short_change > 0.25 {
             "风险上升"
         } else if short_change < -0.25 {
             "风险缓解"
         } else {
             "持平"
+        }
+    } else if is_volatility_band {
+        // Compare bands, not levels: the score is a step function of the level,
+        // so this label moves exactly when the score moves.
+        match vix_band(latest.value).cmp(&vix_band(short_prior.value)) {
+            std::cmp::Ordering::Greater => "风险上升",
+            std::cmp::Ordering::Less => "风险缓解",
+            std::cmp::Ordering::Equal => "同档持平",
         }
     } else if is_inverted_level {
         match (yoy, previous_yoy) {
@@ -1155,10 +1235,15 @@ fn macro_dimension(series: &FredSeries, fetched_at: DateTime<Utc>) -> SignalDime
         period: Some(latest.period.clone()),
         frequency_label: frequency.to_string(),
         lag_days,
-        reason: if is_financial_risk {
+        reason: if is_rate_risk {
             format!(
-                "{as_of}最新值 {:.2}{}；近三个月变化 {:+.2}。利率和波动率上升按金融条件收紧处理，不按增长加速计分。",
+                "{as_of}最新值 {:.2}{}；近三个月变化 {:+.2}。利率上升按金融条件收紧处理，不按增长加速计分。",
                 latest.value, series.spec.unit, short_change
+            )
+        } else if is_volatility_band {
+            format!(
+                "{as_of}最新值 {:.2}；近三个月变化 {:+.2}（仅作展示，不进入计分）。健康分只按波动率水平分档（≤15 偏绿、≤20 偏黄、≤30 偏橙、更高偏红）。数据新旧只作展示，不影响本维度得分。",
+                latest.value, short_change
             )
         } else if series.spec.id == "PCEPILFE" {
             format!(
@@ -1176,9 +1261,10 @@ fn macro_dimension(series: &FredSeries, fetched_at: DateTime<Utc>) -> SignalDime
                 latest.value
             )
         },
-        threshold: if is_financial_risk {
-            "收益率、政策利率或 VIX 越高且继续上行，金融条件健康分越低；缺失值不参与总分。"
-                .to_string()
+        threshold: if is_rate_risk {
+            "收益率或政策利率越高且继续上行，金融条件健康分越低；缺失值不参与总分。".to_string()
+        } else if is_volatility_band {
+            "VIX 落进更高的波动率档，市场风险健康分越低；缺失值不参与总分。".to_string()
         } else if is_inverted_level {
             "这一维的方向与增长维相反：读数越高、压力越大、健康分越低；缺失值不参与总分。"
                 .to_string()
@@ -1285,16 +1371,25 @@ fn policy_rate_health_score(level: f64, three_month_change: f64) -> f64 {
     (base - (three_month_change * 18.0).clamp(-12.0, 12.0)).clamp(0.0, 100.0)
 }
 
-fn vix_health_score(level: f64) -> f64 {
+/// Which volatility band a VIX level sits in, calmest first.
+///
+/// Split out so the card's words and its score cross at the same points: the
+/// score is a step function of the level, and `macro_dimension` compares bands
+/// to decide 风险上升 / 同档持平 / 风险缓解. One table, one set of edges.
+fn vix_band(level: f64) -> usize {
     if level <= 15.0 {
-        88.0
+        0
     } else if level <= 20.0 {
-        72.0
+        1
     } else if level <= 30.0 {
-        46.0
+        2
     } else {
-        22.0
+        3
     }
+}
+
+fn vix_health_score(level: f64) -> f64 {
+    [88.0, 72.0, 46.0, 22.0][vix_band(level)]
 }
 
 fn macro_phase(score: Option<f64>, negative_leaders: usize) -> (&'static str, &'static str) {
@@ -1472,6 +1567,8 @@ async fn generate_ai_report(state: &AppState) -> DailySignalReport {
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
+        // Placeholder: `refresh_all` overwrites this with `worker_wake_at`
+        // before the report is written. Do not consume `generate_*` directly.
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
@@ -2153,7 +2250,10 @@ fn framework_report(kind: ReportKind) -> DailySignalReport {
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
-        next_refresh_at: next_refresh(now),
+        // Served only when no snapshot exists at all — precisely the state the
+        // worker retries out of, so promising tomorrow 20:00 would be the one
+        // answer that is certainly wrong.
+        next_refresh_at: worker_wake_at(now, true, 0),
         model_version: MODEL_VERSION.to_string(),
         status: "framework_only".to_string(),
         score: None,
@@ -2325,7 +2425,14 @@ fn apply_comparisons(
     history: &[DailySignalReport],
 ) {
     report.comparison_yesterday = delta(report.score, prior.and_then(|item| item.score));
-    report.comparison_week = delta(report.score, history.get(6).and_then(|item| item.score));
+    // 「较一周」counts back through *other* days. A same-day retry has already
+    // written today's history file, so taking the seventh element blind would
+    // slide the baseline to six days back on exactly the days it gets read.
+    let week_ago = history
+        .iter()
+        .filter(|item| item.report_date != report.report_date)
+        .nth(6);
+    report.comparison_week = delta(report.score, week_ago.and_then(|item| item.score));
     if let (Some(current), Some(previous)) = (report.score, prior.and_then(|item| item.score)) {
         let change = round1(current - previous);
         let direction = if change > 0.0 {
@@ -2438,9 +2545,14 @@ fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
     crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
-fn worker_wake_at(now: DateTime<Utc>, incomplete: bool) -> DateTime<Utc> {
+/// When the worker sleeps until, and the same value the panel promises.
+///
+/// `retries_used` is what keeps the second branch from becoming a poll: an
+/// incomplete pass buys a fifteen-minute retry only while the day's budget
+/// lasts, after which a bad day waits for 20:00 like any other.
+fn worker_wake_at(now: DateTime<Utc>, incomplete: bool, retries_used: u32) -> DateTime<Utc> {
     let scheduled = next_refresh(now);
-    if incomplete {
+    if incomplete && retries_used < MAX_INCOMPLETE_RETRIES {
         scheduled.min(now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS))
     } else {
         scheduled
@@ -2456,11 +2568,35 @@ fn latest_path(state: &AppState, kind: ReportKind) -> PathBuf {
 fn history_dir(state: &AppState, kind: ReportKind) -> PathBuf {
     storage_root(state).join(kind.slug()).join("history")
 }
-fn latest_is_date(state: &AppState, kind: ReportKind, date: &str) -> bool {
+/// Whether a report carries a score computed from this run's own fetch.
+///
+/// `live` and `partial` are the two statuses a scoring pass can produce.
+/// `stale` means the numbers were copied off the last good snapshot by
+/// `preserve_success_when_incomplete`, and `framework_only` means nothing
+/// scored at all; those two are the states the retry exists for.
+fn has_fresh_score(report: &DailySignalReport) -> bool {
+    report.score.is_some() && matches!(report.status.as_str(), "live" | "partial")
+}
+
+/// Whether today's stored snapshot is finished, not merely present.
+///
+/// The predicate this replaced was `report_date == date && status !=
+/// "framework_only"`. That excluded only the case where nothing had ever
+/// scored; it did not exclude the `stale` file `preserve_success_when_incomplete`
+/// writes on a day the fetch failed — yesterday's numbers under today's date —
+/// which is what the disk actually holds on the days the retry is for. The
+/// version check is the same question one layer up: `normalize_report_contract`
+/// blanks a snapshot from an older `MODEL_VERSION` when it is served, so a
+/// snapshot the reader is shown as 「等待新版数据重算」 is not finished either.
+fn snapshot_is_complete(report: &DailySignalReport, date: &str) -> bool {
+    report.report_date == date && report.model_version == MODEL_VERSION && has_fresh_score(report)
+}
+
+fn latest_is_complete(state: &AppState, kind: ReportKind, date: &str) -> bool {
     std::fs::read(latest_path(state, kind))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<DailySignalReport>(&bytes).ok())
-        .is_some_and(|report| report.report_date == date && report.status != "framework_only")
+        .is_some_and(|report| snapshot_is_complete(&report, date))
 }
 async fn read_latest(state: &AppState, kind: ReportKind) -> Option<DailySignalReport> {
     let bytes = tokio::fs::read(latest_path(state, kind)).await.ok()?;
@@ -2601,12 +2737,17 @@ mod tests {
         // series must therefore stay outside `macro_specs()`.
         let scored = macro_specs();
         for spec in market_trend_specs() {
+            // `SP500` is the one id allowed in both lists: the chart draws a
+            // display-only copy of the series `macro_specs` already scores at
+            // 0.06 under 市场确认. Every other chart id must be absent from the
+            // scored list, or the chart's copy starts feeding the health score
+            // — which is what fails here today if `NASDAQ100` is given weight.
             assert!(
                 !scored
                     .iter()
                     .any(|item| item.id == spec.id && item.weight > 0.0)
                     || spec.id == "SP500",
-                "{} must not carry macro weight twice",
+                "{} is display-only and must not carry macro weight",
                 spec.id
             );
             assert_eq!(spec.weight, 0.0);
@@ -2677,8 +2818,24 @@ mod tests {
         }
         assert_eq!(series[0].tracker, "QQQ");
         assert_eq!(series[1].tracker, "SPY");
-        // One line alone is not a relative comparison.
+        // One line alone is still worth drawing. Dropping the S&P row because
+        // the Nasdaq fetch failed took the section — heading included — off the
+        // panel, which reads as a broken UI rather than a missing series. The
+        // missing row survives as a named placeholder with no points, so the
+        // client can say which one is gone.
         fetched.remove("SP500");
+        let degraded = market_trend_series(&fetched);
+        assert_eq!(degraded.len(), 2);
+        assert_eq!(degraded[0].id, "NASDAQ100");
+        assert_eq!(degraded[0].points.len(), 4);
+        assert!(degraded[1].points.is_empty());
+        assert_eq!(degraded[1].as_of, None);
+        assert_eq!(
+            degraded[1].base_period, None,
+            "an empty row must not borrow the drawn row's base date"
+        );
+        // Nothing fetched at all is still nothing to draw.
+        fetched.remove("NASDAQ100");
         assert!(market_trend_series(&fetched).is_empty());
     }
 
@@ -2882,6 +3039,99 @@ mod tests {
         assert!(vix_health_score(14.0) > vix_health_score(35.0));
     }
 
+    /// VIX scores off the level alone, so the shared rate wording described a
+    /// rule this dimension does not run: a three-month change in the reason,
+    /// 「且继续上行」 in the threshold, and a ±0.25 label that flipped on moves
+    /// the score cannot see.
+    #[test]
+    fn the_vix_card_only_claims_what_its_score_actually_reads() {
+        let spec = SeriesSpec {
+            id: "VIXCLS",
+            label: "VIX 波动率指数",
+            unit: "指数",
+            frequency: 252,
+            role: "market_risk",
+            weight: 0.03,
+        };
+        let build = |latest: f64| FredSeries {
+            spec: spec.clone(),
+            points: (0..300_i64)
+                .map(|index| TrendPoint {
+                    period: (NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()
+                        + chrono::Duration::days(index))
+                    .to_string(),
+                    value: if index < 299 { 18.0 } else { latest },
+                })
+                .collect(),
+        };
+        let fetched_at = Utc.with_ymd_and_hms(2026, 8, 28, 0, 0, 0).unwrap();
+        // 18.0 → 19.0 is a +1.0 three-month change that crosses no band.
+        let inside = macro_dimension(&build(19.0), fetched_at);
+        assert_eq!(
+            inside.score,
+            Some(vix_health_score(18.0)),
+            "the score did not move, so the label must not say it did"
+        );
+        assert_eq!(inside.trend_label, "同档持平");
+        // Crossing into the next band is what the score does react to.
+        let crossed = macro_dimension(&build(22.0), fetched_at);
+        assert_eq!(crossed.trend_label, "风险上升");
+        assert!(crossed.score < inside.score);
+        assert!(
+            !inside.threshold.contains("且继续上行"),
+            "no line of VIX scoring reads a direction: {}",
+            inside.threshold
+        );
+        assert!(inside.reason.contains("仅作展示"), "{}", inside.reason);
+        assert!(!inside.reason.contains("利率上升按金融条件收紧处理"));
+    }
+
+    /// `100.0 - score` for unemployment has never had a test. It is the whole
+    /// reason a rising jobless rate is not read as an improving dimension, and
+    /// it is one edit away from disappearing without a failure.
+    #[test]
+    fn unemployment_is_scored_and_labelled_upside_down() {
+        let series = |id: &'static str, label: &'static str| FredSeries {
+            spec: SeriesSpec {
+                id,
+                label,
+                unit: "%",
+                frequency: 12,
+                role: "lagging",
+                weight: 0.05,
+            },
+            // Forty monthly points, rising throughout and accelerating in the
+            // last year: a growth dimension's best case.
+            points: {
+                let mut value = 4.0;
+                (0..40)
+                    .map(|index| {
+                        let point = TrendPoint {
+                            period: format!("{}-{:02}-01", 2023 + index / 12, index % 12 + 1),
+                            value,
+                        };
+                        value *= if index >= 27 { 1.02 } else { 1.005 };
+                        point
+                    })
+                    .collect()
+            },
+        };
+        let fetched_at = Utc.with_ymd_and_hms(2026, 5, 2, 0, 0, 0).unwrap();
+        let jobs = macro_dimension(&series("PAYEMS", "非农就业"), fetched_at);
+        let unemployment = macro_dimension(&series("UNRATE", "失业率"), fetched_at);
+        // Identical numbers, opposite meaning.
+        assert_eq!(jobs.trend_label, "改善");
+        assert_eq!(unemployment.trend_label, "压力上升");
+        assert_eq!(
+            unemployment.score,
+            jobs.score.map(|score| 100.0 - score),
+            "the unemployment card inverts the growth score; it does not share it"
+        );
+        assert!(unemployment.score.is_some_and(|score| score < 50.0));
+        assert!(unemployment.reason.contains("健康分对失业率取反"));
+        assert!(!unemployment.reason.contains("健康分只反映增长方向与动量"));
+    }
+
     #[test]
     fn ai_contract_contains_only_seven_verifiable_metrics() {
         let company = ai_company_score("MSFT", "Microsoft", None);
@@ -2930,13 +3180,86 @@ mod tests {
     fn incomplete_snapshot_retries_before_the_daily_schedule() {
         let now = Utc.with_ymd_and_hms(2026, 8, 10, 10, 0, 0).unwrap();
         assert_eq!(
-            worker_wake_at(now, true),
+            worker_wake_at(now, true, 0),
             now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS)
         );
         assert_eq!(
-            hone_core::local_time_at(worker_wake_at(now, false)).hour(),
+            hone_core::local_time_at(worker_wake_at(now, false, 0)).hour(),
             20
         );
+        // A day upstream is unreachable must not become an all-day poll.
+        assert_eq!(
+            worker_wake_at(now, true, MAX_INCOMPLETE_RETRIES),
+            next_refresh(now)
+        );
+    }
+
+    /// The test above hands `worker_wake_at` a flag by hand, so it stayed green
+    /// while nothing on a running server could set that flag to true. This one
+    /// computes `incomplete` the way the worker does — from the snapshot that
+    /// was actually written.
+    #[test]
+    fn a_stale_snapshot_stamped_with_today_is_still_incomplete() {
+        let today = "2026-08-10";
+        let now = Utc.with_ymd_and_hms(2026, 8, 10, 10, 0, 0).unwrap();
+        let mut prior = framework_report(ReportKind::Macro);
+        prior.score = Some(72.0);
+        prior.status = "live".to_string();
+        let mut fresh = framework_report(ReportKind::Macro);
+        fresh.report_date = today.to_string();
+        let written = preserve_success_when_incomplete(Some(prior), fresh);
+        // This is the file a FRED-is-down day leaves on disk: today's date,
+        // yesterday's numbers.
+        assert_eq!(written.report_date, today);
+        assert_eq!(written.status, "stale");
+        assert!(
+            !snapshot_is_complete(&written, today),
+            "a restamped snapshot must not count as today's work being done"
+        );
+        assert_eq!(
+            worker_wake_at(now, !snapshot_is_complete(&written, today), 0),
+            now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS),
+            "the retry has to be reachable from a snapshot, not only from a literal"
+        );
+        // A pass that did score is complete even when some series were missing;
+        // otherwise every partial day would refetch every fifteen minutes.
+        let mut partial = framework_report(ReportKind::Macro);
+        partial.report_date = today.to_string();
+        partial.score = Some(61.5);
+        partial.status = "partial".to_string();
+        assert!(snapshot_is_complete(&partial, today));
+        // Yesterday's complete snapshot is not today's, and neither is one the
+        // reader would be served as 「等待新版数据重算」.
+        assert!(!snapshot_is_complete(&partial, "2026-08-11"));
+        let mut old_model = partial.clone();
+        old_model.model_version = "hone-daily-signals-v1".to_string();
+        assert!(!snapshot_is_complete(&old_model, today));
+        // And the no-snapshot-at-all report promises the retry, not 20:00.
+        let framework = framework_report(ReportKind::Macro);
+        assert_eq!(
+            framework.next_refresh_at,
+            worker_wake_at(framework.generated_at, true, 0)
+        );
+    }
+
+    #[test]
+    fn the_week_delta_counts_back_through_other_days_only() {
+        let mut report = framework_report(ReportKind::Macro);
+        report.report_date = "2026-08-10".to_string();
+        report.score = Some(70.0);
+        // Eight files, newest first, with today's own retry snapshot at the
+        // head — the shape the second pass of a degraded day reads.
+        let history = (0..8_i32)
+            .map(|back| {
+                let mut item = framework_report(ReportKind::Macro);
+                item.report_date = format!("2026-08-{:02}", 10 - back);
+                item.score = Some(f64::from(60 + back));
+                item
+            })
+            .collect::<Vec<_>>();
+        apply_comparisons(&mut report, None, &history);
+        // 2026-08-03 is seven days back and scores 67; 2026-08-04 scores 66.
+        assert_eq!(report.comparison_week, Some(3.0));
     }
 
     #[test]
