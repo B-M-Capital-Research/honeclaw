@@ -40,6 +40,7 @@ import type {
   CommunityForumPage,
   CommunityForumPost,
   CompanyRatingSnapshot,
+  IndustryMapSnapshot,
   ValuationLabSnapshot,
   PortfolioNewsSnapshot,
   PositionManagementSnapshot,
@@ -814,8 +815,21 @@ export async function sendPublicChat(
   return response.body;
 }
 
+/**
+ * Image bytes take the edge path when it is available: the browser PUTs each
+ * file straight to the nearest Cloudflare PoP, which writes it to R2. The
+ * origin in us-central1 only signs the permission slip, so a pasted screenshot
+ * no longer crosses the Pacific to be stored and again to be rendered.
+ *
+ * Any failure — edge off, capability refused, PUT rejected, non-image file —
+ * falls back to the multipart origin upload, which stays authoritative.
+ */
 export async function uploadPublicAttachments(files: File[]) {
   if (!files.length) return [] as PublicUploadedAttachment[];
+
+  const edgeUploaded = await uploadPublicAttachmentsViaEdge(files);
+  if (edgeUploaded) return edgeUploaded;
+
   const form = new FormData();
   for (const file of files) {
     form.append("files", file, file.name);
@@ -828,6 +842,214 @@ export async function uploadPublicAttachments(files: File[]) {
     response,
   );
   return payload.attachments ?? [];
+}
+
+const PUBLIC_MEDIA_EDGE_BASE_PATH = "/_media/v1" as const;
+const PUBLIC_MEDIA_EDGE_TOKEN_HEADER = "X-Hone-Media-Token";
+const PUBLIC_MEDIA_EDGE_RETRY_DELAY_MS = 30_000;
+/** Kept in step with ALLOWED_IMAGE_TYPES in routes/public_media.rs. */
+const PUBLIC_MEDIA_EDGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+]);
+
+type PublicMediaUploadGrant = {
+  upload_path: string;
+  token: string;
+  path: string;
+  name: string;
+  kind: string;
+  content_type: string;
+  size: number;
+};
+
+type PublicMediaGrantPayload = {
+  enabled: boolean;
+  mode: string;
+  base_path?: string | null;
+  expires_at?: number | null;
+  uploads?: PublicMediaUploadGrant[];
+};
+
+type ActivePublicMediaEdge = {
+  basePath: "/_media/v1";
+  expiresAt: number;
+};
+
+let activePublicMediaEdge: ActivePublicMediaEdge | null = null;
+let publicMediaEdgeRetryAt = 0;
+
+export function resetPublicMediaEdgeStateForTests() {
+  activePublicMediaEdge = null;
+  publicMediaEdgeRetryAt = 0;
+}
+
+function normalizedPublicMediaEdge(
+  payload: PublicMediaGrantPayload,
+): ActivePublicMediaEdge | null {
+  const now = Math.floor(Date.now() / 1_000);
+  const expiresAt = Number(payload.expires_at);
+  if (
+    !payload.enabled ||
+    payload.mode !== "prefer" ||
+    payload.base_path !== PUBLIC_MEDIA_EDGE_BASE_PATH ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= now + 5
+  ) {
+    return null;
+  }
+  return { basePath: PUBLIC_MEDIA_EDGE_BASE_PATH, expiresAt };
+}
+
+/**
+ * Refresh the read cookie the edge Worker checks on GET. Called when the chat
+ * mounts and whenever the cached session is close to expiring, so a rendered
+ * <img> never races the cookie.
+ */
+export async function ensurePublicMediaEdgeSession(signal?: AbortSignal) {
+  const now = Date.now();
+  if (activePublicMediaEdge && activePublicMediaEdge.expiresAt * 1_000 > now + 60_000) {
+    return activePublicMediaEdge;
+  }
+  if (now < publicMediaEdgeRetryAt) return null;
+  try {
+    const response = await apiFetch("/api/public/media/session", {
+      method: "POST",
+      signal,
+    });
+    const payload = await parseJson<PublicMediaGrantPayload>(response);
+    activePublicMediaEdge = normalizedPublicMediaEdge(payload);
+    if (!activePublicMediaEdge) {
+      publicMediaEdgeRetryAt = now + PUBLIC_MEDIA_EDGE_RETRY_DELAY_MS;
+    }
+    return activePublicMediaEdge;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    activePublicMediaEdge = null;
+    publicMediaEdgeRetryAt = now + PUBLIC_MEDIA_EDGE_RETRY_DELAY_MS;
+    return null;
+  }
+}
+
+/** Object key inside an `oss://bucket/key` URI, or null for anything else. */
+export function publicMediaObjectKey(path: string): string | null {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("oss://")) return null;
+  const rest = trimmed.slice("oss://".length);
+  const separator = rest.indexOf("/");
+  if (separator <= 0) return null;
+  const key = rest.slice(separator + 1);
+  // Mirrors the Worker's own key check. A key it would reject is one the origin
+  // proxy should serve instead, so the caller keeps its fallback.
+  if (!key || key.includes("%") || key.endsWith("/")) return null;
+  const segments = key.split("/");
+  if (segments.length !== 4) return null;
+  if (!segments.every((segment) => /^[A-Za-z0-9._-]+$/.test(segment) && segment !== "." && segment !== "..")) {
+    return null;
+  }
+  return key;
+}
+
+/**
+ * Same-origin edge path for an already-stored object, or null when the edge is
+ * not currently usable. Synchronous on purpose: it is read during render, and
+ * the caller always has the origin proxy URL to fall back to.
+ */
+export function publicMediaEdgeObjectPath(path: string): string | null {
+  if (!activePublicMediaEdge) return null;
+  if (activePublicMediaEdge.expiresAt * 1_000 <= Date.now()) return null;
+  const key = publicMediaObjectKey(path);
+  return key ? `${activePublicMediaEdge.basePath}/o/${key}` : null;
+}
+
+function edgeUploadableImage(file: File) {
+  return PUBLIC_MEDIA_EDGE_TYPES.has(file.type.split(";")[0]?.trim().toLowerCase() ?? "");
+}
+
+async function uploadPublicAttachmentsViaEdge(
+  files: File[],
+): Promise<PublicUploadedAttachment[] | null> {
+  // All-or-nothing: a mixed batch would split one paste across two code paths
+  // for no benefit, so it goes to the origin as a whole.
+  if (!files.every(edgeUploadableImage)) return null;
+
+  let payload: PublicMediaGrantPayload;
+  try {
+    const response = await apiFetch("/api/public/media/upload-grant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files: files.map((file) => ({
+          name: file.name,
+          content_type: file.type,
+          size: file.size,
+        })),
+      }),
+    });
+    if (!response.ok) return null;
+    payload = await parseJson<PublicMediaGrantPayload>(response);
+  } catch {
+    return null;
+  }
+
+  const uploads = payload.uploads ?? [];
+  if (
+    !payload.enabled ||
+    payload.base_path !== PUBLIC_MEDIA_EDGE_BASE_PATH ||
+    uploads.length !== files.length
+  ) {
+    return null;
+  }
+
+  const results = await Promise.all(
+    uploads.map(async (grant, index) => {
+      const file = files[index]!;
+      if (
+        grant.size !== file.size ||
+        !grant.upload_path.startsWith(`${PUBLIC_MEDIA_EDGE_BASE_PATH}/o/`) ||
+        !publicMediaObjectKey(grant.path)
+      ) {
+        return null;
+      }
+      try {
+        const response = await fetch(buildApiUrl(grant.upload_path), {
+          method: "PUT",
+          // The capability token is the whole authorization. Sending the session
+          // cookie with it would only widen what a stolen PUT could reach.
+          credentials: "omit",
+          headers: {
+            [PUBLIC_MEDIA_EDGE_TOKEN_HEADER]: grant.token,
+            "Content-Type": grant.content_type,
+          },
+          body: file,
+        });
+        // Insist on the Worker's own acknowledgement. If the route is missing,
+        // Cloudflare Pages answers `/_media/v1/*` with the SPA shell and a 200,
+        // and treating that as success would hand the chat a path to bytes that
+        // were never stored.
+        if (response.status !== 201) return null;
+        const acknowledged = (await response.json().catch(() => null)) as
+          | { ok?: unknown }
+          | null;
+        if (acknowledged?.ok !== true) return null;
+      } catch {
+        return null;
+      }
+      return {
+        path: grant.path,
+        name: grant.name,
+        kind: grant.kind,
+        size: grant.size,
+      } satisfies PublicUploadedAttachment;
+    }),
+  );
+
+  if (results.some((result) => result === null)) return null;
+  activePublicMediaEdge = normalizedPublicMediaEdge(payload) ?? activePublicMediaEdge;
+  return results as PublicUploadedAttachment[];
 }
 
 export async function getPublicGeneratedFileBlob(path: string) {
@@ -1869,6 +2091,13 @@ export async function getPublicCompanyRatings(
 ): Promise<CompanyRatingSnapshot> {
   const response = await apiFetch("/api/public/company-ratings", { signal });
   return parseJson<CompanyRatingSnapshot>(response);
+}
+
+export async function getPublicIndustryMap(
+  signal?: AbortSignal,
+): Promise<IndustryMapSnapshot> {
+  const response = await apiFetch("/api/public/industry-map", { signal });
+  return parseJson<IndustryMapSnapshot>(response);
 }
 
 export async function getPublicValuationLab(

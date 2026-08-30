@@ -1045,6 +1045,66 @@ export type CompanyDailyValuation = {
   sources: string[];
 };
 
+/** AI 数据中心行业树：一行的底层估值逻辑、核心关注点、成员与研报来源。 */
+export type IndustryKeyVariable = {
+  name: string;
+  why: string;
+  where: string;
+};
+
+export type IndustryAiValuationLogic = {
+  driver_chain: string;
+  key_variables: IndustryKeyVariable[];
+  multiple_anchor: string;
+  anti_pattern: string;
+};
+
+export type IndustryCoreWatch = {
+  what: string;
+  why: string;
+  cadence: string;
+};
+
+export type IndustrySource = {
+  house: string;
+  title: string;
+  date: string;
+  url: string;
+  takeaway: string;
+};
+
+/** 成员按市值降序；非美股上市的成员没有 market_cap，排在最后。 */
+export type IndustryMember = {
+  symbol: string;
+  name: string;
+  role: string;
+  listed: boolean;
+  market_cap?: number;
+  price?: number;
+  change_percent?: number;
+};
+
+export type Industry = {
+  id: string;
+  name: string;
+  parent: string;
+  one_liner: string;
+  ai_valuation_logic: IndustryAiValuationLogic;
+  core_watch: IndustryCoreWatch[];
+  members: IndustryMember[];
+  sources: IndustrySource[];
+};
+
+export type IndustryMapSnapshot = {
+  available: boolean;
+  schema_version: number;
+  generated_at: string;
+  /** false 表示本次没取到行情，成员仍然全部返回，只是失去市值排序。 */
+  market_data_available: boolean;
+  root: { id: string; name: string; summary: string };
+  industries: Industry[];
+};
+
 export type CompanyRating = {
   name: string;
   symbol: string;

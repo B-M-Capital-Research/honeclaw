@@ -1,0 +1,305 @@
+/* 行业分析：左树右详情。树是一层结构（根 + 平铺的行业），所以不做递归缩进，
+   而是把根做成标题、行业做成它下面的一列——层级靠版式表达，不靠缩进线。 */
+
+.industry-map-loading,
+.industry-map-empty {
+  padding: 2rem;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-sm);
+}
+
+.industry-map {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem 2.5rem;
+}
+
+.industry-map-head h1 {
+  margin: 0 0 0.35rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-2xl);
+  color: var(--hone-ink-950);
+}
+
+.industry-map-head p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-600);
+}
+
+.industry-map-meta {
+  margin-top: 0.5rem !important;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-400);
+}
+
+.industry-map-warn {
+  /* 和前面那句「研究底稿更新」是两件事，靠间距分开而不是靠一个全角空格。 */
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--hone-line);
+  color: var(--hone-signal-orange-ink);
+}
+
+.industry-map-body {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* 树 */
+
+.industry-tree {
+  position: sticky;
+  top: 1rem;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  padding: 0.75rem;
+}
+
+.industry-tree-root {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  padding: 0 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--hone-line);
+  margin-bottom: 0.5rem;
+}
+
+.industry-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.industry-tree-node {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: var(--hone-radius-sm);
+  background: transparent;
+  color: var(--hone-ink-800);
+  font-size: var(--hone-text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--hone-ease);
+}
+
+.industry-tree-node:hover {
+  background: var(--hone-paper-100);
+}
+
+.industry-tree-node:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-tree-node.is-active {
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-950);
+  font-weight: 600;
+}
+
+.industry-tree-count {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 详情 */
+
+.industry-detail {
+  min-width: 0;
+}
+
+.industry-detail h2 {
+  margin: 0 0 0.35rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-xl);
+  color: var(--hone-ink-950);
+}
+
+.industry-detail h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-detail-lead {
+  margin: 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-600);
+}
+
+.industry-detail-note {
+  margin: 0 0 0.5rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-400);
+}
+
+/* 宽表在自己的容器里横向滚动，页面本身不横向滚动。 */
+.industry-members,
+.industry-variables {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--hone-text-sm);
+  display: block;
+  overflow-x: auto;
+}
+
+.industry-members th,
+.industry-members td,
+.industry-variables th,
+.industry-variables td {
+  border-bottom: 1px solid var(--hone-line);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.industry-members th,
+.industry-variables th {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-members tr.is-unlisted td {
+  color: var(--hone-ink-500);
+}
+
+.industry-symbol {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.industry-role,
+.industry-where {
+  color: var(--hone-ink-600);
+  line-height: 1.55;
+}
+
+.industry-change {
+  margin-left: 0.35rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-success-600);
+}
+
+.industry-change.is-down {
+  color: var(--hone-error-600);
+}
+
+.industry-chain {
+  margin: 0 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+  font-size: var(--hone-text-sm);
+  line-height: 1.7;
+  color: var(--hone-ink-800);
+}
+
+.industry-anchor {
+  margin: 0.9rem 0 0;
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: 0.4rem 1rem;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-anchor dt {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-anchor dd {
+  margin: 0;
+  color: var(--hone-ink-800);
+  line-height: 1.6;
+}
+
+.industry-watch,
+.industry-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.industry-watch li,
+.industry-sources li {
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: var(--hone-surface-raised);
+}
+
+.industry-watch strong,
+.industry-sources a {
+  font-size: var(--hone-text-sm);
+  color: var(--hone-ink-950);
+}
+
+.industry-sources a {
+  color: var(--hone-link);
+}
+
+.industry-watch p,
+.industry-sources p {
+  margin: 0.3rem 0 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-600);
+}
+
+.industry-cadence,
+.industry-source-date {
+  margin-left: 0.5rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+}
+
+@media (max-width: 760px) {
+  .industry-map {
+    padding: 1rem 0.9rem 2rem;
+  }
+
+  .industry-map-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .industry-tree {
+    position: static;
+  }
+
+  .industry-tree ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .industry-tree-node {
+    width: auto;
+  }
+}

@@ -161,6 +161,16 @@ const SECTIONS: SectionDef[] = [
     adminOnly: true,
   },
   {
+    key: "industry-map",
+    title: "行业分析",
+    kicker: "AI 数据中心产业链",
+    group: "admin",
+    blurb: "行业树 · 结合 AI 的估值逻辑 · 核心关注点",
+    refreshAt: "研究底稿维护",
+    href: "/industry-map",
+    adminOnly: true,
+  },
+  {
     key: "research-library",
     title: "研究文库",
     kicker: "知识源与投稿核验",

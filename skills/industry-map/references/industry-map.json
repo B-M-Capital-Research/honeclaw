@@ -1,0 +1,511 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-08-30",
+ "root": {
+  "id": "ai-datacenter",
+  "name": "AI 数据中心",
+  "summary": "把一座 AI 数据中心拆成可投资的环节：算力、存储、互联、电力、承载它的云，以及造它们的设备与整机。每一环的收入最终都来自同一个需求源头（云厂与模型公司的资本开支），但各环的量价驱动、适用倍数和瓶颈完全不同。"
+ },
+ "industries": [
+  {
+   "id": "ai-chip",
+   "name": "AI 芯片",
+   "parent": "ai-datacenter",
+   "one_liner": "算力本身：商用 GPU、自研 ASIC、网络芯片，以及造它们的先进制程与先进封装产能。",
+   "aliases": [
+    "AI芯片",
+    "算力芯片",
+    "GPU",
+    "ASIC",
+    "加速卡",
+    "先进封装",
+    "CoWoS",
+    "代工",
+    "晶圆"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "role": "商用 GPU 与 NVLink/InfiniBand 生态的定义者，出货节奏基本等于全链需求节拍",
+     "listed": true
+    },
+    {
+     "symbol": "AVGO",
+     "name": "博通",
+     "role": "超大规模云厂自研 ASIC 的主要合作方，另有以太网交换芯片",
+     "listed": true
+    },
+    {
+     "symbol": "AMD",
+     "name": "AMD",
+     "role": "GPU 侧唯一有规模的第二供应商",
+     "listed": true
+    },
+    {
+     "symbol": "TSM",
+     "name": "台积电",
+     "role": "先进制程与 CoWoS 先进封装的产能瓶颈所在",
+     "listed": true
+    },
+    {
+     "symbol": "MRVL",
+     "name": "Marvell",
+     "role": "定制芯片与光电互联 DSP",
+     "listed": true
+    },
+    {
+     "symbol": "ALAB",
+     "name": "Astera Labs",
+     "role": "机架内 PCIe/CXL 连接芯片",
+     "listed": true
+    },
+    {
+     "symbol": "ARM",
+     "name": "Arm",
+     "role": "CPU 指令集授权，进入数据中心 CPU 与 Grace 类产品",
+     "listed": true
+    },
+    {
+     "symbol": "QCOM",
+     "name": "高通",
+     "role": "边缘与推理侧的候选方，数据中心份额仍待证明",
+     "listed": true
+    },
+    {
+     "symbol": "INTC",
+     "name": "英特尔",
+     "role": "代工与 CPU 双线，AI 加速卡份额尚未兑现",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "storage",
+   "name": "存储",
+   "parent": "ai-datacenter",
+   "one_liner": "HBM、标准 DRAM、企业级 NAND 与近线 HDD：模型参数与 KV cache 的物理落点。",
+   "aliases": [
+    "存储",
+    "内存",
+    "HBM",
+    "DRAM",
+    "NAND",
+    "闪存",
+    "颗粒",
+    "固态硬盘",
+    "SSD",
+    "硬盘",
+    "HDD"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "000660.KS",
+     "name": "SK 海力士（韩交所）",
+     "role": "HBM 份额与认证进度领先，最贴近 HBM 拉升的直接受益方",
+     "listed": false
+    },
+    {
+     "symbol": "MU",
+     "name": "美光",
+     "role": "美股唯一同时做 DRAM/HBM/NAND 的一体化厂商",
+     "listed": true
+    },
+    {
+     "symbol": "SNDK",
+     "name": "闪迪",
+     "role": "企业级与消费级 NAND，从西部数据分拆后独立定价",
+     "listed": true
+    },
+    {
+     "symbol": "005930.KS",
+     "name": "三星电子（韩交所）",
+     "role": "存储三巨头中产能最大，HBM 认证节奏是全行业供给的摆动项",
+     "listed": false
+    },
+    {
+     "symbol": "STX",
+     "name": "希捷",
+     "role": "近线 HDD，承接 AI 数据的冷存储层",
+     "listed": true
+    },
+    {
+     "symbol": "WDC",
+     "name": "西部数据",
+     "role": "近线 HDD，与希捷同构",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "optical",
+   "name": "光通信",
+   "parent": "ai-datacenter",
+   "one_liner": "把 GPU 连起来的那一层：光模块、光器件、DSP、AEC 有源电缆与 CPO。",
+   "aliases": [
+    "光通信",
+    "光模块",
+    "光器件",
+    "光芯片",
+    "AEC",
+    "有源电缆",
+    "CPO",
+    "硅光",
+    "交换机",
+    "网络"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "COHR",
+     "name": "Coherent",
+     "role": "垂直整合到磷化铟材料与激光器芯片",
+     "listed": true
+    },
+    {
+     "symbol": "LITE",
+     "name": "Lumentum",
+     "role": "高端 EML/可调谐激光器芯片",
+     "listed": true
+    },
+    {
+     "symbol": "CRDO",
+     "name": "Credo",
+     "role": "短距铜缆 AEC 与低功耗 SerDes，与光方案是替代关系",
+     "listed": true
+    },
+    {
+     "symbol": "AAOI",
+     "name": "Applied Optoelectronics",
+     "role": "自研激光器芯片的光模块厂，财务弹性大",
+     "listed": true
+    },
+    {
+     "symbol": "FN",
+     "name": "Fabrinet",
+     "role": "光模块代工，客户集中度高",
+     "listed": true
+    },
+    {
+     "symbol": "CIEN",
+     "name": "Ciena",
+     "role": "相干光与数据中心互联（DCI）",
+     "listed": true
+    },
+    {
+     "symbol": "GLW",
+     "name": "康宁",
+     "role": "光纤与连接器，AI 集群的物理层耗材",
+     "listed": true
+    },
+    {
+     "symbol": "300308.SZ",
+     "name": "中际旭创（深交所）",
+     "role": "全球光模块出货份额第一，最贴近 GPU 集群规模",
+     "listed": false
+    },
+    {
+     "symbol": "ANET",
+     "name": "Arista Networks",
+     "role": "以太网交换，与 InfiniBand 争夺集群网络",
+     "listed": true
+    },
+    {
+     "symbol": "CSCO",
+     "name": "思科",
+     "role": "企业与云网络，AI 订单占比仍小",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "power",
+   "name": "电力",
+   "parent": "ai-datacenter",
+   "one_liner": "AI 数据中心的硬约束：发电、并网、配电与散热。缺的不是电，是可交付的电。",
+   "aliases": [
+    "电力",
+    "电",
+    "发电",
+    "核电",
+    "燃气轮机",
+    "电网",
+    "变压器",
+    "配电",
+    "液冷",
+    "散热",
+    "并网",
+    "容量拍卖"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "VST",
+     "name": "Vistra",
+     "role": "核电+燃气+储能组合，直接给数据中心供 PPA",
+     "listed": true
+    },
+    {
+     "symbol": "CEG",
+     "name": "Constellation",
+     "role": "美国最大核电运营商，数据中心长协的主要卖方",
+     "listed": true
+    },
+    {
+     "symbol": "GEV",
+     "name": "GE Vernova",
+     "role": "燃气轮机与电网设备，交付排期是全行业的瓶颈刻度",
+     "listed": true
+    },
+    {
+     "symbol": "VRT",
+     "name": "Vertiv",
+     "role": "数据中心配电与液冷，最贴近机柜功率密度",
+     "listed": true
+    },
+    {
+     "symbol": "BE",
+     "name": "Bloom Energy",
+     "role": "燃料电池，绕开并网排队的现场发电方案",
+     "listed": true
+    },
+    {
+     "symbol": "BWXT",
+     "name": "BWX Technologies",
+     "role": "小型模块化反应堆与核燃料",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "neocloud",
+   "name": "新云",
+   "parent": "ai-datacenter",
+   "one_liner": "把 GPU 买下来按小时租出去的一层：介于云厂与模型公司之间的算力中间商。",
+   "aliases": [
+    "新云",
+    "neocloud",
+    "GPU租赁",
+    "算力租赁",
+    "算力云",
+    "AI云"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "CRWV",
+     "name": "CoreWeave",
+     "role": "规模最大的独立 GPU 云，合同期限与 RPO 是核心口径",
+     "listed": true
+    },
+    {
+     "symbol": "NBIS",
+     "name": "Nebius",
+     "role": "欧洲基地，兼有非核心资产需要单列",
+     "listed": true
+    },
+    {
+     "symbol": "IREN",
+     "name": "IREN",
+     "role": "从比特币矿场转型 AI 算力，电力资产是它的差异点",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "equipment",
+   "name": "半导体设备",
+   "parent": "ai-datacenter",
+   "one_liner": "造产能的那一层：沉积、刻蚀、量检测与先进封装设备。滞后于晶圆厂的开支决策。",
+   "aliases": [
+    "半导体设备",
+    "设备",
+    "WFE",
+    "沉积",
+    "刻蚀",
+    "量检测",
+    "光刻",
+    "封装设备"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "AMAT",
+     "name": "应用材料",
+     "role": "材料工程与先进封装设备",
+     "listed": true
+    },
+    {
+     "symbol": "LRCX",
+     "name": "拉姆研究",
+     "role": "刻蚀与沉积，最贴近 3D NAND 层数与 HBM 堆叠",
+     "listed": true
+    },
+    {
+     "symbol": "KLAC",
+     "name": "科磊",
+     "role": "量检测与良率管理",
+     "listed": true
+    },
+    {
+     "symbol": "ASML",
+     "name": "ASML",
+     "role": "EUV 光刻独家供应",
+     "listed": true
+    },
+    {
+     "symbol": "TER",
+     "name": "泰瑞达",
+     "role": "测试设备，HBM 与先进封装带来增量",
+     "listed": true
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "server-oem",
+   "name": "AI 服务器与整机",
+   "parent": "ai-datacenter",
+   "one_liner": "把芯片、内存、光模块装成整机柜交付的一层：营收放大、毛利被压。",
+   "aliases": [
+    "服务器",
+    "整机",
+    "机柜",
+    "ODM",
+    "OEM",
+    "液冷整机"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "DELL",
+     "name": "戴尔",
+     "role": "企业与云的 AI 服务器出货，订单积压是前瞻指标",
+     "listed": true
+    },
+    {
+     "symbol": "SMCI",
+     "name": "超微电脑",
+     "role": "液冷整机柜交付速度快，财务与治理是折价项",
+     "listed": true
+    },
+    {
+     "symbol": "2317.TW",
+     "name": "鸿海（台交所）",
+     "role": "AI 服务器 ODM 出货量最大",
+     "listed": false
+    },
+    {
+     "symbol": "2382.TW",
+     "name": "广达（台交所）",
+     "role": "北美云厂主力 ODM",
+     "listed": false
+    }
+   ],
+   "sources": []
+  },
+  {
+   "id": "hyperscaler",
+   "name": "云厂与 AI 平台",
+   "parent": "ai-datacenter",
+   "one_liner": "需求的源头：它们的资本开支指引是整条链的前瞻指标；同时它们自己也是一个可投资行业。",
+   "aliases": [
+    "云厂",
+    "超大规模",
+    "hyperscaler",
+    "capex",
+    "资本开支",
+    "AI平台"
+   ],
+   "ai_valuation_logic": {
+    "driver_chain": "",
+    "key_variables": [],
+    "multiple_anchor": "",
+    "anti_pattern": ""
+   },
+   "core_watch": [],
+   "members": [
+    {
+     "symbol": "MSFT",
+     "name": "微软",
+     "role": "Azure 与 OpenAI 关系，capex 指引是全链最重要的单一数字",
+     "listed": true
+    },
+    {
+     "symbol": "GOOGL",
+     "name": "谷歌",
+     "role": "自研 TPU 路线，既是需求方也是 AI 芯片的竞争者",
+     "listed": true
+    },
+    {
+     "symbol": "AMZN",
+     "name": "亚马逊",
+     "role": "AWS 与自研 Trainium/Inferentia",
+     "listed": true
+    },
+    {
+     "symbol": "META",
+     "name": "Meta",
+     "role": "自用为主，capex 波动最大",
+     "listed": true
+    },
+    {
+     "symbol": "ORCL",
+     "name": "甲骨文",
+     "role": "OCI 的 AI 承诺订单（RPO）增长最快，负债结构是风险点",
+     "listed": true
+    }
+   ],
+   "sources": []
+  }
+ ]
+}
