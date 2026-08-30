@@ -25,7 +25,8 @@ use hone_event_engine::EventStore;
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
-    SessionStorage, configure_cloud_company_profile_storage, configure_cloud_portfolio_storage,
+    SessionStorage, configure_cloud_company_facts_storage, configure_cloud_company_profile_storage,
+    configure_cloud_portfolio_storage,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
@@ -164,6 +165,10 @@ impl HoneBotCore {
             configure_cloud_portfolio_storage(Some(cloud_pg_runtime.clone()));
             hone_memory::configure_cloud_survey_storage(Some(cloud_pg_runtime.clone()));
             configure_cloud_company_profile_storage(Some(cloud_pg_runtime.clone()));
+            // 公司事实库是**共享**的（不按 actor 分片）：channels 进程的 data_fetch
+            // 与 web 进程的刷新 worker 必须看到同一份，否则对话里报的股本会和研究台
+            // 页面上的对不上。
+            configure_cloud_company_facts_storage(Some(cloud_pg_runtime.clone()));
         }
         #[cfg(test)]
         {
@@ -172,6 +177,7 @@ impl HoneBotCore {
             configure_cloud_portfolio_storage(None);
             hone_memory::configure_cloud_survey_storage(None);
             configure_cloud_company_profile_storage(None);
+            configure_cloud_company_facts_storage(None);
         }
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);

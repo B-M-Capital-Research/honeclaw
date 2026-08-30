@@ -3,6 +3,7 @@ pub(crate) mod billing;
 pub(crate) mod channel_settings;
 pub(crate) mod chat;
 pub(crate) mod community_forum;
+pub(crate) mod company_facts;
 pub(crate) mod company_profiles;
 pub(crate) mod company_ratings;
 pub(crate) mod cron;

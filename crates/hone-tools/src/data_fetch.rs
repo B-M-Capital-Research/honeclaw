@@ -185,6 +185,157 @@ pub struct DataFetchTool {
     timeout: u64,
     http: reqwest::Client,
     cache: Arc<Mutex<HashMap<String, CachedFmpValue>>>,
+    /// 共享公司事实库。行业树那 59 家每天由 web 侧 worker 刷好官方股本，
+    /// 这里直接读，不必每轮对话都打一次 SEC。缺这一层（测试构造器）时降级到 SEC 直取。
+    company_facts: Option<Arc<hone_memory::CompanyFactsStorage>>,
+    /// SEC 直取通道，覆盖不在行业树里的代码。没配联系方式的 User-Agent 时是 `None`，
+    /// 整条官方股本通道静默关闭——它是加信息的，不是必需的。
+    sec: Option<hone_core::sec_shares::SecSharesClient>,
+}
+
+/// 一次官方股本取数的结果，连同它是从哪条路径来的。
+struct CoverLookup {
+    cover: hone_core::sec_shares::SecCoverShares,
+    /// `company_facts`（共享事实库）或 `sec_live`（SEC 直取）。
+    channel: &'static str,
+    facts_refreshed_at: Option<String>,
+    /// 事实库这一行已经陈旧、且本轮没能从 SEC 拿到更新的。
+    pipeline_stale: bool,
+    weighted: WeightedShares,
+}
+
+/// 拼好的块 + 该配哪段政策文案。
+struct SharesBlock {
+    block: Value,
+    policy: String,
+}
+
+/// 事实库里这一家的三态。「没有官方封面股数」和「还没进表」必须分得开。
+enum StoredShares {
+    Cover(Box<StoredCover>),
+    /// 事实库明说这一家拿不到官方封面股数（8/59 长期如此，是正常降级不是故障）。
+    KnownAbsent,
+    NotStored,
+}
+
+struct StoredCover {
+    cover: hone_core::sec_shares::SecCoverShares,
+    refreshed_at: String,
+    pipeline_stale: bool,
+    weighted: WeightedShares,
+}
+
+/// 最近一季报表里的加权平均股本。算 EPS 用它，算市值**不要**用它。
+#[derive(Debug, Clone, Default)]
+struct WeightedShares {
+    basic: Option<f64>,
+    diluted: Option<f64>,
+    period_end: Option<String>,
+    /// 亏损季反稀释伪信号：稀释 ≤ 基本 **且**本季净利为负。
+    diluted_collapsed: bool,
+}
+
+impl WeightedShares {
+    fn to_json(&self) -> Option<Value> {
+        if self.basic.is_none() && self.diluted.is_none() {
+            return None;
+        }
+        let mut payload = serde_json::json!({});
+        for (key, value) in [("basic", self.basic), ("diluted", self.diluted)] {
+            if let Some(value) = value {
+                payload[key] = Value::from(value);
+            }
+        }
+        if let Some(end) = self.period_end.as_deref() {
+            payload["period_end"] = Value::String(end.to_string());
+        }
+        payload["diluted_collapsed"] = Value::Bool(self.diluted_collapsed);
+        payload["semantics"] = Value::String(
+            "加权平均股本，只用于算 EPS；算市值与 EV 用上面的官方封面股数，两者不得互换。"
+                .to_string(),
+        );
+        Some(payload)
+    }
+}
+
+/// SEC 通道的熔断窗口。
+///
+/// `sec_shares` 只对 404 做负缓存，**真失败从不进缓存**：SEC 挂掉、限流或因 UA 被 403
+/// 时，每一次 snapshot 都要重新付一次完整预算，而且永远不会收敛。5 分钟的窗口把
+/// 「每轮对话一次」压成「每 5 分钟一次」，同时短到 SEC 恢复后几分钟内就自己合上。
+const SEC_FAILURE_COOLDOWN: StdDuration = StdDuration::from_secs(300);
+
+fn sec_breaker() -> &'static Mutex<Option<Instant>> {
+    static BREAKER: std::sync::OnceLock<Mutex<Option<Instant>>> = std::sync::OnceLock::new();
+    BREAKER.get_or_init(|| Mutex::new(None))
+}
+
+fn sec_breaker_is_open() -> bool {
+    sec_breaker()
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+        .is_some_and(|at| at.elapsed() < SEC_FAILURE_COOLDOWN)
+}
+
+fn trip_sec_breaker() {
+    if let Ok(mut guard) = sec_breaker().lock() {
+        *guard = Some(Instant::now());
+    }
+}
+
+#[cfg(test)]
+fn reset_sec_breaker() {
+    if let Ok(mut guard) = sec_breaker().lock() {
+        *guard = None;
+    }
+}
+
+/// 配给 `hone_shares_outstanding` 的政策文案。
+///
+/// **按情形挂载，不是常驻。** 完整那段 371 字讲的是「提供方落后一份申报时该怎么做」，
+/// 而 51/59 家在提供方不落后时走的是一致分支——把它无条件挂上去，绝大多数轮次里
+/// 那段字讲的是一个本轮并未发生的情形，等于每轮固定交 700–900 token 的税，还把真正
+/// 命中的那一次和其余每一次写得一模一样。
+fn shares_policy(block: &Value, diluted_collapsed: bool) -> String {
+    let status = block
+        .get("provider_cross_check")
+        .and_then(|check| check.get("status"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let usable = block
+        .get("usable_for_market_cap")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let pipeline_stale = block
+        .get("pipeline_stale")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let mut policy = if !usable {
+        "hone_shares_outstanding.usable_for_market_cap=false：这条官方股数本轮不成立口径（20-F 等外国私人发行人报的是本土普通股而非 ADR 股数，或封面日期已过期）。不得用它推算市值或校正提供方股本，本轮把股本口径标为未核验。".to_string()
+    } else if status == "provider_behind_official_filing" {
+        "提供方的 sharesOutstanding 落后于最近一期定期报告封面数。市值、EV 以及所有以股本为分母或乘数的倍数与每股目标价，一律改用 official_shares_outstanding 重算，并把来源写成「最近一期定期报告封面股数（截至 cover_date）」，不要沿用提供方的市值字段。".to_string()
+    } else if status == "basis_mismatch_suspected" {
+        "提供方股本与官方封面股数差到倍数级，这通常是口径不同（ADR 与本土普通股、多类别股只统计其中一类），不是提供方过期。两个数字都不得用来重算市值，本轮把股本口径标为未核验。".to_string()
+    } else {
+        // 一致分支：块里已经有一句 semantics 说清「这是封面股数、不是加权股本」，
+        // 再复述一遍政策没有新增信息。
+        "official_shares_outstanding 是监管申报封面上的官方已发行股数，与提供方数字本轮没有超过阈值的差异；算市值与 EV 用它，算 EPS 用报表里的加权稀释股本。".to_string()
+    };
+    if pipeline_stale {
+        policy.push_str(
+            "本轮这条官方股数来自已经停止刷新的共享事实库，可能漏掉了之后报出的申报：只作参考，不要据此覆盖提供方股本。",
+        );
+    }
+    if diluted_collapsed {
+        // 触发才说。无条件常驻的提醒等于背景噪音——真正命中的那一次和其余每一次
+        // 长得一模一样。LITE 那一季正是这样被读成了「转股清偿」。
+        policy.push_str(
+            "weighted_shares.diluted_collapsed=true：本季亏损，GAAP 下潜在稀释证券全部被排除，稀释股本塌回基本股本甚至低于上一季。那不是股本减少，不要据此断言回购、转股清偿或任何公司行为。",
+        );
+    }
+    policy
 }
 
 fn fmp_base_url_is_loopback(base_url: &str) -> bool {
@@ -227,7 +378,16 @@ impl DataFetchTool {
             base_url,
             timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            company_facts: None,
+            sec: None,
         }
+    }
+
+    /// 测试用：把共享事实库指到一个临时 data_root。
+    #[doc(hidden)]
+    pub fn with_company_facts_root(mut self, data_root: impl AsRef<std::path::Path>) -> Self {
+        self.company_facts = Some(Arc::new(hone_memory::CompanyFactsStorage::new(data_root)));
+        self
     }
 
     pub fn from_config(config: &hone_core::config::HoneConfig) -> Self {
@@ -239,6 +399,15 @@ impl DataFetchTool {
             base_url,
             timeout: config.fmp.timeout,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            // 整份 config 在手，因此拿得到 data_root 与 PG 配置：
+            // `CompanyFactsStorage::new` 自己认全局注入的 PG 运行时，配了走 PG、
+            // 没配退回文件，两个进程看到的是同一份。
+            company_facts: Some(Arc::new(hone_memory::CompanyFactsStorage::new(
+                config.storage.data_root(),
+            ))),
+            sec: hone_core::sec_shares::SecSharesClient::new(
+                &config.event_engine.sec_filings.enrichment.user_agent,
+            ),
         }
     }
 
@@ -863,6 +1032,253 @@ impl DataFetchTool {
                 value,
             },
         );
+    }
+
+    /// 官方股本查询。**这是 LITE 事故的直接修复**：provider 的 `sharesOutstanding`
+    /// 会整整落后一份申报（2026-08 实测 77.8M vs 官方 89.7M，市值低估 13.3%、
+    /// 每股目标价高估 15.3%），而这条通道给出的是监管申报封面上的一手数字、
+    /// 它的封面日期、申报表类型、新鲜度，以及与 provider 的差异。
+    ///
+    /// 取数与拼装分开：取数（这个函数）可以和 quote / profile / news 一起 `join!`，
+    /// 拼装（[`Self::render_shares_block`]）要用到本轮的 quote，只能在 join 之后做，
+    /// 但它是纯函数、不外呼。分不开的话这条通道就只能串在关键路径上。
+    ///
+    /// 三条路径，都可以缺席：
+    /// 1. **共享事实库**命中且管道新鲜——零外呼，最常见。
+    /// 2. 事实库明说这一家没有官方封面股数（8/59 的多类别股发行人）——**短路**，
+    ///    不再替它白打一次 SEC。
+    /// 3. 事实库没有这一家、或这一行已经陈旧——SEC 直取（自带 6h/24h 缓存）。
+    ///
+    /// 整条通道罩着 `sec_shares::SEC_SNAPSHOT_BUDGET_SECS` 的总预算，外加一个进程级熔断窗口。
+    /// 任何一环不可用（没配 User-Agent、404、超时、解析失败）都返回 `None`，
+    /// 调用方原样返回既有内容。**SEC 不可用绝不允许影响 quote / snapshot 本身。**
+    async fn official_cover_lookup(&self, ticker: &str) -> Option<CoverLookup> {
+        // 预算罩住的是**整条通道**：事实库那次读（PG 建连也可能挂住）、777 KB 的
+        // 对照表（8s）、concept（8s）。这三段串起来最坏 16s，而 snapshot 是每一轮
+        // 对话都要走的路径——硬约束「不得让 SEC 不可用影响 quote / snapshot」里的
+        // 「影响」包括延迟。超时就当作这一轮没有官方股本。
+        match tokio::time::timeout(
+            StdDuration::from_secs(hone_core::sec_shares::SEC_SNAPSHOT_BUDGET_SECS),
+            self.official_cover_lookup_inner(ticker),
+        )
+        .await
+        {
+            Ok(found) => found,
+            Err(_) => {
+                // 超时和传输失败同类：都说明这条通道现在不好使，进熔断窗口，
+                // 否则每一轮对话都要重新付一次整份预算，且永远不会收敛。
+                trip_sec_breaker();
+                tracing::debug!(
+                    ticker,
+                    "official share lookup exceeded its budget; degrading"
+                );
+                None
+            }
+        }
+    }
+
+    async fn official_cover_lookup_inner(&self, ticker: &str) -> Option<CoverLookup> {
+        match self.stored_shares(ticker).await {
+            // 事实库明说这一家拿不到官方封面股数（多类别股发行人把封面股数打在 axis
+            // 维度上，concept 端点不返回带维度的事实）。这是**结论**，不是「没查过」：
+            // 再去 SEC 只会拿回同一个 404。
+            StoredShares::KnownAbsent => None,
+            StoredShares::Cover(stored) if !stored.pipeline_stale => Some(CoverLookup {
+                cover: stored.cover,
+                channel: "company_facts",
+                facts_refreshed_at: Some(stored.refreshed_at),
+                pipeline_stale: false,
+                weighted: stored.weighted,
+            }),
+            // 管道陈旧：worker 停摆了（发版失败、PG 写不进、副本没调度）。10-Q 大约
+            // 90 天一份，停一个季度就足以让一份新申报完全不可见——那正是 LITE 事故
+            // 的形态，只是主角换成了我们自己的表。所以先去 SEC 拿一次；SEC 自带 6 小时
+            // 缓存，代价是每 6 小时一次外呼，不是每轮对话一次。
+            StoredShares::Cover(stored) => {
+                // CIK 记着就直接走 concept，省掉那张 777 KB 的对照表；
+                // 0 表示这一行没记下 CIK（老数据），退回按 ticker 查。
+                match self
+                    .live_cover(ticker, Some(stored.cover.cik).filter(|cik| *cik > 0))
+                    .await
+                {
+                    Some(cover) => Some(CoverLookup {
+                        cover,
+                        channel: "sec_live",
+                        facts_refreshed_at: Some(stored.refreshed_at),
+                        pipeline_stale: false,
+                        weighted: stored.weighted,
+                    }),
+                    // SEC 也不可用：还是把库里这份给出去（它仍是最后一次看见的官方
+                    // 申报），但必须标明管道已经停了，并且下调政策文案——不标明地
+                    // 端出几个月前的数字当「官方」，是同一个事故换个位置再犯一次。
+                    None => Some(CoverLookup {
+                        cover: stored.cover,
+                        channel: "company_facts",
+                        facts_refreshed_at: Some(stored.refreshed_at),
+                        pipeline_stale: true,
+                        weighted: stored.weighted,
+                    }),
+                }
+            }
+            StoredShares::NotStored => Some(CoverLookup {
+                cover: self.live_cover(ticker, None).await?,
+                channel: "sec_live",
+                facts_refreshed_at: None,
+                pipeline_stale: false,
+                weighted: WeightedShares::default(),
+            }),
+        }
+    }
+
+    /// SEC 直取。`cik` 已知（事实库里记着）时跳过那张 777 KB 的对照表。
+    async fn live_cover(
+        &self,
+        ticker: &str,
+        cik: Option<u64>,
+    ) -> Option<hone_core::sec_shares::SecCoverShares> {
+        use hone_core::sec_shares::SecSharesOutcome;
+
+        let client = self.sec.as_ref()?;
+        if sec_breaker_is_open() {
+            return None;
+        }
+        let outcome = match cik {
+            Some(cik) => client.cover_shares_for_cik(cik).await,
+            None => client.cover_shares(ticker).await,
+        };
+        match outcome {
+            Ok(SecSharesOutcome::Cover(cover)) => Some(*cover),
+            // 404 / 没有对应事实是**正常降级**（多类别股发行人长期如此），
+            // 不挂块也不报错——挂一个「查不到」只会让每次回答多一行噪音。
+            Ok(SecSharesOutcome::Absent(_)) => None,
+            Err(error) => {
+                // `sec_shares` 只对 404 做负缓存，真失败从不进缓存。不熔断的话
+                // SEC 挂掉、限流或因 UA 被 403 时，每一次 snapshot 都要重新付一次
+                // 完整预算。
+                trip_sec_breaker();
+                tracing::debug!(ticker, "SEC shares lookup unavailable: {error}");
+                None
+            }
+        }
+    }
+
+    /// 测试用：把取数与拼装串起来，等价于 snapshot 里 join 前后那两步。
+    #[cfg(test)]
+    async fn shares_outstanding_for_test(
+        &self,
+        ticker: &str,
+        quote: Option<&Value>,
+    ) -> Option<SharesBlock> {
+        let cover = self.official_cover_lookup(ticker).await?;
+        Some(self.render_shares_block(cover, quote))
+    }
+
+    /// 把取到的封面股数拼成挂进返回体的那一块。纯函数，不外呼。
+    fn render_shares_block(&self, lookup: CoverLookup, quote: Option<&Value>) -> SharesBlock {
+        use hone_core::sec_shares::{
+            build_shares_outstanding_block, provider_quote_number, provider_shares_outstanding,
+        };
+
+        let today = chrono::Utc::now().date_naive();
+        let (provider_shares, provider_market_cap, price) = match quote {
+            Some(quote) => (
+                provider_shares_outstanding(quote),
+                provider_quote_number(quote, "marketCap"),
+                provider_quote_number(quote, "price"),
+            ),
+            // financials 这条路径没有行情，因此没有可比的 provider 股本。
+            // 不去拿报表里的加权股本充数：加权平均股本与封面股数是两个概念。
+            None => (None, None, None),
+        };
+
+        let mut block = build_shares_outstanding_block(
+            &lookup.cover,
+            provider_shares,
+            provider_market_cap,
+            price,
+            today,
+        );
+        block["channel"] = Value::String(lookup.channel.to_string());
+        if let Some(refreshed_at) = lookup.facts_refreshed_at.as_deref() {
+            block["facts_refreshed_at"] = Value::String(refreshed_at.to_string());
+        }
+        if lookup.pipeline_stale {
+            block["pipeline_stale"] = Value::Bool(true);
+            block["pipeline_warning"] = Value::String(
+                "这一行来自共享事实库，而事实库已经超过 36 小时没有刷新过，本轮向 SEC 直取也没成功。定期报告大约每 90 天一份，管道停摆期间新报出的申报在这里是看不见的：把它当作「最后一次看见的官方数」，不要据此覆盖提供方的股本。".to_string(),
+            );
+        }
+        if let Some(weighted) = lookup.weighted.to_json() {
+            block["weighted_shares"] = weighted;
+        }
+        if quote.is_none() {
+            block["provider_comparison"] = Value::String(
+                "本次返回里没有行情，因此没有与提供方股本的比对。报表里的加权平均股本（basic/diluted）是算 EPS 的口径，不能当作封面股数用来算市值。"
+                    .to_string(),
+            );
+        }
+        let policy = shares_policy(&block, lookup.weighted.diluted_collapsed);
+        SharesBlock { block, policy }
+    }
+
+    /// 从共享事实库里取这一家的状态。**三态**，不是 `Option`：
+    /// 「这一家没有官方封面股数」和「这一家还没进表」必须分得开，否则前者会掉进
+    /// SEC 直取分支，替那 8 家（GOOGL META DELL CRWV NBIS AMKR BE GLW）每轮白打一次网络。
+    async fn stored_shares(&self, ticker: &str) -> StoredShares {
+        use hone_core::sec_shares::{CoverShareRow, SecCoverShares};
+
+        let Some(storage) = self.company_facts.as_ref() else {
+            return StoredShares::NotStored;
+        };
+        let Ok(Some(facts)) = storage.load(ticker).await else {
+            return StoredShares::NotStored;
+        };
+        let shares = &facts.shares;
+        let weighted = WeightedShares {
+            basic: shares.basic_shares,
+            diluted: shares.diluted_shares,
+            period_end: shares.weighted_period_end.clone(),
+            diluted_collapsed: shares.diluted_collapsed,
+        };
+        let (Some(count), Some(end)) = (shares.cover_shares, shares.cover_end.clone()) else {
+            return match shares.cover_absent_reason.is_some() {
+                true => StoredShares::KnownAbsent,
+                false => StoredShares::NotStored,
+            };
+        };
+        let cover = SecCoverShares {
+            // 封面数是从这个 CIK 取到的；没记下来时退回身份段那个。
+            cik: shares.cover_cik.or(facts.identity.cik).unwrap_or_default(),
+            entity_name: facts.identity.company_name.clone(),
+            latest: CoverShareRow {
+                shares: count,
+                end,
+                filed: shares.cover_filed.clone().unwrap_or_default(),
+                form: shares.cover_form.clone().unwrap_or_default(),
+                accn: shares.cover_accession.clone().unwrap_or_default(),
+            },
+            previous: match (
+                shares.previous_cover_shares,
+                shares.previous_cover_end.clone(),
+            ) {
+                (Some(count), Some(end)) => Some(CoverShareRow {
+                    shares: count,
+                    end,
+                    filed: String::new(),
+                    form: String::new(),
+                    accn: String::new(),
+                }),
+                _ => None,
+            },
+        };
+        StoredShares::Cover(Box::new(StoredCover {
+            // 管道新鲜度：worker 有没有在跑。和封面新鲜度（这家公司多久没申报了）
+            // 是两件事，混成一个字段就分不清是公司没报还是我们没刷。
+            pipeline_stale: facts.is_stale(chrono::Utc::now()),
+            refreshed_at: facts.refreshed_at.clone(),
+            cover,
+            weighted,
+        }))
     }
 
     fn build_snapshot_response(
@@ -2642,7 +3058,10 @@ impl Tool for DataFetchTool {
             let aftermarket_url = format!("{stable}/stable/aftermarket-quote?symbol={ticker}");
             // These were three sequential round-trips for no reason; nothing
             // downstream depends on an earlier one.
-            let (quote, profile, news, price_change, aftermarket) = tokio::join!(
+            // 官方股本取数和这几个请求**并发**，不串在关键路径上：它不需要 quote，
+            // 只有拼装那一步需要。串着 await 的话，不在行业树里的代码（对话里的大多数
+            // 提问）每轮要多等一次对照表 + concept，最坏 16 秒。
+            let (quote, profile, news, price_change, aftermarket, cover) = tokio::join!(
                 self.fetch_data_type("quote", ticker),
                 self.fetch_data_type("profile", ticker),
                 self.fetch_data_type("news", ticker),
@@ -2652,13 +3071,18 @@ impl Tool for DataFetchTool {
                     ttl_for_data_type("extended_hours"),
                     "extended_hours"
                 ),
+                self.official_cover_lookup(ticker),
             );
-            let mut payload = self.build_snapshot_response(
-                ticker,
-                quote.map(normalize_quote_timestamp_metadata),
-                profile,
-                news,
-            );
+            let quote = quote.map(normalize_quote_timestamp_metadata);
+            // 拼装要用本轮的 quote 去比对，所以放在 join 之后；这一步不外呼。
+            // 拿不到就没有这一块，snapshot 的既有内容一个字都不变。
+            let shares_block =
+                cover.map(|cover| self.render_shares_block(cover, quote.as_ref().ok()));
+            let mut payload = self.build_snapshot_response(ticker, quote, profile, news);
+            if let Some(shares) = shares_block {
+                payload["hone_shares_outstanding"] = shares.block;
+                payload["hone_shares_outstanding_policy"] = Value::String(shares.policy);
+            }
             // Multi-period performance answers "how has this done lately"
             // without spending another research round on a chart.
             if let Some(change) = price_change.ok().filter(has_meaningful_fmp_value) {
@@ -2890,10 +3314,21 @@ impl Tool for DataFetchTool {
         }
 
         if data_type == "financials" {
-            return match self.fetch_financials_bundle(ticker).await {
+            // 报表里只有加权平均股本；封面股数是另一个口径，而算市值要用后者。
+            // 财务证据和股本口径分开取，是这次事故里被漏掉的那一步——但两者之间
+            // 没有依赖，所以并发取，不给这条路径加一次串行的 SEC 等待。
+            let (bundle, cover) = tokio::join!(
+                self.fetch_financials_bundle(ticker),
+                self.official_cover_lookup(ticker),
+            );
+            return match bundle {
                 Ok(mut payload) => {
                     payload["data_type"] = Value::String(data_type.to_string());
                     payload["ticker"] = Value::String(ticker.to_string());
+                    if let Some(shares) = cover.map(|cover| self.render_shares_block(cover, None)) {
+                        payload["hone_shares_outstanding"] = shares.block;
+                        payload["hone_shares_outstanding_policy"] = Value::String(shares.policy);
+                    }
                     Ok(payload)
                 }
                 Err(err) => Ok(serde_json::json!({ "error": err })),
@@ -2971,10 +3406,10 @@ mod tests {
         effective_data_fetch_security_target, effective_data_fetch_target, extended_hours_session,
         financial_score_semantics, fmp_base_url_is_loopback, forward_twelve_month_summary,
         nonempty_fmp_error_message, normalize_extended_hours_bar,
-        normalize_quote_timestamp_metadata, price_target_consensus_quality, round_to_hundredths,
-        sanitize_fmp_error_detail, security_listing_evidence, should_cache_fmp_value,
-        ttl_for_data_type, validated_data_fetch_search_query, validated_data_fetch_symbols,
-        valuation_basis_quality,
+        normalize_quote_timestamp_metadata, price_target_consensus_quality, reset_sec_breaker,
+        round_to_hundredths, sanitize_fmp_error_detail, sec_breaker_is_open,
+        security_listing_evidence, should_cache_fmp_value, ttl_for_data_type,
+        validated_data_fetch_search_query, validated_data_fetch_symbols, valuation_basis_quality,
     };
     use crate::base::Tool;
     use crate::test_support::{assert_text_contains_all, assert_text_contains_none};
@@ -5072,5 +5507,304 @@ mod tests {
         let note = payload["hone_reporting_status_note"].as_str().unwrap();
         assert!(note.contains("IR/SEC"), "note: {note}");
         assert!(payload["errors"]["earnings"].is_string());
+    }
+
+    fn facts_tool(dir: &std::path::Path) -> DataFetchTool {
+        DataFetchTool::new(vec!["k".to_string()], "http://127.0.0.1:1/api", 1)
+            .with_company_facts_root(dir)
+    }
+
+    /// LITE 事故的端到端回归：共享事实库里存着官方 8,970 万，provider 报 7,780 万，
+    /// snapshot 必须把差异挂出来并给出可以直接用的重算市值。
+    #[tokio::test]
+    async fn snapshot_carries_the_official_share_count_and_the_provider_gap() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("LITE");
+        facts.identity.cik = Some(1_633_978);
+        facts.identity.company_name = Some("Lumentum Holdings Inc.".to_string());
+        facts.shares.cover_shares = Some(89_700_000);
+        facts.shares.cover_end = Some("2026-08-14".to_string());
+        facts.shares.cover_filed = Some("2026-08-17".to_string());
+        facts.shares.cover_form = Some("10-K".to_string());
+        facts.shares.cover_usable_for_market_cap = true;
+        facts.shares.previous_cover_shares = Some(77_800_000);
+        facts.shares.previous_cover_end = Some("2026-04-30".to_string());
+        facts.refreshed_at = chrono::Utc::now().to_rfc3339();
+        storage.save(&facts).await.expect("seed facts");
+
+        let tool = facts_tool(dir.path());
+        let quote = json!([{
+            "symbol": "LITE",
+            "price": 895.0,
+            "marketCap": 69_631_000_000_i64,
+            "sharesOutstanding": 77_800_000_i64
+        }]);
+        let shares = tool
+            .shares_outstanding_for_test("LITE", Some(&quote))
+            .await
+            .expect("official share block");
+        let block = &shares.block;
+
+        assert_eq!(block["official_shares_outstanding"], 89_700_000);
+        assert_eq!(block["cover_date"], "2026-08-14");
+        assert_eq!(block["filed"], "2026-08-17");
+        assert_eq!(block["form"], "10-K");
+        assert_eq!(block["usable_for_market_cap"], true);
+        assert_eq!(block["channel"], "company_facts");
+        assert!(block["facts_refreshed_at"].is_string());
+        assert!(block.get("pipeline_stale").is_none());
+        // 新鲜度必须在，否则读的人无法判断这个「官方」是不是也过期了。
+        assert!(block["cover_age_days"].is_i64());
+        assert_eq!(block["previous"]["official_shares_outstanding"], 77_800_000);
+        let cross_check = &block["provider_cross_check"];
+        assert_eq!(cross_check["status"], "provider_behind_official_filing");
+        assert_eq!(cross_check["difference_pct"], 15.3);
+        assert_eq!(cross_check["recomputed_market_cap"], 80_281_500_000.0);
+        // 真正命中的这一轮才配那段「改用官方股本重算」的长文案。
+        assert!(
+            shares
+                .policy
+                .contains("改用 official_shares_outstanding 重算")
+        );
+        // 代码大小写不该产生第二条路径。
+        assert!(
+            tool.shares_outstanding_for_test("lite", Some(&quote))
+                .await
+                .is_some()
+        );
+    }
+
+    /// 20-F：官方数是台股普通股口径，1 ADR = 5 股。标注口径，绝不参与校验。
+    #[tokio::test]
+    async fn a_foreign_private_issuer_gets_a_basis_label_and_no_cross_check() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("TSM");
+        facts.identity.cik = Some(1_046_179);
+        facts.shares.cover_shares = Some(25_932_524_521);
+        facts.shares.cover_end = Some("2025-12-31".to_string());
+        facts.shares.cover_filed = Some("2026-04-15".to_string());
+        facts.shares.cover_form = Some("20-F".to_string());
+        facts.shares.cover_usable_for_market_cap = false;
+        storage.save(&facts).await.expect("seed facts");
+
+        let tool = facts_tool(dir.path());
+        let quote =
+            json!([{"symbol": "TSM", "price": 300.0, "sharesOutstanding": 5_186_504_904_i64}]);
+        let shares = tool
+            .shares_outstanding_for_test("TSM", Some(&quote))
+            .await
+            .expect("official share block");
+        let block = &shares.block;
+
+        assert_eq!(block["basis"], "foreign_or_non_periodic_filing");
+        assert_eq!(block["usable_for_market_cap"], false);
+        assert!(
+            block.get("provider_cross_check").is_none(),
+            "20-F 不得参与市值校验：拿台股股数重算 ADR 市值会错 5 倍"
+        );
+        assert!(
+            block["basis_warning"]
+                .as_str()
+                .expect("warning")
+                .contains("ADR")
+        );
+        assert!(shares.policy.contains("usable_for_market_cap=false"));
+    }
+
+    /// financials 没有行情，所以不比 provider，但必须说清封面股数与加权股本不是一回事；
+    /// 亏损季反稀释那句话**只在真的塌陷时**出现——无条件常驻的提醒等于背景噪音。
+    #[tokio::test]
+    async fn the_financials_block_refuses_to_compare_against_a_weighted_share_count() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("LITE");
+        facts.identity.cik = Some(1_633_978);
+        facts.shares.cover_shares = Some(89_700_000);
+        facts.shares.cover_end = Some("2026-08-14".to_string());
+        facts.shares.cover_form = Some("10-K".to_string());
+        facts.shares.cover_usable_for_market_cap = true;
+        facts.shares.basic_shares = Some(74_600_000.0);
+        facts.shares.diluted_shares = Some(74_600_000.0);
+        facts.shares.weighted_period_end = Some("2026-06-27".to_string());
+        facts.shares.diluted_collapsed = true;
+        storage.save(&facts).await.expect("seed facts");
+
+        let tool = facts_tool(dir.path());
+        let shares = tool
+            .shares_outstanding_for_test("LITE", None)
+            .await
+            .expect("official share block");
+        let block = &shares.block;
+        assert_eq!(block["official_shares_outstanding"], 89_700_000);
+        assert_eq!(
+            block["provider_cross_check"]["status"],
+            "consistent_or_unavailable"
+        );
+        assert!(
+            block["provider_comparison"]
+                .as_str()
+                .expect("comparison note")
+                .contains("加权平均股本")
+        );
+        // 事故的后半段：74.6M 是亏损季反稀释伪信号，得在数据层面标出来，
+        // 不能只靠一段常驻散文。
+        assert_eq!(block["weighted_shares"]["diluted"], 74_600_000.0);
+        assert_eq!(block["weighted_shares"]["diluted_collapsed"], true);
+        assert!(shares.policy.contains("不要据此断言回购、转股清偿"));
+    }
+
+    /// 同一家在正常盈利季（没有塌陷）时，那句「不要断言转股清偿」不该出现——
+    /// 触发才说，才是信号；每轮都说就是噪音。
+    #[tokio::test]
+    async fn a_normal_quarter_does_not_carry_the_anti_dilution_warning() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("LITE");
+        facts.shares.cover_shares = Some(89_700_000);
+        facts.shares.cover_end = Some("2026-08-14".to_string());
+        facts.shares.cover_form = Some("10-K".to_string());
+        facts.shares.basic_shares = Some(89_000_000.0);
+        facts.shares.diluted_shares = Some(96_200_000.0);
+        facts.shares.diluted_collapsed = false;
+        storage.save(&facts).await.expect("seed facts");
+
+        let shares = facts_tool(dir.path())
+            .shares_outstanding_for_test("LITE", None)
+            .await
+            .expect("official share block");
+        assert_eq!(shares.block["weighted_shares"]["diluted_collapsed"], false);
+        assert!(!shares.policy.contains("转股清偿"));
+        // 一致分支也不该配那段「改用官方股本重算」的长文案。
+        assert!(
+            !shares
+                .policy
+                .contains("改用 official_shares_outstanding 重算")
+        );
+    }
+
+    /// **管道新鲜度闸门**：worker 停摆（发版失败、PG 写不进）之后，事实库里那份
+    /// 几个月前的封面股数不能继续被当成「官方」端出来。SEC 也拿不到时仍然给出，
+    /// 但必须标明管道已停，并把政策下调成「只作参考」。
+    #[tokio::test]
+    async fn a_stale_pipeline_is_labelled_and_the_policy_is_downgraded() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("LITE");
+        facts.identity.cik = Some(1_633_978);
+        facts.shares.cover_shares = Some(77_800_000);
+        facts.shares.cover_end = Some("2026-04-30".to_string());
+        facts.shares.cover_filed = Some("2026-05-06".to_string());
+        facts.shares.cover_form = Some("10-Q".to_string());
+        facts.shares.cover_usable_for_market_cap = true;
+        // worker 三天没跑了（阈值 36 小时）。
+        facts.refreshed_at = (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339();
+        storage.save(&facts).await.expect("seed facts");
+
+        // SEC 通道没配（测试构造器不带），所以退回库里这份 —— 但必须带标记。
+        let quote =
+            json!([{"symbol": "LITE", "price": 895.0, "sharesOutstanding": 77_800_000_i64}]);
+        let shares = facts_tool(dir.path())
+            .shares_outstanding_for_test("LITE", Some(&quote))
+            .await
+            .expect("official share block");
+        assert_eq!(shares.block["pipeline_stale"], true);
+        assert!(
+            shares.block["pipeline_warning"]
+                .as_str()
+                .expect("warning")
+                .contains("90 天")
+        );
+        assert!(
+            shares.policy.contains("只作参考，不要据此覆盖提供方股本"),
+            "policy: {}",
+            shares.policy
+        );
+    }
+
+    /// 官方股本通道整个不可用时必须**静默**：没有块、没有错误、既有返回一个字不改。
+    #[tokio::test]
+    async fn an_unavailable_official_channel_degrades_silently() {
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        // 事实库是空的（这一家还没刷过），SEC 也没配（测试构造器不带）。
+        let tool = facts_tool(dir.path());
+        let quote = json!([{"symbol": "NOSUCH", "price": 1.0, "sharesOutstanding": 100.0}]);
+        assert!(
+            tool.shares_outstanding_for_test("NOSUCH", Some(&quote))
+                .await
+                .is_none()
+        );
+        // 连事实库都没有（旧的测试构造器）时也不许 panic。
+        let bare = DataFetchTool::new(vec!["k".to_string()], "http://127.0.0.1:1/api", 1);
+        assert!(
+            bare.shares_outstanding_for_test("LITE", Some(&quote))
+                .await
+                .is_none()
+        );
+    }
+
+    /// 事实库里有这一家、但它属于拿不到官方封面股数的那 8 家（多类别股发行人）：
+    /// 静默降级，**而且不许再替它打一次 SEC**——那 8 家是长期如此，每轮白打一次
+    /// 网络换回同一个 404。用熔断器当探针：真发出去过请求，连接被拒就会把它打开。
+    #[tokio::test]
+    async fn a_company_known_to_have_no_cover_count_never_reaches_sec() {
+        use hone_memory::company_facts::{CompanyFacts, CompanyFactsStorage};
+
+        hone_memory::configure_cloud_company_facts_storage(None);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let storage = CompanyFactsStorage::new(dir.path());
+        let mut facts = CompanyFacts::new("GOOGL");
+        facts.identity.cik = Some(1_652_044);
+        facts.shares.cover_absent_reason = Some("concept_not_found".to_string());
+        storage.save(&facts).await.expect("seed facts");
+
+        let mut tool = facts_tool(dir.path());
+        // 指向一个必然连不上的端点：一旦真的外呼，熔断器就会被打开。
+        tool.sec = hone_core::sec_shares::SecSharesClient::new(
+            "hone-tools-test tests@hone-claw.com",
+        )
+        .map(|client| {
+            client.with_endpoints("http://127.0.0.1:1/tickers.json", "http://127.0.0.1:1/c")
+        });
+        assert!(tool.sec.is_some(), "测试要的是配了 SEC 的那条路径");
+
+        let quote = json!([{"symbol": "GOOGL", "price": 200.0, "sharesOutstanding": 1.2e10}]);
+        reset_sec_breaker();
+        assert!(
+            tool.shares_outstanding_for_test("GOOGL", Some(&quote))
+                .await
+                .is_none()
+        );
+        assert!(
+            !sec_breaker_is_open(),
+            "事实库已经说清这一家没有官方封面股数，不该再打一次 SEC"
+        );
+
+        // 对照组：库里压根没有这一家时才走 SEC 直取；这一次会真发出去并失败，
+        // 熔断窗口随之打开——SEC 故障时的代价因此从「每轮一次」压成「每 5 分钟一次」。
+        assert!(
+            tool.shares_outstanding_for_test("NOTINTABLE", Some(&quote))
+                .await
+                .is_none()
+        );
+        assert!(sec_breaker_is_open(), "真失败必须进熔断窗口");
+        reset_sec_breaker();
     }
 }

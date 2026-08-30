@@ -303,7 +303,9 @@ event_engine:
       max_summary_tokens: 800
       # SEC EDGAR 强制要求 User-Agent 包含联系邮箱,否则会被限流或拒绝。
       # 部署方应改成自己的真实联系邮箱(SEC 不强制可达,但需有公司 / 产品名 + 邮箱)。
-      user_agent: "honeclaw event-engine ops@honeclaw.local"
+      # SEC 要求 UA 带可联系的邮箱；保留域名（.local/.test/example.com 等）会被
+      # 联系方式闸门判为不合格，整条 SEC 通道随之关闭。换成你自己的邮箱。
+      user_agent: "honeclaw research bm@hone-claw.com"
 
   # 全局 digest LLM 子配置 —— UnifiedDigestScheduler 在每个 slot 触发时把这一节
   # 作为 global news path 的采集 / dedup / LLM 旋钮使用。

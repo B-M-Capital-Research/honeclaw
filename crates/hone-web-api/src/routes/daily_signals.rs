@@ -1665,8 +1665,10 @@ async fn fetch_sec_ai_financials(
         .enrichment
         .user_agent
         .trim();
+    // 保留域名（.local）在 SEC 眼里等于联系不到人——他们按 UA 里的邮箱找人，
+    // 找不到就限流。这条兜底与 `default_sec_user_agent()` 用同一个真实邮箱。
     let user_agent = if configured_user_agent.is_empty() {
-        "honeclaw daily-signals ops@honeclaw.local"
+        "honeclaw daily-signals bm@hone-claw.com"
     } else {
         configured_user_agent
     };

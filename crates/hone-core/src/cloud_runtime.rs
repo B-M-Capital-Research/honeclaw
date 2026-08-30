@@ -784,6 +784,36 @@ pub struct CloudNotificationPrefsImportReport {
     pub skipped_rows: usize,
 }
 
+fn company_facts_record_from_row(row: tokio_postgres::Row) -> CloudCompanyFactsRecord {
+    CloudCompanyFactsRecord {
+        symbol: row.get(0),
+        cik: row.get(1),
+        exchange: row.get(2),
+        is_adr: row.get(3),
+        cover_shares: row.get(4),
+        cover_end: row.get(5),
+        cover_filed: row.get(6),
+        cover_form: row.get(7),
+        facts: row.get(8),
+        refreshed_at: row.get(9),
+    }
+}
+
+/// 行业树 59 家的共享公司基础数据。`facts` 是权威文档，其余列是给查询用的投影。
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCompanyFactsRecord {
+    pub symbol: String,
+    pub cik: Option<i64>,
+    pub exchange: Option<String>,
+    pub is_adr: bool,
+    pub cover_shares: Option<i64>,
+    pub cover_end: Option<String>,
+    pub cover_filed: Option<String>,
+    pub cover_form: Option<String>,
+    pub facts: serde_json::Value,
+    pub refreshed_at: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CloudPortfolioRecord {
     pub actor_storage_key: String,
@@ -1861,6 +1891,26 @@ CREATE TABLE IF NOT EXISTS community_content_resources (
 );
 CREATE INDEX IF NOT EXISTS idx_community_resources_content
   ON community_content_resources(content_id, ordinal);
+CREATE TABLE IF NOT EXISTS company_facts (
+  symbol TEXT PRIMARY KEY,
+  -- Identity and the official cover-page share count are promoted out of the
+  -- JSON document because they are what other rows get filtered and sorted by
+  -- (freshness sweeps, "who has no official count"). `facts` stays the single
+  -- source of truth; these columns are a projection written from it.
+  cik BIGINT,
+  exchange TEXT,
+  is_adr BOOLEAN NOT NULL DEFAULT FALSE,
+  cover_shares BIGINT,
+  cover_end TEXT,
+  cover_filed TEXT,
+  cover_form TEXT,
+  facts JSONB NOT NULL DEFAULT '{}'::jsonb,
+  refreshed_at TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- 没有官方封面股数的那 8 家（多类别股发行人）要能一眼查出来，所以索引可空列。
+CREATE INDEX IF NOT EXISTS idx_company_facts_cover_freshness
+  ON company_facts(cover_end DESC NULLS LAST, symbol);
 CREATE TABLE IF NOT EXISTS community_read_states (
   actor_storage_key TEXT NOT NULL,
   community_id BIGINT NOT NULL REFERENCES community_spaces(community_id) ON DELETE CASCADE,
@@ -1876,6 +1926,9 @@ VALUES ('20260712_community_content_archive')
 ON CONFLICT (version) DO NOTHING;
 INSERT INTO cloud_schema_migrations(version)
 VALUES ('20260727_remove_web_invite_plaintext_api_keys')
+ON CONFLICT (version) DO NOTHING;
+INSERT INTO cloud_schema_migrations(version)
+VALUES ('20260830_company_facts')
 ON CONFLICT (version) DO NOTHING;
 BEGIN;
 SELECT pg_advisory_xact_lock(hashtextextended('hone:stripe-only-billing-migration', 0));
@@ -5112,6 +5165,112 @@ SELECT
             changed_rows,
             skipped_rows: total_rows.saturating_sub(changed_rows),
         })
+    }
+
+    /// 单行读取。走**缓存连接**：这条路径挂在对话热路径上（每次 snapshot、
+    /// 每次 financials 各读一次），每次新开一条 PG 连接是把连接建立的延迟
+    /// 加进用户等待里；同组的 `list_company_facts` 本来就是缓存连接。
+    pub async fn get_company_facts(
+        &self,
+        symbol: &str,
+    ) -> HoneResult<Option<CloudCompanyFactsRecord>> {
+        let client = self.connect_cached_client().await?;
+        let row = client
+            .query_opt(
+                r#"
+SELECT symbol, cik, exchange, is_adr, cover_shares, cover_end, cover_filed, cover_form,
+       facts, refreshed_at
+FROM company_facts
+WHERE symbol = $1
+"#,
+                &[&symbol],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres company_facts 读取失败: {err}")))?;
+        Ok(row.map(company_facts_record_from_row))
+    }
+
+    /// 一次取一批。worker 与研究台都是「整棵树 59 家」的形状，逐个 query 会把
+    /// 一次页面渲染变成 59 次往返。
+    pub async fn list_company_facts(
+        &self,
+        symbols: &[String],
+    ) -> HoneResult<Vec<CloudCompanyFactsRecord>> {
+        let client = self.connect_cached_client().await?;
+        let rows = if symbols.is_empty() {
+            client
+                .query(
+                    r#"
+SELECT symbol, cik, exchange, is_adr, cover_shares, cover_end, cover_filed, cover_form,
+       facts, refreshed_at
+FROM company_facts
+ORDER BY symbol
+"#,
+                    &[],
+                )
+                .await
+        } else {
+            let symbols = symbols.to_vec();
+            client
+                .query(
+                    r#"
+SELECT symbol, cik, exchange, is_adr, cover_shares, cover_end, cover_filed, cover_form,
+       facts, refreshed_at
+FROM company_facts
+WHERE symbol = ANY($1)
+ORDER BY symbol
+"#,
+                    &[&symbols],
+                )
+                .await
+        };
+        let rows = rows.map_err(|err| {
+            HoneError::Config(format!("Postgres company_facts 列表读取失败: {err}"))
+        })?;
+        Ok(rows
+            .into_iter()
+            .map(company_facts_record_from_row)
+            .collect())
+    }
+
+    /// 一轮 sweep 是 59 次 upsert；缓存连接，别开 59 条一次性连接。
+    pub async fn upsert_company_facts(&self, record: CloudCompanyFactsRecord) -> HoneResult<()> {
+        let client = self.connect_cached_client().await?;
+        client
+            .execute(
+                r#"
+INSERT INTO company_facts(symbol, cik, exchange, is_adr, cover_shares, cover_end,
+                          cover_filed, cover_form, facts, refreshed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT(symbol)
+DO UPDATE SET
+  cik = EXCLUDED.cik,
+  exchange = EXCLUDED.exchange,
+  is_adr = EXCLUDED.is_adr,
+  cover_shares = EXCLUDED.cover_shares,
+  cover_end = EXCLUDED.cover_end,
+  cover_filed = EXCLUDED.cover_filed,
+  cover_form = EXCLUDED.cover_form,
+  facts = EXCLUDED.facts,
+  refreshed_at = EXCLUDED.refreshed_at,
+  updated_at = now()
+"#,
+                &[
+                    &record.symbol,
+                    &record.cik,
+                    &record.exchange,
+                    &record.is_adr,
+                    &record.cover_shares,
+                    &record.cover_end,
+                    &record.cover_filed,
+                    &record.cover_form,
+                    &record.facts,
+                    &record.refreshed_at,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres company_facts 写入失败: {err}")))?;
+        Ok(())
     }
 
     pub async fn get_portfolio(

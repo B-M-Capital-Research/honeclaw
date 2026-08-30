@@ -298,9 +298,12 @@ fn default_sec_summary_max_tokens() -> u32 {
 }
 
 fn default_sec_user_agent() -> String {
-    // 占位邮箱:部署方应改成自己的联系邮箱。SEC 不要求邮箱真实可达,但要求格式有
-    // 公司/产品名 + 邮箱;长期不改有被 rate-limit 的风险。
-    "honeclaw event-engine ops@honeclaw.local".into()
+    // SEC 要求 UA 里带一个能联系到人的邮箱——出问题时他们照这个地址找人，
+    // 联系不上就直接限流甚至封 IP。这里用仓库里既有的运营邮箱，而不是
+    // `ops@honeclaw.local` 这类保留域名占位值：占位值会被
+    // `hone_core::sec_shares` 的联系方式闸门判为不合格，整条 SEC 通道默认关闭，
+    // 于是官方股本这条交叉校验在默认部署下形同不存在。
+    "honeclaw research bm@hone-claw.com".into()
 }
 
 /// 全局 digest LLM 子配置,由 unified pipeline 复用来承载 curator / fetcher /

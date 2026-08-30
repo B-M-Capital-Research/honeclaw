@@ -200,6 +200,8 @@ struct FinancialInput {
     current_fcf_margin: Option<f64>,
     net_cash_to_revenue: Option<f64>,
     forward_revenue_growth: Option<f64>,
+    /// The estimates payload had rows but no field name this module knows.
+    estimate_field_names_drifted: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -602,12 +604,20 @@ fn valuation_item(
             )
         })
         .collect::<Vec<_>>();
-    if scenarios
+    // Every scenario, not just the base one: the three fair values are weighted
+    // into one number and are required below to be strictly ordered, which only
+    // means something when all three are built from the same method mix. A
+    // scenario can only lose a method here through the `value > 0` filter on
+    // EV/EBIT, EV/S and DCF — i.e. when net debt per share swallows the
+    // enterprise value — never through the sign of EPS, which is checked once
+    // in `estimates_from_value` and shared by all three scenarios.
+    let thin_scenario = scenarios
         .iter()
-        .any(|scenario| scenario.methods.len() < MIN_METHODS_FOR_RATING)
-    {
+        .find(|scenario| scenario.methods.len() < MIN_METHODS_FOR_RATING)
+        .map(|scenario| (scenario.label.clone(), scenario.methods.len()));
+    if let Some((label, count)) = thin_scenario {
         item.unavailable_reason = format!(
-            "{} 至少需要两种可复算方法；当前 EPS、EBIT、收入或正自由现金流不足。",
+            "{} 至少需要两种可复算方法；{label}情景只有 {count} 种（当前 EPS、EBIT、收入或正自由现金流不足）。",
             profile.label()
         );
         item.scenarios = scenarios;
@@ -1538,6 +1548,22 @@ async fn fetch_financial_inputs(
             result.insert(symbol, input);
         }
     }
+    let mut drifted = result
+        .iter()
+        .filter(|(_, input)| input.estimate_field_names_drifted)
+        .map(|(symbol, _)| symbol.clone())
+        .collect::<Vec<_>>();
+    if !drifted.is_empty() {
+        drifted.sort();
+        // Silence here is what produced valuations 0/52 for a month: every row
+        // parsed to None, so forward P/E and EV/EBIT simply never fired.
+        warn!(
+            symbols = drifted.len(),
+            sample = %drifted.iter().take(5).cloned().collect::<Vec<_>>().join(","),
+            "analyst-estimates rows carried none of {ESTIMATE_EPS_KEYS:?} / {ESTIMATE_REVENUE_KEYS:?}; \
+             forward P/E and EV/EBIT cannot fire until the field names are re-read"
+        );
+    }
     result
 }
 
@@ -1551,7 +1577,8 @@ fn financial_from_values(
     let (cash_as_of, current_fcf, prior_fcf, annual_fcf_history) = cashflow_windows(cash);
     let income = income_windows(income);
     let (raw_net_cash, contract_liabilities) = balance_inputs(balance);
-    let (forward_eps, forward_revenue) = estimates_from_value(estimates, report_date);
+    let estimates = estimates_from_value(estimates, report_date);
+    let (forward_eps, forward_revenue) = (estimates.eps, estimates.revenue);
     let current_fcf_margin = ratio(current_fcf, income.current_revenue);
     let net_cash_to_revenue = ratio(raw_net_cash, income.current_revenue);
     let forward_revenue_growth = ratio_change(forward_revenue, income.current_revenue);
@@ -1574,6 +1601,7 @@ fn financial_from_values(
         current_fcf_margin,
         net_cash_to_revenue,
         forward_revenue_growth,
+        estimate_field_names_drifted: estimates.field_names_drifted(),
     }
 }
 
@@ -1748,34 +1776,77 @@ fn balance_inputs(value: Option<&Value>) -> (Option<f64>, Option<f64>) {
     (Some(cash - debt), contract_liabilities)
 }
 
-fn estimates_from_value(
-    value: Option<&Value>,
-    report_date: NaiveDate,
-) -> (Option<f64>, Option<f64>) {
+/// Field names read off an `stable/analyst-estimates` row.
+///
+/// `stable` returns `epsAvg` / `revenueAvg`; the retired v3 endpoint spelled the
+/// same numbers `estimatedEpsAvg` / `estimatedRevenueAvg`. When the URL moved to
+/// `stable/` the reader kept the v3 names, every row parsed to `None`, and the
+/// forward P/E and EV/EBIT methods stopped firing for a month without an error.
+/// The live name comes first; the v3 name stays as a fallback so a rollback or a
+/// mixed payload still parses. `data_fetch.rs` reads the same pair the same way.
+const ESTIMATE_EPS_KEYS: [&str; 2] = ["epsAvg", "estimatedEpsAvg"];
+const ESTIMATE_REVENUE_KEYS: [&str; 2] = ["revenueAvg", "estimatedRevenueAvg"];
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct ForwardEstimates {
+    eps: Option<f64>,
+    revenue: Option<f64>,
+    rows: usize,
+    rows_with_known_fields: usize,
+}
+
+impl ForwardEstimates {
+    /// Rows came back, and not one carried a field name we know. That is the
+    /// fingerprint of an upstream rename — distinct from a company analysts do
+    /// not cover — and it must be loud instead of decaying into `None`.
+    fn field_names_drifted(&self) -> bool {
+        self.rows > 0 && self.rows_with_known_fields == 0
+    }
+}
+
+fn estimate_number(row: &Value, keys: &[&str]) -> Option<f64> {
+    keys.iter()
+        .find_map(|key| row.get(*key).and_then(Value::as_f64))
+        .filter(|value| value.is_finite())
+}
+
+fn estimates_from_value(value: Option<&Value>, report_date: NaiveDate) -> ForwardEstimates {
     let Some(rows) = value.and_then(Value::as_array) else {
-        return (None, None);
+        return ForwardEstimates::default();
     };
+    let mut seen = 0usize;
+    let mut recognized = 0usize;
     let mut candidates = rows
         .iter()
         .filter_map(|row| {
             let date = NaiveDate::parse_from_str(row.get("date")?.as_str()?, "%Y-%m-%d").ok()?;
-            let eps = row.get("estimatedEpsAvg").and_then(Value::as_f64);
-            let revenue = row.get("estimatedRevenueAvg").and_then(Value::as_f64);
+            seen += 1;
+            let eps = estimate_number(row, &ESTIMATE_EPS_KEYS);
+            let revenue = estimate_number(row, &ESTIMATE_REVENUE_KEYS);
+            if eps.is_some() || revenue.is_some() {
+                recognized += 1;
+            }
             (date > report_date).then_some((date, eps, revenue))
         })
         .collect::<Vec<_>>();
     candidates.sort_by_key(|(date, _, _)| *date);
-    candidates
+    let (eps, revenue) = candidates
         .iter()
         .find(|(date, _, _)| (*date - report_date).num_days() >= 180)
         .or_else(|| candidates.first())
         .map(|(_, eps, revenue)| {
             (
-                (*eps).filter(|value| value.is_finite() && *value > 0.0),
-                (*revenue).filter(|value| value.is_finite() && *value > 0.0),
+                (*eps).filter(|value| *value > 0.0),
+                (*revenue).filter(|value| *value > 0.0),
             )
         })
-        .unwrap_or((None, None))
+        .unwrap_or((None, None));
+    ForwardEstimates {
+        eps,
+        revenue,
+        rows: seen,
+        rows_with_known_fields: recognized,
+    }
 }
 
 fn snapshot_path(state: &AppState) -> PathBuf {
@@ -2054,24 +2125,24 @@ mod tests {
     #[test]
     fn forward_eps_uses_nearest_future_year() {
         let value = json!([
-            {"date":"2026-06-30","estimatedEpsAvg":2.0},
-            {"date":"2028-12-31","estimatedEpsAvg":5.0,"estimatedRevenueAvg":500.0},
-            {"date":"2027-12-31","estimatedEpsAvg":4.0,"estimatedRevenueAvg":400.0}
+            {"date":"2026-06-30","epsAvg":2.0},
+            {"date":"2028-12-31","epsAvg":5.0,"revenueAvg":500.0},
+            {"date":"2027-12-31","epsAvg":4.0,"revenueAvg":400.0}
         ]);
         let estimates =
             estimates_from_value(Some(&value), NaiveDate::from_ymd_opt(2026, 8, 11).unwrap());
-        assert_eq!(estimates, (Some(4.0), Some(400.0)));
+        assert_eq!((estimates.eps, estimates.revenue), (Some(4.0), Some(400.0)));
     }
 
     #[test]
     fn forward_estimate_skips_an_almost_finished_fiscal_year() {
         let value = json!([
-            {"date":"2026-12-31","estimatedEpsAvg":3.0,"estimatedRevenueAvg":300.0},
-            {"date":"2027-12-31","estimatedEpsAvg":4.0,"estimatedRevenueAvg":400.0}
+            {"date":"2026-12-31","epsAvg":3.0,"revenueAvg":300.0},
+            {"date":"2027-12-31","epsAvg":4.0,"revenueAvg":400.0}
         ]);
         let estimates =
             estimates_from_value(Some(&value), NaiveDate::from_ymd_opt(2026, 8, 11).unwrap());
-        assert_eq!(estimates, (Some(4.0), Some(400.0)));
+        assert_eq!((estimates.eps, estimates.revenue), (Some(4.0), Some(400.0)));
     }
 
     #[test]
@@ -2253,5 +2324,384 @@ mod tests {
         assert_eq!(base.methods[1].weight, 0.20);
         assert_eq!(base.methods[2].weight, 0.40);
         assert!(item.eligible_for_rating);
+    }
+
+    // --- FMP `stable/analyst-estimates` field-name regression -----------------
+    //
+    // 2026-08: the estimates URL moved to `stable/` but the reader kept the v3
+    // key names, so every row parsed to `None`, `forward_pe` / `ev_ebit` /
+    // `ev_sales` never fired, and `eligible_for_rating` sat at 0/52 for weeks
+    // with no error anywhere. The fixtures below are shaped like the real
+    // `stable` payload; renaming a key in them must turn these tests red.
+
+    fn report_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 8, 11).unwrap()
+    }
+
+    const QUARTER_ENDS: [&str; 8] = [
+        "2026-06-30",
+        "2026-03-31",
+        "2025-12-31",
+        "2025-09-30",
+        "2025-06-30",
+        "2025-03-31",
+        "2024-12-31",
+        "2024-09-30",
+    ];
+
+    /// A real `stable/analyst-estimates?period=annual` row: `epsAvg` /
+    /// `revenueAvg` / `ebitAvg`, no `estimated*` prefix anywhere. Kept
+    /// internally consistent (EPS ~= netIncomeAvg / shares) so the item built
+    /// from it can also clear the cross-check dispersion gate.
+    fn stable_estimate_rows() -> Value {
+        json!([
+            {"symbol":"TEST","date":"2025-12-31","revenueAvg":3_400.0,"ebitAvg":840.0,
+             "netIncomeAvg":650.0,"epsAvg":1.30,"numAnalystsRevenue":19,"numAnalystsEps":17},
+            {"symbol":"TEST","date":"2027-12-31","revenueLow":4_500.0,"revenueHigh":5_100.0,
+             "revenueAvg":4_800.0,"ebitLow":1_050.0,"ebitHigh":1_350.0,"ebitAvg":1_200.0,
+             "netIncomeAvg":935.0,"epsLow":1.60,"epsHigh":2.10,"epsAvg":1.87,
+             "numAnalystsRevenue":18,"numAnalystsEps":16},
+            {"symbol":"TEST","date":"2026-12-31","revenueAvg":4_150.0,"ebitAvg":1_020.0,
+             "netIncomeAvg":790.0,"epsAvg":1.58,"numAnalystsRevenue":20,"numAnalystsEps":18}
+        ])
+    }
+
+    /// The same payload after a hypothetical *next* rename. This is the exact
+    /// shape of the incident, and the point of the test below is that it is
+    /// reported rather than absorbed into `None`.
+    fn drifted_estimate_rows() -> Value {
+        json!([
+            {"symbol":"TEST","date":"2027-12-31","revenueAverage":4_800.0,"epsAverage":1.87},
+            {"symbol":"TEST","date":"2026-12-31","revenueAverage":4_150.0,"epsAverage":1.58}
+        ])
+    }
+
+    fn quarterly_income_rows() -> Value {
+        Value::Array(
+            QUARTER_ENDS
+                .iter()
+                .enumerate()
+                .map(|(index, date)| {
+                    let (revenue, ebit, gross) = if index < 4 {
+                        (1_000.0, 250.0, 600.0)
+                    } else {
+                        (850.0, 210.0, 500.0)
+                    };
+                    json!({"date":date,"revenue":revenue,"operatingIncome":ebit,"grossProfit":gross})
+                })
+                .collect(),
+        )
+    }
+
+    fn quarterly_cashflow_rows() -> Value {
+        Value::Array(
+            QUARTER_ENDS
+                .iter()
+                .enumerate()
+                .map(|(index, date)| {
+                    let fcf = if index < 4 { 200.0 } else { 170.0 };
+                    json!({"date":date,"freeCashFlow":fcf})
+                })
+                .collect(),
+        )
+    }
+
+    fn balance_rows() -> Value {
+        json!([{"cashAndShortTermInvestments":1_500.0,"totalDebt":500.0}])
+    }
+
+    fn profitable_growth_company() -> ValuationCompany {
+        ValuationCompany {
+            name: "Test Growth".to_string(),
+            symbol: "TEST".to_string(),
+            market_scope: "US".to_string(),
+            theme: "云与企业软件".to_string(),
+            valuation_method: "forward P/E、EV/EBIT 与 DCF 交叉验证".to_string(),
+        }
+    }
+
+    fn test_quote() -> QuoteInput {
+        QuoteInput {
+            price: 40.0,
+            shares: 500.0,
+            as_of: Some("2026-08-11".to_string()),
+        }
+    }
+
+    fn method_ids(scenario: &ValuationScenario) -> Vec<&str> {
+        scenario
+            .methods
+            .iter()
+            .map(|method| method.id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn live_stable_estimate_fields_parse_forward_eps_and_revenue() {
+        let estimates = estimates_from_value(Some(&stable_estimate_rows()), report_date());
+        assert_eq!(estimates.eps, Some(1.87));
+        assert_eq!(estimates.revenue, Some(4_800.0));
+        assert_eq!(estimates.rows, 3);
+        assert_eq!(estimates.rows_with_known_fields, 3);
+        assert!(!estimates.field_names_drifted());
+    }
+
+    #[test]
+    fn stable_field_names_win_over_the_retired_v3_spelling() {
+        // v3-only payload still parses, so a rollback does not blank the lab.
+        let legacy =
+            json!([{"date":"2027-12-31","estimatedEpsAvg":4.0,"estimatedRevenueAvg":400.0}]);
+        let parsed = estimates_from_value(Some(&legacy), report_date());
+        assert_eq!((parsed.eps, parsed.revenue), (Some(4.0), Some(400.0)));
+        assert_eq!(parsed.rows_with_known_fields, 1);
+
+        // When both spellings are present the `stable` one is authoritative;
+        // this is what pins `epsAvg` / `revenueAvg` as the primary keys rather
+        // than leaving the order to chance.
+        let both = json!([{
+            "date":"2027-12-31",
+            "epsAvg":4.0,"revenueAvg":400.0,
+            "estimatedEpsAvg":9.9,"estimatedRevenueAvg":999.0
+        }]);
+        let parsed = estimates_from_value(Some(&both), report_date());
+        assert_eq!((parsed.eps, parsed.revenue), (Some(4.0), Some(400.0)));
+    }
+
+    #[test]
+    fn renamed_estimate_fields_are_reported_instead_of_silently_none() {
+        let drifted = estimates_from_value(Some(&drifted_estimate_rows()), report_date());
+        assert_eq!(drifted.eps, None);
+        assert_eq!(drifted.revenue, None);
+        assert_eq!(drifted.rows, 2);
+        assert_eq!(drifted.rows_with_known_fields, 0);
+        assert!(
+            drifted.field_names_drifted(),
+            "rows that carry no known eps/revenue key must be flagged, not dropped"
+        );
+
+        // A symbol nobody covers, or a dead endpoint, must NOT look like drift.
+        assert!(!estimates_from_value(Some(&json!([])), report_date()).field_names_drifted());
+        assert!(!estimates_from_value(None, report_date()).field_names_drifted());
+        assert!(
+            !estimates_from_value(Some(&stable_estimate_rows()), report_date())
+                .field_names_drifted()
+        );
+
+        // And the flag survives into the value the worker actually logs on.
+        let financial = financial_from_values(
+            Some(&quarterly_cashflow_rows()),
+            Some(&quarterly_income_rows()),
+            Some(&balance_rows()),
+            Some(&drifted_estimate_rows()),
+            report_date(),
+        );
+        assert!(financial.estimate_field_names_drifted);
+        assert_eq!(financial.forward_eps, None);
+        assert_eq!(financial.forward_revenue, None);
+    }
+
+    #[test]
+    fn stable_estimates_unlock_forward_pe_and_ev_ebit_in_every_scenario() {
+        let financial = financial_from_values(
+            Some(&quarterly_cashflow_rows()),
+            Some(&quarterly_income_rows()),
+            Some(&balance_rows()),
+            Some(&stable_estimate_rows()),
+            report_date(),
+        );
+        assert_eq!(financial.forward_eps, Some(1.87));
+        assert_eq!(financial.forward_revenue, Some(4_800.0));
+        assert!(!financial.estimate_field_names_drifted);
+
+        let quote = test_quote();
+        let item = valuation_item(
+            profitable_growth_company(),
+            Some(&quote),
+            Some(&financial),
+            report_date(),
+            "",
+        );
+
+        // The gate at the top of `valuation_item` is `.any` over all three
+        // scenarios, so proving the base case alone would prove nothing.
+        assert_eq!(item.scenarios.len(), 3);
+        for scenario in &item.scenarios {
+            let ids = method_ids(scenario);
+            assert!(
+                ids.contains(&"forward_pe"),
+                "{} scenario lost forward P/E: {ids:?}",
+                scenario.id
+            );
+            assert!(
+                ids.contains(&"ev_ebit"),
+                "{} scenario lost EV/EBIT: {ids:?}",
+                scenario.id
+            );
+            assert!(
+                scenario.methods.len() >= MIN_METHODS_FOR_RATING,
+                "{} scenario only has {} methods",
+                scenario.id,
+                scenario.methods.len()
+            );
+        }
+        assert_eq!(item.unavailable_reason, "");
+        assert!(item.eligible_for_rating);
+        assert_eq!(item.status, "ready");
+        let cross_check = item.cross_check.as_ref().expect("cross check");
+        assert_eq!(cross_check.status, "consistent");
+        assert!(cross_check.method_count >= MIN_METHODS_FOR_RATING);
+        assert_eq!(cross_check.forward_eps, Some(1.87));
+        assert!(cross_check.forward_pe.is_some());
+    }
+
+    #[test]
+    fn drifted_estimate_fields_reproduce_the_zero_eligible_incident() {
+        let financial = financial_from_values(
+            Some(&quarterly_cashflow_rows()),
+            Some(&quarterly_income_rows()),
+            Some(&balance_rows()),
+            Some(&drifted_estimate_rows()),
+            report_date(),
+        );
+        let quote = test_quote();
+        let item = valuation_item(
+            profitable_growth_company(),
+            Some(&quote),
+            Some(&financial),
+            report_date(),
+            "",
+        );
+        // Exactly the production shape: one method per scenario (DCF only),
+        // no cross-check, nothing eligible for a rating.
+        for scenario in &item.scenarios {
+            assert_eq!(method_ids(scenario), vec!["cycle_adjusted_dcf"]);
+        }
+        assert!(!item.eligible_for_rating);
+        assert!(item.cross_check.is_none());
+        assert!(item.unavailable_reason.contains("两种可复算方法"));
+    }
+
+    #[test]
+    fn forward_pe_is_present_in_all_three_scenarios_or_in_none() {
+        // The bear case cannot lose forward P/E on its own: the sign of EPS is
+        // decided once, in `estimates_from_value`, and the bear earnings factor
+        // (0.75) preserves it. So `.any(methods.len() < 2)` is not stricter than
+        // a base-only check along the EPS axis.
+        let negative = json!([{"date":"2027-12-31","epsAvg":-2.0,"revenueAvg":4_800.0}]);
+        let parsed = estimates_from_value(Some(&negative), report_date());
+        assert_eq!(
+            parsed.eps, None,
+            "a loss-making forward year drops EPS once"
+        );
+        assert_eq!(parsed.revenue, Some(4_800.0));
+
+        let financial = financial_from_values(
+            Some(&quarterly_cashflow_rows()),
+            Some(&quarterly_income_rows()),
+            Some(&balance_rows()),
+            Some(&stable_estimate_rows()),
+            report_date(),
+        );
+        let quote = test_quote();
+        let scenarios = |financial: &FinancialInput| {
+            scenario_configs(ValuationProfile::ProfitableGrowth)
+                .iter()
+                .map(|config| {
+                    build_scenario(
+                        ValuationProfile::ProfitableGrowth,
+                        *config,
+                        &quote,
+                        financial,
+                        2.0,
+                        normalized_positive_cashflow(&financial.annual_fcf_history),
+                        Some(0.18),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            scenarios(&financial)
+                .iter()
+                .all(|scenario| method_ids(scenario).contains(&"forward_pe"))
+        );
+        let loss_making = FinancialInput {
+            forward_eps: None,
+            ..financial.clone()
+        };
+        assert!(
+            scenarios(&loss_making)
+                .iter()
+                .all(|scenario| !method_ids(scenario).contains(&"forward_pe"))
+        );
+    }
+
+    #[test]
+    fn only_net_debt_can_drop_a_method_from_the_bear_case() {
+        // The one asymmetric exit is the `value > 0` filter on EV/EBIT, EV/S and
+        // DCF: with enough net debt per share the bear enterprise value goes
+        // negative while the base one stays positive. Keeping `.any` over three
+        // scenarios is what stops this item from being published, because the
+        // ordering check below it does not catch it.
+        let financial = FinancialInput {
+            as_of: Some("2026-06-30".to_string()),
+            net_cash: Some(-2_500.0),
+            forward_eps: Some(4.0),
+            forward_revenue: Some(1_000.0),
+            current_revenue: Some(1_000.0),
+            prior_revenue: Some(950.0),
+            normalized_ebit_margin: Some(0.20),
+            ..FinancialInput::default()
+        };
+        let quote = QuoteInput {
+            price: 45.0,
+            shares: 100.0,
+            as_of: Some("2026-08-11".to_string()),
+        };
+        let scenarios = scenario_configs(ValuationProfile::ProfitableGrowth)
+            .iter()
+            .map(|config| {
+                build_scenario(
+                    ValuationProfile::ProfitableGrowth,
+                    *config,
+                    &quote,
+                    &financial,
+                    -25.0,
+                    None,
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(method_ids(&scenarios[1]), vec!["forward_pe", "ev_ebit"]);
+        assert_eq!(
+            method_ids(&scenarios[0]),
+            vec!["forward_pe"],
+            "bear EV/EBIT should be wiped out by net debt, not by EPS"
+        );
+        // The surviving bear method carries no debt bridge, so the bear case is
+        // built more optimistically than the base case it is supposed to sit
+        // below — and it still lands under the base value, i.e. the strictly
+        // ordered range check would wave it through.
+        assert_eq!(scenarios[0].fair_value, scenarios[0].methods[0].value);
+        assert!(scenarios[0].fair_value < scenarios[1].fair_value);
+
+        let item = valuation_item(
+            ValuationCompany {
+                name: "Levered".to_string(),
+                symbol: "LEV".to_string(),
+                market_scope: "US".to_string(),
+                theme: "云与企业软件".to_string(),
+                valuation_method: "forward P/E、EV/EBIT 与 DCF 交叉验证".to_string(),
+            },
+            Some(&quote),
+            Some(&financial),
+            report_date(),
+            "",
+        );
+        assert!(!item.eligible_for_rating);
+        assert!(
+            item.unavailable_reason.contains("悲观情景只有 1 种"),
+            "the reason must name the scenario that fell short: {}",
+            item.unavailable_reason
+        );
     }
 }

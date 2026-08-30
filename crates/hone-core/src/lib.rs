@@ -20,6 +20,7 @@ pub mod macro_indicator;
 pub mod process_lock;
 pub mod provider_symbol;
 pub mod quiet;
+pub mod sec_shares;
 pub mod security;
 pub mod task_observer;
 pub mod text;
