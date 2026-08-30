@@ -1005,11 +1005,22 @@ before switching the mode; a mismatch fails closed.
 Worker 侧外部复验：`GET /_media/v1/o/...` 无 cookie → `401` 且带 CSP / CORP / nosniff / Referrer-Policy，
 `OPTIONS` → `405 Allow: GET, HEAD, PUT`（无 CORS 预检），路由绑定正常。
 
-**卡在最后一步**：origin 的密钥是这次新生成的，Worker 上还是旧的那份。
-Cloudflare 的 secret 写入后读不回来，所以两边对齐只能靠轮换——已在 origin 侧生成，
-Worker 侧需要用同样的字节跑一次 `wrangler secret put MEDIA_EDGE_HMAC_SECRET`。
-在这之前**刻意停在 `shadow`**：`prefer` 下客户端会先试边缘、签名不匹配被拒、再回落到 origin 代理，
-结果和现在一样但每次上传多一个来回。密钥对齐后再翻 `prefer`。
+密钥对齐走的是**反方向**：不动 Worker，把 origin 改成 Worker 已经持有的那份。
+部署 Worker 的那次会话把密钥留在了工作目录里（`media_edge_secret`，64 字节，
+时间戳与 `wrangler secret put` 同一分钟），指纹核对一致后用管道写进 origin 的 runtime.env，
+值不落盘、不回显。**这条路径不需要任何 Cloudflare 凭据**——Cloudflare 的 secret 写入后读不回来，
+但要对齐并不一定要往那边写。
+
+`mode: "prefer"` 已生效。对线上 Worker 的三条端到端验证（用同一份密钥按契约自签读 cookie）：
+
+| 用例 | 结果 | 说明 |
+| --- | --- | --- |
+| 自己 prefix 下不存在的对象 | `404 not_found` | Worker **接受了 origin 的签名**，这就是两边密钥一致的证明 |
+| 同一 cookie 够别人的 prefix | `403 object_outside_session_scope` | 归属隔离生效 |
+| 签名改一个字节 | `401 invalid_media_session` | 确实在验签，不是放行一切 |
+
+剩下的只有浏览器侧那一条（runbook 第 6 步）：粘一张图，devtools 里确认 `PUT` 打到
+`/_media/v1/o/...` 拿 `201`，且后面没有 `/api/public/upload`。
 
 ### Rollout order
 
