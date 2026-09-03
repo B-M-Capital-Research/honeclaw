@@ -226,7 +226,7 @@ export default function PublicIndustryMapPage() {
                               <p class="industry-detail-lead">{industry().one_liner}</p>
 
                               <h3>相关公司</h3>
-                              <p class="industry-detail-note">按市值降序；本轮未取到行情的排在最后。树里只收美股与 ADR。</p>
+                              <p class="industry-detail-note">按市值降序；本轮未取到行情的排在最后。树里只收美股与 ADR。标着「官方股本口径」的行，市值是现价 × 最近一期定期报告封面上的官方股本；提供方的股本会整整落后一份申报，所以并列给出提供方市值供对照。</p>
                               <table class="industry-members">
                                 <thead>
                                   <tr>
@@ -243,7 +243,20 @@ export default function PublicIndustryMapPage() {
                                       <tr>
                                         <td class="industry-symbol">{member.symbol}</td>
                                         <td>{member.name}</td>
-                                        <td>{marketCap(member.market_cap)}</td>
+                                        <td>
+                                          {marketCap(member.market_cap)}
+                                          <Show
+                                            when={member.market_cap_basis === "price_x_official_shares"}
+                                          >
+                                            <span class="industry-basis" title="提供方的 sharesOutstanding 会整整落后一份申报，这里按最近一期定期报告封面上的官方股本重算；括号里是提供方原样的市值，便于与外部站点对照。">
+                                              官方股本口径
+                                              <Show when={member.provider_market_cap != null}>
+                                                {" · 提供方 "}
+                                                {marketCap(member.provider_market_cap)}
+                                              </Show>
+                                            </span>
+                                          </Show>
+                                        </td>
                                         <td>
                                           <Show when={member.price != null} fallback="—">
                                             {member.price?.toFixed(2)}

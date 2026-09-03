@@ -409,3 +409,13 @@
   font-family: var(--hone-font-label);
   color: var(--hone-ink-400);
 }
+
+/* 市值口径标注：这一行的市值是按官方封面股本重算的，后面并列提供方原样的数字。
+   两个口径必须同时看得见——只给一个，页面上的市值会和任何外部站点都对不上。 */
+.industry-basis {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
