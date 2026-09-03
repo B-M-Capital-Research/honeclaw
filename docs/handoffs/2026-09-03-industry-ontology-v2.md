@@ -113,4 +113,31 @@ actor `harness-eval-ont0-*`）：**0/8** 接到英伟达最近一季的实际动
 - 底稿：8 行的 NVDA 都写了 FY27Q2（2026-08-26）的最近动作，按行各带一句（电力：PORTS 园区 1,050 亿担保；
   新云：担保敞口与 AI cloud agreements；设备：承诺措辞 primarily memory and manufacturing facilities…）；
   存储行的 MU 写了 FY26Q3 毛利率 84.9% / 指引约 86%。数字全部来自种子文件里已带日期的事实。
-- 发布与复测 `ont2`：（待填）
+- 发布：revision `1950b5b864c060039eabc1c31df771c26bbbd988`，镜像
+  `…honeclaw-runtime@sha256:8aa83ff01b1543cbcfcc352c926150ec4c854cc084a41f796b7e07a280a1472a`，
+  2026-09-03 13:14 UTC 切换（两次 active-chat-runs=0；current → 1950b5b8，previous → 91e78e74，
+  e7f855a9 已清；NRestarts=0，重启后无 error）。二进制里 `上游最近动作 ·` / `就从那条最近动作写起` /
+  `set_upstream_latest` 都在；harness 只换了 `industry-map`（备份 `pre-1950b5b8…-20260903T131454Z`），
+  落盘底稿 9 条 `latest` 非空。匿名空体 POST edits 现在是 401（先鉴权再解析）。
+- 复测 `ont2`（同 8 题，13:15–13:20 UTC）：仍 **0/8**。工具面有动：`earnings_outlook` 5/7 题、
+  `analyst_actions` 3/7 题；CRDO 写进了 2 个 FY27Q2 数字；但 SNDK / AAOI / VST 的回答一次都没提英伟达。
+- 决定性诊断：用隔离 actor 让生产 agent「只复述系统提示里【本轮相关行业】关于 SNDK 的上游最近动作那一行」，
+  它逐字复述出来了（NVDA FY27Q2 $89.0B / $108B / 75.0%→74.0% / $119B→$279B，截至 2026-08-26；
+  MU FY26Q3 84.9% / 86%）；同样能复述【历史公司研究基线】。**块在提示里，问题是回答模板没有它的位置**：
+  每题都加载 `valuation-audit`，终稿按「估值对账表 → 三问 → 三情景」写，注入头部说的「需求侧第一段」
+  在这套结构里没有对应的段落。
+
+## v2.2：给上游事实在模板里安一个位置（只发 harness，不发二进制）
+
+- `valuation-audit`：对账表多一行「上游最近动作」（原句数字 + 截至日期，`earnings_outlook` 有更新一季则以
+  更新为准）；一问的**增长来源**第一句就是那条动作、第二句写传导闸门；第四步基准档的关键经营输入第一项是它，
+  悲观 / 乐观改传导不改上游数。`fundamentals` 四的第一句同样原样引用它。`industry-map` 步骤 0 改成
+  「先写上游最近动作，再核对更新，再写公司」。
+- 发布：commit `35a422cd`（skills only），harness 13:22 UTC 装入生产（fundamentals / industry-map /
+  valuation-audit 三个目录，备份 `pre-35a422cd…-20260903T132223Z`），二进制仍是 1950b5b8。
+- 复测 `ont3`（同 8 题，13:22–13:30 UTC）：**4/8**（VST、SNDK、COHR、AAOI 都把英伟达 FY27Q2 的数字和
+  截至日期写进了对账表「上游最近动作」行并沿传导链写到公司；SNDK 6/6 个数字全中）。RKLB 不在树里（对照），
+  三个没接上的是 CRDO「值得买吗」、MU「投资逻辑」、NBIS「怎么看」——都提了英伟达（0/4/4 次）但没带数字与日期。
+  三轮对照（成员公司 7 家）：ont0 0 → ont2 0 → ont3 4。
+- 若仍不达标，下一步是二进制侧：把注入头部的「需求侧第一段」改成点名这三个落位（对账表行 / 增长来源 /
+  基准档输入），并考虑在 pre-turn enrichment 里对成员公司预取一次上游的 `earnings_outlook`。
