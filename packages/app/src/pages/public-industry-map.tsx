@@ -162,6 +162,66 @@ function FieldEditor(props: {
   );
 }
 
+/**
+ * 上游信号「最近动作」的就地编辑：一段动作 + 截至日期，两个字段一起存成一个改动。
+ * 草稿的重置规则与 FieldEditor 相同：只在源值变了时跟着重置。
+ */
+function LatestEditor(props: {
+  symbol: string;
+  latest: string;
+  asOf: string;
+  editor: Editor;
+  onSave: (latest: string, asOf: string) => Promise<boolean>;
+}) {
+  const [latest, setLatest] = createSignal(props.latest);
+  const [asOf, setAsOf] = createSignal(props.asOf);
+  createEffect(on(() => props.latest, (value) => setLatest(value), { defer: true }));
+  createEffect(on(() => props.asOf, (value) => setAsOf(value), { defer: true }));
+  const dirty = () =>
+    latest().trim() !== props.latest.trim() || asOf().trim() !== props.asOf.trim();
+  return (
+    <div class="industry-field industry-signal-latest-editor">
+      <span class="industry-field-label">最近动作</span>
+      <textarea
+        class="industry-textarea"
+        rows={3}
+        aria-label={`${props.symbol} 最近动作`}
+        placeholder="它最近一次有日期的动作：哪一期、何时发布、关键数字与下季指引"
+        value={latest()}
+        disabled={props.editor.busy()}
+        onInput={(event) => setLatest(event.currentTarget.value)}
+      />
+      <label class="industry-signal-latest-asof">
+        截至
+        <input
+          class="industry-input"
+          aria-label={`${props.symbol} 最近动作截至`}
+          placeholder="2026-08-26"
+          value={asOf()}
+          disabled={props.editor.busy()}
+          onInput={(event) => setAsOf(event.currentTarget.value)}
+        />
+      </label>
+      <div class="industry-field-actions">
+        <button
+          type="button"
+          class="industry-btn is-primary"
+          disabled={!props.editor.canSave() || !dirty()}
+          onClick={() => void props.onSave(latest().trim(), asOf().trim())}
+        >
+          保存
+        </button>
+        <Show when={dirty()}>
+          <span class="industry-field-dirty">未保存</span>
+        </Show>
+        <Show when={dirty() && props.editor.noteMissing()}>
+          <span class="industry-form-hint">先在面板顶部填改动说明</span>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
 function VariablesTable(props: { variables: IndustryKeyVariable[] }) {
   return (
     <table class="industry-variables">
@@ -274,6 +334,8 @@ function SignalForm(props: { industry: string; editor: Editor }) {
   const [why, setWhy] = createSignal("");
   const [pull, setPull] = createSignal("");
   const [cadence, setCadence] = createSignal("");
+  const [latest, setLatest] = createSignal("");
+  const [latestAsOf, setLatestAsOf] = createSignal("");
   const ready = () => symbol().trim() !== "";
   const add = async () => {
     const ok = await props.editor.submit(props.industry, {
@@ -285,6 +347,8 @@ function SignalForm(props: { industry: string; editor: Editor }) {
         why: why().trim(),
         pull: splitLines(pull()),
         cadence: cadence().trim(),
+        latest: latest().trim(),
+        latest_as_of: latestAsOf().trim(),
       },
     });
     if (ok) {
@@ -294,6 +358,8 @@ function SignalForm(props: { industry: string; editor: Editor }) {
       setWhy("");
       setPull("");
       setCadence("");
+      setLatest("");
+      setLatestAsOf("");
     }
   };
   return (
@@ -352,6 +418,27 @@ function SignalForm(props: { industry: string; editor: Editor }) {
           value={why()}
           disabled={props.editor.busy()}
           onInput={(event) => setWhy(event.currentTarget.value)}
+        />
+      </label>
+      <label class="is-wide">
+        最近动作
+        <textarea
+          class="industry-textarea"
+          rows={3}
+          placeholder="它最近一次有日期的动作：哪一期、何时发布、关键数字与下季指引"
+          value={latest()}
+          disabled={props.editor.busy()}
+          onInput={(event) => setLatest(event.currentTarget.value)}
+        />
+      </label>
+      <label>
+        截至
+        <input
+          class="industry-input"
+          placeholder="2026-08-26"
+          value={latestAsOf()}
+          disabled={props.editor.busy()}
+          onInput={(event) => setLatestAsOf(event.currentTarget.value)}
         />
       </label>
       <label class="is-wide">
@@ -1079,6 +1166,41 @@ export default function PublicIndustryMapPage() {
                                             </button>
                                           </Show>
                                         </div>
+                                        <Show
+                                          when={editMode()}
+                                          fallback={
+                                            <Show when={signal.latest}>
+                                              <div class="industry-signal-latest">
+                                                <div class="industry-signal-latest-head">
+                                                  <span class="industry-signal-latest-label">
+                                                    最近动作
+                                                  </span>
+                                                  <Show when={signal.latest_as_of}>
+                                                    <span class="industry-signal-asof">
+                                                      截至 {signal.latest_as_of}
+                                                    </span>
+                                                  </Show>
+                                                </div>
+                                                <p class="industry-signal-latest-text">{signal.latest}</p>
+                                              </div>
+                                            </Show>
+                                          }
+                                        >
+                                          <LatestEditor
+                                            symbol={signal.symbol}
+                                            latest={signal.latest ?? ""}
+                                            asOf={signal.latest_as_of ?? ""}
+                                            editor={editor}
+                                            onSave={(latest, asOf) =>
+                                              editor.submit(industry().id, {
+                                                kind: "set_upstream_latest",
+                                                symbol: signal.symbol,
+                                                latest,
+                                                as_of: asOf,
+                                              })
+                                            }
+                                          />
+                                        </Show>
                                         <Show when={signal.why}>
                                           <p>{signal.why}</p>
                                         </Show>

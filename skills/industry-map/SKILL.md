@@ -38,6 +38,7 @@ allowed-tools:
 | `ai_valuation_logic.anti_pattern` | 这一行最常见的估值错法 | 与公司卡的「不要…」同等对待：在真正选倍数或分母的那一句里点名对照 |
 | `core_watch` | 这一行最该盯的先行指标与它的出现频率 | 触发条件与跟踪清单从这里取，不要写「持续关注行业动态」 |
 | `upstream_signals` | **本体的边**：这一行的收入由哪几家上市公司的最近行为决定，以及写这一行之前该先取它们的哪几个读数 | 命中成员公司时，**先取上游再写公司**：`data_fetch(earnings_outlook, ticker=<上游>)` 拿最新一季收入/指引/毛利率，`analyst_actions` 拿评级与目标价变动，`transcript`/`press_releases` 拿管理层关于本行的原话。需求侧第一段写「上游最近做了什么 → 沿传导链到这家」，不是「关注英伟达财报」 |
+| `upstream_signals[].latest` / `latest_as_of` | 那家上游**最近一季实际做了什么**（带数字、带日期的一段）与截至日期。注入时排在传导链之前，需求侧第一段就从它写起；管理员每季财报后用页面或 `industry_map_edit(action="set_upstream_latest")` 更新，过期就按截至日期注明。 |
 
 ## 怎么把行业接进个股分析
 

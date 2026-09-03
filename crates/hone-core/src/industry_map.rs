@@ -93,6 +93,13 @@ pub struct UpstreamSignal {
     pub pull: Vec<String>,
     #[serde(default)]
     pub cadence: String,
+    /// 它最近一季实际做了什么（带数字、带日期的一段）。这是注入时排在最前的一行：模型拿到的是
+    /// 事实而不是「去取」的指令，所以能直接写进需求侧第一段；管理员每季财报后更新。
+    #[serde(default)]
+    pub latest: String,
+    /// `latest` 截至哪一天（或哪个月），注入时随行带出，也让页面上一眼看出是否过期。
+    #[serde(default)]
+    pub latest_as_of: String,
 }
 
 pub const UPSTREAM_RELATIONS: &[&str] = &[
@@ -204,6 +211,13 @@ pub enum EditOp {
     RemoveUpstreamSignal {
         symbol: String,
     },
+    /// 只改一条上游信号的「最近动作」与截至日期——每季财报后最常做的那个动作。
+    SetUpstreamLatest {
+        symbol: String,
+        latest: String,
+        #[serde(default)]
+        as_of: String,
+    },
     /// 新增一个行业。`IndustryEdit.industry` 就是新行业的 id。
     AddIndustry {
         industry: NewIndustry,
@@ -228,6 +242,13 @@ impl EditOp {
             EditOp::RemoveWatch { what } => format!("移除关注点「{}」", truncate(what, 18)),
             EditOp::AddUpstreamSignal { signal } => format!("新增上游信号 {}", signal.symbol),
             EditOp::RemoveUpstreamSignal { symbol } => format!("移除上游信号 {symbol}"),
+            EditOp::SetUpstreamLatest { symbol, as_of, .. } => {
+                if as_of.trim().is_empty() {
+                    format!("更新上游动作 {symbol}")
+                } else {
+                    format!("更新上游动作 {symbol}（截至 {as_of}）")
+                }
+            }
             EditOp::AddIndustry { industry } => format!("新增行业「{}」", industry.name),
             EditOp::RemoveIndustry => "移除整个行业".to_string(),
         }
@@ -405,6 +426,21 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
             if industry.upstream_signals.len() == before {
                 return Err(ApplyError::UnknownSignal(symbol.clone()));
             }
+        }
+        EditOp::SetUpstreamLatest {
+            symbol,
+            latest,
+            as_of,
+        } => {
+            let Some(signal) = industry
+                .upstream_signals
+                .iter_mut()
+                .find(|item| &item.symbol == symbol)
+            else {
+                return Err(ApplyError::UnknownSignal(symbol.clone()));
+            };
+            signal.latest = latest.trim().to_string();
+            signal.latest_as_of = as_of.trim().to_string();
         }
         EditOp::SetField { field, value } => match field.as_str() {
             "one_liner" => industry.one_liner = value.clone(),
@@ -689,6 +725,8 @@ mod tests {
                         why: "单机柜功率由 GPU 平台定".into(),
                         pull: vec!["下一代平台的机柜功率".into()],
                         cadence: "GTC".into(),
+                        latest: String::new(),
+                        latest_as_of: String::new(),
                     },
                 },
             ),
@@ -736,6 +774,76 @@ mod tests {
     }
 
     #[test]
+    fn upstream_latest_is_set_by_symbol_and_only_on_existing_signals() {
+        let mut map = base_map();
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::AddUpstreamSignal {
+                    signal: UpstreamSignal {
+                        symbol: "ZZZZ".into(),
+                        name: "测试上游".into(),
+                        relation: "capex_source".into(),
+                        why: String::new(),
+                        pull: vec![],
+                        cadence: String::new(),
+                        latest: String::new(),
+                        latest_as_of: String::new(),
+                    },
+                },
+            ),
+        )
+        .expect("add signal");
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetUpstreamLatest {
+                    symbol: "ZZZZ".into(),
+                    latest: " Q2：收入 +X%，capex 指引上调 ".into(),
+                    as_of: "2026-08-01".into(),
+                },
+            ),
+        )
+        .expect("set latest");
+        let signal = map
+            .industries
+            .iter()
+            .find(|i| i.id == "storage")
+            .unwrap()
+            .upstream_signals
+            .iter()
+            .find(|s| s.symbol == "ZZZZ")
+            .unwrap();
+        assert_eq!(signal.latest, "Q2：收入 +X%，capex 指引上调");
+        assert_eq!(signal.latest_as_of, "2026-08-01");
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetUpstreamLatest {
+                        symbol: "YYYY".into(),
+                        latest: "x".into(),
+                        as_of: String::new(),
+                    },
+                ),
+            ),
+            Err(ApplyError::UnknownSignal("YYYY".into()))
+        );
+        assert_eq!(
+            EditOp::SetUpstreamLatest {
+                symbol: "ZZZZ".into(),
+                latest: "x".into(),
+                as_of: "2026-08-01".into(),
+            }
+            .summary(),
+            "更新上游动作 ZZZZ（截至 2026-08-01）"
+        );
+    }
+
+    #[test]
     fn upstream_signals_reject_unknown_relations_and_duplicates() {
         let mut map = base_map();
         let bad = UpstreamSignal {
@@ -745,6 +853,8 @@ mod tests {
             why: String::new(),
             pull: vec![],
             cadence: String::new(),
+            latest: String::new(),
+            latest_as_of: String::new(),
         };
         assert_eq!(
             apply(

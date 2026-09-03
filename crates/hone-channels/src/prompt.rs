@@ -269,6 +269,49 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         if !matched_members.is_empty() {
             lines.push(format!("  本轮命中的成员：{}", matched_members.join("、")));
         }
+        // 本体的边：这一行由谁的最近行为决定。排在传导链之前，而且先给事实（它最近一季实际做了什么，
+        // 带日期），再给核对取法——上一版只给「去取什么」的指令，生产上 7 家成员公司的回答 0 家照做；
+        // 模型对拿到手的事实会直接用，对「去取」的指令常常不理。
+        //
+        // 只注入前两条（NVDA 永远排第一），读数各截到一句——完整的 `pull` / `why` 留给研究台页面和
+        // `industry-map` skill。
+        let mut signals = industry.upstream_signals.iter().collect::<Vec<_>>();
+        signals.sort_by_key(|signal| signal.symbol != "NVDA");
+        for signal in signals.into_iter().take(MAX_PROJECTED_UPSTREAM_SIGNALS) {
+            if !signal.latest.trim().is_empty() {
+                let as_of = if signal.latest_as_of.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("，截至 {}", signal.latest_as_of.trim())
+                };
+                lines.push(format!(
+                    "  上游最近动作 · {}（{}，{}{}）：{}",
+                    signal.symbol,
+                    signal.name,
+                    signal.relation,
+                    as_of,
+                    clip(&signal.latest, 240)
+                ));
+            }
+            let pull = if signal.pull.is_empty() {
+                "最新一季财报与指引".to_string()
+            } else {
+                signal
+                    .pull
+                    .iter()
+                    .take(3)
+                    .map(|item| clip(item, 40))
+                    .collect::<Vec<_>>()
+                    .join("；")
+            };
+            lines.push(format!(
+                "  写这家之前先核对 {} 有没有更新的一季：`data_fetch(data_type=\"earnings_outlook\", ticker=\"{}\")`（评级与目标价 `analyst_actions`，原话 `transcript` / `press_releases`）；要读的是 {}。{}",
+                signal.symbol,
+                signal.symbol,
+                pull,
+                clip(&signal.why, 80)
+            ));
+        }
         lines.push(format!("  需求传导链：{}", logic.driver_chain));
         // 注入读短版：长版是给研究台页面看的，整段注入每轮要多花上千 token。
         let anchor = if logic.multiple_anchor_short.trim().is_empty() {
@@ -302,36 +345,6 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         if !watch.is_empty() {
             lines.push(format!("  核心关注点：{}", watch.join("；")));
         }
-        // 本体的边：这一行由谁的最近行为决定。写成「先去取什么」而不是「关注谁」，
-        // 否则模型只会在结尾补一句「关注英伟达财报」，正文仍然和英伟达最近做了什么无关。
-        //
-        // 只注入前两条（NVDA 永远排第一），每条只带前三个读数、每个读数截到一句——完整的
-        // `pull` / `why` 是给研究台页面和 `industry-map` skill 的，整段注入会让两行的开销
-        // 从约 1100 token 涨到 3700。要展开时模型自己加载 skill。
-        let mut signals = industry.upstream_signals.iter().collect::<Vec<_>>();
-        signals.sort_by_key(|signal| signal.symbol != "NVDA");
-        for signal in signals.into_iter().take(MAX_PROJECTED_UPSTREAM_SIGNALS) {
-            let pull = if signal.pull.is_empty() {
-                "最新一季财报与指引".to_string()
-            } else {
-                signal
-                    .pull
-                    .iter()
-                    .take(3)
-                    .map(|item| clip(item, 48))
-                    .collect::<Vec<_>>()
-                    .join("；")
-            };
-            lines.push(format!(
-                "  上游信号 · {}（{}，{}）：写这家之前先取 {} —— 取法 `data_fetch(data_type=\"earnings_outlook\", ticker=\"{}\")`，评级与目标价用 `analyst_actions`，原话用 `transcript` / `press_releases`。{}",
-                signal.symbol,
-                signal.name,
-                signal.relation,
-                pull,
-                signal.symbol,
-                clip(&signal.why, 90)
-            ));
-        }
         sections.push(lines.join("\n"));
         if sections.len() >= MAX_PROJECTED_INDUSTRIES {
             break;
@@ -345,8 +358,7 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
 需求侧照这条传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
 不得把行业增速直接当成公司增速。倍数先看公司卡的估值框架，公司卡没指定时才用这里的倍数锚当先验，仍要按 `valuation-audit` 的三问推导出本轮倍数；\
 行业反模式与公司卡的「不要…」同等对待，在真正选倍数或分母的那一句里点名对照。\
-带「上游信号」的行，需求侧第一段先写那家上游**最近一季实际做了什么**（收入与指引、毛利率、管理层关于本行的表述、评级与目标价变动），再沿传导链传到这家公司；\
-本轮没取到就写明「本轮未取到 X 的最新财报」，不得把上游略过、也不得用记忆里的旧季度代替。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
+带「上游最近动作」的行，需求侧第一段就从那条最近动作写起（日期和数字都带上），沿传导链传到这家公司，再用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
         sections.join("\n\n")
     ))
 }
@@ -800,19 +812,26 @@ mod tests {
         .expect("storage is in the tree");
         let upstream = text
             .lines()
-            .filter(|line| line.contains("上游信号 ·"))
+            .filter(|line| line.contains("上游最近动作 ·"))
             .collect::<Vec<_>>();
         assert_eq!(upstream.len(), 2, "{text}");
-        assert!(upstream[0].contains("上游信号 · NVDA"), "{}", upstream[0]);
         assert!(
-            upstream[0].contains("data_fetch(data_type=\"earnings_outlook\", ticker=\"NVDA\")"),
+            upstream[0].contains("上游最近动作 · NVDA"),
             "{}",
             upstream[0]
         );
-        assert!(text.contains("最近一季实际做了什么"));
-        // 两行合计的注入体量要留在预算内（改前约 1100 token / 2 行；这里以字符数守住）。
+        assert!(upstream[0].contains("截至 2026-08-26"), "{}", upstream[0]);
+        assert!(upstream[0].contains("$89.0B"), "{}", upstream[0]);
+        assert!(text.contains("data_fetch(data_type=\"earnings_outlook\", ticker=\"NVDA\")"));
+        // 事实行必须排在传导链之前：模型先看到上游做了什么，再看链条。
         assert!(
-            text.chars().count() < 2600,
+            text.find("上游最近动作 · NVDA").unwrap() < text.find("需求传导链").unwrap(),
+            "{text}"
+        );
+        assert!(text.contains("就从那条最近动作写起"));
+        // 两行合计的注入体量要留在预算内（这里以字符数守住）。
+        assert!(
+            text.chars().count() < 3000,
             "注入过长：{} 字",
             text.chars().count()
         );

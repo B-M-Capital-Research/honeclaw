@@ -61,7 +61,7 @@ impl Tool for IndustryMapEditTool {
         可改字段：`one_liner`（这一行是什么，一句话）、`driver_chain`（从 AI 侧可观测量到这一行收入/价格的传导链，是这一行的第一性公式）、\
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
-        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。\n\
+        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
         行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
         每次改动都要写 `note` 说明依据，例如引用的研报或财报口径变化；它会和改动一起展示给其它管理员。"
     }
@@ -85,6 +85,7 @@ impl Tool for IndustryMapEditTool {
                     "remove_watch".into(),
                     "add_upstream_signal".into(),
                     "remove_upstream_signal".into(),
+                    "set_upstream_latest".into(),
                     "add_industry".into(),
                     "remove_industry".into(),
                 ]),
@@ -198,6 +199,22 @@ impl Tool for IndustryMapEditTool {
                 name: "cadence".to_string(),
                 param_type: "string".to_string(),
                 description: "add_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "latest".to_string(),
+                param_type: "string".to_string(),
+                description: "add_upstream_signal / set_upstream_latest 用：这家上游最近一季实际做了什么——带数字、带日期的一段（收入与指引、毛利率、承诺、管理层关于本行的表述）。注入给模型时排在最前，所以只写事实。".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "as_of".to_string(),
+                param_type: "string".to_string(),
+                description: "add_upstream_signal / set_upstream_latest 用：latest 截至哪一天，如 2026-08-26".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -403,7 +420,20 @@ impl Tool for IndustryMapEditTool {
                             })
                             .unwrap_or_default(),
                         cadence: text(&args, "cadence").unwrap_or_default(),
+                        latest: text(&args, "latest").unwrap_or_default(),
+                        latest_as_of: text(&args, "as_of").unwrap_or_default(),
                     },
+                }
+            }
+            "set_upstream_latest" => {
+                let (Some(symbol), Some(latest)) = (text(&args, "symbol"), text(&args, "latest"))
+                else {
+                    return missing("symbol / latest");
+                };
+                EditOp::SetUpstreamLatest {
+                    symbol: symbol.to_ascii_uppercase(),
+                    latest,
+                    as_of: text(&args, "as_of").unwrap_or_default(),
                 }
             }
             "remove_upstream_signal" => {

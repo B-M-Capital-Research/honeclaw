@@ -80,4 +80,37 @@ actor `harness-eval-ont0-*`）：**0/8** 接到英伟达最近一季的实际动
 
 ## 发布与复测
 
-（待填：revision、镜像摘要、复测 8 题的「接到英伟达最近行为」计数，基线 0/6）
+- revision `91e78e74c197c6ea27ad7283e18e6ce939cf95a9`，镜像
+  `ghcr.io/b-m-capital-research/honeclaw-runtime@sha256:001b0d52de780389b7a93eb505a4fcfae9e53503217906019d022d9af08369a3`
+  （主机 `crane digest` 取得）。2026-09-03 12:46 UTC 切换：两次 `active-chat-runs` 均为 0，
+  `current` → 91e78e74，`previous` → e7f855a9，`systemctl restart hone-web` 后 `NRestarts=0`，
+  `/api/meta` git_sha 对上，二进制里 `上游信号 ·` / `最近一季实际做了什么` / `add_upstream_signal` 都在。
+- harness 同包发布：`fundamentals` / `industry-map` / `valuation-audit` 三个目录换新，`soul.md` 未动，
+  备份在 `/srv/honeclaw/skills/backups/pre-91e78e74…-20260903T124648Z`。`/api/skills` 42 项，
+  `industry-map` 在；落盘的 SKILL.md 含「先取上游」，底稿 8 行都带 `upstream_signals`。
+- 未登录探针：`GET /api/public/industry-map` → 401；`POST /api/public/industry-map/edits` 空体 → 422
+  （axum 的 `Json` 提取器先于鉴权拒掉畸形体；合法体未登录才是 401。不泄露任何东西，但下次顺手改成
+  先鉴权再解析）。
+- 复测 `ont1`（同 8 题、同 actor 前缀，12:47–12:55 UTC）：**0/8**，与基线持平。工具日志
+  （`runner.tool` 只记 `tool=data_fetch <kind>`，不记 ticker）显示 `earnings_outlook` 从 0 次涨到 4 次
+  （CRDO / MU / NBIS / AAOI 各 1），MU、NBIS 的回答里「英伟达」提及从 2、3 次涨到 5、6 次，但没有一题写出
+  英伟达最近一季的收入、指引或毛利率数字，也没有一题按注入要求写「本轮未取到 X 的最新财报」。
+  用单测把注入原文打出来核对：块是完整进了系统提示的（RKLB 不在树里，其余 7 家都命中），
+  问题在于**它给的是「去取什么」的指令，事实只藏在传导链和被截断的 `why` 里**——模型对指令不理，
+  对手边的事实才会用。
+
+## v2.1：把事实放在指令前面（同日跟进）
+
+- `UpstreamSignal` 加 `latest`（带数字、带日期的一段：它最近一季实际做了什么）与 `latest_as_of`；
+  新 op `set_upstream_latest{symbol, latest, as_of}`（页面 LatestEditor + 对话工具
+  `industry_map_edit(action="set_upstream_latest")`），每季财报后管理员只改这一段。
+- 注入重排：上游块移到传导链**之前**，先一行「上游最近动作 · NVDA（demand_source，截至 2026-08-26）：
+  FY27Q2 数据中心 $89.0B（+117%）、Q3 指引 $108B、毛利率 75.0%→74.0%、Supply and capacity 承诺
+  $119B→$279B…」，再一行「写这家之前先核对 NVDA 有没有更新的一季：data_fetch(...)」。头部改成
+  「需求侧第一段就从那条最近动作写起（日期和数字都带上）…没有更新就照本体这条写并注明截至日期」。
+  两行合计预算约 1,900 token（`industry_baseline_pulls_nvda_first_and_keeps_the_upstream_block_compact`
+  守 3,000 字）。
+- 底稿：8 行的 NVDA 都写了 FY27Q2（2026-08-26）的最近动作，按行各带一句（电力：PORTS 园区 1,050 亿担保；
+  新云：担保敞口与 AI cloud agreements；设备：承诺措辞 primarily memory and manufacturing facilities…）；
+  存储行的 MU 写了 FY26Q3 毛利率 84.9% / 指引约 86%。数字全部来自种子文件里已带日期的事实。
+- 发布与复测 `ont2`：（待填）

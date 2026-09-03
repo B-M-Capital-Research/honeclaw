@@ -359,8 +359,9 @@ pub(crate) struct IndustryEditRequest {
 pub(crate) async fn handle_post_industry_edit(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Json(request): Json<IndustryEditRequest>,
+    body: axum::body::Bytes,
 ) -> Response {
+    // 先鉴权再解析：请求体的形状错误只回给已登录的管理员，未登录的调用者一律 401。
     let user = match crate::routes::public::require_public_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
@@ -376,6 +377,15 @@ pub(crate) async fn handle_post_industry_edit(
             "只有管理员可以改行业本体".to_string(),
         );
     }
+    let request: IndustryEditRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(error) => {
+            return crate::routes::json_error(
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("改动请求无法解析：{error}"),
+            );
+        }
+    };
     let industry = match &request.op {
         EditOp::AddIndustry { industry } => industry.id.trim().to_string(),
         _ => request.industry.trim().to_string(),
@@ -750,6 +760,7 @@ mod tests {
             r#"{"industry":"storage","op":{"kind":"remove_watch","what":"w"}}"#,
             r#"{"industry":"storage","op":{"kind":"add_upstream_signal","signal":{"symbol":"NVDA","name":"英伟达","relation":"demand_source","why":"y","pull":["a","b"],"cadence":"q"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_upstream_signal","symbol":"NVDA"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_upstream_latest","symbol":"NVDA","latest":"FY27Q2：数据中心 $89.0B","as_of":"2026-08-26"}}"#,
             r#"{"industry":"cooling","op":{"kind":"add_industry","industry":{"id":"cooling","name":"散热","one_liner":"","aliases":["散热"]}}}"#,
             r#"{"industry":"cooling","op":{"kind":"remove_industry"}}"#,
         ];

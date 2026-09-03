@@ -844,3 +844,72 @@
     margin: 0.4rem 0 0;
   }
 }
+
+/* ── 最近动作 ──────────────────────────────────────────────────────────────
+   上游信号卡片里最重要的一行：它最近一次有日期的动作，模型先引用的就是它。
+   放在「为什么看它」之前，用和传导链同一道珊瑚左边把它从说明文字里提出来；
+   截至日期是一枚小号灰标，读者一眼知道这句话新到什么时候。 */
+
+.industry-signal-latest {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+}
+
+.industry-signal-latest-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+
+.industry-signal-latest-label {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hone-coral-600);
+}
+
+.industry-signal-asof {
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
+  font-size: var(--hone-text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-signal-latest-text {
+  margin: 0.25rem 0 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-950);
+  overflow-wrap: anywhere;
+}
+
+/* 编辑模式下同一位置换成表单：一段动作 + 截至日期，两个字段一起存成一个改动。
+   截至那格只要放得下一个日期，不跟着 textarea 撑满整行。 */
+
+.industry-signal-latest-editor {
+  margin: 0.5rem 0 0;
+}
+
+.industry-signal-latest-asof {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 14rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-signal-latest-asof .industry-input {
+  flex: 1 1 auto;
+}

@@ -1095,6 +1095,13 @@ export type IndustryUpstreamSignal = {
   /** 去取它的哪几个读数，一条一个。 */
   pull: string[];
   cadence: string;
+  /**
+   * 它最近一次有日期的动作，一段话：哪一期、何时发布、关键数字与下季指引。
+   * 卡片上最重要的一行，模型先引用的就是它；没写时为空串。
+   */
+  latest: string;
+  /** latest 截至的日期或月份，如 "2026-08-26" 或 "2026-06"；没写时为空串。 */
+  latest_as_of: string;
 };
 
 /** 一家成员的官方股本（监管申报封面口径）与它的两层新鲜度。 */
@@ -1218,6 +1225,8 @@ export type IndustryEditOp =
   | { kind: "remove_watch"; what: string }
   | { kind: "add_upstream_signal"; signal: IndustryUpstreamSignal }
   | { kind: "remove_upstream_signal"; symbol: string }
+  /** 只改一条上游信号的「最近动作」与它的截至日期，按 symbol 找到那条。 */
+  | { kind: "set_upstream_latest"; symbol: string; latest: string; as_of: string }
   /** 此时请求体的 industry 就是新行业的 id。 */
   | { kind: "add_industry"; industry: IndustryNewIndustry }
   | { kind: "remove_industry" };
