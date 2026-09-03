@@ -40,12 +40,15 @@ use serde_json::{Value, json};
 use tracing::warn;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use hone_core::industry_map::{IndustryMap, IndustryMember, RECENT_EDIT_LIMIT};
+use hone_core::industry_map::{
+    EditOp, IndustryEdit, IndustryMap, IndustryMember, RECENT_EDIT_LIMIT,
+};
 use hone_core::sec_shares::{
     CoverShareRow, SEC_BASIS_MISMATCH_RATIO, cover_is_usable_for_market_cap,
     form_is_us_domestic_periodic,
 };
 use hone_memory::CompanyFacts;
+use serde::Deserialize;
 
 use crate::routes::public_finance_calendar::fetch_fmp_json_once;
 use crate::state::AppState;
@@ -268,9 +271,15 @@ pub(crate) async fn handle_get_industry_map(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
-        return response;
-    }
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
 
     let data_root = state.core.config.storage.data_root();
     let (map, edits) = hone_core::industry_map::load(&data_root);
@@ -291,6 +300,7 @@ pub(crate) async fn handle_get_industry_map(
                 "ai_valuation_logic": industry.ai_valuation_logic,
                 "core_watch": industry.core_watch,
                 "sources": industry.sources,
+                "upstream_signals": industry.upstream_signals,
                 "members": rank_members(&industry.members, &facts, &shares),
                 "last_edited_at": last_edited.get(&industry.id),
             })
@@ -328,8 +338,82 @@ pub(crate) async fn handle_get_industry_map(
         "industries": industries,
         "recent_edits": recent,
         "edit_count": edits.len(),
+        "is_admin": is_admin,
     }))
     .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct IndustryEditRequest {
+    pub industry: String,
+    #[serde(default)]
+    pub note: String,
+    pub op: EditOp,
+}
+
+/// POST /api/public/industry-map/edits —— 管理员在页面上直接改本体。
+///
+/// 与对话里的 `industry_map_edit` 工具写同一份追加式日志，走同一个 `append`（先在重放结果上
+/// 试跑、被拒的不写日志）。响应带回完整快照，页面用它整体替换本地状态，「最近改动」卡片
+/// 与树上的标记跟着一起更新。
+pub(crate) async fn handle_post_industry_edit(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<IndustryEditRequest>,
+) -> Response {
+    let user = match crate::routes::public::require_public_user(&state, &headers).await {
+        Ok(user) => user,
+        Err(response) => return response,
+    };
+    let is_admin = state
+        .web_auth
+        .is_web_admin(&user.user_id)
+        .await
+        .unwrap_or(false);
+    if !is_admin {
+        return crate::routes::json_error(
+            axum::http::StatusCode::FORBIDDEN,
+            "只有管理员可以改行业本体".to_string(),
+        );
+    }
+    let industry = match &request.op {
+        EditOp::AddIndustry { industry } => industry.id.trim().to_string(),
+        _ => request.industry.trim().to_string(),
+    };
+    if industry.is_empty() {
+        return crate::routes::json_error(
+            axum::http::StatusCode::BAD_REQUEST,
+            "缺少 industry".to_string(),
+        );
+    }
+    if let EditOp::AddMember { member } = &request.op {
+        if member.symbol.contains('.') || member.symbol.contains(':') {
+            return crate::routes::json_error(
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("{} 不是美股代码：行业树只收美股与 ADR", member.symbol),
+            );
+        }
+    }
+    let edit = IndustryEdit {
+        at: hone_core::local_now().to_rfc3339(),
+        by: user.user_id.clone(),
+        industry,
+        op: request.op,
+        note: request.note.trim().to_string(),
+    };
+    let applied = edit.op.summary();
+    if let Err(error) =
+        hone_core::industry_map::append(&state.core.config.storage.data_root(), edit)
+    {
+        return crate::routes::json_error(axum::http::StatusCode::BAD_REQUEST, error.to_string());
+    }
+    // 直接复用 GET 的组装（含市值与官方股本），保证页面替换进去的快照和刷新看到的一样。
+    let snapshot = handle_get_industry_map(State(state), headers).await;
+    let body = match axum::body::to_bytes(snapshot.into_body(), usize::MAX).await {
+        Ok(bytes) => serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+        Err(_) => Value::Null,
+    };
+    Json(json!({ "ok": true, "applied": applied, "snapshot": body })).into_response()
 }
 
 /// 按市值降序；本轮没取到市值的排在最后并保持文件里的原顺序，便于人工维护时对照。
@@ -649,6 +733,33 @@ mod tests {
             ["MU", "SNDK", "STX"]
         );
         assert!(ranked[2].market_cap.is_none());
+    }
+
+    /// 页面发来的 body 与对话工具写进日志的是同一个 `EditOp`：`kind` 标签、字段名、嵌套结构
+    /// 都必须能直接反序列化，否则前端契约和日志格式会悄悄分叉。
+    #[test]
+    fn edit_request_body_deserializes_every_op_kind_the_page_can_send() {
+        let bodies = [
+            r#"{"industry":"storage","note":"n","op":{"kind":"set_field","field":"one_liner","value":"x"}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_member","member":{"symbol":"MU","name":"美光","role":"r"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_member","symbol":"MU"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_member_role","symbol":"MU","role":"r"}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_source","source":{"house":"h","title":"t","date":"2026-09","url":"u","takeaway":"k"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_source","url":"u"}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_watch","what":"w"}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_upstream_signal","signal":{"symbol":"NVDA","name":"英伟达","relation":"demand_source","why":"y","pull":["a","b"],"cadence":"q"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_upstream_signal","symbol":"NVDA"}}"#,
+            r#"{"industry":"cooling","op":{"kind":"add_industry","industry":{"id":"cooling","name":"散热","one_liner":"","aliases":["散热"]}}}"#,
+            r#"{"industry":"cooling","op":{"kind":"remove_industry"}}"#,
+        ];
+        for body in bodies {
+            let parsed: Result<IndustryEditRequest, _> = serde_json::from_str(body);
+            assert!(parsed.is_ok(), "{body}: {:?}", parsed.err());
+        }
+        let bad: Result<IndustryEditRequest, _> =
+            serde_json::from_str(r#"{"industry":"storage","op":{"kind":"nuke_everything"}}"#);
+        assert!(bad.is_err());
     }
 
     #[test]

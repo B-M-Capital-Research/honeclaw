@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at": "2026-08-30",
+ "generated_at": "2026-09-03",
  "root": {
   "id": "ai-datacenter",
   "name": "AI 数据中心",
@@ -222,6 +222,63 @@
      "url": "https://counterpointresearch.com/en/insights/AI-Server-Compute-ASIC-Shipments-to-Triple-by-2027",
      "takeaway": "前十大玩家的 AI Server Compute ASIC 出货 2024→2027 翻三倍；2028 年跨过 1500 万颗并超过数据中心 GPU 出货；2024–2028 年前十大 AI hyperscaler 累计部署超 4000 万颗；2027 年 Google 占终端份额约 52%，设计伙伴中 Broadcom 约 60%、Marvell 约 8%，并点名 Broadcom、Marvell、Alchip、MediaTek 为主要设计伙伴（支撑 2454.TW 与 3661.TW 的入选理由）。属 2026-01 发布的预测口径，引用时须留意后续修订。"
     }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "peer_signal",
+     "why": "同行龙头，它的财报同时是本行的需求表、供给表与风险表：③「各路线套各自美元/GW」的系数（Hopper 180→Blackwell 250→Vera Rubin 400 亿美元/GW）只有它自报；⑤「闸门定量、HBM 定价」直接读它的数据中心收入、毛利率指引与归因；它的「Supply and capacity」承诺余额把 ④「CoWoS × 单颗 HBM 容量」这道闸门的松紧翻译成可审计的美元。",
+     "pull": [
+      "最新一季数据中心收入、环比/同比，及 Hyperscale / ACIE 两行拆分与当季有无重分类脚注（press_releases 财报稿与 CFO Commentary；sec_filings 取 10-Q 链接后用 web_search 核 Note 13）",
+      "下季总收入指引、毛利率实际值与毛利率指引及管理层归因（内存价格还是需求）（press_releases 财报稿 Outlook 段）",
+      "「Supply and capacity」承诺余额及按财年拆分、担保最大敞口（sec_filings 10-Q 索引 → Note 10；press_releases CFO Commentary 的 Future commitments 表）",
+      "应收账款 DSO、库存与自由现金流/收入比（financials 季度资产负债表与现金流量表、hone_latest_quarter）",
+      "财报日期、一致预期与目标价共识；财报后带日期的评级/目标价动作（earnings_outlook；analyst_actions）",
+      "电话会里对「供给瓶颈持续到何时」「新平台 full production」的原话（transcript 先取可用日期再按 year/quarter 取正文，正文受限时改 press_releases 与带绝对日期的 web_search）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC（3 月）更新每 GW 系数与路线图"
+    },
+    {
+     "symbol": "TSM",
+     "name": "台积电（美股 ADR）",
+     "relation": "supply_gate",
+     "why": "GPU 与 ASIC 两条路线唯一共同的上游，④「两线共撞同一闸门：CoWoS 12–14 万片/月」的月产能与扩产节奏由它的 capex 分配决定，超出闸门的需求不进本行当期收入；它的月度营收是全链最高频的一手读数，比任何设计公司的季报早两到三个月。",
+     "pull": [
+      "最新月度营收与同比/环比（press_releases 月营收公告；news 补）",
+      "季度营收、毛利率、≤7nm 先进制程占晶圆收入比重与下季营收/毛利率指引（press_releases 6-K 业绩稿；financials 核季度毛利率）",
+      "全年 capex 指引区间与其中「先进封装、测试、光罩及其他」的分配比例（transcript 法说会按 year/quarter 取正文；sec_filings 6-K 索引；二手转述的区间不采用）",
+      "capex 实际发生额（financials 季度现金流量表购置 PP&E）",
+      "法说会后评级与目标价动作（analyst_actions）"
+     ],
+     "cadence": "月度营收（每月 10 日前后）；季度法说会（1/4/7/10 月中）"
+    },
+    {
+     "symbol": "MU",
+     "name": "美光科技",
+     "relation": "supply_gate",
+     "why": "三大 HBM 厂里唯一的美股，④ 闸门的另一半「单颗 HBM 容量 96/192→216/288GB」与 ⑤「HBM 定价」的供给侧读数：它的 HBM 是否售罄、HBM 占 DRAM 投片比、capex 与新增投片，决定 GPU 与 ASIC 两条路线明年各能拿到多少内存，也决定英伟达毛利率见底的时点。",
+     "pull": [
+      "HBM 收入、HBM 产能是否已售罄/签订全年合约、HBM4 出货进度与份额目标（press_releases 财报稿；transcript）",
+      "非 GAAP 毛利率与下季指引、DRAM bit 供给增速表述（press_releases；financials hone_latest_quarter）",
+      "本财年 capex 指引与下财年方向、capex 实际发生额（press_releases；financials 季度现金流量表）",
+      "长约（SCA/LTA）覆盖率与最低合约收入（press_releases；sec_filings 10-Q/10-K 索引）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月下旬；财年 8 月底结束）"
+    },
+    {
+     "symbol": "MSFT",
+     "name": "微软",
+     "relation": "capex_source",
+     "why": "①「钱袋：前九大 CSP capex」里单家最大的 NVIDIA 平台买家（Azure + OpenAI），其 capex 指引、「需求持续超过可用供给」这句话在不在、商业 RPO 剔除 OpenAI 后的增速，决定 ②「先分 GW 再换算」时流向 GPU 路线的盘子；口径变动（折旧年限、融资租赁转经营租赁）必须一起读，否则会把会计变更读成需求变化。",
+     "pull": [
+      "下一季度/财年 capex 指引及口径（是否含融资租赁、折旧年限是否变更）（transcript 按 year/quarter 取 CFO 展望段，正文受限时改 press_releases 与带绝对日期的 web_search）",
+      "capex 实际发生额与环比（financials 季度现金流量表购置 PP&E）",
+      "Azure 增速、商业 RPO 总额及剔除 OpenAI 后的增速、RPO 加权久期（press_releases 财报稿；sec_filings 10-Q/10-K 索引）",
+      "「需求超过供给」/「供给约束」表述是否仍在（transcript；press_releases）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）"
+    }
    ]
   },
   {
@@ -405,6 +462,62 @@
      "date": "2026-05-30",
      "url": "https://www.forbes.com/sites/tomcoughlin/2026/05/30/how-has-ai-changed-hard-disk-drive-storage-demand/",
      "takeaway": "HDD 支线的 AI 增量口径（按原文表述还原）：2026 年不含 AI 建设的存储容量需求约 1,654 EB，AI 建设另带来约 363 EB 的增量，AI 增量占总量约 18%——即总量约 2,017 EB，1,654 EB 是不含 AI 的基线而不是总量。另给出 2028 年 AI 占比升至 43%、2030 年 58%；2025–2030 年平均单盘容量提升约 2.7 倍，而 2030 年单位出货量只比 2025 年高 13%——增长来自密度不是台数。"
+    }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "demand_source",
+     "why": "链条第 ① 环的量与第 ⑧ 环的价都在它身上：②「单卡 HBM 从 96/192GB 抬到 216/288GB」与堆叠层数是整条链上唯一由买方单方面可调的变量（Rubin Ultra 由 12-Hi 往 8-Hi 评估就是降规格对冲涨价）；⑧「买方验证：英伟达毛利率实际 75.0%→指引 74.0%」是「价格从买方转移到卖方」最干净的第三方读数；「Supply and capacity」承诺（10-Q 写 primarily memory）是它用资产负债表提前锁走内存产能的证据。",
+     "pull": [
+      "毛利率实际值、下季毛利率指引与归因（是否点名内存价格）、见底时点的表述（press_releases 财报稿 Outlook 段；transcript）",
+      "数据中心收入与下季总收入指引（press_releases 财报稿）",
+      "「Supply and capacity」承诺余额及措辞（procurement of memory）、库存与采购义务变化（sec_filings 10-Q 索引 → web_search 核 Note 10；financials 季度资产负债表存货）",
+      "下一代平台的 HBM 容量与堆叠层数决定（press_releases 产品/GTC 稿；news 供应链报道）",
+      "财报后评级/目标价动作里对内存成本的归因（analyst_actions）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC（3 月）与平台发布更新 HBM 规格"
+    },
+    {
+     "symbol": "MU",
+     "name": "美光科技",
+     "relation": "peer_signal",
+     "why": "三大厂中唯一的美股，本行景气的最早一手读数：⑦「美光非 GAAP 毛利率」是价格落到损益表的直接读数；⑤「标准 DRAM 缺口：行业 bit 仅增 low-to-mid 20%、RDIMM +15~20%」的供给侧口径它的电话会最完整；capex 与新增投片是周期见顶的第一个可观测信号，capex 拐点领先价格拐点。",
+     "pull": [
+      "非 GAAP 毛利率与下季指引、Cloud Memory 事业部与数据中心 SSD 收入（press_releases 财报稿；financials 核季度毛利率）",
+      "行业 DRAM bit 出货增速与 RDIMM 供给增速的管理层口径、HBM 售罄状态与份额目标（transcript 按 year/quarter；press_releases）",
+      "本财年 capex 指引、下财年逐季方向与新 fab 节点（press_releases；financials 季度现金流量表）",
+      "长约覆盖率（SCA 覆盖 DRAM/NAND 量的比例、最低合约收入）（press_releases；sec_filings 10-Q/10-K 索引）",
+      "财报日期与一致预期，财报后评级/目标价动作（earnings_outlook；analyst_actions）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月下旬；财年 8 月底结束）"
+    },
+    {
+     "symbol": "AMZN",
+     "name": "亚马逊",
+     "relation": "capex_source",
+     "why": "⑥「3Q26 server DRAM 合约价 +13~18% QoQ」的买方验证与截流方：它把合并 capex 由约 2,000 亿上修到 2,200 亿并归因于内存涨价，是 CSP 侧承认「美元≠算力、内存占 capex 比重抬升」的一手证据；同时美系 CSP 的多年期 LTA 决定本行「市场涨了多少」与「实际收到多少」之间那层截流。",
+     "pull": [
+      "capex 指引与上修归因（内存涨价 vs 容量需求）（transcript 按 year/quarter 取 CFO 段与问答；press_releases 8-K 财报稿）",
+      "capex 实际发生额与环比（financials 季度现金流量表购置 PP&E）",
+      "10-Q 采购承诺/长期合同附注是否新增内存类承诺（sec_filings 10-Q 索引 → web_search 核附注）",
+      "AWS 收入增速与分部经营利润（press_releases 财报稿）"
+     ],
+     "cadence": "季度财报（1–2/4/7/10 月下旬）"
+    },
+    {
+     "symbol": "AMD",
+     "name": "超微半导体",
+     "relation": "demand_source",
+     "why": "② 那一环的第二个买方决定者：唯一具规模的第二商用 GPU 供应商，每代加速器的单卡 HBM 容量与堆叠层数同样写进产品规格；它在紧张的 HBM 与 CoWoS 产能里实际分到多少，是 ③「2027 年 HBM bit 供给 +50~60% 仍不足」在英伟达之外的分配读数。",
+     "pull": [
+      "数据中心分部收入与下季指引、数据中心 GPU 出货与 Helios 机架上量表述（press_releases 财报稿；transcript）",
+      "新平台发布稿里的单卡 HBM 容量（GB）与 HBM 世代（press_releases；news）",
+      "毛利率与库存变化（financials 季度损益表与资产负债表）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月上旬）；Advancing AI（6 月）与新品发布更新 HBM 配置"
     }
    ]
   },
@@ -623,6 +736,58 @@
      "date": "2026-08-22",
      "url": "https://k.sina.com.cn/article_7879922977_1d5ae152106801ilgy.html?from=finance",
      "takeaway": "26H1 营收 417.78 亿元（+182.49%）、归母净利 136.51 亿元（+241.7%）、毛利率 46.59%（+6.63pct）、海外收入 396.15 亿元（占比近 95%）；同期经营现金流同比 -44.08%、存货 198.3 亿元、应收 150 亿元；另汇总微软／亚马逊／Meta／谷歌 26Q2 合计资本开支约 1649 亿美元、同比 +86%（媒体加总口径）。注意：文中「1.6T 年需求约 2500 万只、有效产能约 1500 万只、缺口约四成」按每链路两端折回交换端口，是 Dell'Oro 端口标尺的 2.5 倍以上且发生在单一年份，两者无法同时成立，故本记录不采用该组数字"
+    }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "demand_source",
+     "why": "第一环「英伟达数据中心收入 → 每 GW AI 工厂收入机会折成装机 GW」定本行所有下游量的分母；NVL72 整柜与 NVLink/InfiniBand/Spectrum-X 一起交付、模块随机柜走，所以真正的判据是「networking 环比增速 − 数据中心环比增速」的差值（光的 attach rate 是否抬升）与新架构在收入中的占比（决定单机柜网络价值量的台阶）。",
+     "pull": [
+      "数据中心收入、环比与下季总收入指引（press_releases 财报稿）",
+      "networking 收入环比增速与数据中心环比增速的差值、Spectrum-X 同比（press_releases 财报稿 highlights；transcript 按 year/quarter 取正文）",
+      "每 GW 收入机会的最新口径与新架构（Blackwell Ultra / Vera Rubin）ramp 表述（transcript；press_releases GTC/财报稿）",
+      "财报后评级/目标价动作中对网络业务的表述（analyst_actions）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC 与 OFC（3 月）更新拓扑与 CPO 路线图"
+    },
+    {
+     "symbol": "AVGO",
+     "name": "博通",
+     "relation": "supply_gate",
+     "why": "交换 ASIC 的端口速率代际决定「端口标尺：800G→1.6T」那一环起量的时点——本行哪一代模块能规模出货被它的 Tomahawk 代际卡口；同时它自研 CPO 平台的出货口径是支路「scale-up 换光」与 CPO 渗透率这个分歧项里最直接的替代威胁，决定可插拔模块厂该给折价还是溢价。",
+     "pull": [
+      "AI 半导体收入（含以太网交换）与下季指引、AI 网络在其中的占比表述（press_releases 财报稿；transcript）",
+      "新一代交换 ASIC（1.6T/3.2T 端口）与 CPO 平台的出货/客户导入公告（press_releases；news）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月上旬；FY26Q3 为 2026-09-02）；OFC（3 月）"
+    },
+    {
+     "symbol": "ANET",
+     "name": "Arista Networks",
+     "relation": "demand_source",
+     "why": "以太网交换整机的主要供应商，AI 后端网络的交换端口出货直接对应模块需求，是「端口标尺：800G 三年累计超 2000 万端口、1.6T 1–2 年破 500 万端口」这一环的整机侧读数；它与 InfiniBand 的份额之争决定光口长在以太网生态还是英伟达生态上。",
+     "pull": [
+      "季度收入与下季指引、AI 后端网络收入目标与进度（press_releases 财报稿；transcript）",
+      "云巨头客户集中度与 800G/1.6T 端口世代的表述（transcript；sec_filings 10-Q 索引）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月上旬）"
+    },
+    {
+     "symbol": "GOOGL",
+     "name": "Alphabet",
+     "relation": "capex_source",
+     "why": "第一环只用英伟达收入「折成装机 GW」会漏掉非英伟达路线的光口：Alphabet 是唯一自研加速器已形成对外产品收入的云厂（Google Cloud 产品收入主要来自 TPU 系统销售），它的 capex 与 TPU 系统交付是英伟达收入折不出来的那部分 GW；北美四家云厂 capex 又是本行的二阶验证与前瞻，与英伟达财报背离时通常意味着订单在渠道里堆积或提前拉货。",
+     "pull": [
+      "当季购置不动产与设备金额（capex 实际）与环比（financials 季度现金流量表；press_releases 8-K 财报稿现金流表）",
+      "Google Cloud 收入增速、分部经营利润与 backlog（press_releases 财报稿；transcript 口头给的 backlog）",
+      "capex 指引与 TPU 产能/交付表述（transcript 按 year/quarter；8-K 不含指引段）",
+      "模型 API token 吞吐绝对值（transcript；news 转述 CEO 发言）"
+     ],
+     "cadence": "季度财报（1–2/4/7/10 月下旬）"
     }
    ]
   },
@@ -854,6 +1019,60 @@
      "url": "https://investor.bloomenergy.com/press-releases/press-release-details/2026/Bloom-Energy-and-Oracle-Expand-Strategic-Partnership-to-Deploy-up-to-2-8-GW-to-Accelerate-AI-Infrastructure-Build-Out/default.aspx",
      "takeaway": "「上限 GW ≠ 已签收入」的标准案例：主服务协议上限 2.8 GW，其中已合同化 1.2 GW（上限是已合同化的约 2.3 倍），该部分部署已经开始并延续到下一年；同时给出交付速度口径——曾在约 55 天内为 Oracle 交付一套可运行系统（标准周期 90 天）。"
     }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "capex_source",
+     "why": "本行链条「起点是落地 GW，不是英伟达收入」：数据中心收入与每 GW 收入机会只作同向验证、不做分子（用 890 亿÷「每 GW 470 亿美元 CAPEX」倒推会算出全球仅 7.6 GW/年）。本行真正要取的是它 10-Q 里以 GW 计的资本承诺——为 SB Energy PORTS 园区（约 4.25 GW IT 负载、20 年租约、另有约 3.8 GW 选择权）提供的 1,050 亿担保、AI 云 land/power/shell 担保与未起租数据中心租约：这些不是 capex 科目，却是「落地 GW」链条起点的一手件，也是每 GW CAPEX 里物理基础设施那 150 亿的需求来源。",
+     "pull": [
+      "10-Q 担保表与租约承诺：园区 GW、期限、分期生效时点与追加选择权（sec_filings 10-Q 索引 → web_search 核 Note 10；press_releases CFO Commentary 的承诺表）",
+      "数据中心收入与下季指引，仅作 GW 路径方向验证（press_releases 财报稿）",
+      "每 GW 收入机会与每 GW 功率口径的最新表述（transcript 按 year/quarter；press_releases GTC 稿）"
+     ],
+     "cadence": "季度财报与 10-Q（2/5/8/11 月下旬）；园区级担保随 8-K 与新闻稿不定期"
+    },
+    {
+     "symbol": "META",
+     "name": "Meta Platforms",
+     "relation": "demand_source",
+     "why": "「③价格 → 抬未出清年容量价与长协价 → VST/CEG」那一环的原始买方：与 Vistra 的 2,609 MW / 20 年长协（2026 年底起送、2034 年全量）是本行长协公告「MW × 期限 × 起送年」的样本；它的 capex 指引（含融资租赁本金）直接写在 8-K 新闻稿 CFO Outlook 段，是四家里最可核的「落地 GW」前瞻。",
+     "pull": [
+      "全年 capex 指引区间与口径（是否含融资租赁本金）（press_releases 8-K 财报稿 CFO Outlook 段）",
+      "capex 实际发生额与环比、自由现金流与净发债（financials 季度现金流量表；sec_filings 8-K 债券发行）",
+      "数据中心园区、长期购电/核电协议公告：MW、期限、起送年、已合同化还是上限（press_releases；news）",
+      "表外合资与数据中心融资安排（sec_filings 8-K 索引）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）；长协与园区公告不定期"
+    },
+    {
+     "symbol": "AMZN",
+     "name": "亚马逊",
+     "relation": "demand_source",
+     "why": "「①并网：变压器 128 周＝通电下限」这条腿的最大绕行者与判例方：Susquehanna 核电厂旁挂 AWS 数据中心的 ISA 扩容 2024 年被 FERC 否决，EL25-49 新规落地后它是「表后/共址供电能否走通」的直接需求方；约 2,200 亿合并 capex（大部分投向 AI 与 AWS）是「落地 GW」最大的单家来源，管理层还明说 2026、2027 年都没有足够容量。",
+     "pull": [
+      "capex 指引、上修归因与「容量不足」表述（transcript 按 year/quarter；press_releases 8-K 财报稿）",
+      "capex 实际发生额与环比（financials 季度现金流量表）",
+      "核电/长期购电与共址协议公告：MW、期限、起送年（press_releases；news）",
+      "10-Q 长期合同/租约承诺附注（sec_filings 10-Q 索引 → web_search 核附注）"
+     ],
+     "cadence": "季度财报（1–2/4/7/10 月下旬）"
+    },
+    {
+     "symbol": "ORCL",
+     "name": "甲骨文",
+     "relation": "demand_source",
+     "why": "绕开「②设备：燃机档期 → 燃机厂定价权」与并网排队那条腿的最大合同买方：与 Bloom 的 MSA 上限 2.8 GW、已合同化 1.2 GW，是「看公告先找已合同化」的原始案例；它的 capex（FY26 556.63 亿）与融资条件（FCF −236.86 亿、FY27 拟再融约 400 亿）决定它承诺的园区能不能按期通电——融资利差走阔会先反映在 capex 指引上，再传到燃机、变压器与长协。",
+     "pull": [
+      "capex 指引与 Capital Investment Program and Capital Funding 段（press_releases 8-K 财报稿）",
+      "RPO 总额与单季增量、客户预付或自带 GPU 的部分（press_releases 财报稿）",
+      "发债/发股公告与票面利率（sec_filings 8-K 索引；news）",
+      "capex 实际发生额、自由现金流（financials 季度现金流量表）",
+      "与电力/燃料电池供应商的园区协议公告：GW 上限 vs 已合同化（press_releases；news）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）；融资与园区公告不定期"
+    }
    ]
   },
   {
@@ -1032,6 +1251,60 @@
      "date": "2026-04-02",
      "url": "https://www.srgresearch.com/articles/neocloud-market-forecast-to-approach-400b-by-2031-driven-by-surging-ai-infrastructure-demand",
      "takeaway": "这一行的市场口径与规模基准：2025 年新云收入 $25B、Q4'25 单季 $9B（YoY +223%），2031 年接近 $400B、期间 CAGR 58%；把 CoreWeave、Crusoe、Core Scientific、Lambda、Nebius、Nscale 列为头部新云，并把 OpenAI、Anthropic 单列为平台型提供方——也是本记录收录 Crusoe 与 Lambda 两家未上市公司的依据（Nscale、Core Scientific 未逐一核实，暂未收录）。"
+    }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "supply_gate",
+     "why": "链条前三环全在它的 10-Q 里：「起点：英伟达 10-Q 的 ACI&E」是流向新云的整机系统金额的上限与方向；「供给上限看同表供货与产能承诺 $119B→$279B」是配额的物理上限，决定 12–24 个月后有多少卡可分、租金曲线走平还是走陡；「落到电即上电 MW」之前的信用安排（担保最大敞口 $108.5B、AI cloud agreements $36B、待转让租约 $20B、非上市股权 $47.9B）决定新云能不能把配额融成机柜——它同时也是新云的客户（云服务协议承诺），两面都要摆。",
+     "pull": [
+      "数据中心 ACI&E 与 Hyperscale 分项金额、环比，及 Note 13 有无客户重分类与重述脚注（sec_filings 10-Q 索引 → web_search 核 Note 13；press_releases CFO Commentary 的 Revenue by Market Platform 表）",
+      "Supply and capacity 承诺总额与按财年拆分、全部承诺合计（sec_filings 10-Q Note 10；press_releases CFO Commentary 的 Future commitments 表）",
+      "对 AI 云的担保最大敞口、AI cloud agreements 承诺额、待转让数据中心租约、非上市股权余额（sec_filings 10-Q 索引 → web_search 核 Note 8/10）",
+      "电话会给的新云装机 GW 口径与「supply constrained」表述（transcript 按 year/quarter；正文受限时改 news 与带绝对日期的 web_search）",
+      "下季指引与 FY 增速指引（press_releases 财报稿 Outlook 段）"
+     ],
+     "cadence": "季度 10-Q 与电话会（2/5/8/11 月下旬）；园区级担保随 8-K 不定期"
+    },
+    {
+     "symbol": "MSFT",
+     "name": "微软",
+     "relation": "demand_source",
+     "why": "「量×价沉成 RPO」之后「另减净利息」那一环的投资级对手方样本：IREN 的 Horizon 1–4 合同对应 6.0% 的 GPU 融资利率，非投资级客户 9.0%，签了谁比签了多少更值钱；它的 capex 指引与「需求超过供给」这句话决定新云还有没有溢出订单可接，商业 RPO 剔除 OpenAI 后的增速则是前沿模型公司之外真实需求的读数——新云最大的对手方 OpenAI 的钱有相当部分经它流出。",
+     "pull": [
+      "capex 指引与口径、「需求持续超过可用供给」是否仍在（transcript 按 year/quarter 取 CFO 展望段；正文受限时改 press_releases 与带绝对日期的 web_search）",
+      "商业 RPO 总额、剔除 OpenAI 后的增速、加权平均久期与 12 个月内确认比例（press_releases 财报稿；sec_filings 10-Q/10-K 索引）",
+      "与新云签署或扩容的算力合同公告（news；press_releases）",
+      "capex 实际发生额（financials 季度现金流量表）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）"
+    },
+    {
+     "symbol": "META",
+     "name": "Meta Platforms",
+     "relation": "demand_source",
+     "why": "「量×价沉成 RPO：CoreWeave $103.7B」里最大的单点对手方之一（初始承诺最高约 $21.0B、至 2032 年）；它没有对外云、capex 全部自用，所以它租新云容量的多少直接等于自建赶不上需求的缺口——capex 指引上修而自建 GW 受电力约束时，溢出到新云的订单最多。",
+     "pull": [
+      "全年 capex 指引区间与口径（press_releases 8-K 财报稿 CFO Outlook 段）",
+      "与新云的算力租赁合同公告与金额上限（news；press_releases）",
+      "capex 实际发生额、自由现金流与净发债（financials 季度现金流量表；sec_filings 8-K）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）；合同公告不定期"
+    },
+    {
+     "symbol": "ORCL",
+     "name": "甲骨文",
+     "relation": "peer_signal",
+     "why": "本行「沉成 RPO → 减折旧 → 另减净利息 → 残差看预付覆盖」这套框架在最大体量上的同业读数：它同样靠少数巨额 AI 训练合同把 RPO 顶到 6,380 亿、FCF 为负、靠发债与发股建设，信用利差比市盈率更有信息量；OpenAI 的承诺同时流向它与 CoreWeave，它的 RPO 单季增量与融资成本是「同一个买家的钱在往哪边倾斜、这类合同的资金成本在涨还是在降」的先行读数。",
+     "pull": [
+      "RPO 总额、单季增量、客户预付或自带 GPU 的部分（press_releases 8-K 财报稿 RPO 段）",
+      "Cloud IaaS 收入增速、capex 与自由现金流（press_releases；financials 季度现金流量表）",
+      "发债/发股规模与票面利率（sec_filings 8-K 索引；news）",
+      "财报后评级/目标价动作里对融资风险的表述（analyst_actions）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）"
     }
    ]
   },
@@ -1259,6 +1532,46 @@
      "url": "https://www.trendforce.com/news/2026/08/19/news-chip-equipment-crunch-reportedly-pushes-lead-times-to-24-months-giving-chinas-toolmakers-a-boost/",
      "takeaway": "供给约束与中国口径的量化来源：刻蚀与薄膜沉积交期翻倍至约 12 个月，高端封装与测试设备 >18 个月，进口射频电源最长约 24 个月；AMAT、ASML、Lam、TEL、KLA 五家合计约占 70% 份额；2025 年中国占全球设备销售 36.51%，而本土供应商仅满足约 23% 的需求；中微刻蚀交期约 9 个月、拓荆 CVD 约 10 个月。"
     }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "capex_source",
+     "why": "第 1 环「英伟达 FY27Q2 数据中心 $89.0B、Q3 指引 $108B」是 AI 加速器实际出货最高频的公开刻度，对本行是领先 2–4 个季度的信号而非同步量（中间隔着晶圆厂 capex 决策、洁净室与 12–24 个月交期）；比收入更贴近本行的是它 10-Q 里的「Supply and capacity」承诺——措辞为 primarily memory and manufacturing facilities，即它在用自己的资产负债表替代工与存储厂预锁产能，这张表跳涨就是 12–18 个月后「缺口靠新建产能」那一环的 WFE 订单。",
+     "pull": [
+      "数据中心收入、同比/环比与下季总收入指引，及增速二阶导（press_releases 财报稿；financials hone_latest_quarter 核环比）",
+      "Supply and capacity 承诺总额、按财年拆分与措辞（memory / manufacturing facilities）（sec_filings 10-Q 索引 → web_search 核 Note 10；press_releases CFO Commentary）",
+      "管理层对「供给瓶颈持续到何时」「需求在加速」口径是否松动（transcript 按 year/quarter；正文受限时改 press_releases 与带绝对日期的 web_search）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）"
+    },
+    {
+     "symbol": "TSM",
+     "name": "台积电（美股 ADR）",
+     "relation": "capex_source",
+     "why": "「AI 占台积电 N3 产出近 60%」到「缺口靠新建产能：代工/逻辑 WFE $78.0B」这一步的最大单一出资方；它的年度 capex 指引区间与其中先进封装的分配是比 SEMI 预测更前置的读数，月度营收则是「AI 拉货强度 → 晶圆厂 capex 决策」的高频验证；先进封装那笔 capex 的绝对额直接决定 12–18 个月后 CoWoS 相关设备订单。",
+     "pull": [
+      "全年 capex 指引区间与修订方向、先进封装/测试/光罩的分配比例（transcript 法说会按 year/quarter 取正文；sec_filings 6-K 索引；二手转述的区间不采用）",
+      "capex 实际发生额（financials 季度现金流量表购置 PP&E）",
+      "月度营收与季度营收、毛利率、下季指引，≤7nm 占比（press_releases 6-K 业绩稿与月营收公告）",
+      "法说会后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "月度营收（每月 10 日前后）；季度法说会（1/4/7/10 月中）"
+    },
+    {
+     "symbol": "MU",
+     "name": "美光科技",
+     "relation": "capex_source",
+     "why": "「HBM 占三大厂 DRAM 投片比 18→22→30%，单位容量耗晶圆约 3 倍」这一环的放大器落在 DRAM 设备上（SEMI 口径 DRAM WFE 2026 年 +39.0%，本轮弹性最大的一段）；三大厂里只有美光是美股，它的 capex（FY2026 约 $270 亿、FY2027 逐季更高）与新 fab 节点是 DRAM/HBM 设备订单的直接出资方。",
+     "pull": [
+      "本财年 capex 指引与下财年方向、新 fab/新节点进度（press_releases 财报稿；transcript）",
+      "capex 实际发生额（financials 季度现金流量表）",
+      "HBM 占投片比、HBM4 产能爬坡与 DRAM bit 供给增速的管理层口径（transcript 按 year/quarter；press_releases）",
+      "毛利率与下季指引，用于判断存储厂有没有钱与动机继续扩产（financials；press_releases）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月下旬）"
+    }
    ]
   },
   {
@@ -1442,6 +1755,59 @@
      "date": "2026-03-24",
      "url": "https://finance.yahoo.com/sectors/technology/articles/price-nvidias-vera-rubin-nvl72-100000086.html",
      "takeaway": "NVIDIA 计划直接交付含 Vera CPU、Rubin GPU、内存、网络、供电与液冷的 L10 计算托盘，该托盘可能占整机成本约 90%，整机厂被压缩到只做机柜级整合、供电基础设施、冷却分配与管理软件，报道称其只能靠降价竞争、以利润为代价。这是这一行长期价值分配风险的唯一具体描述，属单一媒体的供应链消息源、非官方确认。标题里的 880 万美元指的是 Rubin Ultra 配置而非 VR200，不要与摩根士丹利的 780 万美元混用。"
+    }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "supply_gate",
+     "why": "「NVIDIA 数据中心收入（FY27Q2 890 亿、下季指引 1080 亿美元）→ NVL72 机柜台数」这一环的上游代理量，用法是方向与时序而非规模换算：GPU/计算托盘交付后整机厂要做完 L10/L11 才认列整柜营收，通常滞后一个季度，所以它的下季指引对应本行下下季的出货强度；同时它的交付层级是否继续上移（L6→L10 计算托盘→L11 整柜）是本行最大的价值分配风险，独立于景气之外。",
+     "pull": [
+      "数据中心收入、环比与下季总收入指引（press_releases 财报稿）",
+      "新平台（Vera Rubin）ramp 节奏与 Blackwell 占比的定性表述（transcript 按 year/quarter；press_releases CFO Commentary）",
+      "交付层级（L10 计算托盘/整柜直供）的官方表述与供应链报道（press_releases GTC/COMPUTEX 稿；news）",
+      "库存、采购义务与供应承诺变化（financials 季度资产负债表；sec_filings 10-Q 索引）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬，比整机厂整柜营收领先约一个季度）；GTC（3 月）、COMPUTEX（5–6 月）"
+    },
+    {
+     "symbol": "MU",
+     "name": "美光科技",
+     "relation": "supply_gate",
+     "why": "「单柜物料 → 但料越贵毛利率越低：VR200 里 GPU 51%＋内存 26%」那一环的定价方：server DRAM 合约价 3Q26 环比再涨 13–18%，整机厂若走买卖模式又没锁价，这一项直接从毛利里出；美光的毛利率、涨价表述与 LTA 结构是本行 BOM 成本环的一手供给侧读数。",
+     "pull": [
+      "非 GAAP 毛利率与下季指引、server DRAM/RDIMM 供需与价格表述（press_releases 财报稿；transcript）",
+      "长约（SCA/LTA）覆盖率与客户结构（是否以 CSP 为主）（press_releases；sec_filings 10-Q/10-K 索引）",
+      "capex 与新增投片（供给松动时点）（press_releases；financials 季度现金流量表）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月下旬）"
+    },
+    {
+     "symbol": "ORCL",
+     "name": "甲骨文",
+     "relation": "capex_source",
+     "why": "链条起点「前九大 CSP 资本开支」里最边际、最靠融资的买家：capex 几乎全投 AI 基础设施（FY26 556.63 亿、FCF −236.86 亿，靠发债与发股），RPO 兑现节奏直接决定机柜下单节奏，融资条件一收紧就先砍机柜；它是本行订单里「钱是否到位」这一项的先行读数。",
+     "pull": [
+      "capex 指引与 Capital Investment Program and Capital Funding 段、RPO 总额与单季增量（press_releases 8-K 财报稿）",
+      "capex 实际发生额、自由现金流（financials 季度现金流量表）",
+      "发债/发股公告与票面利率（sec_filings 8-K 索引；news）",
+      "Cloud IaaS 收入增速（press_releases 财报稿）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）；融资公告不定期"
+    },
+    {
+     "symbol": "META",
+     "name": "Meta Platforms",
+     "relation": "capex_source",
+     "why": "链条起点「前九大 CSP 资本开支」里 capex 指引写得最明的一家（含融资租赁本金，直接写在 8-K 新闻稿），且 capex 全部自用、不做对外云，指引修订方向最接近「NVL72 机柜台数」本身；它是「指引给方向、执行给节奏」这一环最可核的样本。",
+     "pull": [
+      "全年 capex 指引区间与修订方向、口径（press_releases 8-K 财报稿 CFO Outlook 段）",
+      "capex 实际发生额与环比（financials 季度现金流量表）",
+      "自由现金流与净发债，融资是否约束建设速度（financials；sec_filings 8-K）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）"
     }
    ]
   },
@@ -1636,6 +2002,58 @@
      "date": "2026-06-12",
      "url": "https://www.gspublishing.com/content/research/en/reports/2026/06/12/50f004d3-b246-4366-9d7d-0bc7e845644b.html",
      "takeaway": "提供本行传导链「分母端」的行业基准：折旧摊销占 hyperscaler（AMZN、GOOGL、META、MSFT、ORCL）收入由 2022 年 7% 升至 2027 年 12%；共识估计 2026 年 hyperscaler capex 约 7,700 亿美元、等于经营现金流的 100%；2025 年初以来净债增加 1,700 亿、股本数开始上升；云厂资产强度上升、销售/资产周转率自 AI 周期开始持续下滑且预计 2027 年延续；共识隐含七大科技股 ROE 明年平均下降约 700bp。"
+    }
+   ],
+   "upstream_signals": [
+    {
+     "symbol": "NVDA",
+     "name": "英伟达",
+     "relation": "supply_gate",
+     "why": "本行链条「起点是供给约束，微软称『需求持续超过可用供给』」，而那个供给就是它：云厂在电话会说要花多少（承诺），英伟达 Data Center 收入尤其 Hyperscale 分项说实际交付了多少（确认），差额就是「钱花出去了但机器没到」，直接决定「合同按久期摊成收入」时 Azure/GCP/AWS 未来两个季度的可售容量；它的「Supply and capacity」承诺与 supply constrained 的 FY28 指引是这道闸门未来两年能开多大的唯一量化表，Hyperscale 与 ACIE 的环比差则是配额在向云厂还是向新云倾斜。方向别搞反：它不是本行的需求源头，云厂是它的客户；只有一小块反向角色——云服务协议承诺让它同时是云厂的客户。",
+     "pull": [
+      "数据中心收入中的 Hyperscale 分项金额与环比、与 ACIE 环比的差、当季有无重分类脚注（sec_filings 10-Q 索引 → web_search 核 Note 13；press_releases CFO Commentary）",
+      "下季总收入指引与 FY 增速指引及「supply constrained」措辞（press_releases 财报稿 Outlook 段；transcript 按 year/quarter）",
+      "Supply and capacity 承诺总额与按财年拆分（sec_filings 10-Q Note 10；press_releases CFO Commentary）",
+      "云服务协议承诺余额，即它作为云厂客户的一面（sec_filings 10-Q 索引 → web_search 核 Note 10）"
+     ],
+     "cadence": "季度财报（2/5/8/11 月下旬，通常晚于四大云厂 3–4 周，正好用来验证上一轮 capex 指引的兑现度）"
+    },
+    {
+     "symbol": "AVGO",
+     "name": "博通",
+     "relation": "supply_gate",
+     "why": "自研 ASIC 路线的交付确认单：云厂的定制 XPU 由它设计交付，其 AI 半导体收入与指引说明「美元≠算力」那一环里非英伟达那一半算力实际到了多少，也是「收入端见改善：Google Cloud +82%」这条线（产品收入主要来自 TPU 系统销售）的上游读数；与英伟达一样，它的供给也撞同一批 CoWoS 与 HBM。",
+     "pull": [
+      "AI 半导体收入与下季指引、定制 XPU 与 AI 网络的拆分表述（press_releases 财报稿；transcript）",
+      "在手定制客户数与 AI bookings/backlog 口径（transcript 按 year/quarter；正文受限时改 news）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月上旬；FY26Q3 为 2026-09-02）"
+    },
+    {
+     "symbol": "MU",
+     "name": "美光科技",
+     "relation": "supply_gate",
+     "why": "「美元≠算力：DRAM+NAND 占 CSP capex 2026 年 47%、2027 年 68%」那一环的汇率制定者：占比越高同样一美元买到的加速器越少，capex 增速会系统性高于可售算力增速；美光的价格表述、与 CSP 的 LTA 及 capex 决定这个楔子未来几个季度是扩大还是收敛。",
+     "pull": [
+      "非 GAAP 毛利率与下季指引、server DRAM 供需与合约价方向的表述（press_releases 财报稿；transcript）",
+      "与 CSP 的长约（SCA/LTA）覆盖率与期限（press_releases；sec_filings 10-Q/10-K 索引）",
+      "capex 与新增投片，即供给松动、汇率改善的时点（press_releases；financials 季度现金流量表）"
+     ],
+     "cadence": "季度财报（3/6/9/12 月下旬）"
+    },
+    {
+     "symbol": "GEV",
+     "name": "GE Vernova",
+     "relation": "supply_gate",
+     "why": "「钱先变合同 → 合同按久期摊成收入」之间还隔着并网与电力这道物理闸门：排不到电，capex 指引再高也变不成机柜、变不成 backlog 的兑现；GE Vernova 的燃机 backlog+档期预留（硬订单与档期预留要拆开看、已在卖 2031 年档期、产能 20 GW/年）是全行业「新增 GW 何时能通电」的实时读数，它越薄，云厂 backlog 转收入的节奏越往后拖。",
+     "pull": [
+      "燃机 backlog + slot reservation 总 GW、硬订单占比、在售交付年份与年产能（press_releases 财报稿；transcript 按 year/quarter）",
+      "当季燃机出货 GW 与新签 GW（press_releases 财报稿）",
+      "电网设备（变压器/开关）分部订单与交期表述（transcript；press_releases）",
+      "财报后评级/目标价动作（analyst_actions）"
+     ],
+     "cadence": "季度财报（1/4/7/10 月下旬）"
     }
    ]
   }

@@ -125,6 +125,17 @@ const MAX_PROJECTED_COMPANY_CARDS: usize = 8;
 const MAX_PROJECTED_INDUSTRIES: usize = 2;
 /// 只带最该盯的那几条；`core_watch` 完整清单在 `industry-map` skill 里，模型要展开时自己加载。
 const MAX_PROJECTED_INDUSTRY_WATCH: usize = 3;
+/// 上游信号只注入两条，NVDA 永远在前：它是本体里最粗的那条边，也是用户点名的失败点。
+const MAX_PROJECTED_UPSTREAM_SIGNALS: usize = 2;
+
+/// 按字符截断并补省略号；注入面里的散文只保留一句，完整版留给页面与 skill。
+fn clip(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= limit {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(limit).collect::<String>() + "…"
+}
 
 #[derive(Debug, Deserialize)]
 struct CompanyResearchCorpus {
@@ -291,6 +302,36 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         if !watch.is_empty() {
             lines.push(format!("  核心关注点：{}", watch.join("；")));
         }
+        // 本体的边：这一行由谁的最近行为决定。写成「先去取什么」而不是「关注谁」，
+        // 否则模型只会在结尾补一句「关注英伟达财报」，正文仍然和英伟达最近做了什么无关。
+        //
+        // 只注入前两条（NVDA 永远排第一），每条只带前三个读数、每个读数截到一句——完整的
+        // `pull` / `why` 是给研究台页面和 `industry-map` skill 的，整段注入会让两行的开销
+        // 从约 1100 token 涨到 3700。要展开时模型自己加载 skill。
+        let mut signals = industry.upstream_signals.iter().collect::<Vec<_>>();
+        signals.sort_by_key(|signal| signal.symbol != "NVDA");
+        for signal in signals.into_iter().take(MAX_PROJECTED_UPSTREAM_SIGNALS) {
+            let pull = if signal.pull.is_empty() {
+                "最新一季财报与指引".to_string()
+            } else {
+                signal
+                    .pull
+                    .iter()
+                    .take(3)
+                    .map(|item| clip(item, 48))
+                    .collect::<Vec<_>>()
+                    .join("；")
+            };
+            lines.push(format!(
+                "  上游信号 · {}（{}，{}）：写这家之前先取 {} —— 取法 `data_fetch(data_type=\"earnings_outlook\", ticker=\"{}\")`，评级与目标价用 `analyst_actions`，原话用 `transcript` / `press_releases`。{}",
+                signal.symbol,
+                signal.name,
+                signal.relation,
+                pull,
+                signal.symbol,
+                clip(&signal.why, 90)
+            ));
+        }
         sections.push(lines.join("\n"));
         if sections.len() >= MAX_PROJECTED_INDUSTRIES {
             break;
@@ -303,7 +344,9 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         "【本轮相关行业】\n以下来自 `industry-map` 的 AI 数据中心行业树，是这一行的**结构与先验**，不是当前事实。\
 需求侧照这条传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
 不得把行业增速直接当成公司增速。倍数先看公司卡的估值框架，公司卡没指定时才用这里的倍数锚当先验，仍要按 `valuation-audit` 的三问推导出本轮倍数；\
-行业反模式与公司卡的「不要…」同等对待，在真正选倍数或分母的那一句里点名对照。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
+行业反模式与公司卡的「不要…」同等对待，在真正选倍数或分母的那一句里点名对照。\
+带「上游信号」的行，需求侧第一段先写那家上游**最近一季实际做了什么**（收入与指引、毛利率、管理层关于本行的表述、评级与目标价变动），再沿传导链传到这家公司；\
+本轮没取到就写明「本轮未取到 X 的最新财报」，不得把上游略过、也不得用记忆里的旧季度代替。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
         sections.join("\n\n")
     ))
 }
@@ -745,6 +788,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn industry_baseline_pulls_nvda_first_and_keeps_the_upstream_block_compact() {
+        // 存储行：底稿里有 4 条上游信号，注入只带 2 条且英伟达在前，每条的读数被截成一句。
+        let text = industry_baseline(
+            "SNDK 的合理估值是多少",
+            std::path::Path::new("/nonexistent"),
+        )
+        .expect("storage is in the tree");
+        let upstream = text
+            .lines()
+            .filter(|line| line.contains("上游信号 ·"))
+            .collect::<Vec<_>>();
+        assert_eq!(upstream.len(), 2, "{text}");
+        assert!(upstream[0].contains("上游信号 · NVDA"), "{}", upstream[0]);
+        assert!(
+            upstream[0].contains("data_fetch(data_type=\"earnings_outlook\", ticker=\"NVDA\")"),
+            "{}",
+            upstream[0]
+        );
+        assert!(text.contains("最近一季实际做了什么"));
+        // 两行合计的注入体量要留在预算内（改前约 1100 token / 2 行；这里以字符数守住）。
+        assert!(
+            text.chars().count() < 2600,
+            "注入过长：{} 字",
+            text.chars().count()
+        );
     }
 
     #[tokio::test]

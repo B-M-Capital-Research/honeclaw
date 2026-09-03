@@ -74,6 +74,45 @@ pub struct IndustrySource {
     pub takeaway: String,
 }
 
+/// 这一行的收入最终由哪家上市公司的最近行为决定，以及写这一行的公司之前该去取它的哪几个读数。
+/// 它是行业树从「一段说明」变成「本体」的那条边：存储、光通信、新云都挂在英伟达的财报上，
+/// 但如果只写在 `core_watch` 的散文里，模型不会真的去取。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct UpstreamSignal {
+    pub symbol: String,
+    #[serde(default)]
+    pub name: String,
+    /// demand_source（它买本行的东西）/ capex_source（它的资本开支是需求源头）/
+    /// supply_gate（本行供给受它卡口）/ peer_signal（同业龙头，最早的景气读数）。
+    #[serde(default)]
+    pub relation: String,
+    #[serde(default)]
+    pub why: String,
+    /// 去取它的哪几个读数，每条都是现有工具取得到的量。
+    #[serde(default)]
+    pub pull: Vec<String>,
+    #[serde(default)]
+    pub cadence: String,
+}
+
+pub const UPSTREAM_RELATIONS: &[&str] = &[
+    "demand_source",
+    "capex_source",
+    "supply_gate",
+    "peer_signal",
+];
+
+/// 管理员在线新增一个行业时提交的骨架；其余字段留空，之后用别的改动填。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct NewIndustry {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub one_liner: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Industry {
     pub id: String,
@@ -91,6 +130,8 @@ pub struct Industry {
     pub members: Vec<IndustryMember>,
     #[serde(default)]
     pub sources: Vec<IndustrySource>,
+    #[serde(default)]
+    pub upstream_signals: Vec<UpstreamSignal>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -157,6 +198,18 @@ pub enum EditOp {
     RemoveWatch {
         what: String,
     },
+    AddUpstreamSignal {
+        signal: UpstreamSignal,
+    },
+    RemoveUpstreamSignal {
+        symbol: String,
+    },
+    /// 新增一个行业。`IndustryEdit.industry` 就是新行业的 id。
+    AddIndustry {
+        industry: NewIndustry,
+    },
+    /// 从树里移除一个行业。底稿不动，重放时跳过它——底稿升级后仍然可以恢复。
+    RemoveIndustry,
 }
 
 impl EditOp {
@@ -173,6 +226,10 @@ impl EditOp {
             EditOp::RemoveSource { .. } => "移除一条来源".to_string(),
             EditOp::AddWatch { watch } => format!("新增关注点「{}」", truncate(&watch.what, 18)),
             EditOp::RemoveWatch { what } => format!("移除关注点「{}」", truncate(what, 18)),
+            EditOp::AddUpstreamSignal { signal } => format!("新增上游信号 {}", signal.symbol),
+            EditOp::RemoveUpstreamSignal { symbol } => format!("移除上游信号 {symbol}"),
+            EditOp::AddIndustry { industry } => format!("新增行业「{}」", industry.name),
+            EditOp::RemoveIndustry => "移除整个行业".to_string(),
         }
     }
 }
@@ -243,9 +300,14 @@ pub fn load(data_root: &Path) -> (IndustryMap, Vec<IndustryEdit>) {
 #[derive(Debug, PartialEq)]
 pub enum ApplyError {
     UnknownIndustry(String),
+    DuplicateIndustry(String),
+    InvalidIndustryId(String),
     UnknownField(String),
     UnknownMember(String),
     DuplicateMember(String),
+    UnknownSignal(String),
+    DuplicateSignal(String),
+    InvalidRelation(String),
 }
 
 impl std::fmt::Display for ApplyError {
@@ -259,15 +321,91 @@ impl std::fmt::Display for ApplyError {
             ),
             ApplyError::UnknownMember(symbol) => write!(formatter, "这一行里没有 {symbol}"),
             ApplyError::DuplicateMember(symbol) => write!(formatter, "{symbol} 已经在这一行里了"),
+            ApplyError::DuplicateIndustry(id) => write!(formatter, "已经有这个行业了：{id}"),
+            ApplyError::InvalidIndustryId(id) => {
+                write!(formatter, "行业 id 只能用小写字母、数字和连字符：{id}")
+            }
+            ApplyError::UnknownSignal(symbol) => {
+                write!(formatter, "这一行的上游信号里没有 {symbol}")
+            }
+            ApplyError::DuplicateSignal(symbol) => {
+                write!(formatter, "{symbol} 已经是这一行的上游信号了")
+            }
+            ApplyError::InvalidRelation(relation) => write!(
+                formatter,
+                "relation 不合法：{relation}（可用：{}）",
+                UPSTREAM_RELATIONS.join(" / ")
+            ),
         }
     }
 }
 
 pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyError> {
+    // 行业级的两个动作先处理：它们的前提恰好和其它动作相反（新增要求不存在）。
+    match &edit.op {
+        EditOp::AddIndustry { industry } => {
+            let id = edit.industry.trim();
+            if id.is_empty()
+                || !id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return Err(ApplyError::InvalidIndustryId(edit.industry.clone()));
+            }
+            if map.industry(id).is_some() {
+                return Err(ApplyError::DuplicateIndustry(id.to_string()));
+            }
+            map.industries.push(Industry {
+                id: id.to_string(),
+                name: industry.name.clone(),
+                parent: map.root.id.clone(),
+                one_liner: industry.one_liner.clone(),
+                aliases: industry.aliases.clone(),
+                ai_valuation_logic: AiValuationLogic::default(),
+                core_watch: Vec::new(),
+                members: Vec::new(),
+                sources: Vec::new(),
+                upstream_signals: Vec::new(),
+            });
+            return Ok(());
+        }
+        EditOp::RemoveIndustry => {
+            let before = map.industries.len();
+            map.industries.retain(|item| item.id != edit.industry);
+            if map.industries.len() == before {
+                return Err(ApplyError::UnknownIndustry(edit.industry.clone()));
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
     let industry = map
         .industry_mut(&edit.industry)
         .ok_or_else(|| ApplyError::UnknownIndustry(edit.industry.clone()))?;
     match &edit.op {
+        EditOp::AddIndustry { .. } | EditOp::RemoveIndustry => unreachable!("handled above"),
+        EditOp::AddUpstreamSignal { signal } => {
+            if !UPSTREAM_RELATIONS.contains(&signal.relation.as_str()) {
+                return Err(ApplyError::InvalidRelation(signal.relation.clone()));
+            }
+            if industry
+                .upstream_signals
+                .iter()
+                .any(|item| item.symbol == signal.symbol)
+            {
+                return Err(ApplyError::DuplicateSignal(signal.symbol.clone()));
+            }
+            industry.upstream_signals.push(signal.clone());
+        }
+        EditOp::RemoveUpstreamSignal { symbol } => {
+            let before = industry.upstream_signals.len();
+            industry
+                .upstream_signals
+                .retain(|item| &item.symbol != symbol);
+            if industry.upstream_signals.len() == before {
+                return Err(ApplyError::UnknownSignal(symbol.clone()));
+            }
+        }
         EditOp::SetField { field, value } => match field.as_str() {
             "one_liner" => industry.one_liner = value.clone(),
             "driver_chain" => industry.ai_valuation_logic.driver_chain = value.clone(),
@@ -515,6 +653,118 @@ mod tests {
         assert!(bad.is_err());
         assert!(load_log(&dir).edits.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_industry_can_be_added_online_then_filled_then_removed() {
+        let mut map = base_map();
+        let before = map.industries.len();
+        apply(
+            &mut map,
+            &edit(
+                "cooling",
+                EditOp::AddIndustry {
+                    industry: NewIndustry {
+                        id: "cooling".into(),
+                        name: "散热".into(),
+                        one_liner: "机柜功率密度决定的液冷与风冷".into(),
+                        aliases: vec!["散热".into(), "液冷".into()],
+                    },
+                },
+            ),
+        )
+        .expect("add industry");
+        assert_eq!(map.industries.len(), before + 1);
+        assert_eq!(map.industry("cooling").unwrap().parent, map.root.id);
+        // 新行业上可以继续挂内容
+        apply(
+            &mut map,
+            &edit(
+                "cooling",
+                EditOp::AddUpstreamSignal {
+                    signal: UpstreamSignal {
+                        symbol: "NVDA".into(),
+                        name: "英伟达".into(),
+                        relation: "demand_source".into(),
+                        why: "单机柜功率由 GPU 平台定".into(),
+                        pull: vec!["下一代平台的机柜功率".into()],
+                        cadence: "GTC".into(),
+                    },
+                },
+            ),
+        )
+        .expect("add signal");
+        assert_eq!(map.industry("cooling").unwrap().upstream_signals.len(), 1);
+        // 重复的 id 与非法的 id 都被挡住
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "cooling",
+                    EditOp::AddIndustry {
+                        industry: NewIndustry {
+                            id: "cooling".into(),
+                            name: "x".into(),
+                            one_liner: String::new(),
+                            aliases: vec![],
+                        },
+                    },
+                ),
+            ),
+            Err(ApplyError::DuplicateIndustry("cooling".into()))
+        );
+        assert!(matches!(
+            apply(
+                &mut map,
+                &edit(
+                    "Bad Id",
+                    EditOp::AddIndustry {
+                        industry: NewIndustry {
+                            id: "Bad Id".into(),
+                            name: "x".into(),
+                            one_liner: String::new(),
+                            aliases: vec![],
+                        },
+                    },
+                ),
+            ),
+            Err(ApplyError::InvalidIndustryId(_))
+        ));
+        apply(&mut map, &edit("cooling", EditOp::RemoveIndustry)).expect("remove");
+        assert!(map.industry("cooling").is_none());
+        assert_eq!(map.industries.len(), before);
+    }
+
+    #[test]
+    fn upstream_signals_reject_unknown_relations_and_duplicates() {
+        let mut map = base_map();
+        let bad = UpstreamSignal {
+            symbol: "NVDA".into(),
+            name: "英伟达".into(),
+            relation: "friend".into(),
+            why: String::new(),
+            pull: vec![],
+            cadence: String::new(),
+        };
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit("storage", EditOp::AddUpstreamSignal { signal: bad })
+            ),
+            Err(ApplyError::InvalidRelation("friend".into()))
+        );
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::RemoveUpstreamSignal {
+                        symbol: "ZZZZ".into()
+                    }
+                )
+            ),
+            Err(ApplyError::UnknownSignal("ZZZZ".into()))
+        );
     }
 
     #[test]

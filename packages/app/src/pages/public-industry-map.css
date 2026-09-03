@@ -419,3 +419,428 @@
   color: var(--hone-ink-500);
   white-space: nowrap;
 }
+
+/* ── 上游信号 ──────────────────────────────────────────────────────────────
+   这一行的收入最终由谁的最近行为决定。放在传导链之前：先知道钱从哪来，再看它怎么传。
+   卡片与关注点同一副骨架，左侧多一道珊瑚边，标出它是本体里那条「边」而不是一段说明。 */
+
+.industry-signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.industry-signals > li {
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: var(--hone-surface-raised);
+}
+
+.industry-signal-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+}
+
+.industry-signal-head strong {
+  font-size: var(--hone-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-950);
+}
+
+.industry-signal-name {
+  font-size: var(--hone-text-sm);
+  color: var(--hone-ink-600);
+}
+
+.industry-relation {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-600);
+}
+
+.industry-signals > li > p {
+  margin: 0.3rem 0 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-600);
+}
+
+.industry-signal-pull {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+/* ── 编辑本体 ──────────────────────────────────────────────────────────────
+   管理员在页面上直接改行业本体。开关只在 is_admin 时渲染；开启后详情面板的每一块就地
+   变成表单，改动说明是所有保存共用的一个输入框——没有说明就没有保存按钮可按。
+   表单控件全部用令牌写在这里，不借研究文库的类：两页的对比度与圆角并不一致。 */
+
+.industry-map-adminbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+
+.industry-map-adminbar p {
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.5;
+  color: var(--hone-ink-500);
+}
+
+.industry-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.4rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-family: inherit;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms var(--hone-ease),
+    border-color 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-edit-toggle.is-on {
+  border-color: var(--hone-coral-600);
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-ink-950);
+}
+
+.industry-edit-toggle-track {
+  position: relative;
+  width: 1.9rem;
+  height: 1.1rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-line-strong);
+  transition: background 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: var(--hone-control-surface);
+  transition: transform 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle.is-on .industry-edit-toggle-track {
+  background: var(--hone-action-bg);
+}
+
+.industry-edit-toggle.is-on .industry-edit-toggle-track::after {
+  transform: translateX(0.8rem);
+}
+
+/* 面板顶部：共用的改动说明 + 最近一次保存的回执。 */
+
+.industry-editbar {
+  margin: 0.75rem 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-paper-100);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.industry-editbar > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-editbar-hint {
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.5;
+  color: var(--hone-ink-500);
+}
+
+.industry-flash {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--hone-radius-sm);
+  font-size: var(--hone-text-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.industry-flash.is-ok {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green-ink);
+}
+
+.industry-flash.is-error {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red-ink);
+}
+
+/* 控件 */
+
+.industry-input,
+.industry-textarea,
+.industry-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  font: inherit;
+  font-size: var(--hone-text-sm);
+  line-height: 1.5;
+}
+
+.industry-textarea {
+  min-height: 4.25rem;
+  resize: vertical;
+}
+
+.industry-input:focus-visible,
+.industry-textarea:focus-visible,
+.industry-select:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-input:disabled,
+.industry-textarea:disabled,
+.industry-select:disabled {
+  opacity: 0.6;
+}
+
+.industry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-body);
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 120ms var(--hone-ease),
+    opacity 120ms var(--hone-ease);
+}
+
+.industry-btn:hover:not(:disabled) {
+  background: var(--hone-paper-100);
+}
+
+.industry-btn:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-btn.is-primary {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+}
+
+.industry-btn.is-primary:hover:not(:disabled) {
+  background: var(--hone-action-bg);
+  opacity: 0.88;
+}
+
+.industry-btn.is-danger {
+  border-color: var(--hone-error-600);
+  background: transparent;
+  color: var(--hone-error-600);
+}
+
+.industry-btn.is-danger:hover:not(:disabled) {
+  background: var(--hone-signal-red-soft);
+}
+
+.industry-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 一段文本的就地编辑：textarea + 保存。 */
+
+.industry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.9rem;
+}
+
+.industry-field-label {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-field-actions,
+.industry-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.industry-field-dirty,
+.industry-form-hint {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-signal-orange-ink);
+}
+
+/* 表尾的新增表单：虚线框，和已定稿的内容分开。 */
+
+.industry-form {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--hone-line-strong);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.industry-form-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  color: var(--hone-ink-950);
+}
+
+.industry-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-form > label.is-wide,
+.industry-form > .industry-form-actions {
+  grid-column: 1 / -1;
+}
+
+/* 列表项右上角的「移除」：浮在卡片角上，不打乱标题的基线。 */
+.industry-item-remove {
+  float: right;
+  margin: 0 0 0.4rem 0.6rem;
+}
+
+.industry-signal-head .industry-btn {
+  margin-left: auto;
+}
+
+/* 公司表：编辑列与表尾的加入行。表本身仍在自己的容器里横向滚动。 */
+
+.industry-members .industry-field {
+  min-width: 16rem;
+  margin: 0;
+}
+
+.industry-members tfoot td {
+  border-bottom: 0;
+  border-top: 1px dashed var(--hone-line-strong);
+  background: var(--hone-paper-100);
+}
+
+.industry-members tfoot .industry-input {
+  min-width: 7rem;
+}
+
+.industry-members-add-hint {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-400);
+  white-space: nowrap;
+}
+
+.industry-members-error {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-error-600);
+  white-space: nowrap;
+}
+
+/* 树顶部的新增行业；标题旁的移除。 */
+
+.industry-tree-add {
+  margin-bottom: 0.6rem;
+}
+
+.industry-tree-add .industry-form {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.industry-detail-remove {
+  margin-left: 0.75rem;
+  vertical-align: middle;
+}
+
+@media (max-width: 760px) {
+  .industry-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .industry-map-adminbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .industry-detail-remove {
+    display: inline-flex;
+    margin: 0.4rem 0 0;
+  }
+}

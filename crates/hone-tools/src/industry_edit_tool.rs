@@ -6,15 +6,16 @@
 //!
 //! 只注册给管理员（`bot_core` 里按 `is_admin_actor` 判断），普通用户的工具集里不存在这个名字。
 //!
-//! 刻意不做的两件事：一是不能改 `key_variables`（结构化内容，用一段散文覆盖它会毁掉表格），
-//! 二是不能新增或删除整个行业——树的骨架属于研究底稿，改它应该走代码评审而不是一句对话。
+//! 刻意不开放 `key_variables`（结构化内容，用一段散文覆盖它会毁掉表格）。行业本身可以在线
+//! 新增与移除：移除只是让重放跳过它，底稿不动，底稿升级后仍然可以恢复。
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
 use hone_core::industry_map::{
-    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryEdit, IndustryMember, IndustrySource,
+    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryEdit, IndustryMember, IndustrySource, NewIndustry,
+    UPSTREAM_RELATIONS, UpstreamSignal,
 };
 
 use crate::base::{Tool, ToolParameter};
@@ -60,7 +61,8 @@ impl Tool for IndustryMapEditTool {
         可改字段：`one_liner`（这一行是什么，一句话）、`driver_chain`（从 AI 侧可观测量到这一行收入/价格的传导链，是这一行的第一性公式）、\
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
-        不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它），也不能新增或删除整个行业（树的骨架属于研究底稿，走代码评审）。\n\
+        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。\n\
+        行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
         每次改动都要写 `note` 说明依据，例如引用的研报或财报口径变化；它会和改动一起展示给其它管理员。"
     }
 
@@ -69,7 +71,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "action".to_string(),
                 param_type: "string".to_string(),
-                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / remove_watch".to_string(),
+                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / remove_watch / add_upstream_signal / remove_upstream_signal / add_industry / remove_industry".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "show".into(),
@@ -81,6 +83,10 @@ impl Tool for IndustryMapEditTool {
                     "remove_source".into(),
                     "add_watch".into(),
                     "remove_watch".into(),
+                    "add_upstream_signal".into(),
+                    "remove_upstream_signal".into(),
+                    "add_industry".into(),
+                    "remove_industry".into(),
                 ]),
                 items: None,
             },
@@ -192,6 +198,46 @@ impl Tool for IndustryMapEditTool {
                 name: "cadence".to_string(),
                 param_type: "string".to_string(),
                 description: "add_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "relation".to_string(),
+                param_type: "string".to_string(),
+                description: "add_upstream_signal 用：demand_source / capex_source / supply_gate / peer_signal".to_string(),
+                required: false,
+                r#enum: Some(UPSTREAM_RELATIONS.iter().map(|s| s.to_string()).collect()),
+                items: None,
+            },
+            ToolParameter {
+                name: "pull".to_string(),
+                param_type: "string".to_string(),
+                description: "add_upstream_signal 用：要去取的读数，多条用「；」分隔，每条都是现有工具取得到的量".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "id".to_string(),
+                param_type: "string".to_string(),
+                description: "add_industry 用：新行业 id（小写字母、数字、连字符），也可直接放在 industry 参数里".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "one_liner".to_string(),
+                param_type: "string".to_string(),
+                description: "add_industry 用：这一行是什么，一句话".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "aliases".to_string(),
+                param_type: "string".to_string(),
+                description: "add_industry 用：召回别名，多条用「；」分隔".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -332,11 +378,73 @@ impl Tool for IndustryMapEditTool {
                 };
                 EditOp::RemoveWatch { what }
             }
+            "add_upstream_signal" => {
+                let (Some(symbol), Some(relation)) =
+                    (text(&args, "symbol"), text(&args, "relation"))
+                else {
+                    return missing("symbol / relation");
+                };
+                if symbol.contains('.') || symbol.contains(':') {
+                    return Ok(json!({ "ok": false,
+                        "error": format!("{symbol} 不是美股代码：上游信号必须是能用工具取到财报的美股。") }));
+                }
+                EditOp::AddUpstreamSignal {
+                    signal: UpstreamSignal {
+                        symbol: symbol.to_ascii_uppercase(),
+                        name: text(&args, "name").unwrap_or_default(),
+                        relation,
+                        why: text(&args, "why").unwrap_or_default(),
+                        pull: text(&args, "pull")
+                            .map(|v| {
+                                v.split(['；', ';'])
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        cadence: text(&args, "cadence").unwrap_or_default(),
+                    },
+                }
+            }
+            "remove_upstream_signal" => {
+                let Some(symbol) = text(&args, "symbol") else {
+                    return missing("symbol");
+                };
+                EditOp::RemoveUpstreamSignal {
+                    symbol: symbol.to_ascii_uppercase(),
+                }
+            }
+            "add_industry" => {
+                let Some(name) = text(&args, "name") else {
+                    return missing("name");
+                };
+                let id = text(&args, "id").unwrap_or_else(|| industry.clone());
+                EditOp::AddIndustry {
+                    industry: NewIndustry {
+                        id: id.clone(),
+                        name,
+                        one_liner: text(&args, "one_liner").unwrap_or_default(),
+                        aliases: text(&args, "aliases")
+                            .map(|v| {
+                                v.split(['；', ';'])
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    },
+                }
+            }
+            "remove_industry" => EditOp::RemoveIndustry,
             other => {
                 return Ok(json!({ "ok": false, "error": format!("不支持的 action：{other}") }));
             }
         };
 
+        let industry = match &op {
+            EditOp::AddIndustry { industry: new } => new.id.clone(),
+            _ => industry,
+        };
         let edit = IndustryEdit {
             at: hone_core::local_now().to_rfc3339(),
             by: self.actor_user_id.clone(),
@@ -451,6 +559,60 @@ mod tests {
         assert!(
             out["error"].as_str().unwrap().contains("不能改这个字段"),
             "{out}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn upstream_signal_and_industry_lifecycle_work_through_the_tool() {
+        let dir = temp("lifecycle");
+        let t = tool(&dir);
+        let added = t
+            .execute(json!({
+                "action": "add_industry", "industry": "cooling", "name": "散热",
+                "one_liner": "机柜功率密度决定的液冷与风冷", "aliases": "散热；液冷",
+                "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(added["ok"], true, "{added}");
+        let sig = t
+            .execute(json!({
+                "action": "add_upstream_signal", "industry": "cooling", "symbol": "nvda",
+                "name": "英伟达", "relation": "demand_source",
+                "why": "单机柜功率由 GPU 平台定", "pull": "下一代平台机柜功率；数据中心收入指引",
+                "cadence": "GTC / 季度财报"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(sig["ok"], true, "{sig}");
+        let (map, edits) = hone_core::industry_map::load(&dir);
+        let cooling = map.industry("cooling").expect("cooling exists");
+        assert_eq!(cooling.aliases, vec!["散热", "液冷"]);
+        assert_eq!(cooling.upstream_signals[0].symbol, "NVDA");
+        assert_eq!(cooling.upstream_signals[0].pull.len(), 2);
+        assert_eq!(edits.len(), 2);
+        // 非法 relation 在核心层被拒，且不写日志
+        let bad = t
+            .execute(
+                json!({ "action": "add_upstream_signal", "industry": "cooling",
+                "symbol": "MSFT", "relation": "friend" }),
+            )
+            .await
+            .expect("tool");
+        assert_eq!(bad["ok"], false);
+        assert!(bad["error"].as_str().unwrap().contains("relation"), "{bad}");
+        assert_eq!(hone_core::industry_map::load_log(&dir).edits.len(), 2);
+        let removed = t
+            .execute(json!({ "action": "remove_industry", "industry": "cooling", "note": "撤回" }))
+            .await
+            .expect("tool");
+        assert_eq!(removed["ok"], true, "{removed}");
+        assert!(
+            hone_core::industry_map::load(&dir)
+                .0
+                .industry("cooling")
+                .is_none()
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -40,6 +40,8 @@ import type {
   CommunityForumPage,
   CommunityForumPost,
   CompanyRatingSnapshot,
+  IndustryEditRequest,
+  IndustryEditResult,
   IndustryMapSnapshot,
   ValuationLabSnapshot,
   PortfolioNewsSnapshot,
@@ -2098,6 +2100,21 @@ export async function getPublicIndustryMap(
 ): Promise<IndustryMapSnapshot> {
   const response = await apiFetch("/api/public/industry-map", { signal });
   return parseJson<IndustryMapSnapshot>(response);
+}
+
+/**
+ * 管理员在行业分析页上直接改本体。与对话里的 industry_map_edit 工具写同一份日志；
+ * 403（非管理员）与 400（被拒的改动）的 error 原样成为 ApiError.message，页面直接展示。
+ */
+export async function postPublicIndustryMapEdit(
+  input: IndustryEditRequest,
+): Promise<IndustryEditResult> {
+  const response = await apiFetch("/api/public/industry-map/edits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseJson<IndustryEditResult>(response);
 }
 
 export async function getPublicValuationLab(

@@ -482,6 +482,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         )
         .route("/industry-map", get(industry_map::handle_get_industry_map))
         .route(
+            "/industry-map/edits",
+            post(industry_map::handle_post_industry_edit),
+        )
+        .route(
             "/valuation-lab",
             get(valuation_lab::handle_get_valuation_lab),
         )

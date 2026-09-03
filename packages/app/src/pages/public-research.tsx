@@ -79,6 +79,17 @@ const SECTIONS: SectionDef[] = [
     refreshAt: "每日 20:00",
     panel: (props) => <DailySignalPanel kind="macro" {...props} />,
   },
+  // 本体排在管理组第一张：其它每一张都读它注入的行业结构，改它的入口要最先被看见。
+  {
+    key: "industry-map",
+    title: "行业分析",
+    kicker: "本体 · 可在线编辑",
+    group: "admin",
+    blurb: "行业树 · 上游信号 · 估值逻辑 · 管理员可直接改",
+    refreshAt: "研究底稿维护",
+    href: "/industry-map",
+    adminOnly: true,
+  },
   {
     key: "daily-signal-ai",
     title: "AI 红绿灯",
@@ -158,16 +169,6 @@ const SECTIONS: SectionDef[] = [
     blurb: "上周回顾 · 下周日历 · 30 日展望",
     refreshAt: "每日 19:10",
     panel: (props) => <WeeklyBriefPanel {...props} />,
-    adminOnly: true,
-  },
-  {
-    key: "industry-map",
-    title: "行业分析",
-    kicker: "AI 数据中心产业链",
-    group: "admin",
-    blurb: "行业树 · 结合 AI 的估值逻辑 · 核心关注点",
-    refreshAt: "研究底稿维护",
-    href: "/industry-map",
     adminOnly: true,
   },
   {
