@@ -1197,28 +1197,49 @@ export async function getPublicCommunity(
     signal?: AbortSignal;
   } = {},
 ) {
+  // Both calls authenticate independently. Overlap the origin state request
+  // with grant discovery instead of adding another origin round trip before
+  // the first page can paint. Keep rejection handled if discovery opts out.
+  const canDiscoverEdge =
+    publicCommunityEdgeDiscoveryEnabled &&
+    Date.now() >= publicCommunityEdgeRetryAt &&
+    (input.limit == null || input.limit === 20);
+  const stateRequest = canDiscoverEdge
+    ? fetch(buildApiUrl("/api/public/community/state"), {
+        credentials: "include",
+        signal: input.signal,
+      })
+        .then((response) => parseJson<PublicCommunityState>(response))
+        .then(
+          (state) => ({ state, error: undefined }),
+          (error: unknown) => ({ state: undefined, error }),
+        )
+    : null;
   const edge =
-    input.limit == null || input.limit === 20
+    canDiscoverEdge
       ? await discoverPublicCommunityEdge(input.signal)
       : null;
   if (edge) {
     try {
-      const [feedResponse, stateResponse] = await Promise.all([
+      const [page, stateResult] = await Promise.all([
         fetchPublicCommunityEdge(
           publicCommunityEdgeFeedPath(edge, input.before),
           {
             signal: input.signal,
           },
-        ),
-        fetch(buildApiUrl("/api/public/community/state"), {
-          credentials: "include",
-          signal: input.signal,
-        }),
+        ).then((response) => parseJson<PublicCommunityPage>(response)),
+        stateRequest!,
       ]);
-      const [page, state] = await Promise.all([
-        parseJson<PublicCommunityPage>(feedResponse),
-        parseJson<PublicCommunityState>(stateResponse),
-      ]);
+      if (!stateResult.state) throw stateResult.error;
+      const state = stateResult.state;
+      // A published snapshot can lag the canonical archive. Only compare
+      // the latest page: content IDs are opaque, timestamp-ordered cursors.
+      if (
+        !input.before &&
+        (page.items[0]?.content_id ?? null) !== (state.latest_content_id ?? null)
+      ) {
+        throw new Error("Community edge snapshot is out of date");
+      }
       return {
         ...page,
         unread: state.unread,
@@ -1406,6 +1427,7 @@ export async function getPublicCommunityResourceBlob(
   resourceId: number,
   version?: string | null,
   deliveryPath?: string | null,
+  signal?: AbortSignal,
 ) {
   const edgePath = verifiedPublicCommunityDeliveryPath(
     resourceId,
@@ -1414,14 +1436,18 @@ export async function getPublicCommunityResourceBlob(
   );
   if (edgePath) {
     try {
-      const edgeResponse = await fetchPublicCommunityEdge(edgePath);
-      if (edgeResponse.ok) return edgeResponse.blob();
-    } catch {
+      const edgeResponse = await fetchPublicCommunityEdge(edgePath, { signal });
+      // A successful header does not guarantee a complete body. Await body
+      // consumption here so interrupted R2/edge streams reach the fallback.
+      if (edgeResponse.ok) return await edgeResponse.blob();
+    } catch (error) {
+      if (signal?.aborted) throw error;
       // The legacy authenticated API remains the per-resource safety net.
     }
   }
   const response = await apiFetch(
     publicCommunityResourcePath(resourceId, version),
+    { signal },
   );
   if (!response.ok) throw await apiErrorFromResponse(response);
   return response.blob();

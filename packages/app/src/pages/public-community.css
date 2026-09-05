@@ -40,6 +40,34 @@
   gap: 14px;
 }
 
+.public-community-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+
+.public-community-refresh > span {
+  color: var(--hone-coral-600);
+}
+
+.public-community-refresh > button {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--hone-line);
+  border-radius: 8px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  cursor: pointer;
+}
+
+.public-community-refresh > button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .public-community-card {
   padding: 22px;
   border: 1px solid var(--hone-line);

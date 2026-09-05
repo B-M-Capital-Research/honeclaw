@@ -54,7 +54,7 @@
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-community-edge-production-rollout.md`
-  - 摘要：私有 R2 快照已发布；全新的 `hone-public-community-edge` 已部署到精确路由并保持无 secret、无启用变量的 fail-closed `503`。实现提交 `385e35b0` / `100f5608` 已推到 `main`；自动 Pages 构建仍将 edge discovery 编译移除。精确 `100f5608` 的五个运行二进制、public bundle、skills/soul 和哈希 manifest 已准备在独立不可变目录，当前旧后端仍运行 `d58ef12b` 且新 edge-session 为 `404`。下一步只由外部服务执行受控重启，先验证 `mode=off` 的 `200 enabled=false`；共享 secret、backend `shadow/prefer`、Worker 激活和 Pages discovery 均未开始
+  - 摘要：2026-09-05 用户要求恢复知识星球 `51115212285814` 最新内容同步、修复图片/文件访问并改善端到端速度；已拉取 `fdb533d4`，正在并行核对源站/PG/线上 feed、持续采集任务、GCP runtime 与 Cloudflare 实际状态。沿用原 rollout 计划统一跟踪；7 月旧部署记录仅作历史证据，生产现状与验收数据以本轮实测为准
 
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`

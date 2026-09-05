@@ -457,7 +457,9 @@ describe("public community API", () => {
     const payload = await getPublicCommunity();
 
     expect(requested).toHaveLength(3);
-    expect(requested[0]).toContain("/api/public/community/edge-session");
+    expect(requested).toContainEqual(
+      expect.stringContaining("/api/public/community/edge-session"),
+    );
     expect(requested).toContainEqual(
       expect.stringContaining("/_community/v1/feed/latest.json"),
     );
@@ -582,6 +584,106 @@ describe("public community API", () => {
     expect(payload.unread).toBe(true);
   });
 
+  test("starts personal state before the edge grant finishes to avoid a serial origin round trip", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    let grant!: (response: Response) => void;
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return new Promise<Response>((resolve) => { grant = resolve; });
+      }
+      if (raw.includes("/community/state")) {
+        return Promise.resolve(Response.json({ unread: true, latest_content_id: 42 }));
+      }
+      return Promise.resolve(Response.json({
+        items: [{ content_id: 42, resources: [] }], next_before: null,
+      }));
+    }) as typeof fetch;
+
+    const pending = getPublicCommunity();
+    expect(requested.some((url) => url.endsWith("/community/state"))).toBe(true);
+    expect(requested.some((url) => url.includes("/feed/"))).toBe(false);
+    grant(Response.json({
+      enabled: true, mode: "prefer", base_path: "/_community/v1",
+      expires_at: Math.floor(Date.now() / 1_000) + 900,
+    }));
+    expect((await pending).items[0]?.content_id).toBe(42);
+    expect(requested).toHaveLength(3);
+  });
+
+  test("uses canonical latest data when the edge snapshot is stale, without comparing IDs numerically", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(Response.json({
+          enabled: true, mode: "prefer", base_path: "/_community/v1",
+          expires_at: Math.floor(Date.now() / 1_000) + 900,
+        }));
+      }
+      if (raw.includes("/community/state")) {
+        return Promise.resolve(Response.json({ unread: true, latest_content_id: 42 }));
+      }
+      return Promise.resolve(Response.json({
+        items: [{ content_id: raw.includes("/_community/") ? 99 : 42, resources: [] }],
+        next_before: null, unread: true,
+      }));
+    }) as typeof fetch;
+
+    expect((await getPublicCommunity()).items[0]?.content_id).toBe(42);
+    expect(requested.at(-1)).toMatch(/\/api\/public\/community$/);
+    expect(publicCommunityResourceUrl(1, "0123456789ab", "/_community/v1/resources/1/0123456789ab"))
+      .toContain("/api/public/community/resources/1");
+    const requestsAfterFallback = requested.length;
+    await getPublicCommunity();
+    expect(requested).toHaveLength(requestsAfterFallback + 1);
+  });
+
+  test("accepts an older cursor page even though it does not contain the latest content", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(Response.json({
+          enabled: true, mode: "prefer", base_path: "/_community/v1",
+          expires_at: Math.floor(Date.now() / 1_000) + 900,
+        }));
+      }
+      if (raw.includes("/community/state")) {
+        return Promise.resolve(Response.json({ unread: false, latest_content_id: 42 }));
+      }
+      return Promise.resolve(Response.json({ items: [{ content_id: 7 }], next_before: 7 }));
+    }) as typeof fetch;
+
+    expect((await getPublicCommunity({ before: 20 })).items[0]?.content_id).toBe(7);
+    expect(requested).toHaveLength(3);
+    expect(requested.at(-1)).toContain("/_community/v1/feed/pages/20.json");
+  });
+
+  test("falls back as soon as edge parsing fails while the state request is still pending", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(Response.json({
+          enabled: true, mode: "prefer", base_path: "/_community/v1",
+          expires_at: Math.floor(Date.now() / 1_000) + 900,
+        }));
+      }
+      if (raw.includes("/community/state")) return new Promise<Response>(() => {});
+      if (raw.includes("/_community/")) return Promise.resolve(new Response("down", { status: 503 }));
+      return Promise.resolve(Response.json({ items: [{ content_id: 42 }], unread: true }));
+    }) as typeof fetch;
+
+    expect((await getPublicCommunity()).items[0]?.content_id).toBe(42);
+  });
+
   test("discovers a fresh edge grant after logout", async () => {
     setPublicCommunityEdgeDiscoveryForTests(true);
     let grants = 0;
@@ -671,6 +773,54 @@ describe("public community API", () => {
     );
     expect(credentials).toBe("include");
     expect(blob.size).toBe(3);
+  });
+
+  test("falls back after successful edge headers when the file body is interrupted", async () => {
+    setPublicCommunityEdgeDiscoveryForTests(true);
+    const requested: string[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL) => {
+      const raw = String(url);
+      requested.push(raw);
+      if (raw.includes("/edge-session")) {
+        return Promise.resolve(Response.json({
+          enabled: true, mode: "prefer", base_path: "/_community/v1",
+          expires_at: Math.floor(Date.now() / 1_000) + 900,
+        }));
+      }
+      if (raw.includes("/community/state")) {
+        return Promise.resolve(Response.json({ unread: false, latest_content_id: null }));
+      }
+      if (raw.includes("/feed/")) return Promise.resolve(Response.json({ items: [] }));
+      if (raw.includes("/_community/v1/resources/")) {
+        return Promise.resolve(new Response(new ReadableStream({
+          start(controller) { controller.error(new Error("interrupted edge stream")); },
+        }), { headers: { "content-type": "application/pdf" } }));
+      }
+      return Promise.resolve(new Response("%PDF-complete", {
+        headers: { "content-type": "application/pdf" },
+      }));
+    }) as typeof fetch;
+
+    await getPublicCommunity();
+    const blob = await getPublicCommunityResourceBlob(99, "0123456789ab", "/_community/v1/resources/99/0123456789ab");
+    expect(await blob.text()).toBe("%PDF-complete");
+    expect(requested.at(-1)).toContain("/api/public/community/resources/99?v=0123456789ab");
+  });
+
+  test("cancels a resource request without starting a fallback transfer", async () => {
+    const controller = new AbortController();
+    let requests = 0;
+    globalThis.fetch = ((_url: RequestInfo | URL, init?: RequestInit) => {
+      requests += 1;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    }) as typeof fetch;
+
+    const pending = getPublicCommunityResourceBlob(99, undefined, undefined, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requests).toBe(1);
   });
 
   test("downloads a generated file through the authenticated public route", async () => {

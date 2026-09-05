@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-16
+Last updated: 2026-09-05
 
 ## When to Use
 
@@ -600,7 +600,20 @@ hone-cli cloud community-assets --manifest /path/to/verified-assets.json
 hone-cli cloud community-assets --manifest /path/to/verified-assets.json --apply
 ```
 
-`community-contents` is a bootstrap/recovery command that requires the complete source timeline: `source_topic_index` and source file positions must each be contiguous from zero. It first reconciles existing file-backed rows by source file position, then uses `candidate_fingerprint + occurrence` as the stable identity for missing or non-file posts. Apply mode locks the community space and inserts every missing post and its ordered resources in one PostgreSQL transaction. A second dry-run must report `would_insert=0` before the migration is considered complete. **Do not use this command for the weekly append:** inserting newer topics at the front shifts source file positions and can match new rows to old content. Until a dedicated idempotent `community-append` workflow is implemented and reviewed, stop rather than improvising an incremental `community-contents --apply`.
+`community-contents` is a bootstrap/recovery command that requires the complete source timeline: `source_topic_index` and source file positions must each be contiguous from zero. It first reconciles existing file-backed rows by source file position, then uses `candidate_fingerprint + occurrence` as the stable identity for missing or non-file posts. Apply mode locks the community space and inserts every missing post and its ordered resources in one PostgreSQL transaction. A second dry-run must report `would_insert=0` before the migration is considered complete. **Do not use this command for the weekly append:** inserting newer topics at the front shifts source file positions and can match new rows to old content. Use the dedicated `community-append` workflow below for incremental updates; never substitute positional bootstrap reconciliation.
+
+Production community commands must go through `scripts/community_production.py`, not a bare CLI in the repository directory. The wrapper reads the managed service environment over IAP, checks a previously reviewed PostgreSQL identity, creates a loopback-only tunnel and runs the CLI from an isolated temporary directory. Credentials remain in memory. The ignored `data/community-imports/production-operator.json` contains only `project`, `instance`, `zone` and `expected_pg_identity_sha256`; review those values against the managed service before provisioning or changing them. A fingerprint mismatch requires investigation, not automatic repinning. Repository `.env` is not production authority.
+
+```bash
+cargo build -p hone-cli
+python3 scripts/community_production.py cloud community-inspect --anchor-only
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json --apply
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json
+python3 scripts/community_production.py cloud community-assets --manifest /path/to/verified-assets.json
+```
+
+`community-inspect --anchor-only` emits the exact anchor object without model-derived hashes. `community-append` accepts continuous newest-first source items with stable identities and verifies the original anchor even on replay. New inserts also require the current head to match, and are written oldest-first so the database's timestamp/ID ordering preserves the source's same-minute order. Existing source identities must have matching author, time, body and ordered resources; a previously unknown file identity may be legitimately completed by asset backfill. The operation is atomic and a replay must show zero inserts. Use the production wrapper for asset apply and publisher operations too. See [Community insights sync](community-insights-daily-sync.md) for the capture and scheduling workflow.
 
 `community-assets` accepts only ordinary non-symlink files with an allowlisted MIME/magic signature, exact manifest byte size, and exact SHA-256. It verifies or creates a full-SHA immutable object key, reads the object back from R2, and only then promotes the PostgreSQL resource row through an optimistic lock. Never put source cookies, signed download URLs, or authorization headers in either manifest. Source-protected resources stay metadata-only unless the authorized source UI legitimately exposes their bytes.
 
@@ -609,6 +622,14 @@ Every promoted resource keeps the previous SHA, size, object URI, and access sta
 The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, `conversation_quota/*.json`, `runtime/skill_registry.json`, `notif_prefs/*.json`, `portfolio/*.json`, and actor-scoped `company_profiles/**/*.md`; use the matching narrow `--*-only --apply` modes for fast idempotent passes before the larger object migration. The completed Web-auth and LLM-audit import flags intentionally reject further use. The retained `--event-store-only` channel reads `events.sqlite3` only as historical input and imports the five event tables into PG. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. All runtime stores are PostgreSQL-backed; generated images, uploads, and attachment/document surfaces use OSS where configured and otherwise retain their explicit local file fallback.
 
 ## Public Community Private-R2 Edge Rollout
+
+### Current recovery and historical rollout evidence
+
+The July rollout narrative below is historical. A September 5 audit found that the Worker had since been enabled and configured with a managed HTTPS fallback, while the backend signing secret was absent from the managed process environment and a local automation had published a different database into the same R2 prefix. Do not redeploy the July Worker configuration over the live version. Inspect actual deployed code, bindings and variables first; preserve the reviewed origin fallback and signing secret. The current recovery and exact acceptance results are recorded in [the September 5 handoff](../handoffs/2026-09-05-community-freshness-assets-latency.md).
+
+Publish from the same production PostgreSQL authority used by the API before enabling edge grants. An immutable key conflict must never be overwritten: use a new delivery prefix with matching Worker feed/resource configuration and cache isolation if a projection migration requires it. `latest.json` is published last, after resources and older pages. Bounded parallel metadata preflight reduces publication time while preserving conflict checks and full-byte verification during apply.
+
+The backend grant secret must be in the managed supervisor environment file, not only a checkout `.env`. Apply environment updates atomically with restricted permissions and use the normal managed restart. Resource HEAD and conditional GET responses inspect object metadata and size without downloading the body; ordinary GET still verifies full SHA-256. A metadata response is not evidence of full-byte integrity.
 
 This is an operator-run rollout. At implementation close on 2026-07-19, the work had published and idempotently rechecked the initial **private** R2 derived snapshot (`662` contents, `833` resources, `719` edge descriptors, `34` feed pages, `754` publication objects; final dry-run `no_op=true`, `would_write=0`, `conflicts=[]`) without deploying a Worker or Pages bundle, changing a production variable or secret, switching traffic, or restarting the backend.
 

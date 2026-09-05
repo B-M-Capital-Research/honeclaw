@@ -1,5 +1,6 @@
 import { Title } from "@solidjs/meta";
 import { CONTENT } from "@/lib/public-content";
+import { mergeCommunityTimeline } from "@/lib/public-community-timeline";
 import {
   cachedCommunityFeed,
   setCachedCommunityFeed,
@@ -81,8 +82,8 @@ function resourceCanInlinePreview(resource: PublicCommunityResource) {
   );
 }
 
-async function downloadCommunityResource(resource: PublicCommunityResource) {
-  const blob = await getPublicCommunityResourceBlob(
+async function downloadCommunityResource(resource: PublicCommunityResource, preparedBlob?: Blob) {
+  const blob = preparedBlob ?? await getPublicCommunityResourceBlob(
     resource.resource_id,
     resource.version,
     resource.delivery_path,
@@ -130,6 +131,8 @@ function CommunityMediaPreview(props: {
   let viewFrame = 0;
   let disposed = false;
   let documentObjectUrl: string | undefined;
+  let documentBlob: Blob | undefined;
+  const documentRequest = new AbortController();
   let documentSlowTimer: number | undefined;
   let pendingView: { zoom: number; x: number; y: number } | undefined;
 
@@ -328,7 +331,7 @@ function CommunityMediaPreview(props: {
     if (downloadState() === "working") return;
     setDownloadState("working");
     try {
-      await downloadCommunityResource(props.resource);
+      await downloadCommunityResource(props.resource, documentBlob);
       setDownloadState("idle");
     } catch {
       setDownloadState("error");
@@ -344,9 +347,11 @@ function CommunityMediaPreview(props: {
         props.resource.resource_id,
         props.resource.version,
         props.resource.delivery_path,
+        documentRequest.signal,
       )
         .then((blob) => {
           if (disposed) return;
+          documentBlob = blob;
           documentObjectUrl = URL.createObjectURL(blob);
           setDocumentSource(documentObjectUrl);
         })
@@ -403,6 +408,7 @@ function CommunityMediaPreview(props: {
 
   onCleanup(() => {
     disposed = true;
+    documentRequest.abort();
     if (documentSlowTimer !== undefined) window.clearTimeout(documentSlowTimer);
     if (documentObjectUrl) URL.revokeObjectURL(documentObjectUrl);
     removeGestures?.();
@@ -549,6 +555,7 @@ export default function PublicCommunityPage() {
   const [items, setItems] = createSignal<PublicCommunityContent[]>(restored ?? []);
   const [nextBefore, setNextBefore] = createSignal<number | null>(null);
   const [loadingMore, setLoadingMore] = createSignal(false);
+  const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal("");
   const [loadMoreError, setLoadMoreError] = createSignal("");
   const [preview, setPreview] = createSignal<PublicCommunityResource | null>(null);
@@ -556,6 +563,10 @@ export default function PublicCommunityPage() {
   const [downloadError, setDownloadError] = createSignal("");
   const [query, setQuery] = createSignal("");
   const [communityView, setCommunityView] = createSignal<CommunityView>("official");
+  let requestController: AbortController | undefined;
+  let hasLoaded = false;
+  let lastRefreshAt = 0;
+  let lastSeenId: number | undefined;
   const filteredItems = createMemo(() => {
     const normalized = query().trim().toLowerCase();
     if (!normalized) return items();
@@ -565,10 +576,14 @@ export default function PublicCommunityPage() {
   });
 
   const load = async (more = false) => {
+    if (requestController || (more && !nextBefore())) return;
+    const controller = new AbortController();
+    requestController = controller;
     if (more) {
       setLoadingMore(true);
       setLoadMoreError("");
     } else {
+      setRefreshing(true);
       // Only blank the list when there is nothing worth showing yet.
       if (items().length === 0) setState("loading");
       setError("");
@@ -576,15 +591,28 @@ export default function PublicCommunityPage() {
     try {
       const page = await getPublicCommunity({
         before: more ? nextBefore() ?? undefined : undefined,
+        signal: controller.signal,
       });
-      setItems((current) => (more ? [...current, ...page.items] : page.items));
-      if (!more) setCachedCommunityFeed(page.items);
-      setNextBefore(page.next_before ?? null);
+      if (controller.signal.aborted) return;
+      const merged = mergeCommunityTimeline(
+        hasLoaded ? items() : [], nextBefore(), page, more,
+      );
+      setItems(merged.items);
+      setNextBefore(merged.nextBefore);
+      hasLoaded = true;
+      if (!more) {
+        setCachedCommunityFeed(page.items);
+        lastRefreshAt = Date.now();
+      }
       setState("ready");
-      if (!more && page.items[0]) {
-        void markPublicCommunitySeen(page.items[0].content_id);
+      if (!more && page.items[0] && page.items[0].content_id !== lastSeenId) {
+        const latestId = page.items[0].content_id;
+        void markPublicCommunitySeen(latestId)
+          .then(() => { lastSeenId = latestId; })
+          .catch(() => { /* A read receipt must not break the timeline. */ });
       }
     } catch (cause) {
+      if (controller.signal.aborted) return;
       if (isUnauthorizedApiError(cause)) {
         // A signed-out visitor must not keep reading a cached feed.
         setCachedCommunityFeed(null);
@@ -599,7 +627,9 @@ export default function PublicCommunityPage() {
         if (items().length === 0) setState("error");
       }
     } finally {
+      if (requestController === controller) requestController = undefined;
       setLoadingMore(false);
+      setRefreshing(false);
     }
   };
 
@@ -616,7 +646,30 @@ export default function PublicCommunityPage() {
     }
   };
 
-  onMount(() => void load());
+  onMount(() => {
+    void load();
+    const refreshIfVisible = () => {
+      if (
+        document.visibilityState === "hidden" ||
+        communityView() !== "official" ||
+        state() === "login" ||
+        preview() ||
+        Date.now() - lastRefreshAt < 30_000
+      ) return;
+      void load();
+    };
+    const timer = window.setInterval(refreshIfVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    window.addEventListener("online", refreshIfVisible);
+    onCleanup(() => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      window.removeEventListener("online", refreshIfVisible);
+      requestController?.abort();
+    });
+  });
 
   return (
     <div class="hone-landing-v4 public-community-page">
@@ -653,6 +706,18 @@ export default function PublicCommunityPage() {
           </nav>
 
           <Show when={communityView() === "official"}>
+          <div class="public-community-refresh">
+            <Show when={error() && items().length > 0}>
+              <span role="alert">{CONTENT.chat_page.community_page.refresh_failed}</span>
+            </Show>
+            <button
+              type="button"
+              disabled={refreshing() || loadingMore()}
+              onClick={() => void load()}
+            >
+              {refreshing() ? CONTENT.chat_page.community_page.refreshing : CONTENT.chat_page.community_page.refresh}
+            </button>
+          </div>
           <Switch>
             <Match when={state() === "loading"}>
               <div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.loading}</div>
@@ -780,7 +845,7 @@ export default function PublicCommunityPage() {
                     <button
                       type="button"
                       class="public-community-more"
-                      disabled={loadingMore()}
+                      disabled={loadingMore() || refreshing()}
                       onClick={() => void load(true)}
                     >
                       {loadingMore() ? CONTENT.chat_page.community_page.loading_short : loadMoreError() ? CONTENT.chat_page.community_page.retry_older : CONTENT.chat_page.community_page.load_older}

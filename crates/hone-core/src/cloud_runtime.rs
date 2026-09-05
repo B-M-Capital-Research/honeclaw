@@ -555,6 +555,213 @@ pub struct CloudCommunityReconcileReport {
     pub items: Vec<CloudCommunityReconcileItem>,
 }
 
+/// A bounded, newest-first source delta captured after the canonical archive
+/// cutoff. Stable source topic identifiers make replay idempotent without
+/// requiring the complete historical timeline manifest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityAppendManifest {
+    pub anchor: CloudCommunityAppendAnchor,
+    pub items: Vec<CloudCommunityAppendCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityAppendAnchor {
+    pub content_id: i64,
+    pub published_at_raw: String,
+    pub body_sha256: String,
+    pub resource_names: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudCommunityAppendCandidate {
+    pub source_delta_index: i32,
+    pub source_item_id: String,
+    pub author_name: String,
+    pub published_at_raw: String,
+    pub body_text: String,
+    pub resources: Vec<CloudCommunityAppendResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloudCommunityAppendResource {
+    pub ordinal: i32,
+    pub resource_kind: String,
+    pub source_resource_id: Option<String>,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityAppendResourceResult {
+    pub ordinal: i32,
+    pub resource_id: i64,
+    pub resource_kind: String,
+    pub source_resource_id: Option<String>,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityAppendItemResult {
+    pub source_delta_index: i32,
+    pub source_item_id: String,
+    pub source_item_key: String,
+    pub action: String,
+    pub content_id: Option<i64>,
+    pub resources: Vec<CloudCommunityAppendResourceResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudCommunityAppendReport {
+    pub mode: &'static str,
+    pub anchor_content_id: i64,
+    pub anchor_matched: bool,
+    pub source_item_count: usize,
+    pub existing: usize,
+    pub would_insert: usize,
+    pub inserted: usize,
+    pub items: Vec<CloudCommunityAppendItemResult>,
+}
+
+#[derive(Debug, Clone)]
+struct PlannedCommunityAppendCandidate {
+    candidate: CloudCommunityAppendCandidate,
+    source_item_key: String,
+}
+
+fn valid_community_source_identifier(value: &str, max_len: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+fn valid_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn plan_community_append_manifest(
+    source: &str,
+    manifest: &CloudCommunityAppendManifest,
+) -> HoneResult<Vec<PlannedCommunityAppendCandidate>> {
+    if source.is_empty() || sanitize_key_component(source) != source {
+        return Err(HoneError::Config(
+            "community append source 不安全".to_string(),
+        ));
+    }
+    if manifest.anchor.content_id <= 0
+        || chrono::NaiveDateTime::parse_from_str(
+            &manifest.anchor.published_at_raw,
+            "%Y-%m-%d %H:%M",
+        )
+        .is_err()
+        || !valid_lower_sha256(&manifest.anchor.body_sha256)
+        || manifest.anchor.resource_names.len() > 200
+        || manifest
+            .anchor
+            .resource_names
+            .iter()
+            .any(|name| name.trim().is_empty() || name.len() > 4_096 || name.contains('\0'))
+    {
+        return Err(HoneError::Config(
+            "community append anchor 无效".to_string(),
+        ));
+    }
+    if manifest.items.is_empty() || manifest.items.len() > 2_000 {
+        return Err(HoneError::Config(
+            "community append manifest 条目数必须在 1..=2000".to_string(),
+        ));
+    }
+
+    let anchor_time =
+        chrono::NaiveDateTime::parse_from_str(&manifest.anchor.published_at_raw, "%Y-%m-%d %H:%M")
+            .expect("validated append anchor time");
+    let mut seen_item_ids = BTreeSet::new();
+    let mut previous_time = None;
+    let mut planned = Vec::with_capacity(manifest.items.len());
+    for (expected_index, candidate) in manifest.items.iter().enumerate() {
+        if candidate.source_delta_index != expected_index as i32 {
+            return Err(HoneError::Config(format!(
+                "community append source_delta_index 必须从 0 连续递增，期望 {expected_index}，实际 {}",
+                candidate.source_delta_index
+            )));
+        }
+        if !valid_community_source_identifier(&candidate.source_item_id, 256)
+            || !seen_item_ids.insert(candidate.source_item_id.clone())
+        {
+            return Err(HoneError::Config(format!(
+                "community append item {expected_index} source_item_id 无效或重复"
+            )));
+        }
+        if candidate.author_name.trim().is_empty() || candidate.author_name.len() > 1_000 {
+            return Err(HoneError::Config(format!(
+                "community append item {expected_index} author_name 无效"
+            )));
+        }
+        let published_at =
+            chrono::NaiveDateTime::parse_from_str(&candidate.published_at_raw, "%Y-%m-%d %H:%M")
+                .map_err(|_| {
+                    HoneError::Config(format!(
+                        "community append item {expected_index} published_at_raw 无效"
+                    ))
+                })?;
+        if published_at < anchor_time
+            || previous_time.is_some_and(|previous| published_at > previous)
+        {
+            return Err(HoneError::Config(format!(
+                "community append item {expected_index} 时间必须按最新到最旧排列且不能早于 anchor"
+            )));
+        }
+        previous_time = Some(published_at);
+        if candidate.resources.is_empty() && candidate.body_text.trim().is_empty() {
+            return Err(HoneError::Config(format!(
+                "community append item {expected_index} 不能是空内容"
+            )));
+        }
+        if candidate.resources.len() > 200 {
+            return Err(HoneError::Config(format!(
+                "community append item {expected_index} 资源数超过上限"
+            )));
+        }
+        let mut seen_resource_ids = BTreeSet::new();
+        for (ordinal, resource) in candidate.resources.iter().enumerate() {
+            if resource.ordinal != ordinal as i32
+                || !matches!(resource.resource_kind.as_str(), "file" | "image")
+                || resource.display_name.trim().is_empty()
+                || resource.display_name.len() > 4_096
+                || resource.display_name.contains('\0')
+            {
+                return Err(HoneError::Config(format!(
+                    "community append item {expected_index} resource {ordinal} ordinal/kind/name 无效"
+                )));
+            }
+            match resource.source_resource_id.as_deref() {
+                Some(source_resource_id)
+                    if valid_community_source_identifier(source_resource_id, 512)
+                        && seen_resource_ids.insert(source_resource_id.to_string()) => {}
+                Some(_) => {
+                    return Err(HoneError::Config(format!(
+                        "community append item {expected_index} resource {ordinal} source_resource_id 无效或重复"
+                    )));
+                }
+                None if resource.resource_kind == "file" => {}
+                None => {
+                    return Err(HoneError::Config(format!(
+                        "community append item {expected_index} image {ordinal} 缺少 source_resource_id"
+                    )));
+                }
+            }
+        }
+        planned.push(PlannedCommunityAppendCandidate {
+            source_item_key: format!("{source}-topic-v1:{}", candidate.source_item_id),
+            candidate: candidate.clone(),
+        });
+    }
+    Ok(planned)
+}
+
 #[derive(Debug, Clone)]
 struct PlannedCommunityReconcileCandidate {
     candidate: CloudCommunityReconcileCandidate,
@@ -755,6 +962,38 @@ ORDER BY ordinal
                 display_name: row.get(3),
                 source_resource_id: row.get(4),
             }
+        })
+        .collect())
+}
+
+async fn load_appended_community_resources(
+    transaction: &tokio_postgres::Transaction<'_>,
+    content_id: i64,
+) -> HoneResult<Vec<CloudCommunityAppendResourceResult>> {
+    let rows = transaction
+        .query(
+            r#"
+SELECT ordinal, resource_id, resource_kind, source_resource_id, display_name
+FROM community_content_resources
+WHERE content_id = $1
+ORDER BY ordinal
+"#,
+            &[&content_id],
+        )
+        .await
+        .map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community append resources 读取失败: {err}"
+            ))
+        })?;
+    Ok(rows
+        .into_iter()
+        .map(|row| CloudCommunityAppendResourceResult {
+            ordinal: row.get(0),
+            resource_id: row.get(1),
+            resource_kind: row.get(2),
+            source_resource_id: row.get(3),
+            display_name: row.get::<_, Option<String>>(4).unwrap_or_default(),
         })
         .collect())
 }
@@ -2684,6 +2923,347 @@ RETURNING resource_id
             transaction.rollback().await.map_err(|err| {
                 HoneError::Config(format!(
                     "Postgres community reconcile transaction 回滚失败: {err}"
+                ))
+            })?;
+        }
+        Ok(report)
+    }
+
+    /// Append one complete, contiguous source delta after an explicitly
+    /// verified canonical cutoff. Stable topic IDs make the operation
+    /// idempotent; a stale anchor rejects every non-no-op write.
+    pub async fn append_community_contents(
+        &self,
+        source: &str,
+        external_id: &str,
+        manifest: &CloudCommunityAppendManifest,
+        source_timezone: &str,
+        apply: bool,
+    ) -> HoneResult<CloudCommunityAppendReport> {
+        crate::RuntimeTimezone::parse_iana(source_timezone).map_err(HoneError::Config)?;
+        let planned = plan_community_append_manifest(source, manifest)?;
+
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!(
+                "Postgres community append transaction 创建失败: {err}"
+            ))
+        })?;
+        let space = transaction
+            .query_opt(
+                r#"
+SELECT community_id, source_url
+FROM community_spaces
+WHERE source = $1 AND external_id = $2
+FOR UPDATE
+"#,
+                &[&source, &external_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres community append space 读取失败: {err}"))
+            })?;
+        let Some(space) = space else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community append transaction 回滚失败: {err}"
+                ))
+            })?;
+            return Err(HoneError::Config(format!(
+                "community space 不存在: {source}/{external_id}"
+            )));
+        };
+        let community_id: i64 = space.get(0);
+        let source_url: Option<String> = space.get(1);
+
+        let mut existing = BTreeMap::<String, (i64, Option<String>)>::new();
+        let mut existing_identity = BTreeMap::new();
+        let mut keys_by_source_id = BTreeMap::<String, Vec<String>>::new();
+        for row in transaction
+            .query(
+                r#"
+SELECT c.source_item_key, c.content_id, c.source_item_id, c.author_name,
+       c.published_at_raw, c.body_text,
+       COALESCE((SELECT jsonb_agg(jsonb_build_object(
+         'ordinal', r.ordinal, 'resource_kind', r.resource_kind,
+         'source_resource_id', r.source_resource_id,
+         'display_name', COALESCE(r.display_name, '')
+       ) ORDER BY r.ordinal) FROM community_content_resources r
+         WHERE r.content_id = c.content_id), '[]'::jsonb)
+FROM community_contents c
+WHERE c.community_id = $1
+"#,
+                &[&community_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community append existing 读取失败: {err}"
+                ))
+            })?
+        {
+            let key: String = row.get(0);
+            let source_id: Option<String> = row.get(2);
+            if let Some(source_id) = &source_id {
+                keys_by_source_id
+                    .entry(source_id.clone())
+                    .or_default()
+                    .push(key.clone());
+            }
+            existing.insert(key.clone(), (row.get(1), source_id));
+            let resources: Vec<CloudCommunityAppendResource> =
+                serde_json::from_value(row.get(6))
+                    .map_err(|err| HoneError::Serialization(err.to_string()))?;
+            existing_identity.insert(
+                key,
+                (
+                    row.get::<_, Option<String>>(3),
+                    row.get::<_, Option<String>>(4),
+                    row.get::<_, String>(5),
+                    resources,
+                ),
+            );
+        }
+        for candidate in &planned {
+            if keys_by_source_id
+                .get(&candidate.candidate.source_item_id)
+                .is_some_and(|keys| keys.iter().any(|key| key != &candidate.source_item_key))
+            {
+                return Err(HoneError::Config(format!(
+                    "community append source_item_id 已由其他 source_item_key 使用: {}",
+                    candidate.candidate.source_item_id
+                )));
+            }
+            if let Some((_, source_item_id)) = existing.get(&candidate.source_item_key) {
+                let (author, published_at, body, resources) =
+                    &existing_identity[&candidate.source_item_key];
+                if source_item_id.as_deref() != Some(candidate.candidate.source_item_id.as_str())
+                    || author.as_deref() != Some(candidate.candidate.author_name.as_str())
+                    || published_at.as_deref()
+                        != Some(candidate.candidate.published_at_raw.as_str())
+                    || body != &candidate.candidate.body_text
+                    || resources.len() != candidate.candidate.resources.len()
+                    || resources.iter().zip(&candidate.candidate.resources).any(
+                        |(stored, incoming)| {
+                            stored.ordinal != incoming.ordinal
+                                || stored.resource_kind != incoming.resource_kind
+                                || stored.display_name != incoming.display_name
+                                || (stored.source_resource_id != incoming.source_resource_id
+                                    && !(incoming.resource_kind == "file"
+                                        && incoming.source_resource_id.is_none()))
+                        },
+                    )
+                {
+                    return Err(HoneError::Config(format!(
+                        "community append source_item_key 内容或资源身份冲突: {}",
+                        candidate.source_item_key
+                    )));
+                }
+            }
+        }
+        let has_missing = planned
+            .iter()
+            .any(|candidate| !existing.contains_key(&candidate.source_item_key));
+
+        // Replay still has to prove the original anchor. Only its head position
+        // may change after a successful append; its content identity may not.
+        let anchor = transaction.query_opt(
+            "SELECT published_at_raw, body_text FROM community_contents WHERE community_id = $1 AND content_id = $2",
+            &[&community_id, &manifest.anchor.content_id],
+        ).await.map_err(|err| HoneError::Config(format!("Postgres community append anchor 读取失败: {err}")))?
+            .ok_or_else(|| HoneError::Config("community append anchor 不存在于目标 archive".to_string()))?;
+        let anchor_time: Option<String> = anchor.get(0);
+        let anchor_body: String = anchor.get(1);
+        let anchor_resource_names = transaction.query(
+            "SELECT display_name FROM community_content_resources WHERE content_id = $1 ORDER BY ordinal",
+            &[&manifest.anchor.content_id],
+        ).await.map_err(|err| HoneError::Config(format!("Postgres community append anchor resources 读取失败: {err}")))?
+            .into_iter().map(|row| row.get::<_, Option<String>>(0).unwrap_or_default()).collect::<Vec<_>>();
+        let anchor_matched = anchor_time.as_deref()
+            == Some(manifest.anchor.published_at_raw.as_str())
+            && sha256_hex(anchor_body.as_bytes()) == manifest.anchor.body_sha256
+            && anchor_resource_names == manifest.anchor.resource_names;
+        if !anchor_matched {
+            return Err(HoneError::Config(
+                "community append anchor 与 canonical archive 不一致，未执行写入".to_string(),
+            ));
+        }
+        if has_missing {
+            let latest_id: i64 = transaction.query_one(
+                "SELECT content_id FROM community_contents WHERE community_id = $1 ORDER BY published_at DESC NULLS LAST, content_id DESC LIMIT 1",
+                &[&community_id],
+            ).await.map_err(|err| HoneError::Config(format!("Postgres community append head 读取失败: {err}")))?.get(0);
+            if latest_id != manifest.anchor.content_id {
+                return Err(HoneError::Config(
+                    "community append anchor 已过期，未执行写入".to_string(),
+                ));
+            }
+        }
+
+        let mut report = CloudCommunityAppendReport {
+            mode: if apply { "apply" } else { "dry-run" },
+            anchor_content_id: manifest.anchor.content_id,
+            anchor_matched,
+            source_item_count: planned.len(),
+            existing: 0,
+            would_insert: 0,
+            inserted: 0,
+            items: Vec::with_capacity(planned.len()),
+        };
+        // Allocate IDs oldest-first, so DESC timestamp/ID preserves source
+        // ordering even when several topics share one source minute.
+        for planned_candidate in planned.into_iter().rev() {
+            let candidate = &planned_candidate.candidate;
+            if let Some((content_id, _)) = existing.get(&planned_candidate.source_item_key) {
+                let resources =
+                    load_appended_community_resources(&transaction, *content_id).await?;
+                report.existing += 1;
+                report.items.push(CloudCommunityAppendItemResult {
+                    source_delta_index: candidate.source_delta_index,
+                    source_item_id: candidate.source_item_id.clone(),
+                    source_item_key: planned_candidate.source_item_key,
+                    action: "already_present".to_string(),
+                    content_id: Some(*content_id),
+                    resources,
+                });
+                continue;
+            }
+            if !apply {
+                report.would_insert += 1;
+                report.items.push(CloudCommunityAppendItemResult {
+                    source_delta_index: candidate.source_delta_index,
+                    source_item_id: candidate.source_item_id.clone(),
+                    source_item_key: planned_candidate.source_item_key,
+                    action: "would_insert".to_string(),
+                    content_id: None,
+                    resources: Vec::new(),
+                });
+                continue;
+            }
+
+            let body_blocks = if candidate.body_text.is_empty() {
+                serde_json::json!([])
+            } else {
+                serde_json::json!([{"type": "text", "text": candidate.body_text}])
+            };
+            let raw_metadata = serde_json::json!({
+                "captured_from": "incremental_timeline_append",
+                "source_timezone": source_timezone,
+                "source_delta_index": candidate.source_delta_index,
+                "source_item_id": candidate.source_item_id,
+                "anchor_content_id": manifest.anchor.content_id,
+            });
+            let source_hash = sha256_hex(
+                serde_json::to_vec(candidate)
+                    .map_err(|err| HoneError::Serialization(err.to_string()))?
+                    .as_slice(),
+            );
+            let content_row = transaction
+                .query_one(
+                    r#"
+INSERT INTO community_contents(
+  community_id, source_item_key, source_item_id, source_url, author_name,
+  published_at, published_at_raw, content_type, body_text, body_blocks,
+  raw_metadata, source_hash, crawl_status
+)
+VALUES (
+  $1, $2, $3, $4, $5,
+  $6::text::timestamp AT TIME ZONE $11::text, $6, 'post', $7, $8,
+  $9, $10, 'complete'
+)
+RETURNING content_id
+"#,
+                    &[
+                        &community_id,
+                        &planned_candidate.source_item_key,
+                        &candidate.source_item_id,
+                        &source_url,
+                        &candidate.author_name,
+                        &candidate.published_at_raw,
+                        &candidate.body_text,
+                        &body_blocks,
+                        &raw_metadata,
+                        &source_hash,
+                        &source_timezone,
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres community append content 写入失败: {err}"))
+                })?;
+            let content_id: i64 = content_row.get(0);
+            let mut resource_results = Vec::with_capacity(candidate.resources.len());
+            for resource in &candidate.resources {
+                let content_type = (resource.resource_kind == "file")
+                    .then(|| community_file_content_type(&resource.display_name))
+                    .flatten();
+                let resource_metadata = serde_json::json!({
+                    "captured_from": "incremental_timeline_append",
+                    "source_delta_index": candidate.source_delta_index,
+                    "source_ordinal": resource.ordinal,
+                    "source_item_id": candidate.source_item_id,
+                });
+                let resource_row = transaction
+                    .query_one(
+                        r#"
+INSERT INTO community_content_resources(
+  content_id, ordinal, resource_kind, source_resource_id, display_name,
+  content_type, access_state, raw_metadata
+)
+VALUES ($1, $2, $3, $4, $5, $6, 'metadata_only', $7)
+RETURNING resource_id
+"#,
+                        &[
+                            &content_id,
+                            &resource.ordinal,
+                            &resource.resource_kind,
+                            &resource.source_resource_id,
+                            &resource.display_name,
+                            &content_type,
+                            &resource_metadata,
+                        ],
+                    )
+                    .await
+                    .map_err(|err| {
+                        HoneError::Config(format!(
+                            "Postgres community append resource 写入失败: {err}"
+                        ))
+                    })?;
+                resource_results.push(CloudCommunityAppendResourceResult {
+                    ordinal: resource.ordinal,
+                    resource_id: resource_row.get(0),
+                    resource_kind: resource.resource_kind.clone(),
+                    source_resource_id: resource.source_resource_id.clone(),
+                    display_name: resource.display_name.clone(),
+                });
+            }
+            report.inserted += 1;
+            report.items.push(CloudCommunityAppendItemResult {
+                source_delta_index: candidate.source_delta_index,
+                source_item_id: candidate.source_item_id.clone(),
+                source_item_key: planned_candidate.source_item_key.clone(),
+                action: "inserted".to_string(),
+                content_id: Some(content_id),
+                resources: resource_results,
+            });
+            existing.insert(
+                planned_candidate.source_item_key,
+                (content_id, Some(candidate.source_item_id.clone())),
+            );
+        }
+
+        report.items.sort_by_key(|item| item.source_delta_index);
+
+        if apply {
+            transaction.commit().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community append transaction 提交失败: {err}"
+                ))
+            })?;
+        } else {
+            transaction.rollback().await.map_err(|err| {
+                HoneError::Config(format!(
+                    "Postgres community append transaction 回滚失败: {err}"
                 ))
             })?;
         }
@@ -6057,6 +6637,12 @@ pub struct OssObject {
     pub content_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct OssObjectMetadata {
+    pub byte_size: u64,
+    pub content_type: String,
+}
+
 impl OssObjectStore {
     pub fn from_config(config: &OssConfig) -> Option<Self> {
         if !config.is_configured() {
@@ -6284,6 +6870,48 @@ impl OssObjectStore {
         }
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(false);
+        }
+        let status = response.status();
+        Err(format!("OSS HEAD 失败: {status}"))
+    }
+
+    /// Read object existence and bounded response metadata without downloading
+    /// the payload. Callers must still verify bytes for a full GET.
+    pub async fn head_object_metadata(
+        &self,
+        key: &str,
+    ) -> Result<Option<OssObjectMetadata>, String> {
+        let date = oss_date();
+        let mut headers = HeaderMap::new();
+        self.insert_auth_headers(&mut headers, "HEAD", "", &date, key, None, &[])?;
+        let response = self
+            .client
+            .head(self.object_url(key))
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|error| format!("OSS HEAD 请求失败: {error}"))?;
+        if response.status().is_success() {
+            let byte_size = response
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+                .ok_or_else(|| "OSS HEAD 缺少有效对象大小".to_string())?;
+            let content_type = response
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            return Ok(Some(OssObjectMetadata {
+                byte_size,
+                content_type,
+            }));
+        }
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
         }
         let status = response.status();
         Err(format!("OSS HEAD 失败: {status}"))
@@ -6714,6 +7342,217 @@ mod tests {
     use bytes::BytesMut;
     use tokio_postgres::types::Json;
     use tokio_postgres::types::{ToSql, Type};
+
+    fn append_manifest() -> CloudCommunityAppendManifest {
+        CloudCommunityAppendManifest {
+            anchor: CloudCommunityAppendAnchor {
+                content_id: 769,
+                published_at_raw: "2026-07-16 23:43".to_string(),
+                body_sha256: sha256_hex(b""),
+                resource_names: vec!["下一代存储的创新-MS-译文.pdf".to_string()],
+            },
+            items: vec![
+                CloudCommunityAppendCandidate {
+                    source_delta_index: 0,
+                    source_item_id: "topic_20260822_latest".to_string(),
+                    author_name: "小助理".to_string(),
+                    published_at_raw: "2026-08-22 09:30".to_string(),
+                    body_text: "latest".to_string(),
+                    resources: vec![CloudCommunityAppendResource {
+                        ordinal: 0,
+                        resource_kind: "image".to_string(),
+                        source_resource_id: Some("image_1".to_string()),
+                        display_name: "image-1".to_string(),
+                    }],
+                },
+                CloudCommunityAppendCandidate {
+                    source_delta_index: 1,
+                    source_item_id: "topic_20260717_first".to_string(),
+                    author_name: "小助理".to_string(),
+                    published_at_raw: "2026-07-17 08:00".to_string(),
+                    body_text: "first after anchor".to_string(),
+                    resources: Vec::new(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn community_append_uses_stable_topic_ids_for_idempotent_keys() {
+        let planned = plan_community_append_manifest("zsxq", &append_manifest())
+            .expect("valid append manifest");
+        assert_eq!(planned.len(), 2);
+        assert_eq!(
+            planned[0].source_item_key,
+            "zsxq-topic-v1:topic_20260822_latest"
+        );
+        assert_eq!(
+            planned[1].source_item_key,
+            "zsxq-topic-v1:topic_20260717_first"
+        );
+    }
+
+    #[test]
+    fn community_append_rejects_duplicate_topic_ids() {
+        let mut manifest = append_manifest();
+        manifest.items[1].source_item_id = manifest.items[0].source_item_id.clone();
+        let error = plan_community_append_manifest("zsxq", &manifest)
+            .expect_err("duplicate topic id must fail");
+        assert!(error.to_string().contains("source_item_id"));
+    }
+
+    #[test]
+    fn community_append_rejects_items_older_than_anchor() {
+        let mut manifest = append_manifest();
+        manifest.items[1].published_at_raw = "2026-07-16 23:42".to_string();
+        let error = plan_community_append_manifest("zsxq", &manifest)
+            .expect_err("older-than-anchor item must fail");
+        assert!(error.to_string().contains("不能早于 anchor"));
+    }
+
+    #[test]
+    fn community_append_requires_stable_image_source_id() {
+        let mut manifest = append_manifest();
+        manifest.items[0].resources[0].source_resource_id = None;
+        let error = plan_community_append_manifest("zsxq", &manifest)
+            .expect_err("image source id is required");
+        assert!(error.to_string().contains("缺少 source_resource_id"));
+    }
+
+    #[tokio::test]
+    async fn community_append_pg_preserves_order_and_rejects_false_replays() {
+        let cloud = CloudConfig::default();
+        let base = CloudPgRuntime::from_cloud_config(&cloud)
+            .expect("PostgreSQL tests require HONE_POSTGRES_* (scripts/dev_pg.sh up)");
+        let namespace = format!(
+            "hone_memory_community_append_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let pg = base.with_isolated_test_connection(namespace).unwrap();
+        pg.ensure_schema().await.unwrap();
+        let db = pg.connect_new_client().await.unwrap();
+        let community_id: i64 = db.query_one(
+            "INSERT INTO community_spaces(source, external_id, display_name) VALUES ('zsxq', 'append-test', 'test') RETURNING community_id", &[]
+        ).await.unwrap().get(0);
+        let anchor_id: i64 = db.query_one(
+            "INSERT INTO community_contents(community_id, source_item_key, published_at, published_at_raw, body_text) VALUES ($1, 'anchor', '2026-07-16 15:43+00', '2026-07-16 23:43', '') RETURNING content_id", &[&community_id]
+        ).await.unwrap().get(0);
+        let mut manifest = append_manifest();
+        manifest.anchor.content_id = anchor_id;
+        manifest.anchor.resource_names.clear();
+        manifest.items[1].published_at_raw = manifest.items[0].published_at_raw.clone();
+        manifest.items[0]
+            .resources
+            .push(CloudCommunityAppendResource {
+                ordinal: 1,
+                resource_kind: "file".into(),
+                source_resource_id: None,
+                display_name: "report.pdf".into(),
+            });
+        let dry = pg
+            .append_community_contents("zsxq", "append-test", &manifest, "Asia/Shanghai", false)
+            .await
+            .unwrap();
+        assert!(dry.anchor_matched);
+        assert_eq!(dry.would_insert, 2);
+        assert_eq!(
+            db.query_one("SELECT count(*) FROM community_contents", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            1
+        );
+        let applied = pg
+            .append_community_contents("zsxq", "append-test", &manifest, "Asia/Shanghai", true)
+            .await
+            .unwrap();
+        assert_eq!(applied.inserted, 2);
+        assert_eq!(
+            applied
+                .items
+                .iter()
+                .map(|item| item.source_delta_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1]
+        );
+        assert!(
+            applied.items[0].content_id > applied.items[1].content_id,
+            "newest source topic must sort first within one minute"
+        );
+        let ordered = pg
+            .list_community_contents("zsxq", "append-test", None, 10)
+            .await
+            .unwrap();
+        assert_eq!(ordered[0].body_text, manifest.items[0].body_text);
+        assert_eq!(ordered[1].body_text, manifest.items[1].body_text);
+        // Legitimate storage/source-ID enrichment must not invalidate the
+        // original import manifest, whose file identity was metadata-only.
+        db.execute("UPDATE community_content_resources SET access_state='stored', sha256='verified', source_resource_id='official_file_id' WHERE resource_kind='file'", &[]).await.unwrap();
+        let replay = pg
+            .append_community_contents("zsxq", "append-test", &manifest, "Asia/Shanghai", true)
+            .await
+            .unwrap();
+        assert!(replay.anchor_matched);
+        assert_eq!(replay.existing, 2);
+        assert_eq!(replay.inserted, 0);
+        for kind in [
+            "missing_anchor",
+            "anchor_hash",
+            "body",
+            "author",
+            "resources",
+            "file_id",
+        ] {
+            let mut wrong = manifest.clone();
+            match kind {
+                "missing_anchor" => wrong.anchor.content_id += 1000,
+                "anchor_hash" => wrong.anchor.body_sha256 = "a".repeat(64),
+                "body" => wrong.items[0].body_text.push_str(" changed"),
+                "author" => wrong.items[0].author_name.push_str(" changed"),
+                "resources" => wrong.items[0].resources[0].display_name = "another image".into(),
+                "file_id" => {
+                    wrong.items[0].resources[1].source_resource_id =
+                        Some("different_file_id".into())
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                pg.append_community_contents("zsxq", "append-test", &wrong, "Asia/Shanghai", true)
+                    .await
+                    .is_err(),
+                "{kind} must not become a successful replay"
+            );
+        }
+        let mut missing = manifest.clone();
+        missing.items[0].source_item_id = "new_topic".into();
+        assert!(
+            pg.append_community_contents("zsxq", "append-test", &missing, "Asia/Shanghai", true)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("已过期")
+        );
+        db.execute("INSERT INTO community_contents(community_id, source_item_key, source_item_id) VALUES ($1, 'legacy-key', 'new_topic')", &[&community_id]).await.unwrap();
+        assert!(
+            pg.append_community_contents("zsxq", "append-test", &missing, "Asia/Shanghai", true)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("其他 source_item_key")
+        );
+        assert_eq!(
+            db.query_one("SELECT count(*) FROM community_contents", &[])
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            4
+        );
+        pg.drop_isolated_memory_test_schema().await.unwrap();
+    }
 
     #[test]
     fn cloud_schema_scrubs_legacy_plaintext_web_api_keys() {
