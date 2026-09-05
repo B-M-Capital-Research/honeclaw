@@ -10,10 +10,11 @@ Last updated: 2026-09-05
 - Date: 2026-09-05
 - Plan: `docs/current-plans/public-community-edge-production-rollout.md` (retained active; not archived as complete)
 - Handoff: `docs/handoffs/2026-09-05-community-freshness-assets-latency.md`
-- Commits: `e0278ed1`, `719b38c5`; managed backend `505cf737`, public Web `719b38c5`
+- Commits: `e0278ed1`, `719b38c5`, `6cf77eaa`; current managed backend and public Web both `6cf77eaa`
 - Runbooks / regressions: `docs/runbooks/community-insights-daily-sync.md`, `docs/runbooks/backend-deployment.md`; community CLI/core/API tests, `test_community_production_wrapper.sh`, `e2e/public-community.spec.ts`
 - Current conclusion: production PG and edge agree on 869 topics / September 4 latest; 76 resources recovered and 845 fully hash-verified objects published. Two-hour production sync repaired, final publisher no-op, real edge feed/image/PDF transfer canaries passed. PDF canvas implementation and exact Web rollout passed independent real-file rendering and production download checks. Existing unrelated broad-test failures are retained in the handoff.
-- Next entry point: restore normal Knowledge Planet downloads for 273 unavailable/protected references, and unlock the user's Mac to finish foreground Chrome PDF pixel/navigation acceptance. Keep the repaired production identity and environment; never reuse the old local database or overwrite immutable edge descriptors.
+- Attachment usability follow-up: accurate unarchived/historical-restriction states and an actionable explanation/source entry are now deployed. Web 567/API 17/E2E 5 pass; required broad failures remain the same baseline. This phase recovered no additional files. Live audit separates 159 metadata-only files from 114 historical restriction records; same-source duplicate candidates did not prove reusable identity.
+- Next entry point: complete the pending official Knowledge Planet OAuth authorization and verify actual file API capability, or restore normal source downloading, then recover the 273 missing files. Unlock the user's Mac to finish foreground Chrome PDF pixel/navigation acceptance. Keep the repaired production identity and environment; never reuse the old local database or overwrite immutable edge descriptors.
 
 
 ### 3D 数据中心与行业分析导航

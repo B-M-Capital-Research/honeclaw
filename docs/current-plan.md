@@ -52,9 +52,9 @@
   - 摘要：把管理员统计扩展为统一口径的数据探索页，增加渠道分类、14/30/90 天追溯和可点击折线精确数值；补齐长周期查询容量、筛选联动、回归测试和精确 revision 的前后端统一生产更新
 
 - **Public Community Edge 生产分阶段上线**
-  - 状态：`in_progress`
+  - 状态：`blocked`
   - 计划：`docs/current-plans/public-community-edge-production-rollout.md`
-  - 摘要：2026-09-05 已上线505cf737后端/719b38c5 Web，共869条，最新9月4日00:51；恢复76个资源、845个资源经完整SHA发布。但新119个文件仍无归档字节，用户截图确认最新附件不可用，本轮优先处理ASML/AVGO/SNOW五文件。已查明metadata_only被UI/API误称来源保护，正在修正并继续正常原站下载核查；ASML实测Chrome ERR_BLOCKED_BY_CLIENT，不能据此推断全部273受来源保护。保留两小时同步及已验证PDF/边缘提速，附件恢复与用户前台浏览器验收仍未完成。详见9月5日handoff
+  - 摘要：2026-09-05 后端/Web均已上线6cf77eaa；869条、最新9月4日00:51，此前恢复76个资源、845个经SHA发布。本轮修复metadata_only误称来源保护与无响应卡片，567 Web/17 API/5 E2E通过，生产页面与边缘原图/PDF验收通过；未新增恢复文件。仍缺273个文件（159未归档、114历史受限记录），含新119个。ASML正常下载遇Chrome ERR_BLOCKED_BY_CLIENT；本地/同账号文库/同源重复项均无可证明身份的原件。官方OAuth CLI已验证安装，待用户确认授权后探索文件能力；附件补齐及锁屏Chrome前台PDF验收未完成。详见9月5日handoff
 
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`

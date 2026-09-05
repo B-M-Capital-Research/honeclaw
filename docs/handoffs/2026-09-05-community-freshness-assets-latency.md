@@ -1,7 +1,7 @@
 # Community freshness, assets and latency recovery
 
 - title: Community freshness, assets and latency recovery
-- status: `in_progress`
+- status: `blocked`
 - created_at: `2026-09-05`
 - updated_at: `2026-09-05`
 - owner: `Codex`
@@ -20,7 +20,7 @@
   - `../runbooks/community-insights-daily-sync.md`
   - `../runbooks/backend-deployment.md`
   - `2026-08-22-community-insights-refresh.md`
-- related_prs: recovery commits `e0278ed1c07d689d7f89d7472d319e4489bbe415`, `719b38c5a187ca980afe78289606c729c7d3b082`; deployed backend descendant `505cf737170e8a80715d41c75fc05d794ce5c7c8`
+- related_prs: recovery commits `e0278ed1c07d689d7f89d7472d319e4489bbe415`, `719b38c5a187ca980afe78289606c729c7d3b082`, `6cf77eaabce9408e7664e89857ade71b607ceea3`; currently deployed backend/Web `6cf77eaabce9408e7664e89857ade71b607ceea3`
 
 ## Summary
 
@@ -57,7 +57,7 @@ A contiguous source recovery manifest added 151 topics and 194 resource metadata
 
 ## Next Entry Point
 
-Continue the attachment usability follow-up below, while waiting for normal authorized source downloads and foreground Chrome acceptance. Reuse the existing production wrapper and resource mapping; do not repeat append/apply when its replay and publisher are already no-op. The deployed binary/Web pair is `505cf737` / `719b38c5`. Do not interpret metadata-only topics as repaired attachments.
+Continue the attachment usability follow-up below when the user completes official OAuth authorization or normal source downloading works. The official CLI's file capability is still unverified; inspect actual supported read tools before adopting it. Foreground Chrome PDF acceptance also remains open. Reuse the existing production wrapper and resource mapping; do not repeat append/apply when its replay and publisher are already no-op. The deployed binary/Web pair is `6cf77eaa` / `6cf77eaa`. Do not interpret metadata-only topics as repaired attachments.
 
 ## September 5 deployment progress
 
@@ -108,3 +108,14 @@ Continue the attachment usability follow-up below, while waiting for normal auth
 - Live audit resolves the count into 159 `metadata_only` and 114 historical `protected_in_app`, all files with no OSS/original URL. Downloads/Desktop/task archives contained no matching original among 87 ordinary PDF/OOXML candidates and 11 manifests. The current signed-in user's research-library UI also shows zero archived documents; no unrelated actor's files were searched.
 - Implemented accurate state copy and an accessible missing-file dialog with filename copy and the verified source group entry; no file download request is issued for unavailable states. API keeps 409 for unavailable resources, now with the correct reason. Local typecheck, 567 Web tests, 17 community API tests and five community E2E scenarios passed, including mobile layout, clipboard failure, focus restoration, no unavailable-resource GET, and real PDF preview/download after promotion to `stored`. These are interface corrections, with zero new recovered files in this follow-up so far.
 - Updated the existing two-hour automation through the app and verified the saved prompt exactly matches the reviewed source. It now separates topic, attachment and publication completion, never calls missing bytes source protection, and does not report imported filenames or a publisher no-op as completed attachment synchronization. Cadence, project, model, reasoning and notification behavior are preserved.
+
+## Attachment-state rollout acceptance and source-access handoff
+
+- Exact `6cf77eaabce9408e7664e89857ade71b607ceea3` is pushed and deployed to both managed backend and public Web. GHCR run `33944543071` succeeded, digest `sha256:7a403f027a4a8fa1e2e8134d217c5d50fd505eb09d3d38b27074398d61caf0ca`. All runtime payloads and 671 public files passed immutable stage verification. Two idle samples were zero; one managed restart passed PG/R2/cloud authority and Web/Feishu child checks. Public then switched without another restart or environment edit. Final PID `1323967`, start ticks `173031330`, active chats zero. Keep backend `505cf737` and public `719b38c5` for rollback; do not rerun the forward-only cutover draft to roll back.
+- Pages deployment `3dc55384-ce71-4d6c-9324-0ae2bd40530d` reports success for exact 6cf. Actual logged-in Chrome loads `index-BzK31w08.js`, shows the corrected status for all five screenshot files and opens ASML's filename/source-group dialog. Public entry SHA is `02fa8410f90f8b7e1729eb4ddb6481dd50213e6e2cbd9b2bc14f0903016b9c03`, index SHA `820d4586bcad7964f47892a1cb4776d8d4c077888b422a182d70440863fcdcd1`; managed HTTP readback matches both. Direct browser navigation to the ASML legacy resource API was client-blocked, so it is not claimed as an observed production 409; the 17 route tests and verified runtime establish that code change.
+- Final edge canary passed: feed `976` matches PG (`2026-09-04 00:51`), 241 ms; image 1301 HEAD/GET/304 = 296/445/162 ms; PDF 1122 HEAD/GET/304 = 238/422/150 ms. Both bodies pass exact size/SHA. These are single GCP-to-public-edge probes, not user-device latency percentiles. No Worker setting, production environment or data row changed in this follow-up.
+- Required broad gates were rerun: workspace compile passed; Rust tests 2826 passed / 113 ignored / three failures exactly matching the earlier baseline. CI-safe 22/23 scripts passed after completing all scripts beyond the known finance failure; its nine failed assertions match the baseline. The exact clean public build also passed all five community E2E scenarios. No additional broad-test defect was introduced or concealed.
+- Same-source-only duplicate audit found zero nonempty source-file-ID matches and eight same-name stored candidates. Most are different quarters/years; the SBUX 951/1016 pair remains a historically documented ambiguous duplicate. No candidate supplied sufficient identity evidence for automatic backfill. This audit read no other actor's files and recovered zero bytes.
+- Verified official `zsxq-cli` 0.5.1 from the official guide/repository and npm integrity metadata. It is installed only in the ignored task tools directory. A normal device authorization is pending; the official page says account-level approval creates a tool key. No read-only OAuth scope flag exists, and attachment download/export is not yet demonstrated. The user received the official authorization entry; ephemeral user/device codes and credentials are deliberately omitted here. After authorization, use the runbook's scoped API discovery and actual returned topic IDs; never guess a download endpoint or reuse a browser-blocked signed URL.
+- Status is `blocked`: all independently actionable code, deployment, tests and documentation for this follow-up are complete, but the user's requested attachment usability is not. Counts remain 845 stored and 273 unavailable files, including all 119 newly appended file references. Keep the plan active for source access and foreground PDF acceptance; do not archive it as completed. Module/storage boundaries were unchanged, so no additional repo-map or invariant change was needed for this follow-up.
+- Ignored evidence: `runtime-image-6cf77eaa.json`, `runtime-cutover-6cf77eaa-report.jsonl`, `public-activation-6cf77eaa-report.jsonl`, `production-final-6cf77eaa-snapshot.json`, `production-edge-canary-6cf77eaa-report.jsonl`, `public-fallback-6cf77eaa-build-{manifest,summary}.json`, `hone-community-availability-{summary,gates-summary}.json`, `attachment-usability-followup-observations.json`, and `official-zsxq-cli-install-audit.json`.
