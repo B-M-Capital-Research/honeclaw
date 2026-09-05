@@ -22,6 +22,7 @@
     "jspdf": "4.2.1",
     "marked": "^15.0.8",
     "mermaid": "^11.4.1",
+    "pdfjs-dist": "6.3.289",
     "qrcode": "^1.5.4",
     "solid-js": "^1.9.5",
     "virtua": "^0.48.6"

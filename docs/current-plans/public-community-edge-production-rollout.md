@@ -24,10 +24,12 @@ Restore the production community timeline to the latest authorized source conten
 ## 2026-09-05 Recovery Todo
 
 - [x] Pull the clean main checkout with `git pull --ff-only` (baseline `fdb533d4`).
-- [ ] Compare the authorized Knowledge Planet group `51115212285814` latest posts with canonical PostgreSQL and the production feed; identify the ongoing synchronization owner and missing interval.
-- [ ] Repair the append/sync workflow in `bins/hone-cli/src/cloud.rs` / `crates/hone-core/src/cloud_runtime.rs` as needed; recover source content without reusing positional bootstrap reconciliation for incremental updates.
+- [x] Compare the authorized Knowledge Planet group `51115212285814` latest posts with canonical PostgreSQL and the production feed; identify the ongoing synchronization owner and missing interval.
+- [x] Repair the append/sync workflow in `bins/hone-cli/src/cloud.rs` / `crates/hone-core/src/cloud_runtime.rs` as needed; recover source content without reusing positional bootstrap reconciliation for incremental updates.
 - [ ] Audit resource state and source availability; repair accessible originals through the verified immutable-object backfill, then test actual image/PDF/download delivery.
 - [ ] Measure GCP runtime, Cloudflare routes/cache, backend feed/resource requests and client request ordering; fix the observed latency causes in `public_community.rs`, `workers/public-community-edge/` and the public frontend.
+- [x] Reduce recurring publish latency with a reviewed `scripts/community_production.py --remote` mode for inspect/publish on the same managed runtime; preserve authority checks and full object SHA verification, validate rejection boundaries, and synchronize the daily runbook/saved automation. Real production final dry-run completed in 32.282 seconds with no-op and no conflicts.
+- [x] Replace blocked native PDF iframe preview with lazy application-side PDF rendering; retain authenticated/cached Blob downloads and cancellation, verify real rendered page pixels/navigation in Chromium, and synchronize community preview docs. Four production-build E2E scenarios and 567 frontend tests passed; exact Web rollout is tracked below.
 - [ ] Run meaningful targeted regressions plus required workspace/Web/Worker gates for the final changes; deploy an exact revision through managed runtime/Pages workflows and verify source freshness, resource access, authentication, latency and rollback on production.
 - [ ] Update `docs/runbooks/backend-deployment.md`, `docs/repo-map.md` and applicable long-term decisions/invariants; write `docs/handoffs/2026-09-05-community-freshness-assets-latency.md` with before/after evidence and remaining limitations.
 - [ ] On completion remove the active index entry, archive this plan into `docs/archive/plans/`, and add the handoff/plan/commit to `docs/archive/index.md`. If externally blocked, retain explicit status and the exact next action.

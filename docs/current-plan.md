@@ -54,7 +54,7 @@
 - **Public Community Edge 生产分阶段上线**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-community-edge-production-rollout.md`
-  - 摘要：2026-09-05 用户要求恢复知识星球 `51115212285814` 最新内容同步、修复图片/文件访问并改善端到端速度；已拉取 `fdb533d4`，正在并行核对源站/PG/线上 feed、持续采集任务、GCP runtime 与 Cloudflare 实际状态。沿用原 rollout 计划统一跟踪；7 月旧部署记录仅作历史证据，生产现状与验收数据以本轮实测为准
+  - 摘要：2026-09-05 生产已补入151条，869条主题与源站最新9月4日00:51一致；恢复76个资源，845个资源经完整SHA发布到边缘，505cf737 managed runtime与真实边缘验收通过。已修复误连旧本机库的同步任务，改为每两小时执行，远端publisher最终32.282秒no-op。PDF中文canvas/翻页等4项E2E与567项前端测试通过，待最后精确Web上线。仍有273个源文件受保护或下载阻止，必须保留缺失状态，不能称全部附件已恢复
 
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`

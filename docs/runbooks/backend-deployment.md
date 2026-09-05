@@ -198,6 +198,12 @@ the token in command arguments/history, reuse a broad personal token, copy the
 temporary config into `/root/.docker`, or leave any registry credential on the
 host. A failed minimal-auth export stops before staging or cutover.
 
+### Public frontend fallback alongside an immutable runtime
+
+The GHCR runtime manifest does not include a public Web bundle. Do not point `HONE_PUBLIC_WEB_DIST_DIR` at an absent path inside `/opt/hone/current`, and do not add files or symlinks to the verified runtime release. Build `dist-public` from the same exact source revision in a clean checkout, retain a per-file size/SHA manifest, and stage it separately under `/opt/hone/public-web/releases/<revision>/dist-public`. Verify the complete manifest before atomically pointing `/opt/hone/public-web/current` at that release's `dist-public` directory. Set `HONE_PUBLIC_WEB_DIST_DIR=/opt/hone/public-web/current` in the managed environment with a restricted backup, then use the normal idle-checked service restart. If the old value exists only in the unit's `Environment=` setting, verify that source and add the reviewed override to its `EnvironmentFile`; do not assume the key already exists in that file. Keep the previous public bundle for rollback as well as the previous binary release.
+
+After restart, compare the loopback `8088/chat` and public Pages entry/chunk hashes with the exact source build. A successful Pages deployment does not prove the origin fallback exists. The September 5 recovery found the previous path missing and loopback `/chat` returning 404; see its handoff for the accepted replacement and exact hashes.
+
 The current GHCR runtime bundle is executable-only: it contains the six managed
 binaries, release metadata, the soul asset, and verification tooling, but it
 does not contain the repository `skills/` tree or public share images. A
@@ -329,8 +335,9 @@ cloud_oss_health.ok=true
 local_durable_dependency_count=0
 ```
 
-Also compare the supervisor's actual working directory with the intended
-repository root and fail the deployment if they differ. Do not infer authority
+Also verify the supervisor's actual working directory and explicit managed
+environment match the reviewed launch contract. A service with a complete
+explicit environment need not start in the repository root. Do not infer authority
 from a separate `cloud doctor` command launched in a different working
 directory; that command may have loaded a different `.env` from the live
 process.
@@ -1230,3 +1237,13 @@ Backend rollback:
 curl -i https://origin.hone-claw.com/api/public/auth/me
 curl -i https://hone-claw.com/api/public/auth/me
 ```
+
+## Frontend-only public fallback updates
+
+Once the running managed service already has `HONE_PUBLIC_WEB_DIST_DIR=/opt/hone/public-web/current`, a frontend-only update can replace that public symlink without changing `runtime.env`, the binary release symlink, or the service process. `crates/hone-web-api/src/runtime.rs` keeps the configured directory as a lexical `PathBuf`; `build_public_app` passes it directly to `ServeDir` and its `ServeFile` index fallback. The pinned `tower-http` implementation opens the resulting path on each request rather than canonicalizing the release at startup. This procedure applies only after that initial stable-path configuration is live; a different environment value requires the normal reviewed environment update and restart.
+
+Build from a clean, exact source revision with the intended public build settings. Keep the archive SHA-256 and an independently reviewed `BUILD_MANIFEST.json` SHA-256, full source commit, entry filename/SHA-256, index SHA-256, file count, and every public file SHA-256. The archive contains only regular `BUILD_MANIFEST.json` and `dist-public/<manifest file>` members. Validate the complete archive and manifest, reject links, special files, duplicate names and path traversal, then stage under `/opt/hone/public-web/releases/<revision>/dist-public`. Treat an existing release as immutable: an exact match is reusable; any mismatch requires investigation rather than overwriting it. Keep the build manifest outside the served directory.
+
+Before activation, verify that the live service still uses the stable public path and record the current public release revision. Serialize frontend deployments with `/opt/hone/public-web/.deploy.lock`, recheck that exact previous symlink identity immediately before replacement, and stop if another deployment changed it. Atomically replace only `/opt/hone/public-web/current`; retain the previous release for a reviewed rollback. Do not use the backend runtime symlink or an unreviewed shared-worktree build for this operation.
+
+After replacement, request the loopback public `/chat` fallback and the exact hashed JavaScript entry and compare their response SHA-256 values with the reviewed build. Confirm that the managed service PID and start time did not change. Also verify the public Pages entry and the affected authenticated browser flow. Retain the selected revision, complete build manifest, previous public release, and HTTP hash results with the task's deployment evidence. If HTTP verification fails after the switch, preserve both releases and inspect the result before a separate reviewed rollback; do not restart or silently switch the backend runtime.

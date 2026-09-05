@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const page = readFileSync(new URL("./public-community.tsx", import.meta.url), "utf8");
 const css = readFileSync(new URL("./public-community.css", import.meta.url), "utf8");
+const pdfPreview = readFileSync(new URL("../components/community-pdf-preview.tsx", import.meta.url), "utf8");
 
 describe("public community interaction contract", () => {
   it("separates official material from member discussion", () => {
@@ -31,11 +32,12 @@ describe("public community interaction contract", () => {
     expect(page).toContain("previousFocus?.focus()");
   });
 
-  it("sandboxes inline files and uses authenticated blob downloads", () => {
-    expect(page).toContain('sandbox="allow-downloads allow-same-origin"');
+  it("uses a passive canvas display API and authenticated shared blob downloads", () => {
+    expect(page).not.toContain("<iframe");
     expect(page).toContain("getPublicCommunityResourceBlob");
-    expect(page).toContain("CONTENT.chat_page.community_page.pdf_slow");
-    expect(page).toContain("CONTENT.chat_page.community_page.pdf_unsupported");
+    expect(pdfPreview).toContain("enableXfa: false");
+    expect(pdfPreview).not.toContain("PDFScriptingManager");
+    expect(pdfPreview).not.toContain("AnnotationLayer");
     expect(page).not.toContain('target="_blank"');
   });
 

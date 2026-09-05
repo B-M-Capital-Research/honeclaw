@@ -3,9 +3,10 @@
 
 The ignored operator JSON contains project, instance, zone and
 expected_pg_identity_sha256. It must not contain credentials. The service's live
-PG/R2 credentials travel through IAP into this process's memory only. A temporary
-loopback SSH tunnel and an isolated, non-secret CLI config prevent repository
-dotenv settings from silently selecting another database.
+PG/R2 credentials stay in memory. Local append/assets use an IAP PG tunnel;
+--remote inspect/publish run the actual managed runtime CLI on GCP without
+transferring credentials or R2 object bytes to this machine. Both modes use an
+isolated, non-secret config to exclude repository dotenv settings.
 """
 import argparse
 import hashlib
@@ -33,22 +34,149 @@ print(json.dumps({k:e[k] for k in keys}))
 '''
 
 
+REMOTE_COMMANDS = {'community-inspect', 'community-publish'}
+
+
+def validate_remote_command(command):
+    """Reject local paths/configuration overrides before any IAP connection."""
+    if len(command) < 2 or command[0] != 'cloud' or command[1] not in REMOTE_COMMANDS:
+        raise ValueError('--remote supports only cloud community-inspect or community-publish')
+    parser = argparse.ArgumentParser(prog='community_production.py --remote',
+                                     add_help=False, allow_abbrev=False)
+    parser.add_argument('--source')
+    parser.add_argument('--external-id')
+    parser.add_argument('--help', '-h', action='store_true')
+    if command[1] == 'community-inspect':
+        parser.add_argument('--limit', type=int)
+        parser.add_argument('--anchor-only', action='store_true')
+    else:
+        parser.add_argument('--page-size', type=int)
+        parser.add_argument('--feed-prefix')
+        parser.add_argument('--asset-prefix')
+        parser.add_argument('--apply', action='store_true')
+    parser.parse_args(command[2:])
+
+
+REMOTE_RUNNER = r"""import hashlib,json,os,pathlib,re,stat,subprocess,sys,tempfile,urllib.parse
+request=json.loads(REQUEST_JSON)
+sensitive=[]
+def is_credential(key,value):
+ # Credential names end at the secret, not at flags such as TOKEN_BUDGET or
+ # SECRET_ENABLED. NO_PROXY is a routing setting, never a proxy credential.
+ if re.search(r'(?:^|_)(?:PASSWORD|SECRET|TOKEN|ACCESS_KEY(?:_ID|_SECRET)?|API_KEY|DATABASE_URL)$',key,re.IGNORECASE):
+  return True
+ if key.upper() in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY'):
+  try:
+   proxy=urllib.parse.urlsplit(value if '://' in value else 'http://'+value)
+   return proxy.username is not None or proxy.password is not None
+  except ValueError:
+   return False
+ return False
+
+def redact(data):
+ for value in sensitive:
+  for variant in (value,urllib.parse.quote(value,safe=''),json.dumps(value)[1:-1]):
+   data=data.replace(variant.encode(),b'[REDACTED]')
+ return data
+
+def runtime_identity():
+ pid=int(subprocess.check_output(['systemctl','show','hone-web.service','-p','MainPID','--value'],stderr=subprocess.DEVNULL))
+ if pid <= 0:
+  raise RuntimeError('Managed service has no active MainPID')
+ proc=pathlib.Path('/proc')/str(pid)
+ executable=(proc/'exe').resolve(strict=True)
+ if not re.fullmatch(r'/opt/hone/releases/[0-9a-f]{40}-ghcr-runtime/bin/hone-cli',str(executable)):
+  raise RuntimeError('Managed MainPID is not a reviewed immutable runtime hone-cli')
+ info=executable.stat()
+ if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or not os.access(executable,os.X_OK):
+  raise RuntimeError('Managed runtime executable ownership or permissions changed')
+ # starttime distinguishes PID reuse without reading or printing process argv.
+ started=(proc/'stat').read_text().rsplit(') ',1)[1].split()[19]
+ return pid,str(executable),started,info.st_dev,info.st_ino
+
+try:
+ before=runtime_identity()
+ pid,cli=before[:2]
+ service_env=dict(item.split('=',1) for item in (pathlib.Path('/proc')/str(pid)/'environ').read_bytes().decode().split('\0') if '=' in item)
+ sensitive=sorted({value for key,value in service_env.items() if value and is_credential(key,value)},key=len,reverse=True)
+ if service_env.get('DATABASE_URL'):
+  raise RuntimeError('Runtime DATABASE_URL authority requires an explicit audit')
+ fields=['HONE_POSTGRES_HOST','HONE_POSTGRES_PORT','HONE_POSTGRES_USER','HONE_POSTGRES_DATABASE']
+ if any(not service_env.get(key) for key in fields+['HONE_POSTGRES_PASSWORD']):
+  raise RuntimeError('Production PostgreSQL environment is incomplete')
+ identity=hashlib.sha256('|'.join(service_env[key] for key in fields).encode()).hexdigest()
+ if identity != request['expected_pg_identity_sha256']:
+  raise RuntimeError('Production database identity changed; audit before reuse')
+ command=request['command']
+ if len(command)<2 or command[0]!='cloud' or command[1] not in ('community-inspect','community-publish'):
+  raise RuntimeError('Unsupported remote community operation')
+ # Start from a minimal environment, never the SSH caller's cloud settings.
+ env={'PATH':'/usr/local/bin:/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Shanghai'}
+ env.update({key:value for key,value in service_env.items() if key.startswith(('HONE_POSTGRES_','HONE_OSS_')) or key in ('HONE_CLOUD_MODE','HONE_CLOUD_STRICT_NO_LOCAL_STORAGE')})
+ env['HONE_CLOUD_MODE']='cloud'
+ with tempfile.TemporaryDirectory(prefix='hone-remote-community-') as working:
+  config=pathlib.Path(working)/'config.yaml'
+  config.write_text('timezone: Asia/Shanghai\ncloud:\n  mode: cloud\n')
+  env['HONE_CONFIG_PATH']=str(config)
+  env['HONE_USER_CONFIG_PATH']=str(config)
+  if runtime_identity()!=before:
+   raise RuntimeError('Managed runtime changed during preparation; retry after cutover')
+  print(json.dumps({'authority':'managed-production','pg_identity_sha256':identity,'execution':'remote-managed-runtime','runtime_cli':cli,'credentials':'remote-memory-only'}),file=sys.stderr,flush=True)
+  result=subprocess.run([cli,*command],env=env,cwd=working,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+  sys.stdout.buffer.write(redact(result.stdout))
+  sys.stderr.buffer.write(redact(result.stderr))
+  status=result.returncode
+except RuntimeError as error:
+ sys.stderr.buffer.write(redact(('Remote production community operation stopped: '+str(error)+'\n').encode()))
+ status=1
+except (OSError,ValueError,KeyError,IndexError,subprocess.SubprocessError):
+ # No traceback or subprocess environment/output may expose service credentials.
+ sys.stderr.write('Remote production community operation stopped: runtime inspection or execution failed\n')
+ status=1
+raise SystemExit(status)
+"""
+
+
+def build_remote_script(command, expected_identity):
+    validate_remote_command(command)
+    payload = json.dumps({'command': command,
+                          'expected_pg_identity_sha256': expected_identity})
+    # The payload is Python string data sent on stdin, never shell source.
+    return 'REQUEST_JSON = ' + repr(payload) + '\n' + REMOTE_RUNNER
+
+
+def run_remote(base, command, expected_identity):
+    script = build_remote_script(command, expected_identity)
+    # Publisher apply may take time for full object hashing. Do not impose an
+    # artificial short timeout or download the objects back through IAP.
+    return subprocess.run(base + ['--command', 'sudo python3 -'],
+                          input=script, text=True).returncode
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--operator-config', type=Path,
                         default=REPO_ROOT / 'data/community-imports/production-operator.json',
                         help='Ignored JSON with reviewed host and PostgreSQL identity (no credentials)')
-    parser.add_argument('--cli', type=Path, default=REPO_ROOT / 'target/debug/hone-cli',
-                        help='Exact local hone-cli binary to run')
+    parser.add_argument('--cli', type=Path,
+                        help='Exact local hone-cli binary; defaults to target/debug/hone-cli')
+    parser.add_argument('--remote', action='store_true',
+                        help='Run inspect/publish on the active GCP runtime; no --cli or local manifest')
     parser.add_argument('command', nargs=argparse.REMAINDER,
                         help='cloud community-inspect|community-append|community-assets|community-publish [arguments]')
     args = parser.parse_args()
     command = args.command
     if len(command) < 2 or command[0] != 'cloud' or command[1] not in COMMUNITY_COMMANDS:
         parser.error('Select a supported cloud community operation')
-    cli = args.cli.resolve(strict=True)
-    if not cli.is_file() or not os.access(cli, os.X_OK):
-        parser.error('--cli must be an executable file')
+    if args.remote:
+        if args.cli is not None:
+            parser.error('--remote cannot be combined with --cli')
+        validate_remote_command(command)
+        cli = None
+    else:
+        cli = (args.cli or REPO_ROOT / 'target/debug/hone-cli').resolve(strict=True)
+        if not cli.is_file() or not os.access(cli, os.X_OK):
+            parser.error('--cli must be an executable file')
     operator = json.loads(args.operator_config.read_text())
     for key in ('project', 'instance', 'zone'):
         if not isinstance(operator.get(key), str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,127}', operator[key]):
@@ -60,6 +188,8 @@ def main():
         parser.error('Operator config accepts host identity fields only; never store credentials there')
     base = ['gcloud', 'compute', 'ssh', operator['instance'], '--project', operator['project'],
             '--zone', operator['zone'], '--tunnel-through-iap']
+    if args.remote:
+        return run_remote(base, command, expected_identity)
     result = subprocess.run(base + ['--command', 'sudo python3 -'], input=READ_LIVE_ENV,
                             text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
     if result.returncode:
@@ -114,7 +244,9 @@ def main():
                 command[index] = str(Path(command[index]).resolve(strict=True))
         with tempfile.TemporaryDirectory(prefix='hone-production-community-') as working:
             config = Path(working) / 'config.yaml'
-            config.write_text('cloud:\n  mode: cloud\n')
+            # Knowledge Planet's captured minute timestamps are in Shanghai;
+            # importing from a machine set to UTC must not shift the timeline.
+            config.write_text('timezone: Asia/Shanghai\ncloud:\n  mode: cloud\n')
             command_env['HONE_CONFIG_PATH'] = str(config)
             command_env['HONE_USER_CONFIG_PATH'] = str(config)
             print(json.dumps({'authority': 'managed-production', 'pg_identity_sha256': identity,
