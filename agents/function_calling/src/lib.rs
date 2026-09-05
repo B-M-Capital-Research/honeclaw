@@ -4276,10 +4276,12 @@ fn original_market_move_request(runtime_input: &str) -> &str {
     .min()
     .map(|end| runtime_input[..end].trim())
     .unwrap_or_else(|| runtime_input.trim());
-    let Some(start) = current_turn_and_context.rfind("【本轮用户输入】") else {
-        return current_turn_and_context;
+    // Without the header the user's words open the input, followed by the
+    // server-appended sections (canonical facts, routing gates, evidence).
+    let request = match current_turn_and_context.rfind("【本轮用户输入】") {
+        Some(start) => &current_turn_and_context[start + "【本轮用户输入】".len()..],
+        None => current_turn_and_context,
     };
-    let request = &current_turn_and_context[start + "【本轮用户输入】".len()..];
     // Anything after the next section marker is server-injected context
     // (pre-turn evidence, conversation memory), and a week of production
     // showed news snippets in there tripping the move-cause gate on
@@ -5422,6 +5424,35 @@ fn format_market_move_change(change_percentage: f64) -> String {
     } else {
         format!("{change_percentage:.2}%")
     }
+}
+
+/// The draft stays; the server's unresolved cross-checks are disclosed under it
+/// in plain language so the reader knows which figures did not reconcile.
+fn append_market_move_disclosure(content: &str, violations: &[String]) -> String {
+    let mut items = violations
+        .iter()
+        .map(|violation| {
+            violation
+                .split("（本稿")
+                .next()
+                .unwrap_or(violation)
+                .trim()
+                .to_string()
+        })
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    items.dedup();
+    if items.is_empty() {
+        return content.to_string();
+    }
+    let mut out = content.trim_end().to_string();
+    out.push_str("\n\n**口径提示**：以下几处未能与本轮行情源机械对齐，读时请以对账数据为准：\n");
+    for item in items.iter().take(4) {
+        out.push_str("- ");
+        out.push_str(item);
+        out.push('\n');
+    }
+    out.trim_end().to_string()
 }
 
 fn deterministic_market_move_gap_response(
@@ -6709,13 +6740,26 @@ impl Agent for FunctionCallingAgent {
                                     continue;
                                 }
                                 if let Some(prefix) = required_final_answer_prefix.as_deref() {
-                                    response.content = deterministic_market_move_gap_response(
-                                        user_input,
-                                        &response.content,
-                                        prefix,
-                                        context,
-                                        turn_message_start,
-                                    );
+                                    // Corrections exhausted. Publishing the analysis
+                                    // with the unresolved cross-checks disclosed beats
+                                    // replacing it with the gap stub: a production
+                                    // week showed the stub answering nothing for 11
+                                    // real questions, three of them asked twice. The
+                                    // stub is kept only for an empty draft.
+                                    if response.content.trim().is_empty() {
+                                        response.content = deterministic_market_move_gap_response(
+                                            user_input,
+                                            &response.content,
+                                            prefix,
+                                            context,
+                                            turn_message_start,
+                                        );
+                                    } else {
+                                        response.content = append_market_move_disclosure(
+                                            &response.content,
+                                            &violations,
+                                        );
+                                    }
                                 }
                             }
                             // Language repair runs last so it rewrites the
@@ -16190,6 +16234,56 @@ mod tests {
         // A byte slice at 3 would split the first character.
         assert_eq!(violation_excerpt("每股收益", 3), "每股收…");
         assert_eq!(violation_excerpt("", 5), "");
+    }
+
+    #[test]
+    fn market_move_final_check_needs_a_cause_cue_in_the_users_own_words() {
+        let anchor = "\n\n【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到今天；候选日期是 2026-09-04 周五。\n\n\
+            【本轮前置检索结果：上下文，不是结论】\n原因：候选新闻说市场为什么大跌。";
+        for (input, expected) in [
+            (
+                "非农就业数据是不是 不好。我看市场跳水了 加息预期是不是又大了",
+                false,
+            ),
+            (
+                "请问美股crdo昨天暴跌到165美元,这个股价现在值得买入吗",
+                false,
+            ),
+            (
+                "7月底大涨前割了40%仓位，也就是sndk1000左右的价格时，现在迟迟找不到机会入手",
+                false,
+            ),
+            ("为什么今天美股光通信大跌，lite,cohr和glw", true),
+            ("be盘中大涨和盘后涨 为什么 这波行情能到330吗", true),
+            ("aaoi为什么突然大跌", true),
+        ] {
+            let runtime_input =
+                format!("【当前时间】\n2026-09-05 10:00:00\n\n【本轮用户输入】\n{input}{anchor}");
+            assert_eq!(
+                is_market_move_final_check_enabled(&runtime_input),
+                expected,
+                "{input}"
+            );
+            let bare = format!("{input}{anchor}");
+            assert_eq!(
+                is_market_move_final_check_enabled(&bare),
+                expected,
+                "bare: {input}"
+            );
+            // Production appends the canonical-facts and routing-gate sections
+            // between the user's words and the anchor; their wording ("归因门禁",
+            // "原因") must not count as the user asking for a cause.
+            let with_gates = format!(
+                "{input}\n\n【本轮服务端规范事实（最高优先级）】\n现价与涨跌幅以此为准。\n\n\
+                 【本轮代码级市场行情与归因门禁，必须完整执行】\n原因事实必须由本轮来源支持。{anchor}"
+            );
+            assert_eq!(
+                is_market_move_final_check_enabled(&with_gates),
+                expected,
+                "with gates: {input}"
+            );
+        }
     }
 
     #[test]
