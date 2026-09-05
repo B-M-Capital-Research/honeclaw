@@ -1,7 +1,7 @@
 # Community freshness, assets and latency recovery
 
 - title: Community freshness, assets and latency recovery
-- status: `blocked`
+- status: `in_progress`
 - created_at: `2026-09-05`
 - updated_at: `2026-09-05`
 - owner: `Codex`
@@ -51,13 +51,13 @@ A contiguous source recovery manifest added 151 topics and 194 resource metadata
 
 - Normal source PDF download is blocked in Chrome at `files.zsxq.com` with `ERR_BLOCKED_BY_CLIENT`. The user has been asked to resolve the browser block. Protected/inaccessible files remain metadata-only; do not claim they are repaired or substitute invented content.
 - Historical recovered images are rendered variants; newly captured originals are recorded separately with exact size and SHA before backfill. Production resource IDs must come from the production append report, never the old local database.
-- The core/runtime rollout, managed environment repair, publication, image browser acceptance and PDF Web rollout are complete. Only inaccessible source attachments and foreground user-Chrome PDF acceptance remain open; no further implementation defect is currently reproduced.
+- The core/runtime rollout, managed environment repair, publication, image browser acceptance and PDF Web rollout are complete. The user's later screenshot reproduced another implementation defect: all unarchived files are mislabeled as source-protected and disabled. The follow-up below supersedes the prior claim that no implementation defect remained.
 - Automatic sync was updated through the app on September 5 and read back: existing task `bamang-community-daily`, now named `巴芒科技洞察同步`, every two hours, ACTIVE; model `gpt-5.5` / medium and existing project target preserved. The prompt is exactly the reviewed production-wrapper workflow and stays quiet without a meaningful change. Local app/browser/GCP availability remains required; a saved schedule is not proof of its first future run.
 - Existing unrelated data-center/frontend edits in the shared checkout belong to another task and must remain outside the community recovery commit.
 
 ## Next Entry Point
 
-Resume after normal authorized source downloads become available and the user unlocks the Mac for foreground Chrome PDF acceptance. Reuse the existing production wrapper and resource mapping; do not repeat append/apply when its replay and publisher are already no-op. The deployed binary/Web pair is `505cf737` / `719b38c5`. Do not interpret metadata-only topics as repaired attachments.
+Continue the attachment usability follow-up below, while waiting for normal authorized source downloads and foreground Chrome acceptance. Reuse the existing production wrapper and resource mapping; do not repeat append/apply when its replay and publisher are already no-op. The deployed binary/Web pair is `505cf737` / `719b38c5`. Do not interpret metadata-only topics as repaired attachments.
 
 ## September 5 deployment progress
 
@@ -98,3 +98,13 @@ Resume after normal authorized source downloads become available and the user un
 - The new real Chrome PDF flow downloaded the exact 4,272,631-byte Google PDF again with SHA `b507349ac48cf60c5f4f0a0fb2138ed61c3d6eb3ff081e8ec1f7bd9af3771987`, recognized all eight pages and displayed the new controls. The screen-locked user browser still did not complete its display canvas; foreground pixel/turn-page acceptance is explicitly unverified and the user has been asked to unlock. Browser visibility reported `visible`, and captured warnings/errors were empty.
 - Independent Chromium using that exact file and the exact production build rendered the first page in 201 ms (local mocked transfer, not network latency), with 79,055 nonblank pixels, eight pages, one resize event and no console/page errors. PDF.js display rendering schedules its continuation through `window.requestAnimationFrame`; a temporary test-only pause of rAF reproduces the same pending-canvas symptom while `document.visibilityState` stays visible, and restoring frames completes rendering. This supports the lock/scheduling explanation but does not prove the actual cause until the real browser is unlocked. No production change to print intent, browser security, or OS settings was made.
 - Remaining attachment total is 273 protected/unavailable references, including 119 from the recovered new interval. Source PDF download remained `ERR_BLOCKED_BY_CLIENT`. The task remains `blocked` for these external conditions, with deployed work retained in the archive index and the active plan kept for continuation.
+
+## Screenshot attachment usability follow-up
+
+- Status resumed to `in_progress`. The user reports that the latest ASML, AVGO and SNOW cards are unusable. Production resources `1316`, `1314`/`1315`, and `1312`/`1313` are all `metadata_only`, with no archived bytes, SHA, size or source file ID. The append implementation initializes new file references this way; it does not establish source protection.
+- UI and legacy API incorrectly describe every non-stored resource as protected. A targeted implementation/test follow-up is underway. Correct wording and a source entry are useful but do not complete file recovery.
+- Reopened ASML's normal authenticated member download dialog. It advertises a 9.53 MB PDF and a normal download action; the sharing notice alone is not a denial. Clicking that action navigates Chrome to an error page stating `ERR_BLOCKED_BY_CLIENT`. No source bytes were captured. The user has been asked to unlock the Mac and confirm a normal manual download; do not bypass browser controls or replay signed source URLs outside the browser.
+- Earlier shorthand describing all 273 as protected must not be interpreted as individual restriction evidence. New file references remain unarchived; historical explicitly observed protection and unresolved capture failures must be tracked separately. Ignored evidence: `latest-five-attachment-audit.json`.
+- Live audit resolves the count into 159 `metadata_only` and 114 historical `protected_in_app`, all files with no OSS/original URL. Downloads/Desktop/task archives contained no matching original among 87 ordinary PDF/OOXML candidates and 11 manifests. The current signed-in user's research-library UI also shows zero archived documents; no unrelated actor's files were searched.
+- Implemented accurate state copy and an accessible missing-file dialog with filename copy and the verified source group entry; no file download request is issued for unavailable states. API keeps 409 for unavailable resources, now with the correct reason. Local typecheck, 567 Web tests, 17 community API tests and five community E2E scenarios passed, including mobile layout, clipboard failure, focus restoration, no unavailable-resource GET, and real PDF preview/download after promotion to `stored`. These are interface corrections, with zero new recovered files in this follow-up so far.
+- Updated the existing two-hour automation through the app and verified the saved prompt exactly matches the reviewed source. It now separates topic, attachment and publication completion, never calls missing bytes source protection, and does not report imported filenames or a publisher no-op as completed attachment synchronization. Cadence, project, model, reasoning and notification behavior are preserved.

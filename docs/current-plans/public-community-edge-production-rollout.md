@@ -1,7 +1,7 @@
 # Public Community Edge Production Rollout
 
 - title: Public Community Edge Production Rollout
-- status: `blocked`
+- status: `in_progress`
 - created_at: `2026-07-19`
 - updated_at: `2026-09-05`
 - owner: `Codex / operator`
@@ -35,13 +35,24 @@ Restore the production community timeline to the latest authorized source conten
 - [x] Update `docs/runbooks/backend-deployment.md`, `docs/repo-map.md` and applicable long-term decisions/invariants; write `docs/handoffs/2026-09-05-community-freshness-assets-latency.md` with before/after evidence and remaining limitations.
 - [x] On completion remove the active index entry, archive this plan into `docs/archive/plans/`, and add the handoff/plan/commit to `docs/archive/index.md`. If externally blocked, retain explicit status and the exact next action.
 
+## 2026-09-05 Attachment usability follow-up
+
+The user rejected the latest feed as unusable because its new file cards are disabled. The first five ASML/AVGO/SNOW resources are `metadata_only`, which means no bytes have been archived; the UI and API incorrectly describe every such state as source protection. A member-download notice alone is not evidence that downloading is forbidden or unavailable.
+
+- [ ] Recheck the normal authorized source download flow for resources 1312–1316, capture verified original files where available, then apply/replay `community-assets` and publish through the managed production wrapper.
+- [x] Correct unavailable-state presentation and API messages in `packages/app/src/pages/public-community.tsx`, `packages/app/src/lib/public-content.ts`, and `crates/hone-web-api/src/routes/public_community.rs`; provide an honest source entry without inventing native topic IDs or implying file availability. Local Web 567/API 17/E2E 5 checks passed; rollout remains pending below.
+- [ ] Extend recovery to remaining files once a normal working capture path is verified; distinguish unarchived data from proven source restrictions in reports and the recurring synchronization workflow.
+- [ ] Evaluate the official Knowledge Planet OAuth CLI as a separate documented authorized integration, including whether its supported API actually provides file bytes. Do not extract browser credentials or replay blocked browser download URLs.
+- [ ] Add meaningful state/download regressions, run affected checks, deploy the reviewed changes and verify the five screenshot attachments on production. Wording changes alone do not satisfy file recovery.
+- [ ] Update `docs/runbooks/community-insights-daily-sync.md`, the existing September 5 handoff, and `docs/current-plan.md`; archive this plan only after remaining acceptance is complete.
+
 ## Current acceptance and remaining blockers
 
 - Backend `505cf737` and Web `719b38c5` are deployed. One joint managed backend restart passed health checks; the final public-Web symlink update preserved PID/starttime and changed no runtime environment.
 - Canonical PG and the edge projection agree on 869 topics / latest `976` (`2026-09-04 00:51`). The 845 published resources passed apply-time full-byte SHA checks; the final remote dry-run is a conflict-free no-op.
-- Every requested implementation, deployment and independent regression step has completed. Required broad gates were run; the unchanged workspace/finance baseline failures are recorded in the handoff, not represented as passing.
+- The deployed phase passed the recorded implementation and independent regression checks, but does not satisfy attachment usability: all 119 newly appended file references still lack archived bytes. Required broad gates were run; the unchanged workspace/finance baseline failures are recorded in the handoff, not represented as passing.
 - [ ] Complete foreground Chrome PDF acceptance after the user unlocks this Mac. Actual production bytes download correctly and the browser recognizes eight pages, but the locked-session display canvas remains pending. The same exact file/build renders in 201 ms in independent Chromium. A test-only rAF pause reproduces the symptom and resumes when frames return; the OS/browser cause is still an inference until normal unlock is observed. Do not change display rendering semantics merely to evade OS scheduling.
-- Retain this plan in the active index as `blocked`, and link the deployed phase in `docs/archive/index.md`. There is no completed-plan archive yet because attachment recovery and the user-browser acceptance above remain open. The reviewed two-hour automation remains active and requires the local app/browser/GCP session to be available.
+- Retain this plan in the active index as `in_progress`, and link the deployed phase in `docs/archive/index.md`. There is no completed-plan archive yet because attachment recovery and the user-browser acceptance above remain open. The reviewed two-hour automation remains active and requires the local app/browser/GCP session to be available.
 
 The July sections below are retained as history and do not describe the current deployed state; the September 5 handoff is the current operational entry point.
 

@@ -1,7 +1,7 @@
 //! Authenticated, read-only projection of the user-authorized community archive.
 //!
-//! Source-protected files never leave this route: only resources already stored
-//! in Hone object storage can be streamed for inline preview.
+//! Only resources already stored in Hone object storage can be streamed. Missing
+//! archive bytes do not, on their own, establish a restriction at the source.
 
 use std::sync::Arc;
 
@@ -440,6 +440,16 @@ pub(crate) async fn handle_mark_community_seen(
     }
 }
 
+fn community_resource_unavailable_response(access_state: &str) -> Option<Response> {
+    let message = match access_state {
+        "stored" => return None,
+        "metadata_only" => "附件尚未归档，目前仅收录了名称，暂不能预览或下载",
+        "protected_in_app" => "原采集时记录访问受限，当前来源可用性尚未确认",
+        _ => "附件暂不可用，可到来源群组查找",
+    };
+    Some(json_error(StatusCode::CONFLICT, message))
+}
+
 /// GET /api/public/community/resources/:resource_id
 pub(crate) async fn handle_community_resource_preview(
     State(state): State<Arc<AppState>>,
@@ -463,8 +473,8 @@ pub(crate) async fn handle_community_resource_preview(
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "社区资源不存在"),
         Err(error) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
-    if resource.access_state != "stored" {
-        return json_error(StatusCode::CONFLICT, "该资源受来源保护，仅保留了元数据");
+    if let Some(response) = community_resource_unavailable_response(&resource.access_state) {
+        return response;
     }
     let normalized_sha256 = normalized_community_resource_sha256(resource.sha256.as_deref());
     let current_version = normalized_sha256
@@ -621,6 +631,35 @@ async fn respond_with_community_object(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn community_resource_availability_distinguishes_missing_bytes_from_past_restrictions() {
+        for (state, message) in [
+            (
+                "metadata_only",
+                "附件尚未归档，目前仅收录了名称，暂不能预览或下载",
+            ),
+            (
+                "protected_in_app",
+                "原采集时记录访问受限，当前来源可用性尚未确认",
+            ),
+            ("unknown_future_state", "附件暂不可用，可到来源群组查找"),
+            ("", "附件暂不可用，可到来源群组查找"),
+        ] {
+            let response = community_resource_unavailable_response(state).unwrap();
+            assert_eq!(response.status(), StatusCode::CONFLICT);
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["error"], message);
+        }
+    }
+
+    #[test]
+    fn community_resource_availability_only_stored_continues_to_object_delivery() {
+        assert!(community_resource_unavailable_response("stored").is_none());
+    }
 
     async fn community_object_fixture(
         status: StatusCode,

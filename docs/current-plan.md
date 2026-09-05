@@ -52,9 +52,9 @@
   - 摘要：把管理员统计扩展为统一口径的数据探索页，增加渠道分类、14/30/90 天追溯和可点击折线精确数值；补齐长周期查询容量、筛选联动、回归测试和精确 revision 的前后端统一生产更新
 
 - **Public Community Edge 生产分阶段上线**
-  - 状态：`blocked`
+  - 状态：`in_progress`
   - 计划：`docs/current-plans/public-community-edge-production-rollout.md`
-  - 摘要：2026-09-05 已上线505cf737后端/719b38c5 Web：补入151条后共869条，PG与边缘最新9月4日00:51一致；恢复76个资源，845个资源经完整SHA发布。持续同步改为每两小时，生产远端publisher最终32.282秒no-op。PDF中文canvas/翻页等4项E2E、567项前端测试通过，真实8页PDF独立渲染201ms、生产下载SHA正确。剩余273个附件需恢复源站正常下载；锁屏中的用户Chrome画布仍待前台解锁验收。详见9月5日handoff，不能称全部附件已恢复
+  - 摘要：2026-09-05 已上线505cf737后端/719b38c5 Web，共869条，最新9月4日00:51；恢复76个资源、845个资源经完整SHA发布。但新119个文件仍无归档字节，用户截图确认最新附件不可用，本轮优先处理ASML/AVGO/SNOW五文件。已查明metadata_only被UI/API误称来源保护，正在修正并继续正常原站下载核查；ASML实测Chrome ERR_BLOCKED_BY_CLIENT，不能据此推断全部273受来源保护。保留两小时同步及已验证PDF/边缘提速，附件恢复与用户前台浏览器验收仍未完成。详见9月5日handoff
 
 - **跨市场 ticker 解析架构修复**
   - 状态：`in_progress`

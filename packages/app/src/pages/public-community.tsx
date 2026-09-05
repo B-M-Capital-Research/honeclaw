@@ -45,6 +45,8 @@ import "./public-polish.css";
 import "./public-community.css";
 
 const CommunityPdfPreview = lazy(() => import("@/components/community-pdf-preview"));
+// This verified group entry is not a per-post URL; captured topic hashes cannot form one.
+const COMMUNITY_SOURCE_GROUP_URL = "https://wx.zsxq.com/group/51115212285814";
 
 type ViewState = "loading" | "ready" | "login" | "error";
 type CommunityView = "official" | "forum";
@@ -70,6 +72,77 @@ function formatPublishedAt(item: PublicCommunityContent) {
 
 function resourceIsStored(resource: PublicCommunityResource) {
   return resource.access_state === "stored";
+}
+
+function unavailableResourceCopy(resource: PublicCommunityResource) {
+  const copy = CONTENT.chat_page.community_page;
+  if (resource.access_state === "metadata_only") {
+    return { title: copy.not_archived, detail: copy.not_archived_detail };
+  }
+  if (resource.access_state === "protected_in_app") {
+    return { title: copy.previously_restricted, detail: copy.previously_restricted_detail };
+  }
+  return { title: copy.resource_unavailable, detail: copy.resource_unavailable_detail };
+}
+
+function CommunityResourceAvailability(props: {
+  resource: PublicCommunityResource;
+  onClose: () => void;
+}) {
+  const copy = CONTENT.chat_page.community_page;
+  const [copyState, setCopyState] = createSignal<"idle" | "copied" | "failed">("idle");
+  const name = () => props.resource.display_name || copy.community_file;
+  const message = () => unavailableResourceCopy(props.resource);
+  const titleId = `community-resource-status-${props.resource.resource_id}`;
+  const detailId = `${titleId}-detail`;
+  let dialog!: HTMLDialogElement;
+  let disposed = false;
+  onMount(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    dialog.showModal();
+    onCleanup(() => {
+      disposed = true;
+      dialog.close();
+      previousFocus?.focus();
+    });
+  });
+  const copyName = async () => {
+    try {
+      await navigator.clipboard.writeText(name());
+      if (!disposed) setCopyState("copied");
+    } catch {
+      if (!disposed) setCopyState("failed");
+    }
+  };
+  return (
+    <Portal>
+      <dialog
+        ref={dialog}
+        class="public-community-resource-dialog"
+        aria-labelledby={titleId}
+        aria-describedby={detailId}
+        onCancel={(event) => { event.preventDefault(); props.onClose(); }}
+      >
+        <header>
+          <h2 id={titleId}>{message().title}</h2>
+          <button type="button" aria-label={copy.close_resource_details} onClick={props.onClose}>×</button>
+        </header>
+        <p id={detailId}>{message().detail}</p>
+        <label>
+          <span>{copy.resource_name}</span>
+          <input readOnly value={name()} onFocus={(event) => event.currentTarget.select()} />
+        </label>
+        <div class="public-community-resource-actions">
+          <button type="button" onClick={() => void copyName()}>{copy.copy_resource_name}</button>
+          <a href={COMMUNITY_SOURCE_GROUP_URL} target="_blank" rel="noopener noreferrer">{copy.open_source_group}</a>
+        </div>
+        <p class="public-community-resource-copy-status" role={copyState() === "failed" ? "alert" : "status"}>
+          {copyState() === "copied" ? copy.resource_name_copied : copyState() === "failed" ? copy.resource_name_copy_failed : ""}
+        </p>
+        <small>{copy.source_group_hint}</small>
+      </dialog>
+    </Portal>
+  );
 }
 
 function resourceIsImage(resource: PublicCommunityResource) {
@@ -523,6 +596,7 @@ export default function PublicCommunityPage() {
   const [error, setError] = createSignal("");
   const [loadMoreError, setLoadMoreError] = createSignal("");
   const [preview, setPreview] = createSignal<PublicCommunityResource | null>(null);
+  const [unavailableResource, setUnavailableResource] = createSignal<PublicCommunityResource | null>(null);
   const [downloadingResourceId, setDownloadingResourceId] = createSignal<number | null>(null);
   const [downloadError, setDownloadError] = createSignal("");
   const [query, setQuery] = createSignal("");
@@ -617,7 +691,7 @@ export default function PublicCommunityPage() {
         document.visibilityState === "hidden" ||
         communityView() !== "official" ||
         state() === "login" ||
-        preview() ||
+        preview() || unavailableResource() ||
         Date.now() - lastRefreshAt < 30_000
       ) return;
       void load();
@@ -722,17 +796,19 @@ export default function PublicCommunityPage() {
                                   <button
                                     type="button"
                                     class="public-community-image"
-                                    disabled={!resourceCanInlinePreview(resource)}
-                                    aria-label={CONTENT.chat_page.community_page.preview_label.replace(
+                                    classList={{ "is-unavailable": !resourceIsStored(resource) }}
+                                    aria-label={(resourceCanInlinePreview(resource)
+                                      ? CONTENT.chat_page.community_page.preview_label
+                                      : CONTENT.chat_page.community_page.resource_details_label).replace(
                                       "{name}",
                                       resource.display_name ||
                                         CONTENT.chat_page.community_page.image,
                                     )}
-                                    onClick={() => setPreview(resource)}
+                                    onClick={() => resourceCanInlinePreview(resource) ? setPreview(resource) : setUnavailableResource(resource)}
                                   >
                                     <Show
                                       when={resourceCanInlinePreview(resource)}
-                                      fallback={<span>{CONTENT.chat_page.community_page.image_protected}</span>}
+                                      fallback={<><strong>{resource.display_name || CONTENT.chat_page.community_page.image}</strong><span>{unavailableResourceCopy(resource).title}</span></>}
                                     >
                                       <img
                                         src={publicCommunityResourceUrl(
@@ -769,16 +845,16 @@ export default function PublicCommunityPage() {
                                     <button
                                       type="button"
                                       class="public-community-file"
-                                      classList={{ "is-protected": !stored }}
-                                      disabled={!stored || working()}
-                                      onClick={() => previewable ? setPreview(resource) : void download(resource)}
+                                      classList={{ "is-unavailable": !stored }}
+                                      disabled={working()}
+                                      onClick={() => !stored ? setUnavailableResource(resource) : previewable ? setPreview(resource) : void download(resource)}
                                     >
                                       <span aria-hidden="true">{stored ? "▧" : "⌁"}</span>
                                       <span>
                                         <strong>{resource.display_name || CONTENT.chat_page.community_page.community_file}</strong>
                                         <small>
                                           {!stored
-                                            ? CONTENT.chat_page.community_page.meta_only
+                                            ? unavailableResourceCopy(resource).title
                                             : working()
                                               ? CONTENT.chat_page.community_page.downloading
                                               : previewable
@@ -830,6 +906,9 @@ export default function PublicCommunityPage() {
       </Show>
       <Show when={preview()}>
         <CommunityMediaPreview resource={preview()!} onClose={() => setPreview(null)} />
+      </Show>
+      <Show when={unavailableResource()}>
+        <CommunityResourceAvailability resource={unavailableResource()!} onClose={() => setUnavailableResource(null)} />
       </Show>
     </div>
   );

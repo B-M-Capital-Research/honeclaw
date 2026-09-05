@@ -218,3 +218,77 @@ test("closing a pending PDF cancels its read and a fresh preview still renders",
   expect(requests).toBe(2);
   expect(errors).toEqual([]);
 });
+
+test("unarchived attachments explain availability, copy their name and link the source group", async ({ page, context }) => {
+  await installShell(page);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: async (text: string) => {
+      (window as Window & { copiedFilename?: string }).copiedFilename = text;
+    } });
+  });
+  let archived = false;
+  let resourceRequests = 0;
+  const sourceGroup = "https://wx.zsxq.com/group/51115212285814";
+  await context.route(sourceGroup, (route) => route.fulfill({ contentType: "text/html", body: "<h1>Source group test page</h1>" }));
+  await page.route("**/api/public/community", (route) => json(route, {
+    items: [{ ...item(42), resources: [
+      { resource_id: 2, ordinal: 0, resource_kind: "file", display_name: "ASML研究.pdf", content_type: "application/pdf", access_state: archived ? "stored" : "metadata_only" },
+      { resource_id: 3, ordinal: 1, resource_kind: "file", display_name: "历史附件.pdf", content_type: "application/pdf", access_state: "protected_in_app" },
+      { resource_id: 4, ordinal: 2, resource_kind: "image", display_name: "未知状态图片.png", content_type: "image/png", access_state: "unknown_future_state" },
+    ] }], next_before: null, unread: false,
+  }));
+  await page.route("**/api/public/community/resources/*", (route) => {
+    resourceRequests++;
+    return route.fulfill({ contentType: "application/pdf", path: pdfFixture });
+  });
+  await page.goto("/community");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const unarchived = page.getByRole("button", { name: "ASML研究.pdf 附件尚未归档", exact: true });
+  await expect(unarchived).toBeEnabled();
+  await unarchived.click();
+  let dialog = page.getByRole("dialog", { name: "附件尚未归档", exact: true });
+  await expect(dialog).toContainText("目前仅收录了附件名称");
+  await expect(dialog).not.toContainText("来源保护");
+  await expect(dialog).not.toContainText("同步中");
+  await expect(dialog.getByRole("button", { name: "下载资源", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "复制文件名", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("文件名已复制");
+  expect(await page.evaluate(() => (window as Window & { copiedFilename?: string }).copiedFilename)).toBe("ASML研究.pdf");
+  const link = dialog.getByRole("link", { name: "打开知识星球群组", exact: true });
+  await expect(link).toHaveAttribute("href", sourceGroup);
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  const popupReady = page.waitForEvent("popup");
+  await link.click();
+  const popup = await popupReady;
+  await expect(popup).toHaveURL(sourceGroup);
+  await expect(popup.getByRole("heading")).toHaveText("Source group test page");
+  await popup.close();
+  await page.screenshot({ path: test.info().outputPath("community-unarchived-mobile.png") });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(unarchived).toBeFocused();
+
+  await page.getByRole("button", { name: "历史附件.pdf 原采集时记录访问受限", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "原采集时记录访问受限", exact: true });
+  await expect(dialog).toContainText("当前来源可用性尚未确认");
+  await page.evaluate(() => Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: async () => { throw new Error("Clipboard unavailable"); } }));
+  await dialog.getByRole("button", { name: "复制文件名", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("复制失败，请选中文件名后复制。");
+  await expect(dialog.getByRole("textbox", { name: "文件名", exact: true })).toHaveValue("历史附件.pdf");
+  await dialog.getByRole("button", { name: "关闭附件说明", exact: true }).click();
+  await page.getByRole("button", { name: "查看附件说明：未知状态图片.png", exact: true }).click();
+  dialog = page.getByRole("dialog", { name: "附件暂不可用", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText("访问受限");
+  await dialog.getByRole("button", { name: "关闭附件说明", exact: true }).click();
+  expect(resourceRequests).toBe(0);
+
+  archived = true;
+  await page.getByRole("button", { name: "刷新动态", exact: true }).click();
+  await page.getByRole("button", { name: "ASML研究.pdf 点击预览", exact: true }).click();
+  await expect(page.getByTestId("community-pdf-canvas")).toBeVisible();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载资源", exact: true }).click();
+  expect((await downloaded).suggestedFilename()).toBe("ASML研究.pdf");
+  expect(resourceRequests).toBe(1);
+});

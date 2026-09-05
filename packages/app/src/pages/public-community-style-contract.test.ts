@@ -38,7 +38,7 @@ describe("public community interaction contract", () => {
     expect(pdfPreview).toContain("enableXfa: false");
     expect(pdfPreview).not.toContain("PDFScriptingManager");
     expect(pdfPreview).not.toContain("AnnotationLayer");
-    expect(page).not.toContain('target="_blank"');
+    expect(page).toContain('href={COMMUNITY_SOURCE_GROUP_URL} target="_blank" rel="noopener noreferrer"');
   });
 
   it("keeps pagination failures inline and lays out multiple images as a grid", () => {
