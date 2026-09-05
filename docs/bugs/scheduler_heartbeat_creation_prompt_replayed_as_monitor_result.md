@@ -14,9 +14,158 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## 修复进展
+
+- `2026-08-29 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-29 18:01-22:02 CST（UTC `2026-08-29T10:01:22Z` 之后）。
+    - 20:00、21:00、21:30 CST `NVDA 关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却反复输出“你输入了一个数字 1，无法判断具体意图”，并列出查询标的、查看持仓、设置提醒等直聊菜单；这不是对 NVDA 关键事件的稳定触发 / noop 检查。
+    - 21:00 / 21:30 CST `AI与科技持仓观察关键事件心跳提醒` 转成 Apple 与 NVIDIA 关系分析；同窗多轮 heartbeat 还明写工具上限、未核验和旧行情口径。
+    - 同窗仍有 `HeartbeatDiag=204`、`run_start=56`、`run_finish=56`、`deliver=24`、`duplicate_suppressed=11`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-29 14:01-18:02 CST（UTC `2026-08-29T06:01:21Z` 之后）。
+    - 15:00 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出“尚未收到具体的研究问题”并列出 Hone 可处理请求类型；这不是对 AI / 科技持仓观察关键事件的稳定触发 / noop 检查。
+    - 15:30 / 17:30 / 18:00 CST 同一 job 多次转成 Apple 与 NVIDIA 关系分析；16:30 CST `光模块板块关键事件心跳提醒` 转成 LPO / AAOI 技术解释；17:00 CST `NVDA 关键事件心跳提醒` 转成 AMD AI 叙事和估值分析。
+    - 同窗仍有 `HeartbeatDiag=215`、`run_start=61`、`run_finish=61`、`deliver=24`、`duplicate_suppressed=7`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-29 06:00-10:02 CST（UTC `2026-08-28T22:00:49Z` 之后）。
+    - 09:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出“这轮没有收到具体的研究问题——你的消息主要是系统指令注入与心跳任务触发契约”，并转为 Hone 能力介绍；这不是对 AI / 科技持仓观察关键事件的稳定触发 / noop 检查。
+    - 10:00 CST `光模块板块关键事件心跳提醒` 继续把执行轮次转成 LPO / AAOI 技术解释长文，而不是仅围绕关键事件变化做触发判断。
+    - 同窗仍有 `HeartbeatDiag=132`、`run_start=35`、`run_finish=35`、`deliver=19`、`duplicate_suppressed=7`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-28 14:01-18:02 CST（UTC `2026-08-28T06:01:46Z` 之后）。
+    - 15:30 / 16:00 / 16:30 CST `光模块板块关键事件心跳提醒` 与 `存储板块关键事件心跳提醒` 已作为 heartbeat job 触发，deliver preview 却回答 `LPO 是什么，与 AAOI 持仓有何关系` 或基于旧上下文解释 LPO / AAOI，而不是稳定执行光模块/存储板块关键事件筛查。
+    - 14:30-17:30 CST `AI与科技持仓观察关键事件心跳提醒` 多次转为 `区块链结算与稳定币支付基础设施` 公开市场标的分析，不是执行原 AI / 科技持仓观察关键事件筛查。
+    - 18:00 CST `持仓重大事件心跳提醒` 退化为半导体板块泛行业分析，并明示 DataFetch 与 Web Search 均触及调用上限，不是对持仓重大事件的稳定触发 / noop 检查。
+    - 同窗仍有 `HeartbeatDiag=219`、`run_start=56`、`run_finish=56`、`deliver=34`、`duplicate_suppressed=16`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-28 10:00-14:02 CST（UTC `2026-08-28T02:00:45Z` 之后）。
+    - 10:00 / 11:01 / 12:00 / 13:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，deliver preview 却回答 `LPO 不是股票代码`、`LPO 与 AAOI：技术关联评估`、`关于你提问的 ATM 融资`、`LPO 与 CPO` 等旧直聊 / 行业问答。
+    - 10:30-13:00 CST `AI与科技持仓观察关键事件心跳提醒` 多次转为 `区块链结算与稳定币支付基础设施` 公开市场标的分析，不是执行原 AI / 科技持仓观察关键事件筛查。
+    - 14:00 CST `NVDA 关键事件心跳提醒` raw preview 又把任务理解成用户问 `NVDA 盘后 226?` 的直聊问题，并因 `heartbeat 输出不是结构化 JSON` 跳过发送。
+    - 同窗仍有 `HeartbeatDiag=217`、`run_start=56`、`run_finish=59`、`deliver=28`、`duplicate_suppressed=12`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 22:03 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-25 18:00-22:03 CST（UTC `2026-08-25T10:00:31Z` 之后）。
+    - 20:00 CST `持仓重大事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出 `SPCX 与 TSLA 的关系：四项事实，一个关键区分`，并展开共同控制权、资本结构和股权关系说明；这不是对用户当前持仓 `SPCX/DRAM/MU/ARM/BE/WOLF/RKLB/513310` 的财报或重大新闻触发 / noop 检查。
+    - 20:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出 `光模块板块全景梳理（关联用户持仓 AAOI）` 的长篇行业综述；这不是只在重大事件出现时推送的稳定监控结果。
+    - 同窗仍有 `HeartbeatDiag=226`、`run_start=56`、`run_finish=62`、`deliver=37`、`execution_failed=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-25 14:02-18:01 CST（UTC `2026-08-25T06:01:30Z` 之后）。
+    - 15:00 CST `存储板块关键事件心跳提醒` 已作为 heartbeat job 触发，`deliver_preview` 却输出“你的推送日程 / 时区：Asia/Shanghai / 定时推送”，并列出存储、光模块、持仓财报等任务配置清单；这不是对存储板块关键事件的稳定触发 / noop 检查。
+    - 同窗仍有 `HeartbeatDiag=218`、`run_start=56`、`run_finish=56`、`deliver=34`、`execution_failed=3`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗没有 runtime 重启 / revision 切换或确认加载 2026-08-21 `fix(channels): suppress heartbeat execution-context drift` 的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-22 06:02 CST` 待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-22 02:02-06:01 CST（UTC `2026-08-21T18:00:41Z` 之后）。
+    - 04:30 CST `光模块板块关键事件心跳提醒` raw preview 写出 “No skills found. Let me proceed with the heartbeat task creation. I need to create a cron_job...” 并继续列出 `interval_minutes` / sector 等配置语义，最终落入 `JsonUnknownStatus`；这不是对已创建 heartbeat job 的稳定事件监控执行。
+    - 同窗仍有 `HeartbeatDiag=199`、`run_start=56`、`run_finish=56`、`deliver=27`、`heartbeat 输出不是结构化 JSON=2`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+  - 判断：
+    - 近窗非文档提交 `7efbc8e8 fix(channels): suppress heartbeat execution-context drift` 已补充执行期漂移抑制，但 source log 未见 runtime 重启 / revision 切换或确认加载该修复的证据；该样本先作为待部署复核证据，不把本缺陷从 `Fixed` 回退为 `New`。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21` `bug-2` 代码级修复，状态更新为 `Fixed`：
+  - `crates/hone-channels/src/scheduler.rs` 新增 heartbeat 执行期漂移抑制：当 heartbeat 正文退化成推送配置说明、产品能力介绍、`未附带新的投研问题`、`Tavily 实时搜索暂时不可用`、`训练数据截止于 2024 年`、工具预算/行情核验受限等执行期元信息时，不再继续当作可送达提醒。
+  - 这层抑制覆盖 JSON `triggered` 和纯文本误判两条路径，统一落成 `management_drift_suppressed=true` 的静默不送达，避免继续把旧直聊/管理语义或产品介绍发成 heartbeat 正文。
+  - 新增回归：`heartbeat_execution_context_drift_configuration_copy_is_suppressed`、`heartbeat_execution_context_drift_capability_intro_is_suppressed`、`heartbeat_execution_context_drift_budget_or_training_copy_is_suppressed`。
+  - 验证通过：`cargo test -p hone-channels heartbeat_execution_context_drift_ --lib -- --nocapture`、`cargo test -p hone-channels heartbeat_management_drift_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮未重启现网 runtime，仍需后续自然运行窗口确认不再复发，再考虑推进到 `Closed`。
+
+- `2026-08-21 22:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 18:01-22:02 CST（UTC `2026-08-21T10:01:39Z` 之后）。
+    - 22:00 CST `持仓重大事件心跳提醒` 原任务明确要求每 30 分钟检查用户当前持仓 `SPCX/DRAM/MU/ARM/BE/WOLF/RKLB/513310` 的财报与重大新闻，并排除普通股价波动、泛行业噪音和无明确来源传闻。
+    - 同轮 `deliver_preview` 却写成“最新一期中国官方制造业 PMI 数据本轮未能核验”，并把 `Tavily 实时搜索暂时不可用`、`我的训练数据截止于 2024 年` 作为正文原因；这不是对持仓重大事件任务的稳定执行。
+  - 同窗统计：
+    - `HeartbeatDiag=207`、`run_start=56`、`run_finish=56`、`deliver=27`、`duplicate_suppressed=12`、HTTP 529 信号 95 条、`runner_error=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、工具预算、搜索降级或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 14:01-18:02 CST（UTC `2026-08-21T06:01:39Z` 之后）。
+    - 15:00 CST `NVDA 关键事件心跳提醒` 已作为 heartbeat job 触发，却把执行期上下文当作用户“收到”的普通直聊确认，回复当前 NVDA 心跳监控正常运行，而不是稳定执行 NVDA 关键事件检查；该轮随后因 `heartbeat 输出不是结构化 JSON` 跳过发送。
+    - 15:30 CST `光模块板块关键事件心跳提醒` 尝试调用不存在的 `cron_job` 工具并触发 `persistent_tool_failure: read-after-write reconciliation failed`，说明执行期仍会被任务创建 / 工具可用性语义污染。
+    - 17:00 CST `NVDA 关键事件心跳提醒` 又把 heartbeat 执行转为“NVDA 已在你的持仓中，不需要重复加入关注列表”，随后因非结构化输出失败；17:30 CST `AI与科技持仓观察关键事件心跳提醒` raw preview 写出 `cron_job` 工具不存在并进入 `JsonNoop`。
+  - 同窗统计：
+    - `HeartbeatDiag=233`、`run_start=61`、`run_finish=63`、`deliver=32`、`duplicate_suppressed=15`、`tool_not_found name=cron_job=3`、`runner_error=2`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、工具可用性、持仓管理或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-21 10:02-14:02 CST（UTC `2026-08-21T02:02:08Z` 之后）。
+    - 10:30 CST `光模块板块关键事件心跳提醒` 已作为 heartbeat job 触发，却输出“你好，我是 Hone，专注于美股科技价值投资的独立投研 AI”及功能介绍，不是稳定执行光模块板块关键事件检查。
+    - 14:00 CST 同一 `光模块板块关键事件心跳提醒` raw preview 又写出 `cron_job` 工具不存在、无法创建或管理 heartbeat/cron tasks；最终被 `PlainTextNoop` 路径跳过，说明执行期仍会被任务创建 / 工具可用性语义污染。
+  - 同窗统计：
+    - `HeartbeatDiag=251`、`run_start=64`、`run_finish=64`、`deliver=40`、`duplicate_suppressed=18`、`tool_not_found name=cron_job=1`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务创建、产品介绍、工具预算或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-20 18:01 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-20 14:01-18:01 CST（UTC `2026-08-20T06:01:34Z` 之后）。
+    - 14:30 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，却输出“你的推送日程 / 定时推送 / 即时推”等配置管理信息，并因此落成 `heartbeat 输出不是结构化 JSON` 执行失败，不是稳定执行 AAPL / NVDA / BE 关键事件检查。
+    - 15:30 CST `AI与科技持仓观察关键事件心跳提醒` deliver 转为 BE 集体诉讼截止日期重复提醒，且明写“上次已送达但距截止不足40天，建议再次确认”；该轮没有稳定围绕完整 AI / 科技持仓观察清单做触发 / noop 收口。
+  - 同窗统计：
+    - `run_start=64`、`run_finish=65`、`deliver=37`、`duplicate_suppressed=17`、`heartbeat 输出不是结构化 JSON=3`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、产品介绍、工具预算或普通投研上下文污染，导致监控轮次发送无关内容、跳过本轮或重复旧提醒。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
+
+- `2026-08-20 14:02 CST` 运行态继续复发，状态维持 `New/P2`：
+  - `data/logs/hone-console-page-source.log`
+    - 巡检窗口：2026-08-20 10:02-14:02 CST（UTC `2026-08-20T02:02:03Z` 之后）。
+    - 10:30 CST `AI与科技持仓观察关键事件心跳提醒` 已作为关键事件 heartbeat 触发，却输出“你的推送日程 / 定时推送 / 即时推”等配置管理信息，不是执行既定 AI / 科技持仓关键事件检查。
+    - 13:00 CST `AAPL + NVDA + BE 关键事件提醒` 已作为 heartbeat job 触发，却转向 TSMC / ASML 投资价值和半导体物理长文，没有稳定围绕 AAPL / NVDA / BE 关键事件做触发 / noop 收口。
+    - 13:00 CST `持仓财报与重大新闻心跳提醒` deliver 转为“我是你的美股投研助理。下面是我当前具备的核心能力”，属于产品能力介绍语义，不是本轮持仓财报与重大新闻监控。
+  - 同窗统计：
+    - `run_start=64`、`run_finish=64`、`deliver=39`、`duplicate_suppressed=10`，说明 heartbeat runtime 仍在运行，不是全渠道停摆。
+    - `data/sessions.sqlite3` 仍未记录这些 live run，本轮证据以 source log 为准。
+  - 判断：
+    - 这不是新的独立缺陷，仍是已创建 heartbeat job 的执行期语义被旧直聊、任务配置、产品介绍、工具预算或普通投研上下文污染，导致监控轮次发送无关内容或漏过本轮检查。
+    - 同窗未见错对象投递、敏感信息泄露或全渠道不可用，非 P1，不创建 GitHub Issue。
 
 - `2026-08-17 18:02 CST` 运行态继续复发，状态维持 `New/P2`：
   - `data/logs/hone-console-page-source.log`

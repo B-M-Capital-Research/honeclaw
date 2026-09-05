@@ -23,6 +23,62 @@ New
 ## 证据来源
 
 - `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-29 22:01-2026-08-30 02:01 CST（UTC 2026-08-29 14:01-18:01）。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 23:30、00:00、01:00、02:00 CST deliver / raw preview 继续转为“用户输入只是数字 1 / 无法判断具体意图”的直聊澄清或菜单，而不是围绕 NVDA 关键事件心跳完成自主核验。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 23:30 CST deliver preview 转为 Apple 与 NVIDIA 关系分析，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - 同窗仍有 `deliver=24`、`duplicate_suppressed=5`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-29 18:01-22:02 CST（UTC 2026-08-29 10:01-14:02）。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 20:00、21:00、21:30 CST deliver preview 多次转为“你输入了数字 1 / 无法判断具体意图”的直聊澄清和查询/持仓/提醒菜单，而不是围绕 NVDA 关键事件心跳完成自主核验。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 21:00 / 21:30 CST deliver preview 转为 Apple 与 NVIDIA 股权、投资和业务关系分析，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - 同窗仍有 `deliver=24`、`duplicate_suppressed=11`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-29 02:00-06:01 CST（UTC 2026-08-28 18:00-22:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 02:30 / 05:00 / 05:30 CST deliver preview 转为系统指令注入判断、直聊菜单或“没有具体研究问题”的澄清式文案，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_3c52d213` 与 `job_id=j_5b3cb604` 在 02:30-06:00 CST 多轮转为 SK Hynix 与 NVIDIA 供应关系、LPO 与 AAOI 关系等邻近主题解释；部分轮次明写工具通道受限或实时行情未核验。
+  - 同窗仍有 `deliver=36`、`duplicate_suppressed=20`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-28 22:01-2026-08-29 02:01 CST（UTC 2026-08-28 14:01-18:01）。
+  - `job_id=j_c83f66ac` / `job=NVDA 关键事件心跳提醒` / `target=web-user-6eedc778b4c5`。
+  - 22:30 / 23:00 CST deliver preview 在 `data_fetch` 速率限制后转为 AI 电力 / CEG / VST 投资框架长文；00:00 CST 又转为“美股科技价值投资投研助理”能力介绍，而不是围绕 NVDA 关键事件心跳完成自主核验。
+  - 同窗仍有 `deliver=37`、`duplicate_suppressed=9`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-21 02:01-06:01 CST（UTC 2026-08-20 18:01-22:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 02:30 CST deliver preview 转为 NBIS 可转债融资长文；03:00 CST 又转为 TQQQ 杠杆 ETF 投教和支撑位分析；05:00 / 06:00 CST 转为 TEM 单项量价异动 / 13F 减持说明，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 02:31 CST deliver preview 输出“AAPL — Tim Cook 将于9月卸任，硬件负责人John Ternus接任CEO”这类高风险未核验事件，且未稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - 同窗仍有 `deliver=33`、`duplicate_suppressed=9`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-20 22:01-2026-08-21 02:01 CST（UTC 2026-08-20 14:01-18:01）。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 00:30 CST deliver preview 转为“你的推送日程”，列出定时推送、即时推、严重度阈值和勿扰设置，而不是执行 AI / 科技持仓观察关键事件核验；01:00 CST 同任务又转为 TQQQ 杠杆 ETF 投教和持有期限建议。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 01:30 CST deliver preview 只围绕 NVDA 定制 AI 芯片出货事件展开，且行情口径明写 AAPL / NVDA 报价源为 2026-08-20 04:00 旧轮次；没有稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - 同窗仍有 `deliver=36`、`duplicate_suppressed=7`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
+  - 最新巡检窗口：2026-08-20 18:01-22:02 CST（UTC 2026-08-20 10:01-14:02）。
+  - `job_id=j_35a69a63` / `job=AAPL + NVDA + BE 关键事件提醒` / `target=web-user-9b62484ff43d`。
+  - 22:01 CST deliver preview 转为“你都能做什么”能力介绍，正文解释产品能力、市场事件引擎、公司研究、交易纪律等，而不是稳定覆盖 AAPL / NVDA / BE 三标的关键事件筛查。
+  - `job_id=j_bb4bbb99` / `job=AI与科技持仓观察关键事件心跳提醒` / `target=web-user-be13e1f84d14`。
+  - 22:01 CST deliver preview 转为 NBIS 下跌与可转债发行计划长文，只围绕单一相邻标的解释市场反应，没有稳定执行 AI / 科技持仓观察列表关键事件核验。
+  - 同窗仍有 `deliver=33`、`duplicate_suppressed=10`，说明调度和投递主链路未整体阻断。
+  - 本轮判断：最新样本仍是 Web heartbeat 执行期主题漂移和目标约束失效；没有新的独立根因。为何不影响功能链路，因此定级为 P3：调度、runner、出站和去重链路仍在运行，未见错对象投递、数据破坏、敏感信息泄露或全渠道不可用；主要问题是 AI 返回内容焦点不符合用户配置，维持质量性 `P3 / New`。
+- `data/logs/hone-console-page-source.log`
   - 最新巡检窗口：2026-08-19 10:00-14:02 CST（UTC 2026-08-19 02:00-06:02）。
   - `job_id=j_b95a8df6` / `job=持仓重大事件心跳提醒` / `target=web-user-d415e2c11ced`。
   - 11:00 CST deliver preview 漂移为 2025 年特朗普政府对华关税历史解释，正文引用 Congress.gov / Tax Foundation / PIIE 等政策来源，与持仓重大事件心跳目标不匹配。

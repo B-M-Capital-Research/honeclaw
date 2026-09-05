@@ -911,6 +911,50 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_cloud_community_append_as_dry_run_by_default() {
+        let cli = Cli::try_parse_from([
+            "hone-cli",
+            "cloud",
+            "community-append",
+            "--manifest",
+            "/tmp/community-append.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::CommunityAppend(args),
+            }) => {
+                assert_eq!(args.manifest, PathBuf::from("/tmp/community-append.json"));
+                assert_eq!(args.source, "zsxq");
+                assert_eq!(args.external_id, "51115212285814");
+                assert!(!args.apply);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_cloud_community_inspect_defaults() {
+        let cli = Cli::try_parse_from(["hone-cli", "cloud", "community-inspect"]).unwrap();
+        match cli.command {
+            Some(Commands::Cloud {
+                command: CloudCommands::CommunityInspect(args),
+            }) => {
+                assert_eq!(args.source, "zsxq");
+                assert_eq!(args.external_id, "51115212285814");
+                assert_eq!(args.limit, 10);
+                assert!(!args.anchor_only);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let cli = Cli::try_parse_from(["hone-cli", "cloud", "community-inspect", "--anchor-only"])
+            .unwrap();
+        assert!(matches!(cli.command, Some(Commands::Cloud {
+            command: CloudCommands::CommunityInspect(args),
+        }) if args.anchor_only));
+    }
+
+    #[test]
     fn cli_parses_probe_command() {
         let cli = Cli::try_parse_from([
             "hone-cli",

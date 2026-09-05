@@ -3,6 +3,7 @@
 //! 使用 JSON 文件存储。
 
 pub mod billing;
+pub mod company_facts;
 pub mod company_profile;
 pub mod cron_job;
 pub mod llm_audit;
@@ -21,6 +22,11 @@ pub use billing::{
     BILLING_EVENT_PROCESSING, BILLING_EVENT_RECEIVED, BILLING_PROVIDER_DOMESTIC_INVITE,
     BILLING_PROVIDER_STRIPE, BillingEntitlement, BillingEntitlementUpsertOutcome, BillingStorage,
     BillingWebhookEvent, BillingWebhookRecordOutcome,
+};
+pub use company_facts::{
+    BalanceSheetFacts, COMPANY_FACTS_SCHEMA_VERSION, COVER_STALE_AFTER_DAYS, CashFlowFacts,
+    CompanyFacts, CompanyFactsStorage, CompanyIdentity, EarningsCadence, FACTS_STALE_AFTER_HOURS,
+    FactProvenance, IncomeFacts, ShareCounts, configure_cloud_company_facts_storage,
 };
 pub use company_profile::{
     AppendEventInput, AppendResearchEventInput, CompanyProfileConflictDecision,

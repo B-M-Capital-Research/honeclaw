@@ -1,0 +1,2123 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-03",
+  "root": {
+    "id": "ai-datacenter",
+    "name": "AI 数据中心",
+    "summary": "把一座 AI 数据中心拆成可投资的环节：算力、存储、互联、电力、承载它的云，以及造它们的设备与整机。每一环的收入最终都来自同一个需求源头（云厂与模型公司的资本开支），但各环的量价驱动、适用倍数和瓶颈完全不同。"
+  },
+  "industries": [
+    {
+      "id": "ai-chip",
+      "name": "AI 芯片",
+      "parent": "ai-datacenter",
+      "one_liner": "算力本身：商用 GPU、自研 ASIC、网络芯片，以及造它们的先进制程与先进封装产能。",
+      "aliases": [
+        "AI芯片",
+        "算力芯片",
+        "GPU",
+        "ASIC",
+        "加速卡",
+        "先进封装",
+        "CoWoS",
+        "代工",
+        "晶圆"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "①钱袋：TrendForce前九大CSP 2026年capex超8867亿美元/+90%，AI服务器出货+31%。②先分GW再换算：同批GW在GPU与ASIC间分配（Counterpoint：ASIC出货2028年过1500万颗、超数据中心GPU）。③各路线套各自美元/GW：NVIDIA平台GW用其自报收入机会180亿(Hopper)→250亿(Blackwell)→400亿(Vera Rubin)，已含网络互联，不可再叠加连接层收入；ASIC路线无同口径公开系数，不得套用NVIDIA系数。④两线共撞同一闸门：CoWoS（台积电12–14万片/月+OSAT 5–6万，缺口20%→10%）×单颗HBM容量（96/192→216/288GB）。⑤闸门定量、HBM定价：NVDA FY27Q2数据中心890.2亿/+117%，毛利率75.0%→Q3 74.0%→Q4 71–72%见底，归因内存。",
+        "key_variables": [
+          {
+            "name": "CoWoS / 2.5D 月产能（万片/月）与供需缺口",
+            "why": "量的第一道物理闸门：需求超出闸门的部分不进当期收入，这是「需求很好但收入不增长」的唯一解释来源。TrendForce 口径 2026 年 TSMC 12–14 万片/月，OSAT 伙伴合计另加 5–6 万片，全行业约 17–20 万片/月；缺口由约 20% 收敛到年底约 10%，TSMC 计划 2027 年再扩 60% 以上。缺口收敛是双刃：可交付量上行，本行议价权同步下降。",
+            "where": "TrendForce 先进封装月度/季度跟踪；TSMC 季度法说会中 capex 在「先进封装、测试、光罩及其他」上的分配比例。"
+          },
+          {
+            "name": "单颗 AI 芯片的 HBM 容量（GB）与 HBM 占 DRAM 晶圆投片的比重",
+            "why": "量的第二道闸门，同时是成本端的源头。TrendForce：单颗容量由 96GB/192GB 升到 216GB/288GB；HBM 占三大厂 DRAM 晶圆投片比重 2025/2026/2027 年底约 18%/22%/30%，占 DRAM bit 供给约 8%/9%/13%，2027 年合约价预期成倍上行。在 CoWoS 片数不变时，容量升级近似线性放大 HBM bit 消耗、直接抬高 BOM —— 这是本行毛利率下行的机械原因，不是需求原因。",
+            "where": "TrendForce HBM 季度报告与 HBM Market Bulletin；SK 海力士、三星、美光季度业绩会；NVIDIA/AMD 产品规格。"
+          },
+          {
+            "name": "NVIDIA 数据中心收入的 Hyperscale / ACIE 拆分（美元、环比%）",
+            "why": "全行业唯一按季度、按客户类型披露的 AI 加速器需求量表。FY27Q2：Hyperscale 487.10 亿美元（环比 +13%、同比 +102%）、ACIE 403.13 亿（环比 +25%、同比 +138%）。两条使用纪律必须同时遵守：(1) ACIE 不是纯二线客户口径 —— 公司原文说其增长来自 AI natives、企业与主权客户，「以及经 AI 云采购的 hyperscaler」，因此不能把它当作资产负债表最弱那批客户的干净代理；(2) 该口径自 FY27Q1 变更并追溯重述，FY27Q2 又把一家公司由 ACIE 重分类至 Hyperscale 并再次重述，所以读环比前先核对当季有无重分类，只在口径未变的季度之间比较。配套读应收账款 DSO（本季 45→60 天，公司归因于对大额多季度协议的投资级客户延长账期）。",
+            "where": "NVIDIA 每季 CFO Commentary 的 Revenue by Market Platform 表；同季 10-Q 附注中的口径变更与重述说明。"
+          },
+          {
+            "name": "NVIDIA「Supply and capacity」承诺余额（十亿美元）",
+            "why": "把上游紧张度换算成美元的翻译器，也是判断上游何时松动的领先指标。FY27Q2 由上季 1190 亿跳到 2790 亿美元。两份同源文件措辞须并读：CFO Commentary 写 primarily related to the procurement of memory，同季 10-Q 写 primarily memory and manufacturing facilities（同时含制造/封装产能）。因此结论只能是倾向性的 —— 当期闸门向 HBM 侧倾斜，不能断定 CoWoS 已不构成约束，CoWoS 缺口须作为并行读数保留。",
+            "where": "NVIDIA 每季 CFO Commentary 的 Future commitments 表；同季 10-Q 附注 Commitments and Contingencies。"
+          },
+          {
+            "name": "NVIDIA 毛利率指引（%）及其归因",
+            "why": "把「ASP 上行」和「利润上行」分开的净结果读数。FY27Q2 实际 GAAP 与非 GAAP 均 75.0%，Q3 指引 74.0%±50bp，管理层称 Q4 在 71–72% 见底、FY2028 随提价执行回到 72–73%，归因是内存价格而非需求走弱；同一场电话会还称供给至少到 FY2028 年底仍是瓶颈。这是本行最容易被误读成「景气见顶」的数字。",
+            "where": "NVIDIA 季度新闻稿 Outlook 段落；财报电话会 CFO 陈述。"
+          },
+          {
+            "name": "Broadcom 单季 AI 半导体收入（美元）与 ASIC 设计伙伴份额",
+            "why": "ASIC 路线不受 NVIDIA 财报干扰的独立读数。AVGO FY26Q2 AI 半导体收入 108 亿美元、同比 +143%，FY26Q3 指引 160 亿、同比超 200%，Hock Tan 归因于「定制 AI 加速器与 AI 网络」双轮。结构侧用 Counterpoint：2027 年 ASIC 设计伙伴份额 Broadcom 约 60%、Marvell 约 8%，终端 Google 约 52%。注意 AVGO 的 AI 收入含以太网交换，与 NVIDIA 每 GW 系数中的网络部分重叠，自上而下加总时须去重。",
+            "where": "Broadcom 季报与电话会（FY26Q3 为 2026-09-02）；Counterpoint AI Server Compute ASIC 出货跟踪（现有口径发布于 2026-01，属预测，须留意后续修订）。"
+          },
+          {
+            "name": "前九大 CSP 年度 capex（美元）与 AI 服务器出货同比（%）",
+            "why": "传导链最上游的钱袋，也是修订方向最先出现的地方。TrendForce：2026 年合计超 8867 亿美元、同比约 +90%（北美 hyperscaler 约占九成，中国 CSP 同比超 +80%），2027 年约 1.3 万亿、同比近 +50%；AI 服务器出货 2026 年预测已由 +28% 上修到近 +31%。看修订方向比看绝对值重要 —— 连续两个季度下修，就要开始怀疑第 3 环的每 GW 换算能否兑现。",
+            "where": "TrendForce 季度 AI 服务器/服务器报告；各 CSP 财报中的 capex 指引修订。"
+          }
+        ],
+        "multiple_anchor": "这一行不能用一族倍数盖住，须按「离物理产能的距离」分三层，且三层最后都锚回同一个分母 —— 当年被 CoWoS 与 HBM 约束住的可交付量，而不是 TAM。分层之前有一条硬约束：NVIDIA 自报的约 400 亿美元/GW 已经把 NVLink、InfiniBand、以太网等网络与互联收入算在自己头上，所以第三层 ALAB 的 retimer/scale-up 交换与 AVGO 的 Tomahawk/Jericho 网络收入与它部分重叠，两处不得相加。\n\n第一层，平台层（NVDA、AVGO），但不能默认套「fabless、轻资产、现金流转化率高」的倍数，必须先做一道强制校验：看 FCF/收入与 DSO 趋势，通过了才用轻资产口径。AVGO 通过 —— FY26Q2 自由现金流 102.62 亿美元占收入 46%、调整后 EBITDA 152.44 亿占收入 69%、单季资本开支仅 2.31 亿，EV/EBITDA 与 P/E 给出的答案差别不大。NVDA 当下不通过 —— FY27Q2 自由现金流 213.41 亿美元，仅占营收 962.21 亿的 22%；应收账款 630.59 亿、DSO 由 45 天升到 60 天；库存由 258 亿升到 316 亿；单季发行 250 亿美元优先无担保票据；上半年购入股权证券 424.04 亿；另有 1085 亿美元担保最大敞口。它正在用自己的资产负债表替产业链承接资本强度，这些都在负债与或有负债侧，不进 EPS，但必须体现为更高的风险溢价。对这一层的分母，应把 forward EPS 拆成「被在手承诺覆盖的部分」与「覆盖期之外的部分」分别给倍数；划这条覆盖线的原始材料是 NVIDIA 按财年铺开的 3660 亿美元总承诺表（供应与产能 2790 + 云服务协议 290 + 未起租数据中心租约 250 + 股权投资 250 + 资本开支 80，单位均为亿美元），另加一张 560 亿美元的附加承诺表（AI 云协议 360 + 为第三方承租的未起租租约 200），以及 Broadcom 电话会披露的 AI bookings。\n\n第二层，代工与封装层（TSM、AMKR、ASX）：重资产、capex 爬坡期 P/E 会失真，应主用 EV/EBITDA，并用重置成本口径交叉验证 —— 把 EV 除以「每万片/月的 CoWoS 或 2.5D 产能」，与新建一条同等产能线的资本开支相比；同时看 ROIC 相对 WACC 的缺口与折旧年限假设，这一层的利润由折旧节奏而非需求节奏决定。\n\n第三层，连接与 IP 层（ALAB、MRVL 的定制业务、ARM）：收入是「单位量 × 每单位美元含量」，应用 EV/S 或 EV/毛利，并强制配一个自下而上的含量模型 —— 每颗 XPU 多少美元的 retimer/交换、每个机架多少美元的 scale-up 交换、每颗芯片多少版税。ARM 尤其如此，它是 per-chip royalty 模型，估值应锚在「出货颗数 × 单颗版税率」而不是锚在客户的收入。",
+        "anti_pattern": "不要用「AI TAM × 假设份额 → 收入 → 乘一个静态 P/E」来估这一行 —— 它会同时错两次。分子端：当期收入不是需求决定的，而是 CoWoS 与 HBM 的物理产能决定的（2026 年缺口仍有 10–20%，NVIDIA 管理层称供给至少到 FY2028 年底仍是瓶颈），超出闸门的需求根本不进当期收入，增量需求不等于增量收入。分母端：这是 ASP 与成本同时上行的周期，NVIDIA 自己指引毛利率由 75.0% 到 Q4 的 71–72% 见底、FY2028 回到 72–73%，且归因于内存价格，把毛利率下行读成景气见顶就是把成本周期误读成需求周期。\n\n另有三个高频错法。一、把 GPU 与 ASIC 当零和替代：两条路线共用同一批 CoWoS 与 HBM，ASIC 起量会抬高封装与内存价格、反过来压 GPU 的供给与毛利，同时又把 AVGO/MRVL/ALAB 的收入做大，不是简单的份额搬家。二、用峰值 EPS 乘峰值倍数，并把代际系数线性外推：Hopper→Blackwell 是 180→250 亿美元/GW（约 1.39 倍），Blackwell→Vera Rubin 是 250→400 亿（约 1.60 倍），倍数逐代不同，不可外推；「代际之间必有空窗期、会同时压量压价」也不是常态，只有当新代爬坡与上一代退坡之间出现重叠中断时才成立（可用 NVDA 数据中心收入环比与库存/承诺同时走弱来识别），而 FY27Q2 并未观察到该情形 —— Vera Rubin 已进入 full production，Blackwell 架构仍占其收入的绝大部分。三、把承诺与担保当成 backlog：2790 亿美元供应与产能承诺是负债侧的采购义务，1085 亿美元担保最大敞口（其中 1050 亿为 2026 年 8 月签署、分阶段生效的 SB Energy PORTS-Pike 信用支持）是或有负债，两者都不是已锁定收入，把它们加进收入可见度是这一行最危险的一类错算。附带一条读法提醒：该园区「约 4.25GW、每代约 150 万颗 GPU、约 1500–2000 亿美元 NVIDIA 收入」换算回来就是约 353–471 亿美元/GW，即 NVIDIA 用自己那个约 400 亿/GW 的系数按 GW 数乘出来的结果，属于同源自洽性检查，不能当作该系数已被独立验证；真正的交叉验证要取非 NVIDIA 披露的园区（例如 ASIC 路线的 GW 承诺与对应设计/代工合同金额）。",
+        "multiple_anchor_short": "分三层：平台层用 P/E，但先验 FCF/收入与 DSO 才配轻资产口径；代工封装层用 EV/EBITDA；连接与 IP 层用 EV/S 并配含量模型。分母锚在 CoWoS 与 HBM 约束下的可交付量，不是 TAM。",
+        "anti_pattern_short": "不要把 NVIDIA 的 2790 亿美元供应与产能承诺、1085 亿美元担保敞口当 backlog：前者是采购义务、后者是或有负债，都不是已锁定收入，加进收入可见度是这一行最危险的错算。"
+      },
+      "core_watch": [
+        {
+          "what": "NVIDIA 季报里的「Revenue by Market Platform」表，尤其数据中心拆出的 Hyperscale 与 ACIE 两行的环比",
+          "why": "这一行确实吃「最关注英伟达财报」这条，但吃的不是标题数字，而是这张按客户类型的拆分表 —— 全行业唯一的同类量表。FY27Q2：Hyperscale 487.10 亿美元（环比 +13%）、ACIE 403.13 亿（环比 +25%）。读它有两条纪律：(1) 该口径自 FY27Q1 变更并追溯重述，FY27Q2 又把一家公司由 ACIE 划入 Hyperscale 并再次重述，所以看环比前必须先确认当季口径是否变过，只在口径未变的季度之间比较；(2) ACIE 除 AI natives、企业与主权客户外，还含经 AI 云采购的 hyperscaler，因此环比转负既可能是需求裂缝，也可能只是口径搬家 —— 它不能单独当作提前一到两个季度的裂缝探测器。要判断是不是真裂缝，须与 DSO（本季 45→60 天）、库存与供应承诺余额一起看，并等下一季在口径不变的条件下确认。",
+          "cadence": "季度，NVIDIA 通常在 2/5/8/11 月末发布（FY27Q2 为 2026-08-26）"
+        },
+        {
+          "what": "内存闸门三件套一起读：NVIDIA「Supply and capacity」承诺余额、毛利率指引、TrendForce 的 HBM 合约价与 DRAM 投片占比",
+          "why": "承诺余额把上游紧张度翻译成可审计的美元：FY27Q2 由 1190 亿跳到 2790 亿美元，CFO Commentary 写 primarily related to the procurement of memory，同季 10-Q 写 primarily memory and manufacturing facilities —— 两份同源文件措辞不一致，所以结论只能是「当期闸门向 HBM 侧倾斜」，不能推出「CoWoS 已不构成约束」。价格侧：HBM 占三大厂 DRAM 晶圆投片比重 2025/2026/2027 年底约 18%/22%/30%，2027 年合约价预期成倍上行。结果侧：毛利率 Q3 指引 74.0%、Q4 在 71–72% 见底。三者合起来读的含义是 NVIDIA 正在用自己的资产负债表把内存产能提前锁走，这会挤压 AMD、Broadcom 客户群与所有 ASIC 项目的内存供给，是判断第二梯队何时能拿到量的领先信号。",
+          "cadence": "季度（NVIDIA CFO Commentary 与 10-Q 同日发布）+ TrendForce HBM 月报/季报"
+        },
+        {
+          "what": "封装闸门：CoWoS 供需缺口与月产能爬坡，配 TSMC 月度营收与法说会中先进封装 capex 的分配",
+          "why": "量的物理天花板，也是「需求很好但收入不增长」这类背离的唯一解释来源。TrendForce 口径：2026 年 TSMC 12–14 万片/月、OSAT 伙伴另加 5–6 万片，缺口由约 20% 收敛到年底约 10%，2027 年 TSMC 计划再扩 60% 以上。TSMC 是 GPU 与 ASIC 两条路线共同的上游，月营收是全链频率最高的一手读数，比任何设计公司的季报早两到三个月；2026Q2 已核实营收 402.0 亿美元、同比 +33.7%、毛利率 67.7%、≤7nm 占晶圆收入 77%，Q3 指引 446–458 亿美元。先进封装那笔 capex 的绝对额，直接决定 12–18 个月后闸门能开多大。",
+          "cadence": "TrendForce 月度/季度跟踪；TSMC 月度营收（每月 10 日前后）与季度法说会（1/4/7/10 月中）"
+        },
+        {
+          "what": "Broadcom 每季的 AI 半导体收入、bookings/backlog 口径与在手定制客户数",
+          "why": "自研 ASIC 路线的独立读数，用来判断 NVIDIA 的强弱有多少是路线转移、多少是总量变化。已核实：FY26Q2 AI 半导体收入 108 亿美元、同比 +143%，FY26Q3 指引 160 亿、同比超 200%；同季公司总营收 221.87 亿、Q3 指引约 294 亿。Broadcom 的 AI 收入同时包含定制 XPU 与以太网交换（Tomahawk/Jericho），一家就能同时读出 ASIC 与 AI 网络两条子线 —— 但也正因如此，它与 NVIDIA 每 GW 系数里已含的网络部分重叠，自上而下做行业加总时必须去重。",
+          "cadence": "季度，约每年 3/6/9/12 月（FY26Q3 为 2026-09-02）"
+        },
+        {
+          "what": "前九大 CSP 的 capex 指引修订方向，以及 AI 服务器出货预测的上修/下修",
+          "why": "传导链最上游的钱袋。TrendForce：2026 年前九大 CSP 合计超 8867 亿美元、同比约 +90%，2027 年约 1.3 万亿；AI 服务器出货 2026 年预测已由 +28% 上修到近 +31%。看修订方向比看绝对值重要 —— 连续两个季度下修，就要开始怀疑传导链第 3 环的每 GW 换算能否兑现。注意 NVIDIA 电话会口径（前五大 hyperscaler 2026 年近 8000 亿、2027 年 1.3 万亿）与 TrendForce 的前九大口径统计篮子不同，可并列参考，但不能互相印证，更不能相加。",
+          "cadence": "季度，各 CSP 财报 capex 指引 + TrendForce 季度汇总"
+        },
+        {
+          "what": "中国口径的三个可证伪量：NVIDIA 披露的中国数据中心收入占比、指引中是否开始计入中国数据中心收入、是否再度出现 H200/H20 类的超额库存与采购义务减值",
+          "why": "2026-01-13 BIS 把 H200、MI325X 等对华出口由 presumption of denial 改为逐案审批，但那只是把上限打开；真正的闸门在另一侧，而且方向与直觉相反。NVIDIA FY27Q2 一手件记载：许可已发放，但 such sales were restricted by the PRC government；1H FY27 因 H200 需求萎缩计提 4 亿美元超额库存与采购义务减值；实际出货占当季数据中心收入不到 1%；H200 须先在美国检验，回运时承担 25% 关税且公司明确无法转嫁；Q3 指引写明不假设任何来自中国的数据中心计算收入。所以截至本记录的时点，该政策既不是收入的加项，也没有对 CoWoS/HBM 闸门形成任何实际加压 —— 不要去给一块公司已明确清零的收入建模。只有当第 (2) 项由零转正时，才需要评估它对闸门的挤占。",
+          "cadence": "季度（NVIDIA/AMD 财报与 10-Q 的中国收入披露与指引口径）；BIS 规则变动不定期"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达（NVIDIA）",
+          "role": "唯一以整机架、按 GW 为单位卖算力的公司：GPU + Vera CPU + NVLink/InfiniBand/以太网 + 系统一体交付，管理层自报的自家收入机会由 Hopper 的约 180 亿美元/GW 升到 Vera Rubin 的约 400 亿（该口径已含网络与互联，不可与连接层公司的收入简单相加）；也是唯一用自己的资产负债表（2790 亿美元供应与产能承诺、1085 亿美元担保最大敞口、单季 250 亿美元发债）把上游内存与下游园区一起锁住的玩家，因此它的财报同时是需求表、供给表和风险表。"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "博通（Broadcom）",
+          "role": "自研 ASIC 路线上最大的设计与交付方，同时卖以太网交换/路由芯片（Tomahawk、Jericho），是唯一一家在同一份 AI 收入里同时吃「定制 XPU」和「AI 网络」两条子线的公司；与 Marvell 的差别在于它锁定的是超大规模客户的多代路线图而非单个项目（Counterpoint 估其 2027 年 ASIC 设计伙伴份额约 60%）。FY26Q3 指引 AI 半导体收入 160 亿美元、同比超 200%，且是本行现金流转化率最高的一家：FY26Q2 自由现金流占收入 46%、调整后 EBITDA 占 69%、单季资本开支仅 2.31 亿美元。"
+        },
+        {
+          "symbol": "TSM",
+          "name": "台积电（TSMC，美股 ADR；台股 2330.TW）",
+          "role": "GPU 与 ASIC 两条路线唯一共同的上游，且在先进制程与 CoWoS 先进封装上是双重卡位 —— 它按晶圆收钱而不按芯片收钱，所以无论下游谁赢它都先分一道；也是全行业唯一提供月度营收读数的公司，比任何设计公司的季报早两到三个月，2026Q2 ≤7nm 先进制程已占晶圆收入 77%、毛利率 67.7%。"
+        },
+        {
+          "symbol": "AMD",
+          "name": "超微半导体（AMD）",
+          "role": "唯一具备规模的第二商用 GPU 供应商，与英伟达的差别在于它同时靠 EPYC 服务器 CPU 提供利润缓冲，代价是机架级方案（Helios）起步晚于对手一代。因此它的估值对「第二供应商是否被真正采购」这一件事的敏感度，远高于对 AI 总量的敏感度 —— 跟踪量是每季数据中心收入及其占公司收入的比重、Helios 的上量披露，以及它在紧张的 HBM 与 CoWoS 产能中实际分到多少。"
+        },
+        {
+          "symbol": "MRVL",
+          "name": "迈威尔科技（Marvell）",
+          "role": "定制 ASIC 的第二家设计服务商，与博通的差别是项目数更少、客户集中度更高，因而单个项目的得失对报表冲击更大（Counterpoint 估其 2027 年设计伙伴份额约 8%，低于博通的约 60%，且判断其面临设计中标逆风）；另一半收入来自光 DSP 与数据中心连接，是本行里与光通信行业重叠度最高的一家。"
+        },
+        {
+          "symbol": "ALAB",
+          "name": "Astera Labs",
+          "role": "纯粹靠「每颗 XPU 的美元含量」赚钱的连接层公司：PCIe retimer（Aries）与 scale-up 交换（Scorpio），收入随加速器互联域变大而放大，而不随芯片单价放大；与博通/迈威尔的差别是它不做加速器本体，因此对 GPU 与 ASIC 两条路线中立。注意它的收入与 NVIDIA 每 GW 系数中已含的网络互联部分存在重叠，自上而下做行业加总时要去重。"
+        },
+        {
+          "symbol": "ARM",
+          "name": "Arm Holdings（英国公司，美股 ADS）",
+          "role": "本行唯一的 IP 与版税模型，不承担晶圆与封装产能风险，收入等于出货颗数乘单颗版税率；Neoverse 同时进入 NVIDIA Grace/Vera、AWS Graviton/Trainium、Google Axion 等平台，因此它是少数在 GPU 与 ASIC 两条路线上都收钱的标的。估值应锚在「出货颗数 × 单颗版税率」，而不是锚在客户的收入。"
+        },
+        {
+          "symbol": "AMKR",
+          "name": "安靠科技（Amkor Technology）",
+          "role": "美股里最纯粹的先进封装 OSAT，与 TSM 的差别是它不做前道晶圆、纯赚封装环节的产能租金，因此是把「封装闸门松紧」这件事单独定价的工具。需要说明的是：TrendForce 的 CoWoS 口径只给出「OSAT 伙伴合计新增 5–6 万片/月」，未指名任何厂商，也未给份额拆分，所以对它的 2.5D 产能与在建产能应以公司自身季报披露为准，不要从行业口径倒推。"
+        },
+        {
+          "symbol": "ASX",
+          "name": "日月光投控（ASE Technology，美股 ADR；台股 3711.TW）",
+          "role": "全球最大的封测代工厂，通常被视为 OSAT 端 2.5D 增量的主要承接方之一 —— 但须明确：TrendForce 原文只写「OSAT 伙伴合计 5–6 万片/月」，既未指名厂商也未给份额，该承接方判断未经一手核实。与 Amkor 的差别在于其传统封测基本盘更大、AI 弹性被稀释，因此更适合当 CoWoS 溢出程度的验证器，而不是纯 AI 弹性标的。"
+        },
+        {
+          "symbol": "INTC",
+          "name": "英特尔",
+          "role": "本行对「先进制程与先进封装单点依赖」的美国本土替代产能选项：Foveros/EMIB 是 CoWoS 之外的另一条 2.5D/3D 封装路径，18A/14A 是先进逻辑的第三供给来源。它对本行的区分度不在 AI 芯片份额，而在这批替代产能是否真被外部客户买走 —— 可跟踪量是其代工业务的外部客户流片与预付/产能承诺披露。若这条替代产能兑现，本行封装闸门的刻度需要整体重估；若不兑现，它对本行传导链几乎无影响。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "NVIDIA（投资者关系）",
+          "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+          "date": "2026-08-26",
+          "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+          "takeaway": "FY27Q2（截至 2026-07-26）营收 962.21 亿美元、同比 +106%、环比 +18%，数据中心 890.2 亿、同比 +117%；GAAP 与非 GAAP 毛利率均 75.0%；FY27Q3 指引营收 1080 亿美元 ±2%、毛利率 74.0%±50bp，并写明「不假设任何来自中国的数据中心计算收入」；Vera Rubin 已进入 full production。给出本行「量」的当期基准值与中国口径的零基准。"
+        },
+        {
+          "house": "NVIDIA（投资者关系）",
+          "title": "CFO Commentary on Second Quarter Fiscal 2027 Results",
+          "date": "2026-08-26",
+          "url": "https://s201.q4cdn.com/141608511/files/doc_financials/2027/Q227/Q2FY27-CFO-Commentary.pdf",
+          "takeaway": "数据中心按 Hyperscale 487.10 亿 / ACIE 403.13 亿美元拆分（环比 +13%/+25%，同比 +102%/+138%），表中同时列出 Q1 FY27 与 Q2 FY26，可自证该拆分早于 FY27Q2；ACIE 增长来自 AI natives、企业与主权客户「以及经 AI 云采购的 hyperscaler」。Supply and capacity 承诺由上季 1190 亿升至 2790 亿美元，措辞为 primarily related to the procurement of memory；总承诺表按财年铺开合计 3660 亿美元，另有 560 亿美元附加承诺表。自由现金流 213.41 亿美元；应收 631 亿、DSO 由 45 升至 60 天（归因于对投资级客户的大额多季度协议延长账期）；库存由 258 亿升至 316 亿；单季发行 250 亿美元优先无担保票据；担保最大敞口 1085 亿美元（含 SB Energy PORTS-Pike 约 4.25GW、1050 亿），该园区每代基础设施约 150 万颗 GPU、约 1500–2000 亿美元 NVIDIA 收入。"
+        },
+        {
+          "house": "NVIDIA（SEC Form 10-Q）",
+          "title": "NVIDIA Corporation Quarterly Report on Form 10-Q for the quarterly period ended July 26, 2026",
+          "date": "2026-08-26",
+          "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+          "takeaway": "口径与风险侧的一手件。明确「In the first quarter of fiscal year 2027, we changed our presentation of revenue by market platform, and the comparable periods were recast」，FY27Q2 另将一家公司由 ACIE 重分类至 Hyperscale 并重述前期。总承诺表 120/100/98/16/10/22、合计 366（十亿美元），其中供应与产能 279 的措辞为 primarily memory and manufacturing facilities（比 CFO Commentary 更宽）。担保最大敞口 35 亿（AI 云土地/电力/外壳）+1050 亿（SB Energy）=1085 亿美元。中国段落：许可已发放但 such sales were restricted by the PRC government；1H FY27 计提 4 亿美元 H200 超额库存与采购义务减值；实际出货占当季数据中心收入不到 1%；H200 回运承担 25% 关税且无法转嫁。"
+        },
+        {
+          "house": "NVIDIA（FY2027 Q2 财报电话会，Singju Post 第三方全文转录）",
+          "title": "Transcript: Nvidia (NVDA) Q2 FY27 Earnings Conference Call",
+          "date": "2026-08-26",
+          "url": "https://singjupost.com/transcript-nvidia-nvda-q2-fy27-earnings-conference-call/",
+          "takeaway": "黄仁勋原话：自 Hopper 起「our revenue opportunity has grown from roughly $18 billion per gigawatt to $25 billion with Blackwell to $40 billion with Vera Rubin」，并列明该口径覆盖 Vera CPU、Rubin GPU、NVLink、InfiniBand、以太网与 Groq LPU —— 这是 NVIDIA 在自家平台 GW 上的自身收入机会，不是全行业系数；同时称单 GW 数据中心总造价由五年前约 300 亿升至当下约 600 亿美元。Kress：云行业 backlog 已超 2 万亿美元，前五大 hyperscaler 2026 年 capex 近 8000 亿、2027 年 1.3 万亿；毛利率 Q4 在 71–72% 见底、FY2028 回到 72–73%；供给至少到 FY2028 年底仍是瓶颈；网络业务收入环比 +18%。"
+        },
+        {
+          "house": "Broadcom（投资者关系，经 PR Newswire 发布）",
+          "title": "Broadcom Inc. Announces Second Quarter Fiscal Year 2026 Financial Results and Quarterly Dividend",
+          "date": "2026-06-03",
+          "url": "https://www.prnewswire.com/news-releases/broadcom-inc-announces-second-quarter-fiscal-year-2026-financial-results-and-quarterly-dividend-302790698.html",
+          "takeaway": "FY26Q2（截至 2026-05-03）总营收 221.87 亿美元、同比 +48%；AI 半导体收入 108 亿、同比 +143%，Hock Tan 归因于「custom AI accelerators and AI networking」双轮；FY26Q3 指引总营收约 294 亿（同比 +84%）、AI 半导体 160 亿（同比超 200%）；调整后 EBITDA 152.44 亿占收入 69%；经营现金流 104.93 亿减资本开支 2.31 亿，自由现金流 102.62 亿、占收入 46%。给出 ASIC 路线的独立量表与「轻资产高转化」这一层的真实比率。"
+        },
+        {
+          "house": "TSMC（台积电，SEC Form 6-K 附件 EX-99.1）",
+          "title": "TSMC Reports Second Quarter EPS of NT$27.25",
+          "date": "2026-07-16",
+          "url": "https://www.sec.gov/Archives/edgar/data/0001046179/000104617926000451/a2q26e_withguidancexfinal.htm",
+          "takeaway": "2026Q2 营收 402.0 亿美元、同比 +33.7%、环比 +12.0%；毛利率 67.7%、营业利润率 60.3%、净利率 55.6%；晶圆收入中 2nm 占 3%、3nm 30%、5nm 33%、7nm 11%，≤7nm 先进制程合计 77%；2026Q3 指引营收 446–458 亿美元、毛利率 65–67%。给出 GPU 与 ASIC 两条路线共同上游的量价基准。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "AI Server Shipments Forecast Raised to Nearly 31% YoY in 2026 as 90% Surge in CSP CapEx Fuels Infrastructure Expansion",
+          "date": "2026-08-03",
+          "url": "https://www.trendforce.com/presscenter/news/20260803-13161.html",
+          "takeaway": "2026 年 AI 服务器出货预测由同比 +28% 上修至近 +31%；全球前九大 CSP 2026 年合计 capex 超 8867 亿美元、同比约 +90%（北美 hyperscaler 约占其中九成，中国四家同比超 +80%），2027 年约 1.3 万亿、同比近 +50%。给出传导链第 1 环的钱袋规模与修订方向。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "TSMC CoWoS Supply-Demand Gap Reportedly Seen Narrowing from 20% to 10% by End-2026 as Capacity Expands",
+          "date": "2026-06-15",
+          "url": "https://www.trendforce.com/news/2026/06/15/news-tsmc-cowos-supply-demand-gap-reportedly-seen-narrowing-from-20-to-10-by-end-2026-as-capacity-expands/",
+          "takeaway": "2026 年 TSMC CoWoS 月产能 12–14 万片，OSAT 伙伴另加 5–6 万片新增产能（原文未指名任何 OSAT，也无份额拆分），全行业接近 20 万片/月；供需缺口由约 20% 收敛到年底约 10%；TSMC 计划 2027 年再扩 60% 以上，2022–2027 年 CAGR 超 80%。给出第一道物理闸门的刻度。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "Tight DRAM Supply Gives Suppliers Greater Pricing Power in HBM, with HBM Contract Prices Expected to Surge Multiples Higher in 2027",
+          "date": "2026-06-02",
+          "url": "https://www.trendforce.com/presscenter/news/20260602-13074.html",
+          "takeaway": "2026 年 HBM 需求增长主要由 AI ASIC 的容量升级驱动，单颗 AI 芯片 HBM 容量由 96GB/192GB 升至 216GB/288GB（2027 年 Rubin Ultra 达 384GB）；HBM 占三大厂 DRAM 晶圆投片比重在 2025/2026/2027 年底约为 18%/22%/30%，占 DRAM bit 供给约 8%/9%/13%；2027 年 HBM 合约价预期成倍上行。给出第二道闸门与成本端的刻度。"
+        },
+        {
+          "house": "Counterpoint Research",
+          "title": "AI Server Compute ASIC Shipments to Triple by 2027 as Custom Silicon Enters Hyper-Growth Phase",
+          "date": "2026-01-26",
+          "url": "https://counterpointresearch.com/en/insights/AI-Server-Compute-ASIC-Shipments-to-Triple-by-2027",
+          "takeaway": "前十大玩家的 AI Server Compute ASIC 出货 2024→2027 翻三倍；2028 年跨过 1500 万颗并超过数据中心 GPU 出货；2024–2028 年前十大 AI hyperscaler 累计部署超 4000 万颗；2027 年 Google 占终端份额约 52%，设计伙伴中 Broadcom 约 60%、Marvell 约 8%，并点名 Broadcom、Marvell、Alchip、MediaTek 为主要设计伙伴（支撑 2454.TW 与 3661.TW 的入选理由）。属 2026-01 发布的预测口径，引用时须留意后续修订。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "peer_signal",
+          "why": "同行龙头，它的财报同时是本行的需求表、供给表与风险表：③「各路线套各自美元/GW」的系数（Hopper 180→Blackwell 250→Vera Rubin 400 亿美元/GW）只有它自报；⑤「闸门定量、HBM 定价」直接读它的数据中心收入、毛利率指引与归因；它的「Supply and capacity」承诺余额把 ④「CoWoS × 单颗 HBM 容量」这道闸门的松紧翻译成可审计的美元。",
+          "pull": [
+            "最新一季数据中心收入、环比/同比，及 Hyperscale / ACIE 两行拆分与当季有无重分类脚注（press_releases 财报稿与 CFO Commentary；sec_filings 取 10-Q 链接后用 web_search 核 Note 13）",
+            "下季总收入指引、毛利率实际值与毛利率指引及管理层归因（内存价格还是需求）（press_releases 财报稿 Outlook 段）",
+            "「Supply and capacity」承诺余额及按财年拆分、担保最大敞口（sec_filings 10-Q 索引 → Note 10；press_releases CFO Commentary 的 Future commitments 表）",
+            "应收账款 DSO、库存与自由现金流/收入比（financials 季度资产负债表与现金流量表、hone_latest_quarter）",
+            "财报日期、一致预期与目标价共识；财报后带日期的评级/目标价动作（earnings_outlook；analyst_actions）",
+            "电话会里对「供给瓶颈持续到何时」「新平台 full production」的原话（transcript 先取可用日期再按 year/quarter 取正文，正文受限时改 press_releases 与带绝对日期的 web_search）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC（3 月）更新每 GW 系数与路线图",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；10-Q「Supply and capacity」承诺 $119B→$279B。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "TSM",
+          "name": "台积电（美股 ADR）",
+          "relation": "supply_gate",
+          "why": "GPU 与 ASIC 两条路线唯一共同的上游，④「两线共撞同一闸门：CoWoS 12–14 万片/月」的月产能与扩产节奏由它的 capex 分配决定，超出闸门的需求不进本行当期收入；它的月度营收是全链最高频的一手读数，比任何设计公司的季报早两到三个月。",
+          "pull": [
+            "最新月度营收与同比/环比（press_releases 月营收公告；news 补）",
+            "季度营收、毛利率、≤7nm 先进制程占晶圆收入比重与下季营收/毛利率指引（press_releases 6-K 业绩稿；financials 核季度毛利率）",
+            "全年 capex 指引区间与其中「先进封装、测试、光罩及其他」的分配比例（transcript 法说会按 year/quarter 取正文；sec_filings 6-K 索引；二手转述的区间不采用）",
+            "capex 实际发生额（financials 季度现金流量表购置 PP&E）",
+            "法说会后评级与目标价动作（analyst_actions）"
+          ],
+          "cadence": "月度营收（每月 10 日前后）；季度法说会（1/4/7/10 月中）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "MU",
+          "name": "美光科技",
+          "relation": "supply_gate",
+          "why": "三大 HBM 厂里唯一的美股，④ 闸门的另一半「单颗 HBM 容量 96/192→216/288GB」与 ⑤「HBM 定价」的供给侧读数：它的 HBM 是否售罄、HBM 占 DRAM 投片比、capex 与新增投片，决定 GPU 与 ASIC 两条路线明年各能拿到多少内存，也决定英伟达毛利率见底的时点。",
+          "pull": [
+            "HBM 收入、HBM 产能是否已售罄/签订全年合约、HBM4 出货进度与份额目标（press_releases 财报稿；transcript）",
+            "非 GAAP 毛利率与下季指引、DRAM bit 供给增速表述（press_releases；financials hone_latest_quarter）",
+            "本财年 capex 指引与下财年方向、capex 实际发生额（press_releases；financials 季度现金流量表）",
+            "长约（SCA/LTA）覆盖率与最低合约收入（press_releases；sec_filings 10-Q/10-K 索引）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月下旬；财年 8 月底结束）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "MSFT",
+          "name": "微软",
+          "relation": "capex_source",
+          "why": "①「钱袋：前九大 CSP capex」里单家最大的 NVIDIA 平台买家（Azure + OpenAI），其 capex 指引、「需求持续超过可用供给」这句话在不在、商业 RPO 剔除 OpenAI 后的增速，决定 ②「先分 GW 再换算」时流向 GPU 路线的盘子；口径变动（折旧年限、融资租赁转经营租赁）必须一起读，否则会把会计变更读成需求变化。",
+          "pull": [
+            "下一季度/财年 capex 指引及口径（是否含融资租赁、折旧年限是否变更）（transcript 按 year/quarter 取 CFO 展望段，正文受限时改 press_releases 与带绝对日期的 web_search）",
+            "capex 实际发生额与环比（financials 季度现金流量表购置 PP&E）",
+            "Azure 增速、商业 RPO 总额及剔除 OpenAI 后的增速、RPO 加权久期（press_releases 财报稿；sec_filings 10-Q/10-K 索引）",
+            "「需求超过供给」/「供给约束」表述是否仍在（transcript；press_releases）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "存储",
+      "parent": "ai-datacenter",
+      "one_liner": "HBM、标准 DRAM、企业级 NAND 与近线 HDD：模型参数与 KV cache 的物理落点。",
+      "aliases": [
+        "存储",
+        "内存",
+        "HBM",
+        "DRAM",
+        "NAND",
+        "闪存",
+        "颗粒",
+        "固态硬盘",
+        "SSD",
+        "硬盘",
+        "HDD"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "①英伟达FY27Q2数据中心$890亿、+117%→②单卡HBM从96/192GB抬到216/288GB→③2027年HBM bit供给+50~60%仍不足→④挤占DRAM晶圆：25/26/27年底HBM占三大厂投片18%/22%/30%，只换回全行业8%/9%/13%的bit，倍率2.25×→2.44×→2.31×（先高后落）→⑤标准DRAM缺口：CY2026行业bit仅增low-to-mid 20%、RDIMM+15~20%→⑥3Q26 server DRAM合约价+13~18%QoQ→⑦美光FY26Q3非GAAP毛利率84.9%→⑧买方验证：英伟达毛利率实际75.0%→指引74.0%。NAND/HDD支线：eSSD占NAND bit 26%→48%；2026年HDD容量需求约2,017EB（含AI增量363EB、18%）；希捷近线按build-to-order排到CY2028。",
+        "key_variables": [
+          {
+            "name": "晶圆换算倍率 = HBM 占三大厂 DRAM 投片比例（%）÷ HBM 占 DRAM 总 bit 供给比例（%）",
+            "why": "整条链的枢纽。TrendForce 口径：2025/2026/2027 年底投片 18%/22%/30%，bit 供给 8%/9%/13%，相除得 2.25×/2.44×/2.31×。序列不是单调上行，而是 2026 年冲高、2027 年回落——回落正是 HBM4 世代 TSV/工艺改善叠加买方降规格（12-Hi→8-Hi）的量化指纹，比「一路走高」更有信息量，因为它给出了拐点位置。结论不变：22% 投片只换 9% bit 的惩罚依然巨大，HBM 与标准 DRAM 只能做零和分配。口径提醒：分子是三大厂口径、分母按 TrendForce 写法是全行业口径（含长鑫等），相除得到的是量级而非精确倍率。",
+            "where": "TrendForce 季度 HBM/DRAM 产业报告与新闻稿（2026-06-02 稿给出这一对数）"
+          },
+          {
+            "name": "单 GPU/ASIC 的 HBM 容量（GB）与堆叠层数（Hi）",
+            "why": "第 ② 环的乘数，也是整条链上唯一由买方单方面可调的变量。2026 年主流 AI 芯片单颗 HBM 已从 96/192GB 抬到 216/288GB；同一代内，层数决定「单卡容量」与「总出货卡数」的取舍——砍一档层数（12-Hi→8-Hi）就等比例砍掉 HBM bit 需求，同时把晶圆还给标准 DRAM，价和量两端一起被压。",
+            "where": "英伟达平台发布规格 + TrendForce 供应链跟踪（2026-08-04 稿已报道 Rubin Ultra 的下调评估）"
+          },
+          {
+            "name": "server DRAM 合约价 QoQ（%）与长约截流比例",
+            "why": "第 ⑥ 环，价格落到损益表的直接读数，但「市场涨了多少」和「这一行实际收到多少」之间隔着一层截流：3Q26 server DRAM 合约价 +13~18% QoQ，同时多家美国 CSP 已签多年 LTA 限制供应商对其涨价；HBM 又是年度定价，季度涨幅无法及时反映，TrendForce 因此判断 HBM 合约价的倍数级上调要落在 2027 年。跟价格必须同时跟这层截流，否则会高估当期弹性。",
+            "where": "TrendForce 月度价格页与季度新闻稿"
+          },
+          {
+            "name": "行业 DRAM bit 出货增速与 server RDIMM bit 供给增速（% YoY）",
+            "why": "第 ⑤ 环的供给侧。CY2026 行业 DRAM bit 出货只增 low-to-mid 20%、RDIMM bit 供给只增 15~20%——供给增速低于需求增速的那个差额才是价格上行的空间，差额收敛就是周期见顶。这一环比需求侧任何指标都更接近拐点。",
+            "where": "美光季度电话会（口径最完整）+ TrendForce 季度新闻稿"
+          },
+          {
+            "name": "长约覆盖率（占 bit 的 % 或最低合约收入 $）",
+            "why": "把「周期收入」与「合约收入」分开的关键变量，直接决定该给哪一族倍数。已核实口径：美光 16 份战略客户协议覆盖约 20% 的 DRAM 量与 1/3 的 NAND 量，其中 14 份的累计最低合约收入约 $1,000 亿（$1,000 亿对应的是 16 份里的 14 份，不是全部 16 份）；闪迪 NBM 长约在 FY2027 覆盖约 50% 的 bit、FY2028 约 2/3；希捷近线 EB 按 build-to-order 排到 CY2028。覆盖率越高，该给的倍数族越靠近合约制造而非周期股。",
+            "where": "各公司季度财报与投资者日材料；Counterpoint 对闪迪投资者日的拆解"
+          },
+          {
+            "name": "企业级 SSD 占全球 NAND bit 出货比例（%）",
+            "why": "NAND 支线的结构环。从 2025Q2 的 26% 升到 2026Q2 的 48%，一年翻倍——这是 NAND 从消费周期切到 AI 基建周期的单一最强指标，决定纯 NAND 标的该不该脱离消费电子的估值框架。它同时是判断 SK 海力士 Solidigm 这块被 DRAM 价格稀释掉的敞口值多少钱的尺。",
+            "where": "Counterpoint 季度 NAND/存储追踪"
+          }
+        ],
+        "multiple_anchor": "分三层锚，不要用单一倍数。①周期锚 = P/B，且只用于内存厂（MU / 000660.KS / 005930.KS / SNDK）：账面净值主体是 fab 与设备，不随合约价暴涨暴跌，是周期两端唯一可比的尺。两条必须写明的边界：一是 HDD 两家（STX/WDC）不适用——长期大额回购会把股东权益压到极小甚至为负，账面净值不再是有效分母，这一支一律走 EV/EBITDA 与 FCF 收益率，不要在结尾又用 P/B 给它打周期折价；二是在超额盈利期看 P/B 分位必须同时看账面净值的同比增速，留存收益迅速做大分母会把分位自动压低，这与「峰值盈利上的低 P/E」是同一个机制，P/B 并不天然免疫。②盈利锚 = 中周期 EPS × 中周期 P/E，绝不是当期 EPS：美光 FY26Q3 非 GAAP 毛利率 84.9%、FY26Q4 指引约 86%（两者口径均为非 GAAP 毛利率），是价格周期顶部的读数，用它算出的静态倍数在数学上一定「便宜」。跨公司比较利润率时务必对齐口径——毛利率与营业利润率不可并列比大小，只能各自与自身历史比。③合约锚，这一轮新增、也是最该做的功课：把收入拆成「有长约覆盖」与「暴露在现货」两块，前者现金流可预测性接近合约制造，可以给 EV/EBITDA；后者按上述 P/B 规则打周期折价。可核实的覆盖率：美光 16 份 SCA 覆盖约 20% DRAM 量与 1/3 NAND 量、其中 14 份的累计最低合约收入约 $1,000 亿；闪迪 NBM 在 FY2027 覆盖约 50% bit、FY2028 约 2/3；希捷近线 EB 按 build-to-order 排到 CY2028。覆盖率越高，越有资格从 P/B 迁移到 EV/EBITDA。子行业再分：HDD 是双寡头且明确不扩单位产能、只靠单碟密度增长，现金流形态最接近基础设施；纯 NAND（SNDK）无 DRAM 对冲、价格弹性最大，只在长约覆盖率抬上去之后逐步让渡给 EV/EBITDA。不要用重置成本或 NAV（先进制程 fab 的重置成本与当期 EV 严重脱节，且制程代际切换会让旧产能的 bit 成本竞争力归零，给不出有效下限），也不要用 EV/S（同一片晶圆在 HBM 与标准 DRAM 之间切换会让收入结构在一年内翻倍变化，S 不是稳定分母）。",
+        "anti_pattern": "①不要把峰值盈利上的低倍数当便宜——这是这一行最贵的一课。美光 FY26Q3 非 GAAP 毛利率 84.9%、下季指引约 86%，在这种盈利上算出的静态 P/E 天然很低；周期股在盈利顶部倍数被压缩，恰恰是市场在给均值回归打折，低倍数是陷阱不是折价。②不要把 HBM 当成可以「加总」的独立增量业务：HBM 与标准 DRAM 共用同一批晶圆，2026 年底 HBM 吃掉约 22% 的投片只换回约 9% 的 bit、2027 年是 30% 换 13%，给 HBM 单独估一块再加到标准 DRAM 上是双重计算；正确做法是在晶圆口径下做零和分配，再算综合 ASP。③不要用「AI 很火所以存储好」跳过供给端：这一轮由供给约束定价，拐点信号在三家的 capex 与新增投片，不在需求增速；需求侧也不能只看量——2026Q3 起英伟达已把 Rubin Ultra 从 12-Hi HBM4e 往 8-Hi 评估，客户会用降规格对冲涨价，这也正是晶圆换算倍率在 2027 年从 2.44× 回落到 2.31× 的原因之一。④不要把先升后降的倍率读成单调上行：拐点本身才是信息，把它抹平会同时高估 2027 年的标准 DRAM 缺口和 HBM 的晶圆占用。",
+        "multiple_anchor_short": "三锚：周期锚 P/B 只用于内存厂，HDD 两家因回购压低净值走 EV/EBITDA 与 FCF 收益率；盈利锚用中周期 EPS×中周期 P/E，不用当期；长约覆盖率越高越可迁到 EV/EBITDA。不用 EV/S。",
+        "anti_pattern_short": "不要把峰值盈利上的低倍数当便宜：美光非 GAAP 毛利率 84.9%、下季指引约 86%，这种盈利算出的静态 P/E 天然低，那是市场在给均值回归打折，不是折价。"
+      },
+      "core_watch": [
+        {
+          "what": "英伟达财报的毛利率与毛利率指引（而不是数据中心收入）",
+          "why": "这一行确实吃英伟达财报，但吃的字段和光通信/新云不同：那两行看数据中心收入这条量的曲线，存储要看毛利率这条价的曲线。内存是英伟达 BOM 里当前最难靠设计替代的大项——FY27Q2 数据中心收入 $890 亿、同比 +117% 创新高，同期毛利率实际为 75.0%，而 FY27Q3 指引降到 74.0% ±50bp。量在创新高、毛利率却在退，这就是「价格从买方转移到卖方」最干净的第三方读数。反过来它也是风险信号：当英伟达改用降 HBM 规格而不是接受涨价来应对时，需求侧乘数会被人为压缩。",
+          "cadence": "季度财报（英伟达通常在 2/5/8/11 月）"
+        },
+        {
+          "what": "HBM 占三大厂 DRAM 投片比例 与 HBM 占 DRAM 总 bit 供给比例这一对数，以及两者相除的晶圆换算倍率",
+          "why": "2025/2026/2027 年底 18%/22%/30% 的投片只换回 8%/9%/13% 的 bit，倍率 2.25×→2.44×→2.31×：先冲高、后回落。要盯的正是这个拐点——2027 年回落说明 HBM4 世代的 TSV/工艺改善叠加买方降规格开始减轻单位 bit 的晶圆消耗；若回落被证伪（倍率继续走高），标准 DRAM 的缺口比当前假设还要深，价格上行的持续时间要往后延。口径提醒：分子是三大厂口径、分母是全行业口径，相除只给量级，不要拿去做精确外推。",
+          "cadence": "TrendForce 季度产业报告与不定期新闻稿"
+        },
+        {
+          "what": "下一代加速器平台的 HBM 配置决定：单卡容量与堆叠层数",
+          "why": "需求侧乘数直接写在这里。2026 年主流 AI 芯片单颗 HBM 已从 96/192GB 抬到 216/288GB；而 TrendForce 2026-08-04 报道，从 2026Q3 起英伟达把 Rubin Ultra 的方案从 12-Hi HBM4e 扩大评估到 8-Hi HBM4e、12-Hi HBM4、8-Hi HBM4（I/O 速率相应从 14~16 Gbps 退到 11~12 Gbps）。同一代内，砍一档层数就等比例砍掉 HBM bit 需求、同时把晶圆还给标准 DRAM，价和量两端一起打击——这也是上一条倍率在 2027 年回落的需求侧解释。",
+          "cadence": "GTC / 平台发布 + 供应链跟踪（不定期）"
+        },
+        {
+          "what": "三大厂的 capex 与新增投片、新 fab 节点",
+          "why": "这一轮价格由供给约束定价（CY2026 行业 DRAM bit 出货仅增 low-to-mid 20%），所以周期见顶的第一个可观测信号在供给侧而不在需求侧。美光 FY2026 capex 约 $270 亿、单季已到约 $100 亿，并称 FY2027 逐季更高。capex 拐点领先价格拐点：一旦新增投片开出来，第 ⑤⑥ 环立刻反向。",
+          "cadence": "季度财报 + 各公司投资者日"
+        },
+        {
+          "what": "近线 HDD 的 EB 出货、HAMR 渗透率与订单可见度年限",
+          "why": "HDD 的定价权来自「不扩单位产能」这一结构性选择，而不是短期紧缺。希捷 FY26Q4 近线 195 EB（+43% YoY）、总出货 218 EB（+34%）、约 90% 进数据中心，非 GAAP 毛利率 52.7% 且连续 13 个季度扩张，近线 EB 已按 build-to-order 排到 CY2028，FY2027 capex 只占收入 4~6%，目标 2027 年 6 月 HAMR 占近线 EB 70%；WDC 同期总出货 231 EB（+22%）、非 GAAP 毛利率 54.4%。顺带一个自洽性校验：两家单季合计 449 EB、年化约 1,800 EB，再加铠侠/东芝一档，与 2026 年约 2,017 EB 的行业容量需求口径对得上——这比单引一个预测数更能撑住 HDD 支线。",
+          "cadence": "季度财报（希捷财年 Q4 在 7 月，WDC 财年 Q4 在 8 月）"
+        },
+        {
+          "what": "中国供给的份额爬升",
+          "why": "这是这一轮「供给纪律」叙事最容易被打破的地方。Counterpoint 追踪显示长江存储的 NAND 份额在连续五个季度里从 8% 升到 13%，同期闪迪稳在 12~13%——低端 bit 的替代已经在真实发生。一旦替代从消费级外溢到企业级，第 ⑤⑥ 环的供给缺口会被填掉，整条链的价格弹性会先于需求走弱。",
+          "cadence": "Counterpoint 季度份额追踪"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "MU",
+          "name": "美光科技（Micron Technology）",
+          "role": "三大厂中唯一的美国公司，也是这一行里唯一同时吃 HBM 与企业级 SSD 两条 AI 曲线的美股标的：FY26Q3 收入 $414.6 亿、非 GAAP 毛利率 84.9%（FY26Q4 指引约 86%），Cloud Memory 事业部 $137.7 亿；数据中心 SSD 单季收入超 $50 亿且环比翻倍，HBM4 累计出货已超 $10 亿。与另两家的区别是它把长约当估值锚在讲——16 份战略客户协议覆盖约 20% 的 DRAM 量与 1/3 的 NAND 量，其中 14 份的累计最低合约收入约 $1,000 亿（$1,000 亿对应的是 16 份里的 14 份，不是全部 16 份）；同时明确把 HBM 份额控制在接近自身 DRAM 份额，以保留非 HBM 的供给弹性。"
+        },
+        {
+          "symbol": "SNDK",
+          "name": "闪迪（SanDisk）",
+          "role": "从西部数据分拆出来的纯 NAND 标的，没有 DRAM 对冲，是对 NAND 价格弹性最直接的敞口。与其他 NAND 厂的差别在于它把周期管理写进了商业模式：新商业模式（NBM）长约在 FY2027 覆盖约 50% 的 bit、FY2028 约 2/3（8 家客户、4 年以上 LTA），并给出 FY2028–FY2030 稳态模型（收入增速 mid-to-high teens、非 GAAP 毛利率约 80%、营业利润率约 75%、调整后 FCF 利润率约 50%）；NAND 份额连续五个季度稳在 12~13%，同期长江存储从 8% 升到 13%。它同时是观察 eSSD 结构切换（占全球 NAND bit 出货 26%→48%）能否被长约锁定的最佳窗口。"
+        },
+        {
+          "symbol": "STX",
+          "name": "希捷科技（Seagate Technology）",
+          "role": "近线 HDD 双寡头中 HAMR 领先的一家：FY26Q4 近线出货 195 EB（+43% YoY）、总出货 218 EB（+34%）、约 90% 进数据中心，非 GAAP 毛利率 52.7% 且已连续 13 个季度扩张。与西部数据的关键差别是供给纪律的结构性程度：近线 EB 已按 build-to-order 分配到 CY2028、FY2027 capex 只占收入的 4~6%，明确选择不扩单位产能、只靠单碟密度增长，并给出 2027 年 6 月 HAMR 占近线 EB 70% 的目标——这让它的现金流形态比内存厂更接近基础设施，也是它该走 EV/EBITDA 而不是 P/B 的原因。"
+        },
+        {
+          "symbol": "WDC",
+          "name": "西部数据（Western Digital）",
+          "role": "剥离 NAND 之后的纯 HDD 敞口：FY26Q4 收入 $37.5 亿（+44% YoY）、总出货 231 EB（+22%）、非 GAAP 毛利率 54.4%、非 GAAP EPS $3.56，云占收入约九成；FY27Q1 指引收入 $41 亿 ±$1 亿、毛利率 55~56%。与希捷的差别在技术路线的时间差：它靠 40TB ePMR 顶住（目标 FY27Q3 占近线 EB 一半以上），44TB HAMR 要到 CY2027 上半年、50TB 到 CY2027 下半年，比希捷晚一个身位——市场在 FY26Q4 财报后正是按这个差距重定价的。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "TrendForce",
+          "title": "Tight DRAM Supply Gives Suppliers Greater Pricing Power in HBM, with HBM Contract Prices Expected to Surge Multiples Higher in 2027",
+          "date": "2026-06-02",
+          "url": "https://www.trendforce.com/presscenter/news/20260602-13074.html",
+          "takeaway": "本行传导链最关键的一对数：HBM 占三大厂 DRAM 投片比例 2025/2026/2027 年底约 18%/22%/30%，而 HBM 只占 DRAM 总 bit 供给的 8%/9%/13%。相除得晶圆换算倍率 2.25×/2.44×/2.31×——2026 年冲高、2027 年回落（注意分子为三大厂口径、分母为全行业口径，相除只给量级）。另给出单芯片 HBM 容量口径（2026 年 AI 芯片从 96/192GB 抬到 216/288GB，2027 年 Rubin Ultra 原定 384GB）与「HBM 合约价 2027 年倍数级上调」的判断。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "DRAM Supply to Remain Tight in 2027, Prompting NVIDIA to Lower HBM Configurations for Rubin Ultra",
+          "date": "2026-08-04",
+          "url": "https://www.trendforce.com/presscenter/news/20260804-13166.html",
+          "takeaway": "买方降规格这一环的直接证据，也是 2027 年晶圆换算倍率回落的需求侧解释：2026Q3 起英伟达把 Rubin Ultra 从 12-Hi HBM4e 扩大评估到 8-Hi HBM4e、12-Hi HBM4、8-Hi HBM4（I/O 速率相应从 14~16 Gbps 退到 11~12 Gbps）；并给出 2027 年 HBM bit 出货 +50~60% YoY 仍不足以匹配需求的口径。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "Long-Term Agreements Cap Price Increases; Server DRAM Contract Prices Expected to Rise 13-18% QoQ in 3Q26",
+          "date": "2026-07-09",
+          "url": "https://www.trendforce.com/presscenter/news/20260709-13140.html",
+          "takeaway": "价格与供给两个口径一次给全：server DRAM 合约价 3Q26 +13~18% QoQ；RDIMM bit 供给全年只增 15~20% YoY；多家美国 CSP 已签多年 LTA，限制供应商对其涨价——这是把「市场涨价」折算成「这一行实际收到多少」的截流层。"
+        },
+        {
+          "house": "美光科技（Micron，公司 IR）",
+          "title": "Micron Technology, Inc. Reports Record Results for the Third Quarter of Fiscal 2026",
+          "date": "2026-06-24",
+          "url": "https://investors.micron.com/news/press-release/2026/Micron-Technology-Inc--Reports-Record-Results-for-the-Third-Quarter-of-Fiscal-2026/default.aspx",
+          "takeaway": "价格落到损益表的最强读数：FY26Q3 收入 $414.6 亿（上季 $238.6 亿、去年同期 $93.0 亿），非 GAAP 毛利率 84.9%、非 GAAP EPS $25.11，Cloud Memory 事业部 $137.7 亿、Core Data Center $115.2 亿，净 capex $71 亿；FY26Q4 指引收入 $500 亿 ±$10 亿、毛利率约 86%。84.9%/约 86% 均为非 GAAP 毛利率口径，是 anti_pattern 第一条「峰值盈利上的低倍数」的基准。"
+        },
+        {
+          "house": "美光科技（Micron，FY26Q3 电话会转录，Investing.com）",
+          "title": "Earnings call transcript: Micron tops Q3 2026 estimates",
+          "date": "2026-06-24",
+          "url": "https://www.investing.com/news/transcripts/earnings-call-transcript-micron-tops-q3-2026-estimates-shares-jump-131-93CH-4759237",
+          "takeaway": "供给与长约的核心口径：行业 DRAM bit 出货 CY2026 增速 low-to-mid 20%；16 份战略客户协议覆盖约 20% 的 DRAM 量与 1/3 的 NAND 量，其中 14 份的累计最低合约收入约 $1,000 亿（$1,000 亿对应 16 份里的 14 份，不是全部 16 份，也不是 HBM TAM）；数据中心 SSD 单季收入超 $50 亿、环比翻倍；HBM4 累计出货超 $10 亿；FY2026 capex 约 $270 亿（Q4 约 $100 亿）；并称有意把 HBM 份额贴近自身 DRAM 份额。"
+        },
+        {
+          "house": "Counterpoint Research（Neil Shah）",
+          "title": "SanDisk Investor Day: Caching Out the NAND Cycle with Contracts",
+          "date": "2026-08-14",
+          "url": "https://counterpointresearch.com/en/insights/sandisk-investor-day-caching-out-the-nand-cycle-with-contracts",
+          "takeaway": "NAND 支线的结构切换与长约锁定：企业级 SSD 占全球 NAND bit 出货从 2025Q2 的 26% 升至 2026Q2 的 48%；闪迪 NBM 长约在 FY2027 覆盖约 50% 的 bit、FY2028 约 2/3（8 家客户、4 年以上 LTA）；闪迪 NAND 份额连续五季稳在 12~13%，同期长江存储从 8% 升至 13%（供给纪律叙事的破口）；FY2028–FY2030 稳态模型为非 GAAP 毛利率约 80%、营业利润率约 75%、调整后 FCF 利润率约 50%。"
+        },
+        {
+          "house": "希捷科技（Seagate FY26Q4 财报幻灯片，Investing.com 纪要）",
+          "title": "Seagate Q4 FY26 slides: record margins, data center surge",
+          "date": "2026-07-28",
+          "url": "https://www.investing.com/news/company-news/seagate-q4-fy26-slides-record-margins-data-center-surge-93CH-4818304",
+          "takeaway": "HDD 支线的量、毛利率与可见度：FY26Q4 近线出货 195 EB（+43% YoY）、总出货 218 EB（+34% YoY）、约 90% 进数据中心；非 GAAP 毛利率 52.7%（环比 +570bp、同比 +1,480bp，连续第 13 个季度扩张）；近线 EB 已基本按 build-to-order 分配到 CY2028；FY2027 capex 维持在收入的 4~6%；目标 2027 年 6 月 HAMR 占近线 EB 的 70%。这一条也是 HDD 总量交叉校验的一半。"
+        },
+        {
+          "house": "西部数据（Western Digital FY26Q4 财报幻灯片，Investing.com 纪要）",
+          "title": "Western Digital Q4FY26 slides: margins soar but shares tumble 16%",
+          "date": "2026-08-05",
+          "url": "https://www.investing.com/news/company-news/western-digital-q4fy26-slides-margins-soar-but-shares-tumble-16-93CH-4839596",
+          "takeaway": "FY26Q4 收入 $37.5 亿（+44% YoY）、非 GAAP 毛利率 54.4%（+1,310bp YoY）、非 GAAP EPS $3.56、总出货 231 EB（+22% YoY）、云占收入约 89~90%；FY27Q1 指引收入 $41 亿 ±$1 亿、毛利率 55~56%；产品路线图为 40TB ePMR 目标 FY27Q3 占近线 EB 一半以上、44TB HAMR 在 CY2027 上半年、50TB 在 CY2027 下半年。两点口径提醒：该纪要中「近线 EB」单项疑似被误记为约 22 EB（与总出货 231 EB 及 +22% 同比冲突），本记录只使用总出货口径；且全文无 UltraSMR 相关表述，任何 UltraSMR 占比目标都不能挂到这一条。"
+        },
+        {
+          "house": "英伟达（NVIDIA 公司 Newsroom）",
+          "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+          "date": "2026-08-26",
+          "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+          "takeaway": "买方侧的量与价一起给出：FY27Q2 收入 $962 亿（环比 +18%、同比 +106%），数据中心收入 $890 亿（同比 +117%），GAAP 与非 GAAP 毛利率均为 75.0%（实际值）；FY27Q3 指引收入 $1,080 亿 ±2%、毛利率 74.0% ±50bp（指引值）。75.0% 是实际、74.0% 是指引，两者口径不同，不可混写。"
+        },
+        {
+          "house": "Coughlin Associates（经 Forbes 发表，作者 Thomas Coughlin）",
+          "title": "How Has AI Changed Hard Disk Drive Storage Demand?",
+          "date": "2026-05-30",
+          "url": "https://www.forbes.com/sites/tomcoughlin/2026/05/30/how-has-ai-changed-hard-disk-drive-storage-demand/",
+          "takeaway": "HDD 支线的 AI 增量口径（按原文表述还原）：2026 年不含 AI 建设的存储容量需求约 1,654 EB，AI 建设另带来约 363 EB 的增量，AI 增量占总量约 18%——即总量约 2,017 EB，1,654 EB 是不含 AI 的基线而不是总量。另给出 2028 年 AI 占比升至 43%、2030 年 58%；2025–2030 年平均单盘容量提升约 2.7 倍，而 2030 年单位出货量只比 2025 年高 13%——增长来自密度不是台数。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "demand_source",
+          "why": "链条第 ① 环的量与第 ⑧ 环的价都在它身上：②「单卡 HBM 从 96/192GB 抬到 216/288GB」与堆叠层数是整条链上唯一由买方单方面可调的变量（Rubin Ultra 由 12-Hi 往 8-Hi 评估就是降规格对冲涨价）；⑧「买方验证：英伟达毛利率实际 75.0%→指引 74.0%」是「价格从买方转移到卖方」最干净的第三方读数；「Supply and capacity」承诺（10-Q 写 primarily memory）是它用资产负债表提前锁走内存产能的证据。",
+          "pull": [
+            "毛利率实际值、下季毛利率指引与归因（是否点名内存价格）、见底时点的表述（press_releases 财报稿 Outlook 段；transcript）",
+            "数据中心收入与下季总收入指引（press_releases 财报稿）",
+            "「Supply and capacity」承诺余额及措辞（procurement of memory）、库存与采购义务变化（sec_filings 10-Q 索引 → web_search 核 Note 10；financials 季度资产负债表存货）",
+            "下一代平台的 HBM 容量与堆叠层数决定（press_releases 产品/GTC 稿；news 供应链报道）",
+            "财报后评级/目标价动作里对内存成本的归因（analyst_actions）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC（3 月）与平台发布更新 HBM 规格",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；10-Q「Supply and capacity」承诺（措辞 primarily memory）$119B→$279B，即用资产负债表提前锁内存产能。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "MU",
+          "name": "美光科技",
+          "relation": "peer_signal",
+          "why": "三大厂中唯一的美股，本行景气的最早一手读数：⑦「美光非 GAAP 毛利率」是价格落到损益表的直接读数；⑤「标准 DRAM 缺口：行业 bit 仅增 low-to-mid 20%、RDIMM +15~20%」的供给侧口径它的电话会最完整；capex 与新增投片是周期见顶的第一个可观测信号，capex 拐点领先价格拐点。",
+          "pull": [
+            "非 GAAP 毛利率与下季指引、Cloud Memory 事业部与数据中心 SSD 收入（press_releases 财报稿；financials 核季度毛利率）",
+            "行业 DRAM bit 出货增速与 RDIMM 供给增速的管理层口径、HBM 售罄状态与份额目标（transcript 按 year/quarter；press_releases）",
+            "本财年 capex 指引、下财年逐季方向与新 fab 节点（press_releases；financials 季度现金流量表）",
+            "长约覆盖率（SCA 覆盖 DRAM/NAND 量的比例、最低合约收入）（press_releases；sec_filings 10-Q/10-K 索引）",
+            "财报日期与一致预期，财报后评级/目标价动作（earnings_outlook；analyst_actions）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月下旬；财年 8 月底结束）",
+          "latest": "FY26Q3（2026 年 6 月下旬发布）：非 GAAP 毛利率 84.9%，下季指引约 86%；HBM 售罄。",
+          "latest_as_of": "2026-06"
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "relation": "capex_source",
+          "why": "⑥「3Q26 server DRAM 合约价 +13~18% QoQ」的买方验证与截流方：它把合并 capex 由约 2,000 亿上修到 2,200 亿并归因于内存涨价，是 CSP 侧承认「美元≠算力、内存占 capex 比重抬升」的一手证据；同时美系 CSP 的多年期 LTA 决定本行「市场涨了多少」与「实际收到多少」之间那层截流。",
+          "pull": [
+            "capex 指引与上修归因（内存涨价 vs 容量需求）（transcript 按 year/quarter 取 CFO 段与问答；press_releases 8-K 财报稿）",
+            "capex 实际发生额与环比（financials 季度现金流量表购置 PP&E）",
+            "10-Q 采购承诺/长期合同附注是否新增内存类承诺（sec_filings 10-Q 索引 → web_search 核附注）",
+            "AWS 收入增速与分部经营利润（press_releases 财报稿）"
+          ],
+          "cadence": "季度财报（1–2/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "AMD",
+          "name": "超微半导体",
+          "relation": "demand_source",
+          "why": "② 那一环的第二个买方决定者：唯一具规模的第二商用 GPU 供应商，每代加速器的单卡 HBM 容量与堆叠层数同样写进产品规格；它在紧张的 HBM 与 CoWoS 产能里实际分到多少，是 ③「2027 年 HBM bit 供给 +50~60% 仍不足」在英伟达之外的分配读数。",
+          "pull": [
+            "数据中心分部收入与下季指引、数据中心 GPU 出货与 Helios 机架上量表述（press_releases 财报稿；transcript）",
+            "新平台发布稿里的单卡 HBM 容量（GB）与 HBM 世代（press_releases；news）",
+            "毛利率与库存变化（financials 季度损益表与资产负债表）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月上旬）；Advancing AI（6 月）与新品发布更新 HBM 配置",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "optical",
+      "name": "光通信",
+      "parent": "ai-datacenter",
+      "one_liner": "把 GPU 连起来的那一层：光模块、光器件、DSP、AEC 有源电缆与 CPO。",
+      "aliases": [
+        "光通信",
+        "光模块",
+        "光器件",
+        "光芯片",
+        "AEC",
+        "有源电缆",
+        "CPO",
+        "硅光",
+        "交换机",
+        "网络"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "英伟达数据中心收入（FY27Q2 890 亿美元 +117%）→ 每 GW AI 工厂收入机会（Hopper 180→Blackwell 250→Rubin 400 亿美元/GW）折成装机 GW；再到 GPU 台数与光口数缺公开系数（每 GPU 功率、层数×超额订阅比），只能给区间 → 拓扑锚只有 NVL72：1 GPU:1 NIC/800G、每柜 72 个 OSFP 口、机内走约 5,000 根铜缆 → 端口标尺：800G 三年累计超 2000 万端口、1.6T 1–2 年破 500 万端口 → 撞上 InP/200G EML 天花板（需求超供给 30%）→ 顶住 ASP 与毛利率（旭创 26H1 毛利率 46.59%、+6.63pct）。支路只抬长期倍数：scale-up 换光后单柜网络价值量 31.5 万→940 万美元（GB300 NVL72→Rubin Ultra，高盛口径）。",
+        "key_variables": [
+          {
+            "name": "英伟达数据中心收入与下季指引，以及「networking 环比增速 − 数据中心环比增速」的差值",
+            "why": "第一环定全球新增装机总量，是本行所有下游量的分母；但真正的判据是差值——光的 attach rate 是否抬升。FY27 Q2 两者同为环比 +18%，差值为 0，即当季网络对算力的占比并未抬升；这与 Spectrum-X 同比 2.6 倍不是一回事，后者是以太网对 InfiniBand 的结构替换，不代表总量 attach rate 上升",
+            "where": "NVIDIA 季度新闻稿（数据中心收入与环比）＋财报电话会转述（networking 环比、Spectrum-X）"
+          },
+          {
+            "name": "每 GW「AI 工厂」收入机会（十亿美元/GW）与 NVL72 的拓扑系数",
+            "why": "第二环把收入折成装机 GW，并反映网络在整机价值里的占比抬升（Hopper 18 → Blackwell 25 → Vera Rubin 40）。再往下折到 GPU 台数与光口数需要每 GPU 功率与网络层数×超额订阅比，这两个系数没有公开口径，因此只能做区间；可核实的拓扑锚只有 NVL72 的 1 GPU:1 NIC、72 个 OSFP 口、机内走铜",
+            "where": "英伟达财报电话会（每 GW 口径）；SemiAnalysis 的 NVL72 硬件拆解（成文于 2024-03，结论在 GB300 上仍成立，Vera Rubin 无等效公开拆解）"
+          },
+          {
+            "name": "800G / 1.6T 交换端口出货量（百万端口）",
+            "why": "第三环，唯一能校准自下而上模型的外部标尺，也是识别口径失真的尺子：任何「模块只数」口径都必须能被「端口数 × 链路两端」还原回来，还原不上就不能用来支撑 ASP 判断",
+            "where": "Dell'Oro 数据中心交换机（含 AI 后端网络）季度报告与其公开预测文章"
+          },
+          {
+            "name": "InP 衬底与 200G EML 的交期、价格与扩产进度",
+            "why": "第四环的物理闸门，决定谁能拿到料、以及缺货溢价何时结束。当前两个可核实读数：需求超供给约 30%（LightCounting）、InP 缺口已超 DRAM/NAND（TrendForce）；扩产进度看六英寸 InP 产线（Coherent 季度 InP 激光器产出同比 +80%，六英寸片产出约为三英寸的 4 倍、单位成本约一半）",
+            "where": "LightCounting / TrendForce 的供需跟踪；Coherent、Lumentum 财报里的六英寸 InP 产线进度"
+          },
+          {
+            "name": "模块厂毛利率（%）与其同比变动（pct）",
+            "why": "第五环，缺口是否真的转成利润只能从毛利率读出来；量的增长通常已被 price in，超预期只能来自单价与产品结构（中际旭创 26H1 毛利率 46.59%、同比 +6.63pct）",
+            "where": "中际旭创、新易盛的半年报与季报；Coherent、Lumentum、Fabrinet、AAOI 的季度财报"
+          },
+          {
+            "name": "CPO 渗透率与 scale-up 光化的实际节奏",
+            "why": "决定终局与长期倍数，也是本行分歧最大的一个数：TrendForce 口径 CPO 占 AI 数据中心光模块 2026 年约 0.5%、2030 年约 35%；高盛口径 CPO 到 2028 年已占 AI 网络支出约 59%。两个口径分母不同（出货只数 vs 支出金额），但选哪个直接决定可插拔模块厂该给折价还是溢价",
+            "where": "TrendForce 的 CPO 渗透率跟踪；Dell'Oro 的 CPO 出货口径；各家财报里的 CPO 首笔收入时点（Coherent 指向 12 月季度）"
+          },
+          {
+            "name": "经营现金流、存货与应收账款",
+            "why": "链条末端的质量检验：本行的高增长要靠提前备料与垫资换取，收入增速与现金流背离时估值必须打折（中际旭创 26H1 营收 +182.49%，同期经营现金流同比 -44.08%、存货 198.3 亿元、应收 150 亿元）",
+            "where": "各公司季报／半年报的现金流量表与资产负债表"
+          }
+        ],
+        "multiple_anchor": "这一行不能用一族倍数覆盖，必须按价值链位置分四层锚：（1）模块厂与代工（中际旭创、新易盛、Fabrinet、AAOI）本质是制造＋组装，客户极度集中、上游卡料、代际份额会重洗，用 P/E 但要锚在「周期位置」而不是当期 EPS——判据是订单能见度（Coherent 口径：FY2027 已订满、客户订单排到 2028 日历年）与毛利率方向，而不是收入增速；（2）垂直一体化的器件／激光器厂（Coherent、Lumentum）握有 InP/EML 自有产能，本质是产能资产，用 EV/EBITDA 更稳，并可用新增六英寸 InP 产线的重置成本对产能价值做交叉验证（Coherent 口径：六英寸片产出约为三英寸的 4 倍、单位成本约一半）；（3）芯片侧（Credo 的 AEC 与 SerDes、Marvell 的光 DSP、源杰的激光芯片）是 IP ＋高毛利、无重资产，用 EV/S 或 P/E，锚在 attach rate 与代际份额而不是当期收入；（4）Corning、Ciena 是混合体，绝不能整体套光通信倍数，必须做分部估值——Corning 的光通信只是其核心销售的一部分；Ciena 做的是数据中心之间的相干光系统，收入里数据中心互联与电信运营商周期并存，而公司披露只到大客户集中度这一层、并未给出云厂收入占比口径，任何按「云厂占比」做的分部拆分都是推测而非披露。行业级的长期锚目前只有一个可引用口径：高盛给的 2028 年约 1540 亿美元 AI 网络 TAM（经二手转述，研报原文未取得）；它只配用来给长期倍数设上限，不配用来支撑任何一年的 EPS。",
+        "anti_pattern": "不要把「缺货」当成结构性毛利、给制造环节永续高倍数：这轮缺货溢价有明确终点，而终点时间本身就是分歧——LightCounting 认为瓶颈在 2026 年底前缓解，TrendForce 认为 InP 失衡要延续到 2027 年之后，一年以上的差距应当写成估值模型里的显式假设，而不是默认「缺口一直在」。不要用 TAM 除以公司数来估值：每一代的赢家会重洗，1.6T 的赢家不等于 800G 的赢家，硅光与 CPO 对 EML 的 BOM 替代会整体换掉成本结构。不要用 CPO 的长期故事一刀切地砍或抬当期模块厂，但更不要只引一方定调——TrendForce 口径 CPO 占 AI 数据中心光模块 2026 年约 0.5%、2030 年约 35%（慢），高盛口径 CPO 到 2028 年占 AI 网络支出约 910 亿美元、约 59%（快）；两者分母不同（出货只数 vs 支出金额）不能直接相减，但对可插拔模块厂的含义相反，只能当成显式分歧项而不是已定结论。最后不要只看营收增速不看现金流：中际旭创 26H1 营收 +182.49% 的同时经营现金流同比 -44.08%、存货升至 198.3 亿元、应收升至 150 亿元，这部分必须从估值里扣掉。",
+        "multiple_anchor_short": "分四层锚：模块厂用 P/E 但锚在订单能见度与毛利率方向，不是当期 EPS；自有 InP 产能的器件厂用 EV/EBITDA 加重置成本；芯片侧用 EV/S 锚 attach rate；康宁与 Ciena 必须分部估值。",
+        "anti_pattern_short": "不要把缺货溢价当结构性毛利、给制造环节永续高倍数：终点时间本身就是分歧（LightCounting 说 2026 年底缓解、TrendForce 说 InP 失衡延到 2027 年之后），要写成显式假设。"
+      },
+      "core_watch": [
+        {
+          "what": "英伟达财报——三个字段：数据中心收入与下季指引；「networking 环比增速 − 数据中心环比增速」的差值；新架构（Blackwell Ultra / Vera Rubin）在数据中心收入中的占比",
+          "why": "这是本行最重要的单一事件，但传导方向明确、系数不明确：收入只能可靠地折到装机 GW，再往下到 GPU 台数与光口数缺每 GPU 功率与网络层数×超额订阅比两个公开口径，因此只能做区间而非点估计。第二个字段是最容易读错的地方——FY27 Q2 数据中心环比 +18%、networking 环比也是 +18%，差值为 0，说明当季光对算力的 attach rate 并未抬升，与「光口价值量占比在抬升」的长期论点要分开看；同期 Spectrum-X 同比 2.6 倍是以太网对 InfiniBand 的结构替换，不等于总量 attach rate 上升。第三个字段决定的不是量而是单机柜价值量的台阶：每 GW 收入机会从 Hopper 约 180 亿到 Blackwell 250 亿再到 Vera Rubin 400 亿美元",
+          "cadence": "季度财报（FY27 Q2 于 2026-08-26 发布），叠加每年 3 月的 GTC 架构与路线图更新"
+        },
+        {
+          "what": "InP 衬底与 200G EML 的交期、价格与扩产进度",
+          "why": "2026 年本行的真实约束在供给不在需求：LightCounting 称当前需求超供给约 30%、瓶颈明确指向 InP EML 与激光器芯片；TrendForce 称 InP 供需缺口已超过 DRAM/NAND。谁能拿到料决定谁能兑现订单，扩产节奏决定缺货溢价何时结束——而两家对结束时点的判断相差一年以上（LightCounting 说 2026 年底前缓解，TrendForce 说延续到 2027 年之后），这个差异本身就是要盯的东西",
+          "cadence": "月度（供应链跟踪）＋季度（Coherent、Lumentum 财报里的六英寸 InP 产线进度）"
+        },
+        {
+          "what": "1.6T 端口出货量及其对 800G 的替代节奏",
+          "why": "1.6T 是当前 ASP 与毛利率的主要来源。可用的外部标尺是端口而不是「只数」：800G 三年累计已远超 2000 万端口，1.6T 2026 年首次规模出货、预计 1–2 年内破 500 万端口。任何公司口径的模块只数都要先用「端口数 × 链路两端」还原一遍再采信；缺口收窄的那一刻就是本行毛利率见顶的那一刻",
+          "cadence": "季度（Dell'Oro 季度报告，以及各模块厂季报中的速率结构披露）"
+        },
+        {
+          "what": "CPO 与 scale-up 光化的实际落地节奏，特别是博通交换 ASIC／CPO 平台的出货口径",
+          "why": "决定本行长期倍数是扩张还是收缩，也是本篇最大的未验证风险。当前两个坐标互相打架：TrendForce 口径 CPO 占 AI 数据中心光模块 2026 年约 0.5%、2030 年约 35%；高盛口径 CPO 到 2028 年占 AI 网络支出约 59%。最近的可验证节点是 Coherent 称 CPO 首笔收入落在 12 月季度、Dell'Oro 称 CPO 2026 年在 InfiniBand 与以太网交换机上首次上量。而 CPO 路线上最直接的替代威胁是博通，本记录未取到其可核实的 2026 年 CPO 出货口径——这一格必须靠后续披露补上",
+          "cadence": "每年 3 月的 OFC 与 GTC，叠加季度财报里的 CPO 收入口径"
+        },
+        {
+          "what": "北美四家超大规模云厂的季度资本开支及其指引",
+          "why": "英伟达财报是本行的直接驱动，云厂资本开支是它的二阶验证与前瞻——两者背离时通常意味着订单在渠道里堆积或提前拉货。媒体汇总口径下四家 2026 年二季度合计资本开支约 1649 亿美元、同比 +86%（该数为媒体加总而非逐家 10-Q 还原，只作方向参考）",
+          "cadence": "季度财报（每季末后 3–5 周集中披露）"
+        },
+        {
+          "what": "模块厂的毛利率、经营现金流、存货与应收账款",
+          "why": "本行会出现「收入暴涨但现金没回来」的典型形态：中际旭创 26H1 营收同比 +182.49%、毛利率 46.59%（+6.63pct），但经营现金流同比 -44.08%、存货 198.3 亿元、应收 150 亿元。毛利率告诉你缺口是否转成了利润，现金流与存货告诉你这份利润的质量与备料风险",
+          "cadence": "季报／半年报"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "COHR",
+          "name": "Coherent Corp.",
+          "role": "本行唯一同时握有 InP 衬底、EML 激光器与模块产能的垂直一体化玩家，所以它的六英寸 InP 扩产进度本身就是全行业的供给上限（季度 InP 激光器产出同比 +80%，六英寸片产出约为三英寸的 4 倍、单位成本约一半）；订单能见度也最长（FY2027 已订满、客户订单排到 2028 日历年），并已给出 CPO 首笔收入时点（12 月季度）"
+        },
+        {
+          "symbol": "LITE",
+          "name": "Lumentum Holdings",
+          "role": "激光器／光源、云模块（1.6T）与 OCS 光电路交换三线并行，不是「只做光源不做模块」；它与 Coherent 的真正差异在自有 InP/EML 产能规模，以及 CPO 用超高功率激光器上的位置，因此弹性同时来自模块只数与激光器单价两条线"
+        },
+        {
+          "symbol": "FN",
+          "name": "Fabrinet",
+          "role": "光模块的合约制造商，不承担产品定义与定价，赚制造费而非产品溢价；正因如此，它的数据中心收入占比与产能利用率是全行业实际出货量最中立的读数，可用来交叉检验模块厂的自述口径"
+        },
+        {
+          "symbol": "CRDO",
+          "name": "Credo Technology Group",
+          "role": "不是光模块厂，而是「铜的那一半」：AEC 有源电缆在机柜内替代光连接，另有面向光与铜的 retimer/SerDes；它与光模块厂之间此消彼长又互补（机内走铜、机间走光），是判断铜光边界往哪移的最直接读数"
+        },
+        {
+          "symbol": "AAOI",
+          "name": "Applied Optoelectronics",
+          "role": "美股模块厂里体量最小、弹性最大的一家，同时还背着 CATV 业务；800G 刚开始起量、毛利率明显低于头部，属于本行的高 beta 边际产能——景气向上时增速最猛，缺口收敛时也最先被挤出"
+        },
+        {
+          "symbol": "MRVL",
+          "name": "Marvell Technology",
+          "role": "光 DSP 的主要供应商，3nm 的 Ara 1.6T 平台已量产出货并在 2026 年扩出整条产品线；DSP 是模块 BOM 里价值量最高的芯片之一，它的代际份额直接决定模块厂的成本结构与功耗指标"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "Broadcom Inc.",
+          "role": "交换 ASIC 与自研 CPO 平台的主要供应商：交换芯片的端口速率代际决定光模块的速率代际，所以它既是需求的上游节拍器，也是 CPO 路线上对可插拔模块最直接的替代威胁。本记录未取到其可核实的 2026 年 CPO 出货口径，因此这里只给结构性角色——它同时也是本行最大的未验证变量"
+        },
+        {
+          "symbol": "ANET",
+          "name": "Arista Networks",
+          "role": "以太网交换整机的主要供应商，AI 后端网络的端口出货直接对应光模块需求；它与 InfiniBand 的份额之争决定光口长在以太网生态还是英伟达生态上，是「端口标尺」这一环的整机侧读数"
+        },
+        {
+          "symbol": "GLW",
+          "name": "Corning Incorporated",
+          "role": "卖的是光纤与高密度连接件而非有源模块，跟随 AI 数据中心的「布线密度」而不是端口速率代际；且光通信只占其核心销售的一部分，必须做分部估值，不能整体套光模块倍数"
+        },
+        {
+          "symbol": "CIEN",
+          "name": "Ciena Corporation",
+          "role": "做的不是数据中心内部的模块，而是数据中心之间（DCI／scale-across）的相干光系统与自研 WaveLogic 芯片；受益逻辑是 AI 集群因供电限制被迫跨楼跨园区分布，而不是单集群规模变大。其收入里仍有相当比重跟随电信运营商周期，而公司披露只到大客户集中度这一层、未给出云厂收入占比，所以任何按「云厂占比」拆的分部估值都属推测"
+        }
+      ],
+      "sources": [
+        {
+          "house": "NVIDIA（公司 IR）",
+          "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+          "date": "2026-08-26",
+          "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+          "takeaway": "传导链起点：总营收 962 亿美元（同比 +106%）、数据中心 890 亿美元（同比 +117%、环比 +18%）、Q3 指引约 1080 亿美元 ±2%。新闻稿仅披露 Data Center 与 Edge Computing（72 亿美元）两档，未拆分 Hyperscale/ACIE、也未单列 networking 金额；attach rate 判据的分母（数据中心环比 +18%）出自这里"
+        },
+        {
+          "house": "SDxCentral（转述英伟达财报电话会）",
+          "title": "Nvidia claims 'fastest-growing' networking title as Spectrum-X sales soar",
+          "date": "2026-08-27",
+          "url": "https://www.sdxcentral.com/news/nvidia-claims-fastest-growing-networking-title-as-spectrum-x-sales-soar/",
+          "takeaway": "电话会口径：networking 收入环比 +18%、Spectrum-X 以太网同比 2.6 倍；每 GW AI 工厂收入机会 Hopper 约 180 亿 → Blackwell 250 亿 → Vera Rubin 400 亿美元；Hyperscale 490 亿、ACIE 400 亿（相加恰为数据中心 890 亿）。关键对照：networking 环比与数据中心环比同为 +18%，即当季 attach rate 未抬升"
+        },
+        {
+          "house": "SemiAnalysis",
+          "title": "Nvidia's Optical Boogeyman – NVL72, Infiniband Scale Out, 800G & 1.6T Ramp",
+          "date": "2024-03-25",
+          "url": "https://newsletter.semianalysis.com/p/nvidias-optical-boogeyman-nvl72-infiniband",
+          "takeaway": "把 GPU 数换算成光口数的原子事实：NVL72 的 scale-out 后端网络是 1 颗 GPU 配 1 张 NIC（400G/800G）、整机柜 72 个 OSFP 口；机内 NVLink 用约 5,000 根铜缆（约 2 英里）而非光模块，若改用光仅收发器就多耗约 20 千瓦。该拆解成文于 2024 年 3 月，结论在 GB300 上仍成立，Vera Rubin 无等效公开拆解"
+        },
+        {
+          "house": "Dell'Oro Group（Sameh Boujelbene）",
+          "title": "Data Center Networking in 2025–2026: Milestones and Opportunities Amid Supply Risk",
+          "date": "2025-12-17",
+          "url": "https://www.delloro.com/2026-predictions-data-center-switch-frontend-ai-backed-networks/",
+          "takeaway": "本行唯一的外部端口标尺：800G 三年内累计已远超 2000 万端口（400G 用了六到七年才到同一里程碑）；1.6T 交换机 2026 年首次规模出货、预计 1–2 年内破 500 万端口；CPO 2026 年在 InfiniBand 与以太网交换机上首次上量；主要风险是供给而非需求"
+        },
+        {
+          "house": "LightCounting",
+          "title": "Demand for optical connectivity continues to surprise（April 2026 Market Forecast）",
+          "date": "2026-04",
+          "url": "https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379",
+          "takeaway": "以太网光模块销售 2024 年 +93%、2025 年 +82%、2026 年预计 +65%；当前需求超过供给约 30%，瓶颈明确指向 InP EML 与激光器芯片产能，并预计在 2026 年底前缓解——这个「缓解时点」与 TrendForce 的「延续到 2027 年之后」相差一年以上，是估值里必须显式写出的假设"
+        },
+        {
+          "house": "TrendForce",
+          "title": "InP Shortage Emerges as AI Optical Interconnect Bottleneck",
+          "date": "2026-08-06",
+          "url": "https://www.trendforce.com/news/2026/08/06/news-inp-shortage-emerges-as-ai-optical-interconnect-bottleneck/",
+          "takeaway": "InP 的供需缺口已超过 DRAM 与 NAND，失衡预计延续到 2027 年之后；中国占全球精炼铟约 70% 并自 2025 年收紧出口管制；英伟达 2026 年 3 月向两家关键供应商各投 20 亿美元，其中一家六英寸产能已翻倍、另一家量产要到 2028 年"
+        },
+        {
+          "house": "TrendForce",
+          "title": "NVIDIA Compute Architecture Paves the Way for Scale-Up Optical Interconnects; CPO Penetration in AI Data Centers Expected to Rise Steadily",
+          "date": "2026-03-11",
+          "url": "https://www.trendforce.com/presscenter/news/20260311-12962.html",
+          "takeaway": "CPO 分歧项的「慢」侧：CPO 在 AI 数据中心光模块中的渗透率 2026 年约 0.5%、2030 年有望约 35%。另给出 scale-up 必然光化的物理依据：NVLink 6 每 lane 400G、单 GPU 带宽上限 3.6 TB/s，铜互连在峰值速率下有效距离不足 1 米"
+        },
+        {
+          "house": "Goldman Sachs（经 24/7 Wall St. 转述，研报原文未取得）",
+          "title": "Optical Networking: The Next Mega Trend in AI Infrastructure",
+          "date": "2026-07-11",
+          "url": "https://247wallst.com/investing/2026/07/11/goldman-sachs-says-optical-networking-is-ais-next-trillion-dollar-opportunity-lumentum-may-be-the-biggest-winner/",
+          "takeaway": "单机柜网络价值量从 GB300 NVL72 的约 31.5 万美元跳到 Rubin Ultra NVL576 的约 940 万美元；AI 网络 TAM 从 GB300 周期的约 150 亿美元到 2028 年约 1540 亿美元。同文另称 CPO 到 2028 年将占 AI 网络支出约 910 亿美元、约 59%，这是 CPO 分歧项的「快」侧，与 TrendForce 口径含义相反（分母不同：支出金额 vs 出货只数）。全部为二手转述"
+        },
+        {
+          "house": "Futurum Group（对 Coherent FY26 Q4 的分析）",
+          "title": "Coherent Q4 FY 2026 Earnings: 1.6T Transceivers Ramp, CPO Revenue Approaches",
+          "date": "2026-08-14",
+          "url": "https://futurumgroup.com/insights/coherent-q4-fy-2026-earnings-1-6t-transceivers-ramp-cpo-revenue-approaches/",
+          "takeaway": "数据中心与通信分部 16.2 亿美元、同比 +58.6%；季度 InP 激光器产出同比 +80%，六英寸片产出约为三英寸的 4 倍、单位成本约一半；CPO 首笔收入预计落在 12 月季度；FY2027 订单已订满、客户订单排到 2028 日历年。属二手分析，公司新闻稿原文不含分部数字"
+        },
+        {
+          "house": "新浪财经（对中际旭创 2026 年半年报的解读）",
+          "title": "中际旭创上半年营收417.78亿元，1.6T光模块供需缺口达四成，业绩还能持续吗？",
+          "date": "2026-08-22",
+          "url": "https://k.sina.com.cn/article_7879922977_1d5ae152106801ilgy.html?from=finance",
+          "takeaway": "26H1 营收 417.78 亿元（+182.49%）、归母净利 136.51 亿元（+241.7%）、毛利率 46.59%（+6.63pct）、海外收入 396.15 亿元（占比近 95%）；同期经营现金流同比 -44.08%、存货 198.3 亿元、应收 150 亿元；另汇总微软／亚马逊／Meta／谷歌 26Q2 合计资本开支约 1649 亿美元、同比 +86%（媒体加总口径）。注意：文中「1.6T 年需求约 2500 万只、有效产能约 1500 万只、缺口约四成」按每链路两端折回交换端口，是 Dell'Oro 端口标尺的 2.5 倍以上且发生在单一年份，两者无法同时成立，故本记录不采用该组数字"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "demand_source",
+          "why": "第一环「英伟达数据中心收入 → 每 GW AI 工厂收入机会折成装机 GW」定本行所有下游量的分母；NVL72 整柜与 NVLink/InfiniBand/Spectrum-X 一起交付、模块随机柜走，所以真正的判据是「networking 环比增速 − 数据中心环比增速」的差值（光的 attach rate 是否抬升）与新架构在收入中的占比（决定单机柜网络价值量的台阶）。",
+          "pull": [
+            "数据中心收入、环比与下季总收入指引（press_releases 财报稿）",
+            "networking 收入环比增速与数据中心环比增速的差值、Spectrum-X 同比（press_releases 财报稿 highlights；transcript 按 year/quarter 取正文）",
+            "每 GW 收入机会的最新口径与新架构（Blackwell Ultra / Vera Rubin）ramp 表述（transcript；press_releases GTC/财报稿）",
+            "财报后评级/目标价动作中对网络业务的表述（analyst_actions）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）；GTC 与 OFC（3 月）更新拓扑与 CPO 路线图",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "博通",
+          "relation": "supply_gate",
+          "why": "交换 ASIC 的端口速率代际决定「端口标尺：800G→1.6T」那一环起量的时点——本行哪一代模块能规模出货被它的 Tomahawk 代际卡口；同时它自研 CPO 平台的出货口径是支路「scale-up 换光」与 CPO 渗透率这个分歧项里最直接的替代威胁，决定可插拔模块厂该给折价还是溢价。",
+          "pull": [
+            "AI 半导体收入（含以太网交换）与下季指引、AI 网络在其中的占比表述（press_releases 财报稿；transcript）",
+            "新一代交换 ASIC（1.6T/3.2T 端口）与 CPO 平台的出货/客户导入公告（press_releases；news）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月上旬；FY26Q3 为 2026-09-02）；OFC（3 月）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "ANET",
+          "name": "Arista Networks",
+          "relation": "demand_source",
+          "why": "以太网交换整机的主要供应商，AI 后端网络的交换端口出货直接对应模块需求，是「端口标尺：800G 三年累计超 2000 万端口、1.6T 1–2 年破 500 万端口」这一环的整机侧读数；它与 InfiniBand 的份额之争决定光口长在以太网生态还是英伟达生态上。",
+          "pull": [
+            "季度收入与下季指引、AI 后端网络收入目标与进度（press_releases 财报稿；transcript）",
+            "云巨头客户集中度与 800G/1.6T 端口世代的表述（transcript；sec_filings 10-Q 索引）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月上旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "GOOGL",
+          "name": "Alphabet",
+          "relation": "capex_source",
+          "why": "第一环只用英伟达收入「折成装机 GW」会漏掉非英伟达路线的光口：Alphabet 是唯一自研加速器已形成对外产品收入的云厂（Google Cloud 产品收入主要来自 TPU 系统销售），它的 capex 与 TPU 系统交付是英伟达收入折不出来的那部分 GW；北美四家云厂 capex 又是本行的二阶验证与前瞻，与英伟达财报背离时通常意味着订单在渠道里堆积或提前拉货。",
+          "pull": [
+            "当季购置不动产与设备金额（capex 实际）与环比（financials 季度现金流量表；press_releases 8-K 财报稿现金流表）",
+            "Google Cloud 收入增速、分部经营利润与 backlog（press_releases 财报稿；transcript 口头给的 backlog）",
+            "capex 指引与 TPU 产能/交付表述（transcript 按 year/quarter；8-K 不含指引段）",
+            "模型 API token 吞吐绝对值（transcript；news 转述 CEO 发言）"
+          ],
+          "cadence": "季度财报（1–2/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "power",
+      "name": "电力",
+      "parent": "ai-datacenter",
+      "one_liner": "AI 数据中心的硬约束：发电、并网、配电与散热。缺的不是电，是可交付的电。",
+      "aliases": [
+        "电力",
+        "电",
+        "发电",
+        "核电",
+        "燃气轮机",
+        "电网",
+        "变压器",
+        "配电",
+        "液冷",
+        "散热",
+        "并网",
+        "容量拍卖"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "起点是落地 GW，不是英伟达收入：美国数据中心 31→41→66 GW（Goldman，25–27 年，已折上线率）→ 3,557×220 kW 机架 = 782 MW IT ≈ 1 GW 设施侧（PUE≈1.28），每 GW 470 亿美元 CAPEX、13 亿美元电费/年（Bernstein）→三腿：①并网：变压器 128 周、GSU 144 周（WoodMac）＝通电下限；②设备：GEV 燃机档期 116 GW（硬订单仅 53），西门子 69、三菱 35 GW，CCGT 交付 3.5→5 年 →燃机厂定价权；③价格：PJM 2028/29 容量价第三年顶上限 325 美元/MW-day、缺口 6,831 MW，无上限模拟 554.72 →抬未出清年容量价与长协价 → VST/CEG。机房内乘单 MW 内容值：DCPI 2026Q1 收入 120 亿、+28% → Vertiv。",
+        "key_variables": [
+          {
+            "name": "美国数据中心落地负荷 GW 路径与按期上线率（GW/年、%）",
+            "why": "这是整条链真正的输入量。不要用「英伟达数据中心收入 ÷ 470 亿美元/GW」倒推 GW：470 亿是 1 GW AI 工厂的总 CAPEX（约 320 亿机架 + 约 150 亿物理基础设施），不是英伟达的每 GW 收入份额。按那个错算法，FY27Q2 的 890 亿美元年化 3,560 亿 ÷ 470 亿 = 全球仅 7.6 GW/年，比 Goldman 口径下美国一地 2026 年的计划新增 13.6 GW 还低，方向就错了。英伟达收入只做同向验证、不做分子。GW 拿到后还要再折上线率：历史上只有约 72% 的计划投产数据中心按期上线。",
+            "where": "Goldman Sachs Research（APPA 2026-06-15 转引）：负荷 31/41/66 GW（2025/26/27，已折算）、计划新增 13.6 GW（2026）与 36.3 GW（2027）、占夏季尖峰 4.1%/5.3%/8.5%、历史按期上线率约 72%，其预测按次年约 60%、其后两年约 50% 折算。英伟达 IR 季度新闻稿（2026-08-26：FY27Q2 数据中心 890 亿美元、Q3 指引 1,080 亿美元）仅作方向验证。"
+          },
+          {
+            "name": "每 GW 换算系数与 PUE 口径（kW/机架、机架/GW、美元/GW）",
+            "why": "第 2 环的换算器，也是最容易重复计算的一环。3,557 × 220 kW = 782.5 MW，这才是临界 IT 负载；同一口径把它标为「1 GW」并按 1 GW 计电费（13 亿美元 ÷ 0.15 美元/kWh ÷ 8,760 h ≈ 989 MW），说明这个「1 GW」已经是含 PUE 的设施侧负荷（隐含 PUE≈1.28）。再乘一次 PUE 会让刚性电量、并网 MW 与容量需求整体虚高约 28%。引用前必须确认三件事：分母是 IT 还是设施侧、是收入份额还是整厂 CAPEX、机架功率是哪一代。",
+            "where": "Bernstein（Investing.com 2026-06-12 转引）：220 kW/机架、3,557 机架对应「1 GW」、约 470 亿美元/GW（约 320 亿机架 + 约 150 亿物理基础设施）、0.15 美元/kWh 下约 13 亿美元/年电费。"
+          },
+          {
+            "name": "GE Vernova 燃机 backlog + slot reservation（GW）、硬订单占比与在售交付年份",
+            "why": "设备腿的核心读数，也是判断「AI 缺电能不能被解决」的唯一硬指标。档期越薄，燃机厂定价权与交付毛利越强，同时意味着这批负荷通电更晚、反过来抬高存量机组的容量价与长协价——一个数同时决定设备商与 IPP 两条线。必须拆开看：2026Q2 的 116 GW 里硬订单只有 53 GW（46%），另 63 GW 是档期预留，两者兑现概率不同。产能才是收入天花板：20 GW/年 → 2030 年 30 GW。",
+            "where": "GEV 季报与财报电话会（2026Q2 116 GW、Q1 100 GW、2025 年末 83 GW、全年目标 125 GW，当季出货 3 GW、新签 20 GW，已在接 2031 年档期）。53/63 的拆分目前只见于 OilPrice 2026-08-22 一处二手转述，跨公司比较前应回 GEV 原始披露复核。"
+          },
+          {
+            "name": "PJM 容量拍卖出清价、无上限模拟价，与价格 collar 覆盖的交割年",
+            "why": "价格腿，也是这一行唯一定期公开、可审计的价格信号。要点是把「已锁定」和「仍是期权」分开：2026/27、2027/28、2028/29 连续三年顶到行政上限（最近两年分别 333.44 与 325 美元/MW-day），这三年的容量收入已是定数，上限日后上调也不会追溯。collar 是 PJM 与 13 个州州长及 FERC 协调后为四次拍卖设定的，前三次已用完，按此口径 2026 年 12 月的 2029/30 年度 BRA 是最后一次——期权在那里。另注意上限逐年重设，333.44 与 325 并排不是价格回落。554.72 美元/MW-day 的无上限模拟价是下一次拍卖的稀缺度先验。",
+            "where": "PJM Inside Lines BRA 结果稿（2026-07-14：325 美元/MW-day、138,318 MW UCAP、备用裕度 14.7%、缺口 6,831 MW、总费用 164 亿美元，并说明 collar 覆盖四次拍卖、下一次 BRA 为 2029/30 年度定于 12 月）；OPIS 2026-07（无上限模拟 554.72、连续第三年触顶、2026 年 9 月另有 Reliability Backstop Procurement）。"
+          },
+          {
+            "name": "IPP 的电能量对冲比例（%）与已签长协（MW × 期限 × 起送年）",
+            "why": "把价格上行折进 EBITDA 的折现器，前提是别把两种收入混成一个「电价」。VST 的对冲表原文写的是 expected generation volumes——屏蔽的是电能量价格，不含容量收入：截至 2026-08-03，2026 年约 100%、2027 年约 94%、2028 年约 72%，所以 2028 年前的电能量上涨基本与它的 EBITDA 无关。容量收入是另一条线：已出清交割年锁定，变量在下一次拍卖。长协那一侧要看 MW、期限、起送年三个字段，起送年才决定进哪一年的现金流。",
+            "where": "VST 季报与新闻稿（2026Q2 持续经营调整后 EBITDA 17.67 亿美元、2026 指引 68–76 亿、2027 机会区间 74–78 亿，以及对冲表）；CEG 2026Q2 新闻稿（新签 920 MW、15–20 年、2029–2032 起送）；Power Engineering 2026-01-09（VST–Meta 2,609 MW、20 年、2026 年底起送、2034 年全量）。"
+          },
+          {
+            "name": "大型变压器 / GSU / 高压开关设备交货期（周）、价格指数与扩产投产年份",
+            "why": "并网腿的物理下限：128 周意味着即使拿到并网许可，通电也在两年半以后——这是把「AI 需求」和「实际用电」隔开的那道闸，也是伊顿、日立能源、西门子能源电网分部的定价权来源（电力变压器价格自 2019 年 +77%）。北美已宣布近 18 亿美元扩产，但投产集中在 2027–2028，在那之前这条线不会松动，它决定 2027 年前有多少 AI 负荷是真的能通电的。",
+            "where": "Wood Mackenzie 2025Q2 采购调查（POWER Magazine 2026-01-02 转引）：电力变压器 128 周、GSU 144 周、开关设备 44 周；日立能源逾 10 亿美元、伊顿 3.4 亿、西门子能源 1.5 亿美元扩产。Wood Mackenzie 原报告本轮未取得，口径细节（是否含运输、是否分电压等级）无法确认。"
+          },
+          {
+            "name": "机架功率密度（kW/机架）与 DCPI 季度厂商收入（十亿美元、同比）",
+            "why": "机房这一环的两个乘数。Vertiv 一族的收入 = 落地 MW × 单 MW 内容值：MW 由前三条腿决定，内容值由密度与架构（直接液冷、高压直流、母线槽）决定，两个乘数必须分开跟。分项增速比总量更有信息：2026Q1 热管理近 +50%、母线槽 30% 出头，而 UPS 与 rack PDU 都只是十几个百分点（high-teens）——钱正从传统 UPS 往液冷与高密度配电迁移。",
+            "where": "Dell'Oro DCPI 季度新闻稿（2026Q1：120 亿美元、同比 +28%、连续第 5 个季度超 20%）。密度口径「约 15 kW/机架 vs AI 服务器所需 60–120 kW」出自 Dell'Oro 2025-02-05 新闻稿，距今约 18 个月，与 2026Q1 的收入数并列使用时须标明时点差。"
+          }
+        ],
+        "multiple_anchor": "这一行不能用一族倍数，按现金流形态拆三层，锚各不相同。①【设备与交付层：GEV、西门子能源、Vertiv、伊顿】锚在「未来 2–3 年可交付订单 × 交付毛利」，不在当期收入。GEV 的可核锚是 116 GW 里硬订单只占 46%（53 GW）叠加产能爬坡（20 GW/年 → 2030 年 30 GW）——收入天花板是产能不是需求；Vertiv 的锚是行业分母与自身增速的差（DCPI 2026Q1 +28%；公司 FY26 指引 138–142 亿美元收入、调整后 EPS 6.65–6.75 美元、2026Q2 调整后经营利润率 22.6%，见其 2026-07-29 新闻稿）。这一层正确的心理是「倍数不动、EPS 靠订单交付兑现」。当前与历史的 EV/EBITDA、P/E 区间本轮未核验，要用请去公司 IR 与卖方一致预期取，不要凭印象填。②【存量发电层：VST、CEG、TLN、NRG】EV/EBITDA + FCF yield，并叠一个重置成本锚：新建 CCGT 的 EPC 单位造价（美元/kW）加上燃机档期溢价（联合循环交付期已从 2023 年约 3.5 年拉到约 5 年、个别重型机组 7 年），给存量机组一个价值下限——这是本轮存量核电与燃气机组重估的物理基础，而不是情绪。注意：这个美元/kW 本轮没有可核来源，不要凭印象填，取数路径是 EIA 的发电技术建设成本报告与公开 EPC 报价。周期锚是容量价，且必须区分已出清（2026/27–2028/29 已锁定，直接进模型）与未出清（2029/30 起才是期权，用 554.72 美元/MW-day 的无上限模拟价做稀缺度先验）；折现锚是电能量对冲比例。③【早期与未盈利层：Bloom、SMR 类】只能用订单簿折现或 EV/已合同化 backlog，绝不能用 EV/S 硬套：Bloom 与 Oracle 的 MSA 上限 2.8 GW、已合同化 1.2 GW，上限是已合同化的约 2.3 倍。BWXT 是这一层的例外，有海军核推进的确定性现金流托底，可按 P/E 定价，但其 backlog 与分部增速本轮只见于二手转述，引用前须回公司原始文件核对。",
+        "anti_pattern": "不要把「AI 缺电」当成一个能套在所有电力股上的 beta。五个具体错法：（1）把电能量价格与容量价格混成一个「电价」——VST 的 100%/94%/72% 是对 expected generation volumes 的对冲，只屏蔽电能量，不含容量收入；反过来，「上限一旦上调就是纯利润」只对尚未出清的交割年成立，2026/27–2028/29 三年已按出清价锁定、不会追溯。（2）把公用事业负荷预测、互联队列 MW 与 slot reservation 相加当成需求——三者高度重叠，同一项目可在多家公用事业、多个 ISO 重复申报（幽灵负荷）；Goldman 口径下历史按期上线率仅约 72%，其预测已按次年约 60%、其后两年约 50% 折算，所以 31/41/66 GW 是折算后的数，再把 13.6/36.3 GW 的计划新增加上去就是重复计。（3）把 MSA / LOI / slot reservation 的上限 GW 直接当订单或收入——Bloom 的 2.8 GW 里已合同化 1.2 GW，GEV 的 116 GW 里硬订单 53 GW，用上限数估值会系统性高估一倍以上。（4）把「档期紧」一律读成利好——同一条事实在三类公司里符号相反：对燃机厂是定价权，对存量机组是替代成本抬升，对数据中心开发商与买电方是成本上升与项目延期，混在一起做行业 beta 必然错。（5）套错模型——不要用 EV/S 给燃料电池与 SMR 定价（收入确认与产能爬坡不同步），也不要把受管制公用事业的费率基数（rate base）模型套到 IPP：IPP 没有受管制回报，是电价与容量价的裸多头，应按周期资产而非永续增长资产定价。",
+        "multiple_anchor_short": "按现金流形态分三层：设备交付层锚在未来 2–3 年可交付订单×交付毛利，天花板是产能不是需求；存量发电层 EV/EBITDA＋FCF 收益率，叠新建 CCGT 重置成本；早期未盈利层只能用已合同化 backlog 折现。",
+        "anti_pattern_short": "不要把 MSA、LOI 与 slot reservation 的上限 GW 当订单：Bloom 的 2.8 GW 里已合同化 1.2 GW、GEV 的 116 GW 里硬订单 53 GW，用上限估值会系统性高估一倍以上。"
+      },
+      "core_watch": [
+        {
+          "what": "美国数据中心落地负荷 GW 与按期上线率折扣；英伟达财报只作同向验证",
+          "why": "这一行的输入量是 GW 不是美元。直接取 Goldman 口径的负荷路径 31/41/66 GW（2025/26/27，已按上线率折算）与未折算的计划新增 13.6/36.3 GW，并记住历史按期上线率约 72%（其预测已按次年约 60%、其后两年约 50% 折过一次，不要再叠加）。不要拿英伟达数据中心收入除以「470 亿美元/GW」倒推 GW——470 亿是整厂 CAPEX、不是英伟达的收入份额，那样算全球只有约 7.6 GW/年，比美国一地的计划新增还少。英伟达的 890 亿美元与 1,080 亿指引仍要看，但只用来确认 GW 路径的方向没变。另外电力是滞后传导：GW 增量要 12–48 个月才走完并网、设备、容量价三条腿。",
+          "cadence": "负荷预测更新为半年到年度；英伟达为季度（财季与自然季错开约一个月）"
+        },
+        {
+          "what": "GE Vernova 燃机 backlog + slot reservation、硬订单占比与在售交付年份，并用西门子能源、三菱重工交叉验证",
+          "why": "全行业交付能力的实时读数。2026Q2 116 GW（硬订单 53 + 档期预留 63），Q1 100 GW，2025 年末 83 GW，全年目标 125 GW，已在卖 2031 年档期，产能 20 GW/年 → 2030 年 30 GW，当季出货 3 GW、新签 20 GW。只看 GEV 会把份额转移误读成行业需求，所以要同时看西门子能源 69 GW 与三菱重工 35 GW（上年 23 GW），三家同向增长才是真需求；三家里只要有一家产能显著超预期，档期溢价会先在报价上松动。档期越薄，燃机厂定价权越强，同时意味着这批负荷通电更晚、存量机组的容量价与长协价更高。",
+          "cadence": "季度财报与财报电话会"
+        },
+        {
+          "what": "PJM 容量拍卖：出清价、无上限模拟价、可靠性缺口，以及价格 collar 覆盖的最后一次拍卖",
+          "why": "2028/2029 年度出清 325 美元/MW-day，采购 138,318 MW UCAP，备用裕度 14.7%（可靠性要求 20.0%），缺口 6,831 MW，连续第三年顶到行政上限。读法的关键是分清已锁定与仍有期权：三个已出清交割年（2026/27、2027/28、2028/29）的容量收入是定数，可直接进模型；collar 是 PJM 与 13 个州州长及 FERC 协调后为四次拍卖设定的，前三次已用完，按此口径 2026 年 12 月的 2029/30 年度 BRA 是最后一次，那才是期权兑现的时点。无上限模拟价 554.72 美元/MW-day（较实际高 71%）是下一次拍卖的稀缺度先验，不是当前被压制的利润。上限本身逐年重设，333.44（2027/28）与 325（2028/29）并排不能读成价格回落。2026 年 9 月另有一次 Reliability Backstop Procurement。",
+          "cadence": "BRA 现为一年一次（最近两次 2025-12、2026-07，下次 2026-12）+ 补充/备份拍卖"
+        },
+        {
+          "what": "并网腿的两个约束：变压器 / GSU / 开关设备交货期与扩产投产年份，加各 ISO 互联队列的结构变化",
+          "why": "Wood Mackenzie 2025Q2 调查：电力变压器 128 周、GSU 144 周、开关设备 44 周，电力变压器价格自 2019 年 +77%。北美已宣布近 18 亿美元扩产（日立能源逾 10 亿、伊顿 3.4 亿、西门子能源 1.5 亿美元），但投产集中在 2027–2028，在那之前这条线不会松动。队列那一侧：2025 年互联队列中燃气容量同比 +86%，而光伏、风电、储能全部下滑（RTO Insider 2026-07-07 引 LBNL）。注意原文并没有把这个增量归因给数据中心开发商，清洁能源税收政策退坡同样足以解释非燃气的下滑，而该报道的整体框架恰恰是「队列出现改善的早期迹象」——两种解释并存，要区分得看申请方身份与负荷侧协议，不要只截取对论点有利的那一句。LBNL 为年度发布、数据滞后约半年（且 OSTI 上公开的是幻灯片版），只能做年度校准，不能当季度先行指标；季度跟踪请用各 ISO/RTO 队列公开页。",
+          "cadence": "采购调查为季度；LBNL 为年度（数据截至上一年底）；ISO 队列页为月度/季度"
+        },
+        {
+          "what": "Dell'Oro 数据中心物理基础设施（DCPI）季度厂商收入与分项增速、机架功率密度",
+          "why": "Vertiv 一族的行业分母，也是把 GW 翻译成机房内部收入的那把尺。2026Q1 全球 DCPI 厂商收入 120 亿美元、同比 +28%（连续第 5 个季度超 20%），北美占比过半，服务商（超大厂、neocloud、托管商）份额创新高。结构比总量更有信息：热管理近 +50%、母线槽 30% 出头，而 UPS 与 rack PDU 均为十几个百分点（high-teens）——钱正从传统 UPS 往液冷与高密度配电迁移。密度口径（约 15 kW/机架 vs AI 服务器所需 60–120 kW）是单 MW 内容值抬升的原始变量，但它出自 2025-02 的口径，与 2026Q1 的收入数并列时要标明时点差。",
+          "cadence": "季度市场报告 + 年度长期预测"
+        },
+        {
+          "what": "把 AI 需求锁进电力公司现金流的两条路径：长协公告（MW × 期限 × 起送年 × 已合同化还是上限）与 FERC/PJM 的 co-location、表后发电规则（案卷 EL25-49）",
+          "why": "长协是唯一合同化的需求数据，也是识别虚实的地方：VST–Meta 2,609 MW / 20 年（Perry 1,268 MW、Davis-Besse 908 MW、三厂扩容 433 MW，2026 年底起送、2034 年全量）与 CEG 2026Q2 新签 920 MW / 15–20 年 / 2029–2032 起送是真数；Bloom–Oracle 的 2.8 GW 是 MSA 上限、已合同化只有 1.2 GW——看公告先找「已合同化」四个字。规则那一侧是开关变量：FERC 于 2025-12-18（案卷 EL25-49）要求 PJM 新设三类面向 co-located 负荷的输电服务（临时非固定、固定合同需量、非固定合同需量），并要求修订表后发电（BTMG）规则、建立过渡程序，PJM 有 60 天以书面听证方式提交方案。走通则 CEG/VST/TLN 的存量无碳机组拿到溢价定价权；卡住则负荷回到排队或自建，受益方转向燃机厂与往复机、燃料电池这类过桥电源。",
+          "cadence": "事件驱动（FERC 命令、PJM 合规申报与利益相关方流程）+ 季度财报的长协汇总"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "GEV",
+          "name": "GE Vernova",
+          "role": "全行业交付节奏的定价者：重型燃机的生产档期是 AI 电力落地的物理瓶颈。2026Q2 backlog+档期预留 116 GW，其中硬订单 53 GW、档期预留 63 GW，已在销售 2031 年档期，产能 20 GW/年、目标 2030 年 30 GW。与同行的差别是它同时做燃机、电网设备与核电服务，所以季度披露既是自己的业绩，也是整个行业的供给读数。"
+        },
+        {
+          "symbol": "VST",
+          "name": "Vistra",
+          "role": "存量可调度容量的最大持有者之一，核电 + 燃气组合，靠长协把 AI 负荷锁进未来现金流（与 Meta 20 年、2,609 MW，2026 年底起送）。与 CEG 的差别是商品价格敞口更大，但对发电量的对冲比例极高（2026 年约 100%、2027 年约 94%、2028 年约 72%）——注意那只对冲电能量、不含容量收入，所以电能量那一侧的期权在 2028 年之后，不在明年。"
+        },
+        {
+          "symbol": "CEG",
+          "name": "Constellation Energy",
+          "role": "美国最大的无碳发电商，卖的是「带地址、可追溯的 7×24 无碳电力」而不是度电。与 VST 的差别在于以核电为主体、并购 Calpine 后才补上燃气调峰；2026Q2 新签 920 MW 长协、期限 15–20 年、2029–2032 年起送，并且是「退役机组复活」这条路径的代表（Crane，原三哩岛 1 号，预计 2027 年重启）。"
+        },
+        {
+          "symbol": "VRT",
+          "name": "Vertiv",
+          "role": "把 GW 翻译成机房内部收入的那一段：电源链（UPS、母线槽、rack PDU、高压直流路线图）加热管理（直接液冷）一体化交付。与只做单一环节的同行相比，它能按「从机架到电网」整段供货，因此机架功率密度上升对它是量价齐升而非单纯替代。FY26 指引 138–142 亿美元收入、调整后 EPS 6.65–6.75 美元，2026Q2 调整后经营利润率 22.6%。"
+        },
+        {
+          "symbol": "ETN",
+          "name": "Eaton",
+          "role": "并网腿与机房腿之间的中低压配电层（开关柜、UPS、配电设备），已宣布南卡 3.4 亿美元变压器相关扩产、2027 年投产。与 Vertiv 的差别是数据中心业务嵌在更宽的电气与航空业务里，对 AI 的向上弹性更小，但周期性也更小、可见度更长。"
+        },
+        {
+          "symbol": "CAT",
+          "name": "Caterpillar",
+          "role": "往复式发电机组这条腿，也是「排不上并网就自己发电」里体量最大的一家：交付以月计、不占重型燃机档期、可在表后快速部署，因此是过桥电源而非终局电源（单位造价与热耗劣于联合循环）。与 Bloom 的差别是产能与装机基数大得多、技术成熟；与 GEV 的差别是它不解决基荷，只解决「先通上电」。Energy & Transportation 分部的 backlog 与产能是这条腿最直接的季度读数（本轮未核实其具体数值）。"
+        },
+        {
+          "symbol": "BE",
+          "name": "Bloom Energy",
+          "role": "绕开并网排队的最快一条腿：固体氧化物燃料电池现场发电，卖点是交付速度（曾约 55 天交付一套可运行系统，标准周期 90 天）而非度电成本。与燃机的关键差别是不占燃机档期、模块化、可在表后部署；但订单质量必须看「已合同化 GW」而非框架上限——与 Oracle 的 MSA 上限 2.8 GW，已合同化仅 1.2 GW。"
+        },
+        {
+          "symbol": "TLN",
+          "name": "Talen Energy",
+          "role": "co-location 这条路径的原始判例方：核电厂旁挂数据中心的直供模式最早在它身上撞上 FERC 监管（Susquehanna 与 AWS 的 ISA 扩容修正案 2024 年被否决），因此是 EL25-49 规则落地后弹性最直接的标的。与 CEG/VST 相比资产更集中，单笔长协对估值的边际影响更大；FERC 新规之后该项目的最新商业安排本轮未核实。"
+        },
+        {
+          "symbol": "BWXT",
+          "name": "BWX Technologies",
+          "role": "核电供应链而非核电运营商：靠海军核推进的高确定性现金流托底，商业核电（大型核部件、燃料处理、现场服务）是增量。它是「把 SMR 从 PPT 变成金属件」的那一环，因此比 SMR 开发商更早、更可验证地兑现订单。其 2026Q2 的 backlog 与分部增速本轮只见于二手转述，引用具体数字前需回公司原始文件核对。"
+        },
+        {
+          "symbol": "NRG",
+          "name": "NRG Energy",
+          "role": "德州与东部市场的零售加发电一体化 IPP。与 VST/CEG 的差别是零售业务占比更高，商品价格波动向 EBITDA 的传导被零售利差部分平滑，因此它在容量价上行周期里的向上弹性弱于纯发电 IPP，但下行保护更好。本轮未核实其 2026 年数据中心相关合同。"
+        },
+        {
+          "symbol": "PWR",
+          "name": "Quanta Services",
+          "role": "电网 EPC 与施工产能的瓶颈方：变压器和燃机之外，「谁来把线路和变电站建起来」同样限速。它的 backlog 是并网腿从拿到许可走到实际通电的执行层读数，与设备交货期一起构成通电时间的两个约束。本轮未核实其数据中心相关订单占比。"
+        },
+        {
+          "symbol": "OKLO",
+          "name": "Oklo",
+          "role": "SMR / 微堆里的代表性早期标的，商业模式是自持电厂卖电而非卖反应堆，因此现金流实现时点比 BWXT 这类设备与部件商晚得多。放在这一行是为了标注「2030 年之后」的那一段供给，估值不应与 GEV/VST 用同一族倍数。本轮未核实其订单与项目进度。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "Goldman Sachs Research（经美国公共电力协会 APPA 转引）",
+          "title": "U.S. Data Center Power Demand Expected to Climb to 41 GW in 2026: Goldman Sachs",
+          "date": "2026-06-15",
+          "url": "https://www.publicpower.org/periodical/article/us-data-center-power-demand-expected-climb-41-gw-2026-goldman-sachs",
+          "takeaway": "本记录传导链的起点与折算率：美国数据中心负荷 2025 年 31 GW → 2026 年 41 GW → 2027 年 66 GW（已按上线率折算），占夏季尖峰 4.1% → 5.3% → 8.5%；未折算的计划新增为 2024 年实际 6.4 GW、2025 年实际 8.5 GW、2026 年 13.6 GW、2027 年 36.3 GW。关键的证伪系数也在这里：历史上只有约 72% 的计划投产数据中心按期上线，作者据此假设次年约 60%、其后两年约 50% 的计划容量按期兑现。作者 Hongcen Wei、Daan Struyven、Samantha Dart。"
+        },
+        {
+          "house": "Bernstein（经 Investing.com 转引）",
+          "title": "What it costs to deploy 1GW of Nvidia Vera Rubin infrastructure?",
+          "date": "2026-06-12",
+          "url": "https://www.investing.com/news/technology-news/what-it-costs-to-deploy-1gw-of-nvidia-vera-rubin-infrastructure-4740730",
+          "takeaway": "第 2 环的换算系数与单位经济性：Vera Rubin 机架 220 kW、约 3,557 机架对应「1 GW」、总 CAPEX 约 470 亿美元/GW（约 320 亿机架 + 约 150 亿物理基础设施）、按 0.15 美元/kWh 年电费约 13 亿美元。两个必须注意的口径：3,557 × 220 kW = 782.5 MW 才是临界 IT 负载，而电费是按约 1 GW 计的（13 亿 ÷ 0.15 ÷ 8,760 h ≈ 989 MW），说明这个「1 GW」已含 PUE（隐含约 1.28），不能再乘一次；470 亿是整厂 CAPEX，不是英伟达的每 GW 收入份额。"
+        },
+        {
+          "house": "Utility Dive",
+          "title": "GE Vernova gas turbine backlog climbs to 116 GW",
+          "date": "2026-07-23",
+          "url": "https://www.utilitydive.com/news/ge-vernova-gas-turbine-backlog-climbs-to-116-gw/826039/",
+          "takeaway": "设备腿的核心数值：2026Q2 燃机 backlog+档期预留 116 GW（Q1 100 GW、2025 年末 83 GW），全年目标 125 GW；当季出货 3 GW、新签 20 GW；公司总 backlog 1,760 亿美元（上年同期 1,290 亿）；客户结构约 80% 传统公用事业、20% 数据中心运营商；已在接 2031 年档期；产能 20 GW/年 → 2030 年 30 GW。注意该文并不区分硬订单与档期预留。"
+        },
+        {
+          "house": "OilPrice.com（Michael Kern）",
+          "title": "The Gas Turbine Shortage Just Became AI's Biggest Constraint",
+          "date": "2026-08-22",
+          "url": "https://oilprice.com/Energy/Energy-General/The-Gas-Turbine-Shortage-Just-Became-AIs-Biggest-Constraint.amp.html",
+          "takeaway": "把三家燃机厂放进同一口径比较：GE Vernova 的 116 GW 中硬订单仅 53 GW、其余 63 GW 是档期预留；三菱重工大型燃机 backlog 35 GW（上年 23 GW），当期订单交付期 2028–2030；西门子能源 69 GW；联合循环电站平均交付周期从 2023 年约 3.5 年拉长到约 5 年、个别重型机组 7 年。53/63 的拆分目前是孤证，用于估值前建议回 GEV 原始披露复核。"
+        },
+        {
+          "house": "PJM Interconnection",
+          "title": "PJM Capacity Auction Procures 138,318 MW of Generation Resources（2028/2029 基础剩余容量拍卖）",
+          "date": "2026-07-14",
+          "url": "https://insidelines.pjm.com/pjm-capacity-auction-procures-138318-mw-of-generation-resources-as-work-continues-to-address-growing-electricity-demand/",
+          "takeaway": "价格腿的一手结果：2028/2029 年度出清 325 美元/MW-day（全域），采购 138,318 MW UCAP（含 FRR 共 149,182 MW），备用裕度 14.7%，较可靠性要求短缺 6,831 MW，总费用 164 亿美元。同时说明价格上下限（collar）是 PJM 与 13 个州州长及 FERC 协调后为四次容量拍卖设定的，下一次 BRA 为 2029/2030 交割年、定于 12 月举行——这是判断「上限期权」何时兑现的关键口径。"
+        },
+        {
+          "house": "OPIS（道琼斯旗下）",
+          "title": "PJM's 2028/2029 Capacity Auction Clears at Price Cap for Third Time",
+          "date": "2026-07",
+          "url": "https://www.opis.com/resources/energy-market-news-from-opis/pjms-2028-2029-capacity-auction-clears-at-price-cap-for-third-time/",
+          "takeaway": "真实稀缺度与触顶次数：若无价格上限，2028/2029 年度将出清于 554.72 美元/MW-day，比实际的 325 高 71%；这是连续第三年触顶（前一年 2027/2028 出清于其上限 333.44 美元/MW-day——上限本身逐年重设，故两个数不能当作价格趋势对比）；备用裕度 14.7% 对可靠性要求 20.0%；采购资源结构为燃气 46%、核电 20%、煤 18%、需求响应 5%；2026 年 9 月另有一次 Reliability Backstop Procurement 拍卖。"
+        },
+        {
+          "house": "POWER Magazine（引用 Wood Mackenzie 采购调查）",
+          "title": "Transformers in 2026: Shortage, Scramble, or Self-Inflicted Crisis?",
+          "date": "2026-01-02",
+          "url": "https://www.powermag.com/transformers-in-2026-shortage-scramble-or-self-inflicted-crisis/",
+          "takeaway": "并网腿的物理下限：Wood Mackenzie 2025 年二季度采购调查显示电力变压器平均交货 128 周、GSU 144 周、开关设备 44 周；2019 年以来电力变压器价格 +77%、GSU +45%、断路器 +47%（自 2021 年）；北美已宣布近 18 亿美元扩产（日立能源逾 10 亿美元，含弗吉尼亚 4.57 亿美元、2028 年投产；伊顿南卡 3.4 亿美元、2027 年；西门子能源夏洛特 1.5 亿美元、2027 年初），即这条线在 2027–2028 年之前不会松动。"
+        },
+        {
+          "house": "Vistra Corp.（PR Newswire）",
+          "title": "Vistra Reports Second Quarter 2026 Results",
+          "date": "2026-08-07",
+          "url": "https://www.prnewswire.com/news-releases/vistra-reports-second-quarter-2026-results-302845874.html",
+          "takeaway": "IPP 的对冲口径与指引：2026Q2 持续经营调整后 EBITDA 17.67 亿美元，2026 年指引 68–76 亿美元，2027 年机会区间 74–78 亿美元；截至 2026-08-03，对 expected generation volumes（预期发电量）的对冲 2026 年约 100%、2027 年约 94%、2028 年约 72%——原文口径明确是电能量对冲，不含容量收入，这是把电价上行折进 EBITDA 时最容易搞混的一处。"
+        },
+        {
+          "house": "Dell'Oro Group",
+          "title": "Data Center Physical Infrastructure Market Expands 28 Percent Y/Y in 1Q 2026",
+          "date": "2026-07-07",
+          "url": "https://www.prnewswire.com/news-releases/data-center-physical-infrastructure-market-expands-28-percent-yy-in-1q-2026-according-to-delloro-group-302815281.html",
+          "takeaway": "机房腿的行业分母：2026Q1 全球 DCPI 厂商收入 120 亿美元、同比 +28%（连续第 5 个季度超 20%）；热管理近 +50%、母线槽 30% 出头（low-thirties），而 UPS 与 rack PDU 均为十几个百分点（high-teens）；北美占比过半，服务商（超大厂、neocloud、托管商）收入份额创新高。分项结构说明钱正从传统 UPS 往液冷与高密度配电迁移。"
+        },
+        {
+          "house": "Bloom Energy",
+          "title": "Bloom Energy and Oracle Expand Strategic Partnership to Deploy up to 2.8 GW to Accelerate AI Infrastructure Build-Out",
+          "date": "2026-04-13",
+          "url": "https://investor.bloomenergy.com/press-releases/press-release-details/2026/Bloom-Energy-and-Oracle-Expand-Strategic-Partnership-to-Deploy-up-to-2-8-GW-to-Accelerate-AI-Infrastructure-Build-Out/default.aspx",
+          "takeaway": "「上限 GW ≠ 已签收入」的标准案例：主服务协议上限 2.8 GW，其中已合同化 1.2 GW（上限是已合同化的约 2.3 倍），该部分部署已经开始并延续到下一年；同时给出交付速度口径——曾在约 55 天内为 Oracle 交付一套可运行系统（标准周期 90 天）。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "capex_source",
+          "why": "本行链条「起点是落地 GW，不是英伟达收入」：数据中心收入与每 GW 收入机会只作同向验证、不做分子（用 890 亿÷「每 GW 470 亿美元 CAPEX」倒推会算出全球仅 7.6 GW/年）。本行真正要取的是它 10-Q 里以 GW 计的资本承诺——为 SB Energy PORTS 园区（约 4.25 GW IT 负载、20 年租约、另有约 3.8 GW 选择权）提供的 1,050 亿担保、AI 云 land/power/shell 担保与未起租数据中心租约：这些不是 capex 科目，却是「落地 GW」链条起点的一手件，也是每 GW CAPEX 里物理基础设施那 150 亿的需求来源。",
+          "pull": [
+            "10-Q 担保表与租约承诺：园区 GW、期限、分期生效时点与追加选择权（sec_filings 10-Q 索引 → web_search 核 Note 10；press_releases CFO Commentary 的承诺表）",
+            "数据中心收入与下季指引，仅作 GW 路径方向验证（press_releases 财报稿）",
+            "每 GW 收入机会与每 GW 功率口径的最新表述（transcript 按 year/quarter；press_releases GTC 稿）"
+          ],
+          "cadence": "季度财报与 10-Q（2/5/8/11 月下旬）；园区级担保随 8-K 与新闻稿不定期",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；10-Q 为 SB Energy PORTS 园区（约 4.25 GW IT 负载、20 年租约、另有约 3.8 GW 选择权）提供 1,050 亿美元担保。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "META",
+          "name": "Meta Platforms",
+          "relation": "demand_source",
+          "why": "「③价格 → 抬未出清年容量价与长协价 → VST/CEG」那一环的原始买方：与 Vistra 的 2,609 MW / 20 年长协（2026 年底起送、2034 年全量）是本行长协公告「MW × 期限 × 起送年」的样本；它的 capex 指引（含融资租赁本金）直接写在 8-K 新闻稿 CFO Outlook 段，是四家里最可核的「落地 GW」前瞻。",
+          "pull": [
+            "全年 capex 指引区间与口径（是否含融资租赁本金）（press_releases 8-K 财报稿 CFO Outlook 段）",
+            "capex 实际发生额与环比、自由现金流与净发债（financials 季度现金流量表；sec_filings 8-K 债券发行）",
+            "数据中心园区、长期购电/核电协议公告：MW、期限、起送年、已合同化还是上限（press_releases；news）",
+            "表外合资与数据中心融资安排（sec_filings 8-K 索引）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）；长协与园区公告不定期",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "relation": "demand_source",
+          "why": "「①并网：变压器 128 周＝通电下限」这条腿的最大绕行者与判例方：Susquehanna 核电厂旁挂 AWS 数据中心的 ISA 扩容 2024 年被 FERC 否决，EL25-49 新规落地后它是「表后/共址供电能否走通」的直接需求方；约 2,200 亿合并 capex（大部分投向 AI 与 AWS）是「落地 GW」最大的单家来源，管理层还明说 2026、2027 年都没有足够容量。",
+          "pull": [
+            "capex 指引、上修归因与「容量不足」表述（transcript 按 year/quarter；press_releases 8-K 财报稿）",
+            "capex 实际发生额与环比（financials 季度现金流量表）",
+            "核电/长期购电与共址协议公告：MW、期限、起送年（press_releases；news）",
+            "10-Q 长期合同/租约承诺附注（sec_filings 10-Q 索引 → web_search 核附注）"
+          ],
+          "cadence": "季度财报（1–2/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "ORCL",
+          "name": "甲骨文",
+          "relation": "demand_source",
+          "why": "绕开「②设备：燃机档期 → 燃机厂定价权」与并网排队那条腿的最大合同买方：与 Bloom 的 MSA 上限 2.8 GW、已合同化 1.2 GW，是「看公告先找已合同化」的原始案例；它的 capex（FY26 556.63 亿）与融资条件（FCF −236.86 亿、FY27 拟再融约 400 亿）决定它承诺的园区能不能按期通电——融资利差走阔会先反映在 capex 指引上，再传到燃机、变压器与长协。",
+          "pull": [
+            "capex 指引与 Capital Investment Program and Capital Funding 段（press_releases 8-K 财报稿）",
+            "RPO 总额与单季增量、客户预付或自带 GPU 的部分（press_releases 财报稿）",
+            "发债/发股公告与票面利率（sec_filings 8-K 索引；news）",
+            "capex 实际发生额、自由现金流（financials 季度现金流量表）",
+            "与电力/燃料电池供应商的园区协议公告：GW 上限 vs 已合同化（press_releases；news）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）；融资与园区公告不定期",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "neocloud",
+      "name": "新云",
+      "parent": "ai-datacenter",
+      "one_liner": "把 GPU 买下来按小时租出去的一层：介于云厂与模型公司之间的算力中间商。",
+      "aliases": [
+        "新云",
+        "neocloud",
+        "GPU租赁",
+        "算力租赁",
+        "算力云",
+        "AI云"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "起点：英伟达 10-Q 的 ACI&E（Q2 FY27 $40,313M）——该格混装新云/主权云/企业边缘、新云占比未披露，仅方向性上限 → 供给上限看同表供货与产能承诺 $119B→$279B；FY28 指引 +70% 系 supply constrained、未量化不受约束需求 → 落到电即上电 MW：新云装机 2025 年底约 3GW→2026 年底 8GW → 价看 ACV/MW：Nebius $20–25M、IREN >$20M/MW(IT) → 量×价沉成 RPO：CoreWeave $103.7B、41% 在头 24 个月 → 减折旧：调整后 EBITDA $1,510M − D&A $1,382M = 调整后经营利润 $128M → 其下另减净利息 $640M → 残差看预付覆盖：Nebius 50–60% capex、回本 1 年 10 个月；IREN 45–55%。",
+        "key_variables": [
+          {
+            "name": "英伟达数据中心 ACI&E（AI Clouds, Industrial, & Enterprise）分项收入（百万美元/季，及 QoQ、YoY）",
+            "why": "链条第 1 环，但它是上限与方向性代理，不是新云拿货量本身。10-Q 说这一格的增长来自 AI natives、企业与主权客户，以及使用 AI 云的超大厂；CFO 则称该分部涵盖主权云、区域性新云、企业边缘与隔离网数据中心——$40,313M 里新云只占其中一部分，占比未单独披露。所以它能回答「流向新云的整机系统金额最多不超过多少、方向是升是降」，不能回答「新云本季实际拿到了多少」。读环比前先看脚注：FY27 Q2 已发生一次客户由 ACIE 重分类到 Hyperscale 并重述往期。",
+            "where": "英伟达 10-Q：Note 13 Revenue by Market Platform 表与 MD&A 同表（Q2 FY27：Data Center $89,023M、Hyperscale $48,710M、ACIE $40,313M；QoQ 18%/13%/25%、YoY 117%/102%/138%）。电话会与 CFO Commentary 只作口径解释的补充——新闻稿本身不含这个拆分。"
+          },
+          {
+            "name": "英伟达 Supply and capacity commitments 余额（十亿美元）及按财年拆分",
+            "why": "链条第 2 环，配额的物理上限。这是英伟达替全行业提前锁定的内存与代工产能，决定 12–24 个月后市场上共有多少卡可分。它不涨，新云的 MW 指引就没有物理支撑；它一个季度从 $119B 跳到 $279B，说明未来两年供给放量，租金曲线大概率走平，新签 ACV/MW 的上行斜率要下修。同期管理层把 FY28 约 +70% 的收入增速指引称为 supply constrained outlook，并称不受约束的需求「a lot higher」——没有给出任何量化倍数，不要替它补一个。",
+            "where": "英伟达 10-Q Note 10 承诺与或有事项（截至 2026-07-26 合计 $279B：剩余 FY27 $92B、FY28 $87B、FY29 $88B、FY30 $6B、FY31 $5B、FY32 及以后 $1B；连同云服务协议 $29B、未起租数据中心租约 $25B、股权投资 $25B、资本开支 $8B，全部承诺约 $366B）"
+          },
+          {
+            "name": "英伟达为 AI 云提供的信用与资本安排：担保最大敞口、AI cloud agreements 承诺额、待转让数据中心租约、非上市股权余额",
+            "why": "决定新云能不能把配额融成机柜。贷款人最大的疑虑是 GPU 残值与租约违约，英伟达用 take-or-pay 承诺加担保替他们兜住底部现金流，直接压低融资利率、抬高可承受杠杆；10-Q 风险因素自己写明「access to capital can be particularly constrained for less-capitalized companies」。量级是这条逻辑的标尺：AI 云 land/power/shell 担保最大总敞口 $3.5B，加上 2026 年 8 月为 OpenAI（承租方）在 SB Energy 位于俄亥俄 Pike County 的 PORTS 园区约 4.25GW IT 负载、20 年期租约提供的 $105.0B 上限担保，合计 $108.5B。同一批安排也是「循环融资」质疑的证据，不能只当护城河讲。",
+            "where": "英伟达 10-Q Note 10 担保表（AI 云 land/power/shell $3.5B + SB Energy $105.0B = $108.5B，分九期递增、首期预计 FY2029、另有对追加约 3.8GW 的选择权；AI cloud agreements $36B；待转让第三方的数据中心租约 $20B、约 15 年期）与 Note 8 衍生工具；非上市股权余额 $47.9B、对基础设施融资方权益法投资 $3.3B"
+          },
+          {
+            "name": "各家口径的已上电 MW 与已签约电力 MW（必须标明按 IT 负载还是总设施负载）",
+            "why": "链条第 3 环，量。收入 = MW × ACV/MW，MW 是唯一不被会计口径修饰的物理量，但各家口径并不一致：是否包含仅签土地/电力意向的容量、按 IT 负载还是总设施负载计——CoreWeave 3.7GW、Nebius 5GW 目标、IREN 0.3GW(IT) 不能直接相加或横比。还要区分已上电（当期产生收入）与已签约（是期权，尚未变现）。",
+            "where": "各家季报与股东信（CoreWeave 已上电约 1.5GW、合同电力约 3.7GW；Nebius 年底合同电力目标 5GW、2027 年起计划每年上电 >1GW；IREN 交付目标 2026 年约 0.3GW(IT)、2027 年约 0.8GW(IT)）；行业总量用英伟达电话会口径：新云装机 2025 年底约 3GW → 2026 年底 8GW"
+          },
+          {
+            "name": "新签合同的 ACV per MW（百万美元/MW/年）与 GPU 小时租金（美元/GPU-小时）",
+            "why": "链条第 4 环，价。ACV/MW 把不同机型、电价与折扣结构统一到一个数上，台阶变化比收入增速早一到两个季度：Nebius 从 2026 基准 $12M/MW 抬到 Q2 成交 >$20M/MW（四单 landmark $20–25M/MW），并称看到 $40–50M/MW 的短期容量单价格机会且已签下第一单；IREN 近期 3 年期合同 >$20M/MW(IT)、在谈约 $25M/MW(IT)。横比前先对齐口径：IREN 明标 per MW (IT)，Nebius 未标。GPU 小时租金是它的高频代理，也是 IREN 式 ARR 的直接乘数（合同内已调试 GPU 的 GPU/小时价 × 8,760）——但 ARR 各家口径不同，Nebius 的 ARR 是当季最后一个月 AI 云收入 × 12，两者不可横比，也不能用一家的规则去反推另一家的单卡价格。",
+            "where": "Nebius 季度股东信、IREN 业绩发布（8-K EX-99.1）；SemiAnalysis GPU Price Index 做高频交叉校验"
+          },
+          {
+            "name": "RPO / backlog 总额、其确认期限分布，以及客户与应收账款集中度",
+            "why": "链条第 5 环。总额只说明签了多少，分布与对手方才决定折现结果。CoreWeave 未履约 RPO $103.7B，41% 预计在头 24 个月（至 2028-06-30）确认、39% 在第 25–48 个月、其余在第 49–78 个月，承诺合同占季度收入 98%；同时前三大客户占季度收入 36%/26%/10%，其中两家各占应收账款净额 32%，单一合同（OpenAI 承诺至 2031-05-31 最高约 $6.5B、Meta 初始承诺最高约 $21.0B）出问题，整条 RPO 的折现要重做。近端与远端不能用同一折现率，也不能用同一套信用假设。",
+            "where": "10-Q 收入附注的 Remaining Performance Obligations 段落，以及 Significant Customers / Contract Balances 附注"
+          },
+          {
+            "name": "把 EBITDA 变成股东残差的三个扣项：折旧年限、融资利率、客户预付覆盖率",
+            "why": "链条第 6–7 环。折旧是唯一一个管理层可单方面调整、直接改写账面利润的变量（CoreWeave 技术设备 6 年、2023 年由 5 年改来；Nebius 服务器与网络设备 2026 年起由 4 年改为 5 年），每次变更按利润质量事件处理，并与合同久期并排看。利率由对手方信用决定：IREN 投资级微软合同对应的 $3.6B GPU 融资为 6.0%，非投资级客户部署的 $2.4B 为 9.0% 固定利率，一档信用约差 300bp，直接从残差里扣。预付决定要向外融多少、股东被稀释多少，但两个分母绝不能混在一起排序：Nebius 的 50–60%、IREN 的 45–55% 分母是相关（GPU）capex，而 CoreWeave 的 15–25% 分母是多年期合同 TCV——一份 5 年期合同 20% 的 TCV 预付对应的 capex 覆盖率可以远高于 20%，方向可能正好相反。",
+            "where": "10-K 会计政策 Property and Equipment 表与 Nebius 股东信 D&A 段；各家融资公告与资产负债表的 recourse / non-recourse 拆分（CoreWeave 6/30：有追索 $31.4B、无追索 $3.66B）；预付口径分别见 Nebius 股东信、IREN 业绩发布与 CoreWeave 10-K 风险因素"
+          }
+        ],
+        "multiple_anchor": "不能用 P/E（这一行普遍 GAAP 净亏损：CoreWeave Q2'26 净亏 $626M、IREN FY26 净亏 $702.6M），也不能把 EV/S 当主锚。按可靠性排三族：（1）主锚是合同现金流折现，本质是项目融资 / 基础设施 NAV 而不是软件 DCF——把披露的 RPO 按其期限分布摊成年度收入（CoreWeave 给了 24 / 48 / 78 个月三段），减直接成本，按各家自己的折旧年限计提折旧，按各家实际融资利率计息，逐年折现；未签约的 MW 单独按当期 ACV/MW 与回本期给期权价值，并按对手方信用分层用不同折现率。之所以这么锚，是因为收入是 take-or-pay（CoreWeave 承诺合同占收入 98%），久期与对手方都是可披露的，和 SaaS 的续费假设完全不同。（2）横向锚用 EV / 已上电 MW 与 EV / 已签约 MW，但这恰恰是全行业口径陷阱最深的一处，用之前必须做三项对齐：(a) IT 负载 vs 总设施负载；(b) 已上电 vs 已签约；(c) 新签 ACV vs 存量实现收入。对照事实：新签合同落在 $20–25M/MW(IT)，而 CoreWeave 用同期实际数反推约为 $7M/已上电 MW（Q2 收入 $2,575M 年化 $10.3B ÷ 已上电约 1.5GW），两者差约 3 倍，差异来自负载口径、新签 vs 存量机型与季内爬坡，不能互相代入。（3）盈利倍数只能用 EV/(EBITDA − 维持性 capex − 利息)，或直接用 EV/调整后经营利润；单纯的 EV/EBITDA 会把这一行最大的两块真实成本加回去，而这两块要分两层扣：先在经营利润这一层扣折旧摊销——CoreWeave Q2 调整后 EBITDA $1,510M（59% 利润率）减约 $1,382M 的 PP&E 折旧摊销，得调整后经营利润 $128M（5% 利润率；该口径按公司定义是从 GAAP 经营利润剔除股权激励、并购费用与无形资产摊销，不含利息）；利息是经营利润之下再扣的一层——季度净利息支出 $640M，落到 GAAP 净亏 $626M。EV/S 只适合做同业排序，且必须先统一折旧年限（CoreWeave 6 年 vs Nebius 5 年）与有追索/无追索杠杆口径。",
+        "anti_pattern": "不要把 backlog / ARR 当成 SaaS 的 ARR 去套 EV/ARR 或 EV/S。第一，ARR 各家口径不同、不可横比：IREN 的 ARR 是合同内已调试 GPU 的 GPU/小时价 × 8,760（前瞻口径，含存储与附属收入，脚注明说「recognized revenue may be materially lower」），Nebius 的 ARR 是当季最后一个月 AI 云收入 × 12（回溯口径，基于已确认收入）——按 IREN 的规则去反推 Nebius $3.0B ARR 的单卡价格必然算错。第二，只看 backlog 绝对值不看久期：CoreWeave $103.7B 的 RPO 只有 41% 落在头 24 个月，近端与 78 个月的远端不能给同一折现率。第三，跨公司直接比 EBITDA 或 EBITDA 利润率：折旧年限（6 年 vs 5 年）与杠杆结构不同会让同样的机器产出完全不同的净利，而 EBITDA 恰好把折旧和利息这两块最大的真实成本全加回去了。第四，用「买卡就能复制」的重置成本估值：真正稀缺的是电、是英伟达的配额，以及英伟达为特定合作方提供的 take-or-pay 承诺与租约违约担保——但反过来也不能只把这些当护城河讲，$108.5B 的担保敞口、$36B 的云服务采购承诺与 $47.9B 的非上市股权同时也是「循环融资」质疑的证据，两面都要摆出来。另外，当合同久期短于折旧年限时（Nebius 核心合同 1–3 年 vs 5 年折旧），残值/续租假设必须在模型里显式定价，不能默认为零风险；Nebius 披露的 1 年 10 个月回本期脚注为「on a revenue recognition basis, excluding any prepayment」，不要把它和预付覆盖率当成可叠加的两重保护。",
+        "multiple_anchor_short": "主锚是把 RPO 按期限摊成年度收入、逐年折现的项目融资口径，不是 P/E（普遍 GAAP 净亏）或 EV/S；横向用 EV/已上电 MW 但先对齐负载口径；盈利只看 EV/(EBITDA−维持性 capex−利息)。",
+        "anti_pattern_short": "不要拿各家 ARR 当同一个数去套 SaaS 的 EV/ARR：IREN 是已调试 GPU 的前瞻年化（脚注自认确认收入可能显著更低），Nebius 是末月收入×12 的回溯口径，互相反推必然算错。"
+      },
+      "core_watch": [
+        {
+          "what": "英伟达数据中心 ACI&E 分项金额与环比（Q2 FY27：$40,313M、QoQ +25%、YoY +138%，约占数据中心 45%；Hyperscale $48,710M、QoQ +13%）",
+          "why": "「新云最关注英伟达财报」的第一个具体字段，但它是合并口径：ACI&E 同时装新云、主权云、企业与边缘/隔离网数据中心，新云占比未单独披露，所以只能当新云拿货量的上限与方向性代理，不能读成「新云本季拿到了多少」。传导是：ACI&E 金额 → 3–6 个月后落地成上电 MW → 乘 ACV/MW 变成 ARR → 沉成 RPO。这一格环比走弱，可能是配额向超大厂倾斜，也可能只是口径变动——FY27 Q2 已发生一次客户由 ACIE 重分类到 Hyperscale 并重述往期，读环比前必须先核脚注。同一场电话会给出行业装机口径：新云 2025 年底约 3GW → 2026 年底 8GW。",
+          "cadence": "季度 10-Q/10-K 与电话会（英伟达财年错位，通常在 2 / 5 / 8 / 11 月下旬）；每次读数前先核 Note 13 脚注的重分类与重述提示"
+        },
+        {
+          "what": "英伟达 10-Q 承诺附注里的 Supply and capacity commitments 总额与按财年拆分（截至 2026-07-26 由上季 $119B 增至 $279B；剩余 FY27 $92B、FY28 $87B、FY29 $88B；全部承诺约 $366B）",
+          "why": "这是配额的物理上限，也是最被低估的一张表：英伟达替全行业提前锁定的内存与代工产能，决定 12–24 个月后市场上共有多少卡可分。口径提醒：管理层把 FY28 约 +70% 的增速指引明确称为 supply constrained outlook，对不受约束的需求只说了「a lot higher」、并提到本年同比增速为 100%，没有给出任何量化倍数——「真实需求是指引的几倍」这类说法没有出处，不能拿来当「配额决定天花板、ACV/MW 有支撑」的论据。可用的推断是：这张表跳涨（本季翻倍以上）意味着两年后供给放量，新签合同的 ACV/MW 与期限溢价要下修；它停涨则新云的 MW 指引失去物理支撑。",
+          "cadence": "季度 10-Q / 年度 10-K 附注"
+        },
+        {
+          "what": "英伟达对 AI 云的信用与资本安排：担保最大敞口合计 $108.5B（AI 云 land/power/shell $3.5B + SB Energy $105.0B）、AI cloud agreements 承诺 $36B、待转让第三方的数据中心租约 $20B、非上市股权 $47.9B、对基础设施融资方权益法投资 $3.3B",
+          "why": "这决定新云能不能把配额变成机柜。贷款人的核心疑虑是 GPU 残值与租约违约，英伟达对一部分产能给 take-or-pay 承诺、对超出部分参与收入分成，等于替贷款人承保底部现金流，直接压低融资利率、抬高可承受杠杆。$105B 那笔是 2026 年 8 月为 OpenAI（承租方）在 SB Energy 位于俄亥俄 Pike County 的 PORTS 园区约 4.25GW IT 负载、20 年期租约提供的信用支持，分九期递增、首期预计 FY2029，另有对追加约 3.8GW 的选择权——既是 MW 供给端量级最大的一条证据，也是这条「英伟达替贷款人承保」逻辑的标尺。对手方披露并不对称：$105B 一笔点名 SB Energy 与 OpenAI，$3.5B 的 AI 云担保与 $36B、$20B 均未披露对手方，无法核实哪几家新云受益、受益多少。这几栏一旦收紧，二三线新云先停扩张；同一批安排也是循环融资质疑的材料。",
+          "cadence": "季度 10-Q（承诺表、担保表、衍生工具与非上市证券四处需要合看）"
+        },
+        {
+          "what": "各家新签合同的 ACV per MW 与合同期限结构（Nebius：2026 基准 $12M/MW → Q2 成交 >$20M/MW、四单 landmark $20–25M/MW，并称看到 $40–50M/MW 的短期容量单价格机会、已签第一单；IREN：3 年期 >$20M/MW(IT)、在谈约 $25M/MW(IT)）",
+          "why": "这是这一行的价格信号，比收入增速早一到两个季度。价格与期限要一起读：价涨、期限缩，是卖方市场，短期定价权在新云手上；价平、期限拉长，说明卖方在主动锁风险；价跌而期限也缩，才是需求真的走弱。它同时是折现模型的直接输入——ACV/MW 定价格、MW 定数量。横比前注意两件事：IREN 明标 per MW (IT) 而 Nebius 未标口径；新签 ACV 与存量实现收入不是一个数（CoreWeave 存量约 $7M/已上电 MW）。",
+          "cadence": "季度财报与股东信；大单则随时点公告"
+        },
+        {
+          "what": "预付覆盖率、融资利差与折旧年限（Nebius：约 70% 的成交带预付、覆盖相关 capex 的 50–60%、新签合同回本期 1 年 10 个月、2026 年预计收到超 $9B 预付；IREN：预付占 GPU capex 的 45–55%、约 2 年回本，微软合同 $3.6B GPU 融资 6.0% 且与预付合计覆盖 96%，非投资级部署 $2.4B 为 9.0%；CoreWeave：活跃合同加权平均预付为 TCV 的 15–25%，6/30 有追索债 $31.4B、无追索 $3.66B，Q2 净利息支出 $640M；折旧：CoreWeave 技术设备 6 年、Nebius 服务器与网络 2026 年起 4 年改 5 年）",
+          "why": "这三项共同决定 EBITDA 到股东残差还剩多少。预付是需求见顶最早的读数，松动顺序很稳定：先是预付比例下降，再是合同期限缩短，最后价格才跌。但两个分母不能排在同一把尺子上：Nebius 与 IREN 的分母是相关 GPU capex，CoreWeave 的 15–25% 分母是多年期合同 TCV，一份 5 年期合同 20% 的 TCV 预付对应的 capex 覆盖率可以远高于 20%，高低方向可能正好反过来。利差方面，同样的机器、同样的 ACV/MW，客户信用差一档资金成本约差 300bp，直接从残差里扣，所以「签了谁」比「签了多少」更值钱。折旧年限则是管理层可单方面调整的口径，每次变更按利润质量事件处理，并与 RPO 的期限分布并排看。",
+          "cadence": "季度财报与股东信；融资条款随每笔 8-K 与季度资产负债表；折旧年限见年度 10-K 会计政策与季度口径变更提示"
+        },
+        {
+          "what": "客户与应收账款集中度，以及重点合同的名义上限与到期日（CoreWeave Q2'26 前三大客户占季度收入 36% / 26% / 10%，其中两家各占应收账款净额 32%；OpenAI 承诺至 2031-05-31 最高约 $6.5B、Meta 至 2032 年初始承诺最高约 $21.0B；IREN 微软 Horizon 1 已交付、Horizon 2 调试中、3–4 目标 2026Q4 交付）",
+          "why": "RPO 的折现质量取决于交易对手而不是金额。这一行的合同是 take-or-pay、期限长、单笔巨大，可见度极高的代价是单点风险极高——任何一家头部客户重排资本开支，都会让整条 RPO 的确认时点与折现率同时变。集中度也决定谈判地位：客户越集中，续约时定价权越偏向客户，ACV/MW 的续约折扣就越深。",
+          "cadence": "季度 10-Q「Significant Customers」附注；大合同随时点公告"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "CRWV",
+          "name": "CoreWeave",
+          "role": "规模最大的纯新云，也是把超大厂与头部模型公司做成主业的一家（前三大客户占季度收入 36%/26%/10%，含 OpenAI 与 Meta 的多年期承诺）；98% 收入来自 take-or-pay 承诺合同，靠合同质押的有追索与无追索债务加杠杆买卡，是这一行杠杆最重、折旧年限最长（技术设备 6 年）、RPO 期限披露最完整的样本"
+        },
+        {
+          "symbol": "NBIS",
+          "name": "Nebius Group",
+          "role": "自建 AI 工厂并同时做全栈软件的新云，欧美双基地；ACV/MW 的定价台阶披露最透明（2026 基准 $12M/MW → Q2 成交 >$20M/MW），用覆盖 50–60% 相关 capex 的客户预付把新签合同回本期压到 1 年 10 个月；核心合同久期 1–3 年却按 5 年折旧，这个期限缺口是它区别于 CoreWeave 的主要风险点"
+        },
+        {
+          "symbol": "IREN",
+          "name": "IREN",
+          "role": "由比特币矿工转型的垂直一体化新云，差异点是自持土地与并网电力（>5GW 管线），卖的是「电 + 机 + 软件」而不是纯算力转租；也是唯一把投资级客户（微软 Horizon 1–4）与非投资级客户的融资成本差（6.0% vs 9.0%）摊开给市场看的一家"
+        }
+      ],
+      "sources": [
+        {
+          "house": "NVIDIA（SEC 10-Q）",
+          "title": "NVIDIA Corporation Form 10-Q, quarterly period ended July 26, 2026",
+          "date": "2026-08-26",
+          "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000075/nvda-20260726.htm",
+          "takeaway": "全行业配额与信用安排的一手出处。Note 13 Revenue by Market Platform：Data Center $89,023M、Hyperscale $48,710M、ACIE $40,313M（QoQ 18%/13%/25%，YoY 117%/102%/138%）；脚注说明该拆分自 FY27 Q1 起启用并重述可比期，且 FY27 Q2 曾把一家公司由 ACIE 重分类到 Hyperscale 并重述往期；MD&A 写明 ACIE 的增长来自 AI natives、企业与主权客户以及使用 AI 云的超大厂（即该格不等于新云）。Note 10：供货与产能承诺由 $119B 增至 $279B（剩余 FY27 $92B、FY28 $87B、FY29 $88B、FY30 $6B、FY31 $5B、FY32 及以后 $1B），加云服务协议 $29B、未起租数据中心租约 $25B、股权投资 $25B、capex $8B，全部承诺约 $366B；AI cloud agreements 承诺 $36B（AI 云可单方面停止对英伟达供给并转售第三方，达标后英伟达参与收入分成）、$20B 待转让第三方的数据中心租约（约 15 年期）。担保表：AI 云 land/power/shell 担保最大总敞口 $3.5B + SB Energy Corp. 担保上限 $105.0B = $108.5B，后者为 OpenAI 承租、SB Energy 位于俄亥俄 Pike County 的 PORTS 园区约 4.25GW IT 负载、20 年期租约提供信用支持，分九期递增、首期预计 FY2029，另有约 3.8GW 追加选择权。另有非上市股权 $47.9B、对基础设施融资方权益法投资 $3.3B；风险因素原文「access to capital can be particularly constrained for less-capitalized companies」。"
+        },
+        {
+          "house": "NVIDIA（业绩电话会实录，Singju Post 转录）",
+          "title": "Transcript: Nvidia (NVDA) Q2 FY27 Earnings Conference Call",
+          "date": "2026-08-26",
+          "url": "https://singjupost.com/transcript-nvidia-nvda-q2-fy27-earnings-conference-call/",
+          "takeaway": "给出行业级的 MW 口径与供给状态的定性判断：新云装机由 2025 年底约 3GW 增至 2026 年底 8GW 总装机容量；Hyperscale $49B（QoQ +13%）、ACI&E $40B（QoQ +25%、YoY +138%）（该两分部拆分自 FY27 Q1 起披露，本季不是首次）；FY28 收入增速指引约 +70%，管理层原话「This is a supply constrained outlook.」，被追问时只回答不受约束的需求「a lot higher」并提到本年同比增速为 100%，未给出任何量化倍数；同时说明英伟达对设施的一部分产能给 take-or-pay 承诺、提供最低收入保证让贷款人敢承销，并对超过该下限的新云收入参与分成。"
+        },
+        {
+          "house": "Fortune",
+          "title": "Nvidia CFO says about half of its data center business comes from customers beyond hyperscalers",
+          "date": "2026-08-27",
+          "url": "https://fortune.com/2026/08/27/nvidia-cfo-about-half-data-center-business-customers-beyond-hyperscalers/",
+          "takeaway": "CFO Colette Kress 说明该分部约 $40B、约占数据中心业务一半，涵盖主权云、区域性 NeoCloud、企业边缘与隔离网数据中心——这是「ACI&E 是一个合并口径、新云只占其中一部分且占比未披露」最直接的表述依据（全称与分项金额的权威出处仍是 10-Q 的 Revenue by Market Platform 表）。"
+        },
+        {
+          "house": "CoreWeave（公司 IR）",
+          "title": "CoreWeave Reports Strong Second Quarter 2026 Results",
+          "date": "2026-08-11",
+          "url": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Reports-Strong-Second-Quarter-2026-Results/default.aspx",
+          "takeaway": "Q2 收入 $2,575M；revenue backlog 约 $104B，Q3 初又新增超 $25B 净新增客户承诺；合同电力约 3.7GW、已上电约 1.5GW；调整后 EBITDA $1,510M、GAAP 净亏 $626M、净利息支出 $640M；季度购建物业设备与资本化自用软件 $6,422M。关键口径：该稿的非 GAAP 定义写明 Adjusted Operating Income 是从 GAAP 经营利润剔除股权激励、并购费用与无形资产摊销，净利息支出不在这一层——所以 EBITDA $1,510M 减折旧摊销约 $1,382M 得调整后经营利润 $128M，$640M 利息是经营利润之下另扣的一层，两者不能并列相减。"
+        },
+        {
+          "house": "CoreWeave（SEC 10-Q）",
+          "title": "CoreWeave, Inc. Form 10-Q, quarterly period ended June 30, 2026",
+          "date": "2026-08-12",
+          "url": "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000366/crwv-20260630.htm",
+          "takeaway": "未履约 RPO $103.7B，其中 41% 预计在截至 2028-06-30 的头 24 个月确认、39% 在第 25–48 个月、其余在第 49–78 个月；承诺合同占季度收入 98%；前三大客户占季度收入 36%/26%/10%，其中两家各占应收账款净额 32%；OpenAI 承诺至 2031-05-31 最高约 $6.5B、Meta 至 2032 年初始承诺最高约 $21.0B；技术设备原值 $33,823M、在建工程 $11,918M、PP&E 净额 $46,736M，季度 PP&E 折旧摊销 $1.4B；有追索债 $31,405M、无追索债 $3,663M；递延收入合计 $9,692M；GAAP 经营亏损 $49M、净利息支出 $640M、净亏 $626M；披露「目前基础设施中所有 GPU 均为英伟达 GPU」，2025 年前三大供应商占采购 23%/20%/17%；2026 年 1 月英伟达以 $87.20/股私募认购约 2,300 万股 A 类股、总额 $2.0B。"
+        },
+        {
+          "house": "CoreWeave（SEC 10-K）",
+          "title": "CoreWeave, Inc. Form 10-K for fiscal year ended December 31, 2025",
+          "date": "2026-03-02",
+          "url": "https://www.sec.gov/Archives/edgar/data/1769628/000176962826000104/crwv-20251231.htm",
+          "takeaway": "给出全行业折旧口径的基准线：技术设备 6 年（2023 年由 5 年改为 6 年，当年减少总费用 $20M、每股影响 +$0.10），软件 3–6 年，数据中心设备与租赁改良按剩余租期或最长 12 年孰短。并披露活跃合同的加权平均预付款为 TCV（多年期合同总额）的 15%–25%——注意该比例的分母是 TCV 而非 capex，不能与 Nebius / IREN 的 capex 覆盖率直接排序。"
+        },
+        {
+          "house": "Nebius Group（公司 IR 股东信）",
+          "title": "Nebius Group Letter to Shareholders, Q2 2026",
+          "date": "2026-08-12",
+          "url": "https://assets.nebius.com/assets/a6ecfd85-a6cb-4967-8ef7-9a25bd261f9c/SHLQ226.pdf",
+          "takeaway": "ACV/MW 的三级台阶：2026 基准 $12M/MW → Q2 成交平均 >$20M/MW（四单 landmark 平均 TCV >$1B、yield $20–25M/MW）→ 看到 $40–50M/MW 的短期容量单价格机会并已签下第一单；约 70% 的成交带客户预付、覆盖相关 capex 的 50–60%；新签合同回本期 1 年 10 个月（脚注：on a revenue recognition basis, excluding any prepayment；且基于预测成本与合约容量，含尚未建成的容量），此前为 2–3 年；核心中期合同久期 1–3 年；服务器与网络设备折旧年限 2026 年起由 4 年改为 5 年；Q2 收入 $582.3M（+454%）、AI 云收入 $575M、ARR $3.0B、集团调整后 EBITDA $236.2M、AI 云调整后 EBITDA 利润率 49.7%、D&A $259.7M、capex 约 $5.7B；年底合同电力目标提高到 5GW、2027 年起计划每年上电 >1GW；客户承诺超 $40B、2026 年预计收到超 $9B 预付；7 月首笔有担保融资 $775M、SOFR+250bp。ARR 口径见脚注 4：当季最后一个月 AI 云收入 × 12——与 IREN 的 ×8,760 口径完全不同，不可横比。"
+        },
+        {
+          "house": "IREN（SEC 8-K 附件 EX-99.1）",
+          "title": "IREN Reports FY26 Results",
+          "date": "2026-08-27",
+          "url": "https://www.sec.gov/Archives/edgar/data/1878848/000187884826000051/irenreportsfy26results.htm",
+          "takeaway": "近期 3 年期合同 >$20M/MW (IT)、对应约 2 年回本，在谈约 $25M/MW (IT)；客户预付占 GPU capex 的 45–55%；ARR 口径为「合同内已调试 GPU 的 GPU/小时价格 × 8,760 小时，含存储与附属收入」，并注明是运营指标、非 GAAP 且「recognized revenue may be materially lower」，当前 $4B 合同 ARR、$1B 已运营 ARR；微软 Horizon 1（Childress 四个 50MW(IT) 液冷部署之首）已交付、Horizon 2 调试中、3–4 目标 2026Q4；投资级微软合同对应 $3.6B GPU 融资加权 6.0%（与预付合计覆盖 96% 相关 GPU capex），非投资级客户部署新增 $2.8B 融资、其中 $2.4B 由 Blue Owl 与 Pacific Investment Management Company LLC 主导、9.0% 固定利率、覆盖 90%；交付目标 2026 年约 0.3GW(IT)、2027 年约 0.8GW(IT)、>5GW 管线；FY26 总收入 $707.0M、AI 云收入 $128.8M、净亏 $702.6M（含非现金减值 $638.8M）。"
+        },
+        {
+          "house": "SemiAnalysis",
+          "title": "H100 Daily & Contract Pricing Index（GPU Price Index）",
+          "date": "2026-04",
+          "url": "https://gpu-index.semianalysis.com/",
+          "takeaway": "GPU 租金的高频观测口径：按 on-demand 与 1/3/6 个月、1/1.5/2/3/4/5 年分档的 $/GPU-小时综合指数，H100 另有 Bloomberg 代码 SAH100SC。页面自标读数为 H100 综合指数 $2.82/GPU-小时、B200 $3.68/GPU-小时（自标日期 2026-04，本记录未能确认更晚的实时值，故只作持续跟踪源、不要当作当期价格）。用途是把公司披露的 ACV/MW 反推回单卡价格、并在财报之前校验价格方向。"
+        },
+        {
+          "house": "Synergy Research Group",
+          "title": "Neocloud Market Forecast to Approach $400B by 2031, Driven by Surging AI Infrastructure Demand",
+          "date": "2026-04-02",
+          "url": "https://www.srgresearch.com/articles/neocloud-market-forecast-to-approach-400b-by-2031-driven-by-surging-ai-infrastructure-demand",
+          "takeaway": "这一行的市场口径与规模基准：2025 年新云收入 $25B、Q4'25 单季 $9B（YoY +223%），2031 年接近 $400B、期间 CAGR 58%；把 CoreWeave、Crusoe、Core Scientific、Lambda、Nebius、Nscale 列为头部新云，并把 OpenAI、Anthropic 单列为平台型提供方——也是本记录收录 Crusoe 与 Lambda 两家未上市公司的依据（Nscale、Core Scientific 未逐一核实，暂未收录）。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "supply_gate",
+          "why": "链条前三环全在它的 10-Q 里：「起点：英伟达 10-Q 的 ACI&E」是流向新云的整机系统金额的上限与方向；「供给上限看同表供货与产能承诺 $119B→$279B」是配额的物理上限，决定 12–24 个月后有多少卡可分、租金曲线走平还是走陡；「落到电即上电 MW」之前的信用安排（担保最大敞口 $108.5B、AI cloud agreements $36B、待转让租约 $20B、非上市股权 $47.9B）决定新云能不能把配额融成机柜——它同时也是新云的客户（云服务协议承诺），两面都要摆。",
+          "pull": [
+            "数据中心 ACI&E 与 Hyperscale 分项金额、环比，及 Note 13 有无客户重分类与重述脚注（sec_filings 10-Q 索引 → web_search 核 Note 13；press_releases CFO Commentary 的 Revenue by Market Platform 表）",
+            "Supply and capacity 承诺总额与按财年拆分、全部承诺合计（sec_filings 10-Q Note 10；press_releases CFO Commentary 的 Future commitments 表）",
+            "对 AI 云的担保最大敞口、AI cloud agreements 承诺额、待转让数据中心租约、非上市股权余额（sec_filings 10-Q 索引 → web_search 核 Note 8/10）",
+            "电话会给的新云装机 GW 口径与「supply constrained」表述（transcript 按 year/quarter；正文受限时改 news 与带绝对日期的 web_search）",
+            "下季指引与 FY 增速指引（press_releases 财报稿 Outlook 段）"
+          ],
+          "cadence": "季度 10-Q 与电话会（2/5/8/11 月下旬）；园区级担保随 8-K 不定期",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；供货与产能承诺 $119B→$279B；对 AI 云担保最大敞口 $108.5B、AI cloud agreements 承诺 $36B、待转让数据中心租约 $20B、非上市股权 $47.9B。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "MSFT",
+          "name": "微软",
+          "relation": "demand_source",
+          "why": "「量×价沉成 RPO」之后「另减净利息」那一环的投资级对手方样本：IREN 的 Horizon 1–4 合同对应 6.0% 的 GPU 融资利率，非投资级客户 9.0%，签了谁比签了多少更值钱；它的 capex 指引与「需求超过供给」这句话决定新云还有没有溢出订单可接，商业 RPO 剔除 OpenAI 后的增速则是前沿模型公司之外真实需求的读数——新云最大的对手方 OpenAI 的钱有相当部分经它流出。",
+          "pull": [
+            "capex 指引与口径、「需求持续超过可用供给」是否仍在（transcript 按 year/quarter 取 CFO 展望段；正文受限时改 press_releases 与带绝对日期的 web_search）",
+            "商业 RPO 总额、剔除 OpenAI 后的增速、加权平均久期与 12 个月内确认比例（press_releases 财报稿；sec_filings 10-Q/10-K 索引）",
+            "与新云签署或扩容的算力合同公告（news；press_releases）",
+            "capex 实际发生额（financials 季度现金流量表）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "META",
+          "name": "Meta Platforms",
+          "relation": "demand_source",
+          "why": "「量×价沉成 RPO：CoreWeave $103.7B」里最大的单点对手方之一（初始承诺最高约 $21.0B、至 2032 年）；它没有对外云、capex 全部自用，所以它租新云容量的多少直接等于自建赶不上需求的缺口——capex 指引上修而自建 GW 受电力约束时，溢出到新云的订单最多。",
+          "pull": [
+            "全年 capex 指引区间与口径（press_releases 8-K 财报稿 CFO Outlook 段）",
+            "与新云的算力租赁合同公告与金额上限（news；press_releases）",
+            "capex 实际发生额、自由现金流与净发债（financials 季度现金流量表；sec_filings 8-K）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）；合同公告不定期",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "ORCL",
+          "name": "甲骨文",
+          "relation": "peer_signal",
+          "why": "本行「沉成 RPO → 减折旧 → 另减净利息 → 残差看预付覆盖」这套框架在最大体量上的同业读数：它同样靠少数巨额 AI 训练合同把 RPO 顶到 6,380 亿、FCF 为负、靠发债与发股建设，信用利差比市盈率更有信息量；OpenAI 的承诺同时流向它与 CoreWeave，它的 RPO 单季增量与融资成本是「同一个买家的钱在往哪边倾斜、这类合同的资金成本在涨还是在降」的先行读数。",
+          "pull": [
+            "RPO 总额、单季增量、客户预付或自带 GPU 的部分（press_releases 8-K 财报稿 RPO 段）",
+            "Cloud IaaS 收入增速、capex 与自由现金流（press_releases；financials 季度现金流量表）",
+            "发债/发股规模与票面利率（sec_filings 8-K 索引；news）",
+            "财报后评级/目标价动作里对融资风险的表述（analyst_actions）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "equipment",
+      "name": "半导体设备",
+      "parent": "ai-datacenter",
+      "one_liner": "造产能的那一层：沉积、刻蚀、量检测与先进封装设备。滞后于晶圆厂的开支决策。",
+      "aliases": [
+        "半导体设备",
+        "设备",
+        "WFE",
+        "沉积",
+        "刻蚀",
+        "量检测",
+        "光刻",
+        "封装设备"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "英伟达 FY27Q2 数据中心 $89.0B、Q3 指引 $108B → AI 占台积电 N3 产出近 60%；HBM 占三大厂 DRAM 投片比 18→22→30%，单位容量耗晶圆约 3 倍 → 缺口靠新建产能：SEMI 口径 2026 年 WFE $143.9B、+23.1%（代工/逻辑 $78.0B、DRAM +39.0%）→ 被洁净室与交期封顶：KLA 点名 fab space 受限，刻蚀/薄膜交期约 12 个月，ASML low-NA EUV 年产能仅 65 台 → 先转为上修：KLA 把 CY2026 含先进封装 wafer equipment 由 $140B+ 升至 low $150B → 增量集中三段：AMAT 称先进逻辑+HBM DRAM+先进封装占 WFE 增量 80% → 末端是报表：AMAT 半导体系统 $7.04B、DRAM +52%，ASML 毛利 54.0%。",
+        "key_variables": [
+          {
+            "name": "英伟达数据中心季度收入（十亿美元）与下季总收入指引",
+            "why": "链条第 1 环，AI 加速器实际出货最高频的公开刻度。对设备行业它是领先 2–4 个季度的信号而非同步量，真正要读的是增速的二阶导，以及管理层对供需与产能的表述是否松动",
+            "where": "NVIDIA IR 季度新闻稿（FY27Q2 数据中心 $89.0B、同比 +117%；FY27Q3 指引 $108.0B±2%，且不含中国数据中心计算收入）"
+          },
+          {
+            "name": "代工侧资本开支刻度：SEMI 口径 foundry/logic WFE（十亿美元）与台积电年度 capex 指引区间",
+            "why": "链条第 3 环。可核实的锚是 SEMI 中期预测的代工/逻辑 WFE（2026 年 $78.0B、+18.9%，2028 年 $104.7B）；台积电作为最大单一出资方，其 capex 指引区间理论上是更前置的读数，但必须以其法说会材料或 SEC 6-K 为准——本次收敛未能取到载有 capex 指引的一手件（6-K 业绩稿只含损益与下季营收/毛利指引），因此不采用任何具体 capex 区间数值",
+            "where": "SEMI 中期设备预测（每年 7 月）；台积电季度法说会材料与 6-K，以及每月 10 日左右的月度营收公告"
+          },
+          {
+            "name": "HBM 占三大存储厂 DRAM 投片比（%）与单位容量的晶圆耗用倍数（×）",
+            "why": "链条第 2→3 环的放大器与换算系数。投片比每上一个台阶，就有相应比例的 DRAM 晶圆产能被挤占、必须靠新增产能补回，直接放大 DRAM WFE。倍数要与投片比同源校验：由 TrendForce 自报的 bit 占比 8%/9%/13% 与投片占比 18%/22%/30% 反推，倍数为 2.5×/2.9×/2.9×，即「约 3 倍」，与 SemiAnalysis 一致；套用 4× 会推出 2026 年投片占比 28%，高于该来源自报的 22%",
+            "where": "TrendForce HBM 季度产业跟踪（投片比与 bit 占比成对读）、SemiAnalysis（约 3 倍、HBM4 后接近 4 倍）"
+          },
+          {
+            "name": "ASML 年度 low-NA EUV 产能与出货台数（台，两者必须区分）+ 关键设备交期（月）",
+            "why": "链条第 4 环的供给硬上限，也是第 7 环价格权的来源。注意口径：公司披露的「around 65」是 2026 年 low-NA EUV **产能**，不是出货量——同一季度实际售出新光刻机 86 台（全机型）；把产能当出货会同时低估出货并让「供给上限」失去准确刻度。交期拉长既压当期收入确认，也抬毛利",
+            "where": "ASML 季报新闻稿（2026 年 low-NA EUV 产能约 65 台、2027 年 +30%；浸没式 DUV 产能约 130 台同样 +30%）、TrendForce 供应链报道（刻蚀/薄膜约 12 个月、高端封装与测试 >18 个月、进口射频电源最长 24 个月）"
+          },
+          {
+            "name": "设备商自报的 CY WFE 口径（十亿美元）及其修订方向，与各家下季收入指引",
+            "why": "链条第 5→6 环：这是最贴近实际下单节奏的读数，修订幅度比绝对值更有信息量。但必须连口径一起记——KLA 说的是「含先进封装的 wafer equipment」，与 SEMI 的 WFE 不是同一个篮子，且设备商自报预测不是第三方独立统计",
+            "where": "KLA 股东信（CY2026 含先进封装的 wafer equipment 由 $140B plus 上调至 low $150B，CY2025 约 $120B；9 月季指引 $4.0B±$0.2B）、AMAT 财报（FQ4 指引 $10.25B±$0.5B）"
+          },
+          {
+            "name": "毛利率及其季度修订（%，须分 GAAP 与 non-GAAP 记录）",
+            "why": "链条末端的价格证据：在产能受限的行业里，毛利上修是「供给紧张真实存在」最难造假的读数。但跨口径不可比——ASML 季报以 US GAAP 为主要准则且不披露 non-GAAP，KLA 与 AMAT 的常用值是 non-GAAP，混排会把估值分层排错",
+            "where": "GAAP：ASML Q2'26 54.0%、AMAT FQ3'26 50.3%；non-GAAP：KLA 6 月季 62.4%、9 月季指引 62.5%±1pp，AMAT FQ3'26 50.4%；ASML 2026 全年指引 54–56%"
+          },
+          {
+            "name": "中国占各家收入的比重（%）与出口管制的收入影响",
+            "why": "噪音剥离项：中国 2025 年占全球设备销售 36.51%，但这块开支以成熟制程为主、与 AI 传导链基本无关，不剥离就会把 AI 那条线的斜率算错，同时管制变化是这一行最常见的一次性估值冲击来源",
+            "where": "各家 10-Q/10-K 的地区收入拆分与管理层口径（AMAT 上季中国占半导体系统+AGS 收入 26%）、TrendForce 与 SEMI 的地区统计"
+          }
+        ],
+        "multiple_anchor": "主用 P/E（NTM），辅以 EV/EBIT 校验；EV/S 只在把毛利结构差异很大的公司放一起粗筛时用；不要用重置成本或 NAV——这是知识产权加装机基座的轻资产生意，账面资产与价值几乎无关。锚点有两个。第一是 WFE 的周期位置：设备股的 P/E 与 WFE 同比增速通常反向，正确做法是在 WFE 同比见底时给高倍数、在同比见顶时给低倍数。固定用 SEMI OEM 一套口径看：WFE 2026 年 +23.1%、2027 年 +21.8%、2028 年 +14.1%（至约 $200B），属于加速段而非见顶段，但增速逐年收敛，且预测本身已被大幅上修过（KLA 由 $140B plus 上调到 low $150B），所以盈利上修的空间大于倍数扩张的空间。第二是毛利结构与收入质量，但排序必须在同一会计口径内做，跨口径并排是无效比较：GAAP 同口径下 ASML 54.0%（Q2'26；ASML 季报以 US GAAP 为主要准则，不披露 non-GAAP 毛利）高于 AMAT 50.3%（FQ3'26）；non-GAAP 同口径下 KLA 62.4%（6 月季实际）、9 月季指引 62.5%±1pp，远高于 AMAT 50.4%。两个口径各自成立，因此结论是 ASML 与 KLA 在各自可比口径内都显著高于 AMAT，享受最高一档倍数；AMAT 与刻蚀/沉积同业居中，收入随代工与存储资本开支摆动。收入质量上，ASML 的装机基座管理收入 Q2'26 达 €2,762M、占当季收入 29.6%，KLA 服务收入 $820M、占季度收入 22% 且将连续第 17 年增长，这部分经常性收入是它们周期波动小于同业的直接原因。TER 这类测试公司与设备资本开支的相关性更弱、与单位芯片测试时间与测试强度的相关性更强，季度波动最大（Q2'26 同比 +104%，但 Q3'26 指引中值环比约 -5.9%），应给周期折价并优先用 EV/EBIT 而非 P/E。落地做法是「WFE 美元规模 × 公司份额 × 该公司的工艺强度弹性」先推收入，再按各家结构性毛利推 EBIT，最后套周期中位倍数——而不是拿当期 EPS 直接乘一个固定倍数。",
+        "anti_pattern": "第一，不要把 GPU 收入增速直接外推成设备收入增速。这一行是「资本开支的资本开支」，中间隔着三道闸门：晶圆厂的 capex 决策、洁净室与厂房空间（KLA 明说 fab space limitations，SemiAnalysis 说必须先建成可用面积才能装机）、以及设备交期（刻蚀/薄膜约 12 个月、高端封装与测试 >18 个月、进口射频电源最长约 24 个月）。设备收入通常滞后终端 AI 需求 2–4 个季度，用同步的心态做估值会在周期两端都做反。第二，不要在周期高点用低 P/E 抄底：设备股 EPS 在景气顶被放大，低倍数往往是峰值盈利陷阱，反之景气底的高倍数才是买点。第三，不要把不同口径的 WFE 数字互相比较或加总：SEMI OEM 中期预测（2026 年 WFE $143.9B、总设备 $165.9B）、KLA 自报的「含先进封装的 wafer equipment」（low $150B）、SEMI 窄口径 assembly & packaging（2026 年仅 $6.7B），各有各的边界，挑最大的那个讲故事就会把行业增速讲错；而设备商自报的预测也不是第三方独立数据。第四，「先进封装」这个词本身就有两种口径：SEMI 的 assembly & packaging 是窄口径后道设备，2026 年只有 +9.6%；KLA/AMAT 讲的先进封装含前道过程控制与晶圆级工序，KLA 先进封装过程控制 CY2026 约 $1.1B、+70% 以上。拿后者的增速去解释前者的盘子，是这一行最常见的口径错配。第五，不要用已实现值代替前瞻值：2025 年测试设备 +55.3%、组装封装 +20.8%，看上去后道全面快于前道，但同一份 SEMI 预测对 2026 年给的是测试 +31.0%、组装封装仅 +9.6%，后者反而低于 WFE 的 +23.1%——引用 2025 的结构去论证 2026–2027 的结构是选择性引用。第六，不要把中国收入当成纯风险或纯增量而不做剥离：中国 2025 年占全球设备销售 36.51%、本土供应商只满足约 23%，这块开支以成熟制程为主，与 AI 传导链基本无关。第七，不要把订单或 backlog 当作已确认收入——在交期普遍拉长到 12–24 个月的环境里，订单与收入之间的时滞本身就是变量。",
+        "multiple_anchor_short": "主用 NTM P/E、EV/EBIT 校验，不用重置成本与 NAV。倍数反着 WFE 同比走：同比见底给高倍数、见顶给低倍数；当前仍是加速段但增速逐年收敛，盈利上修的空间大于倍数扩张。TER 给周期折价。",
+        "anti_pattern_short": "不要把 GPU 收入增速直接外推成设备收入增速：中间隔着晶圆厂 capex 决策、洁净室面积与 12–24 个月交期，设备收入滞后终端 AI 需求 2–4 个季度，同步外推会在周期两端都做反。"
+      },
+      "core_watch": [
+        {
+          "what": "英伟达财报中的 Data Center 收入、下季收入指引，以及管理层对需求与供给的表述是否松动",
+          "why": "这一行确实吃这条，但吃法和光通信、新云不同：光通信与新云是同步受益方，设备是滞后方。英伟达 Data Center 收入（FY27Q2 $89.0B、同比 +117%，FY27Q3 指引 $108.0B±2% 且不含中国数据中心计算收入）先决定先进制程晶圆与 HBM 的拉货强度，再经晶圆厂与存储厂的 capex 决策、洁净室建设、12–24 个月的设备交期，才转成设备订单与收入，时滞通常 2–4 个季度。所以要读的不是绝对值，而是增速的二阶导是否还在加速，以及管理层「需求在加速、建设全速推进」的口径何时转弱——一旦转弱，意味着晶圆与 HBM 缺口开始收敛，而设备收入会在此之后 2–4 个季度才见顶。",
+          "cadence": "季度财报（2/5/8/11 月）"
+        },
+        {
+          "what": "SEMI 设备预测里 WFE 分应用的修订方向：代工/逻辑、DRAM、NAND，以及后道测试与组装封装",
+          "why": "判断景气必须固定一套口径看修订方向，SEMI OEM 口径是唯一能把全行业分项摆在一张表上的公开数据。当前读数：WFE 2025 年 $116.9B → 2026 年 $143.9B、+23.1%，其中代工/逻辑 $78.0B、+18.9%，DRAM $38.8B、+39.0%，NAND $13.9B、+30.7%，测试 $15.3B、+31.0%，组装封装仅 $6.7B、+9.6%。要点是分项之间的排序：存储与测试快于整体、窄口径组装封装慢于整体，这个排序如果反转，说明本轮的结构性倾斜在换挡。",
+          "cadence": "每年 7 月中期预测、12 月年末预测各一次"
+        },
+        {
+          "what": "台积电与 SK 海力士、三星、美光的资本开支计划，以及 HBM 投片占比",
+          "why": "台积电是代工 WFE 最大单一出资方，其年度 capex 指引区间是 SEMI 代工/逻辑 WFE（2026 年 $78.0B）之外更前置的读数——但必须以法说会材料或 SEC 6-K 为准，二手转述的 capex 区间不可用（本底稿因未取到载有 capex 指引的一手件，正文不采用任何具体区间）。存储侧是本轮弹性最大的一段：HBM 占三大厂 DRAM 投片比从 2025 年约 18% 升到 2026 年约 22%、2027 年约 30%，而单位容量耗用的晶圆约为标准 DRAM 的 3 倍，这个比例每上一个台阶就直接放大 DRAM 设备需求（SEMI 口径 DRAM WFE 2026 年 +39.0%）。",
+          "cadence": "台积电月度营收 + 各家季度法说会 + TrendForce 季度跟踪"
+        },
+        {
+          "what": "设备交期、backlog、洁净室与厂房空间约束，以及作为价格证据的毛利率修订",
+          "why": "这一轮的约束在供给端而不在需求端。刻蚀与薄膜沉积交期翻倍到约 12 个月、高端封装与测试设备 >18 个月、进口射频电源最长约 24 个月，ASML 2026 年 low-NA EUV 产能只有约 65 台、2027 年才加 30%；KLA 直接点名 fab space limitations。交期拉长意味着当期收入被产能封顶、backlog 后移，同时给设备商定价权，而价格权的证据就是毛利上修——记录时必须分口径：GAAP 下 ASML 54.0%、AMAT 50.3%；non-GAAP 下 KLA 6 月季 62.4%、9 月季指引 62.5%，AMAT 50.4%。",
+          "cadence": "季度财报 + 供应链媒体事件驱动"
+        },
+        {
+          "what": "先进封装：同时盯两种口径的增速，不要混用",
+          "why": "这是设备行业里增速最快、最直接由 AI 决定的一段，但也是口径最容易被讲错的一段。宽口径（含前道过程控制与晶圆级工序）：KLA 先进封装过程控制系统 CY2026 约 $1.1B、同比 +70% 以上、接近先进封装市场增速的两倍，AMAT 先进封装收入 CY2026 增速 >70%。窄口径（SEMI 的后道 assembly & packaging 设备）：2026 年只有 $6.7B、+9.6%，慢于 WFE 的 +23.1%。两个数都对，但描述的不是同一个篮子；只有当两者同时减速时，才是先进封装真正见顶的信号。",
+          "cadence": "公司季度财报 + SEMI 预测更新"
+        },
+        {
+          "what": "测试段的双向响应：Teradyne 的分部收入与下季指引",
+          "why": "测试量随芯片复杂度、HBM 堆叠层数与测试时间走，而不随晶圆产能走，是设备链里最贴近「AI 芯片单位复杂度」的变量，因此对 AI 需求的响应最快——但响应快是双向的，回落也会先出现在这里。当前读数正是两面性的样本：Q2'26 总收入 $1,329M、同比 +104%，半导体测试 $1,122M，存储收入创纪录（DRAM 持续强势叠加 NAND 终测回暖）；但 Q3'26 指引 $1,200–1,300M，中值 $1,250M 对应环比约 -5.9%，GAAP EPS 也从 Q1 的 $2.53 回落到 $2.38。把这一环当成单向加速的证据会把拐点判断做反。",
+          "cadence": "季度财报"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "ASML",
+          "name": "阿斯麦 ASML（纳斯达克与阿姆斯特丹双重上市）",
+          "role": "光刻独家：全球唯一 EUV 供应商，是整条链上唯一「自身产能就是全行业上限」的公司。口径要点：公司披露的 2026 年 low-NA EUV「around 65」是**产能**而非出货量，2027 年产能再加 30%，浸没式 DUV 产能约 130 台同样加 30%；同一季度实际售出新光刻机 86 台（全机型），产能与出货不能混为一谈。装机基座管理（服务）收入 Q2'26 达 €2,762M、占当季收入 29.6%，使其周期波动明显小于同业；2026 全年指引净销售 €43–45B、毛利 54–56%。"
+        },
+        {
+          "symbol": "AMAT",
+          "name": "应用材料 Applied Materials",
+          "role": "材料工程平台最全的一家：薄膜沉积、离子注入、CMP、快速热处理通吃，是唯一在环栅先进逻辑、HBM 用 DRAM、先进封装三条 AI 主线上都有主力机台的美系设备商；管理层称这三段合计约占 2026–2027 年 WFE **增量**的 80%（增量口径，不是总量口径）。FQ3'26 收入 $9.12B、+25%，半导体系统 $7.04B，DRAM（含 HBM 封装）同比 +52% 创纪录；GAAP 毛利 50.3%、non-GAAP 50.4%。"
+        },
+        {
+          "symbol": "LRCX",
+          "name": "拉姆研究 Lam Research",
+          "role": "刻蚀与沉积双寡头，四家里对存储周期弹性最大的一家：3D NAND 层数、DRAM 电容深孔、HBM 的硅通孔都直接放大它的机台数。对应的行业刻度是 SEMI 口径下 2026 年 DRAM WFE +39.0% 至 $38.8B、NAND WFE +30.7% 至 $13.9B——两者都快于 WFE 整体的 +23.1%，是本轮弹性最大的两段。"
+        },
+        {
+          "symbol": "KLAC",
+          "name": "科磊 KLA",
+          "role": "量检测（过程控制）绝对龙头，收入不随机台数走而随「良率焦虑」走——新制程、新封装流程越多越吃它；先进封装过程控制系统 CY2026 约 $1.1B、同比 +70% 以上，接近先进封装市场增速的两倍。9 月季 non-GAAP 毛利指引 62.5%±1pp（6 月季实际 62.4%）为板块最高，服务收入 $820M、占季度收入 22% 且将连续第 17 年增长。它也是本轮供给约束最直接的信息源：股东信明确点名 fab space limitations。"
+        },
+        {
+          "symbol": "TER",
+          "name": "泰瑞达 Teradyne",
+          "role": "美系测试机代表（SoC + 存储），是四大前道设备之外离 AI 芯片最近的一环：收入弹性来自单颗芯片的测试时间与复杂度而非晶圆产能，因此对 AI 需求**双向响应最快**——Q2'26 总收入 $1,329M、同比 +104%，半导体测试 $1,122M，存储收入创纪录（DRAM 持续强势叠加 NAND 终测回暖）；但 Q3'26 指引 $1,200–1,300M，中值对应环比约 -5.9%，GAAP EPS 由 Q1 的 $2.53 回落至 $2.38。看这一环要同时看两面。"
+        },
+        {
+          "symbol": "ONTO",
+          "name": "Onto Innovation",
+          "role": "中盘里少数同时踩在前道与后道的标的：既有先进封装量检测，也有套刻与薄膜计量这类前道敞口，收入体量与客户结构比纯后道同业宽。因此它对 CoWoS/HBM 扩产的弹性弱于纯后道小盘，但前道计量业务提供了周期缓冲——买它是买「先进封装 + 先进逻辑计量」的组合，而不是单一环节。"
+        },
+        {
+          "symbol": "CAMT",
+          "name": "Camtek（以色列公司，纳斯达克上市）",
+          "role": "更纯粹的后道 AOI（光学自动检测）小盘标的，收入几乎全部来自封装与先进封装检测，单一环节集中度是这组里最高的。与 Onto 的实质区别在于它没有前道计量业务做缓冲：HBM 与 CoWoS 产线扩张时弹性最大，一旦封装扩产减速，回撤也最深。"
+        },
+        {
+          "symbol": "NVMI",
+          "name": "Nova（以色列公司，纳斯达克上市）",
+          "role": "光学与材料计量（metrology）细分龙头，收入随制程步骤数放大；与 KLA 的差别是它专注计量而非缺陷检测，在环栅与高深宽比结构上强度提升更快。"
+        },
+        {
+          "symbol": "FORM",
+          "name": "FormFactor",
+          "role": "探针卡龙头，属于耗材式环节——收入随晶圆测试量与 HBM/AI SoC 的测试次数走，而不随设备资本开支走，因此周期性弱于前道设备但更贴近实际产出。"
+        },
+        {
+          "symbol": "MKSI",
+          "name": "MKS Instruments",
+          "role": "射频电源、真空与光学子系统供应商，是设备商的上游。它是本轮供给瓶颈里最具体的一个观测点：进口射频电源交期最长约 24 个月，是所有设备品类里被拉得最长的一段，它的交期与订单先于设备商反映瓶颈松紧。"
+        },
+        {
+          "symbol": "ENTG",
+          "name": "Entegris",
+          "role": "材料、过滤与输送方案，是设备链里最偏「耗材」的一环：收入跟随晶圆投片量（wafer starts）而非机台采购，因此在设备订单见顶后仍能靠产出增长托底。"
+        },
+        {
+          "symbol": "UCTT",
+          "name": "Ultra Clean Holdings",
+          "role": "设备零部件与子系统外包制造，比设备商早一个环节确认收入，是 WFE 出货最实用的领先指标之一；如果它的订单先于设备商见顶，说明这一轮上修的斜率要下修。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "NVIDIA（公司 IR 新闻稿，一手件）",
+          "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+          "date": "2026-08-26",
+          "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+          "takeaway": "传导链起点，与同语料 ai-chip 底稿同源的一手件：FY27Q2（截至 2026-07-26）总收入 $96.2B、环比 +18%、同比 +106%；数据中心 $89.0B、环比 +18%、同比 +117%；GAAP 与 non-GAAP 毛利均 75.0%，GAAP EPS $2.46、non-GAAP $2.22；FY27Q3 指引收入 $108.0B±2%，并明确不假设任何来自中国的数据中心计算收入；CEO 称需求在加速、AI 基础设施建设全速推进。注意：超大规模 $48.7B 与 AI 云/工业/企业 $40.3B 的拆分只出现在业绩幻灯片，不在本一手稿中，引用时不要挂到这条来源上。"
+        },
+        {
+          "house": "SemiAnalysis",
+          "title": "The Great AI Silicon Shortage",
+          "date": "2026-03-12",
+          "url": "https://newsletter.semianalysis.com/p/the-great-ai-silicon-shortage",
+          "takeaway": "提供两个别处拿不到的关键系数：AI 占台积电 N3 产出 2026 年近 60%、2027 年约 86%，2H26 N3 有效稼动率将超过 100%；产能上线的真实约束是洁净室——必须先建成可用的厂房面积，设备才能装机；HBM 每单位容量耗用的晶圆约为普通 DRAM 的 3 倍，HBM4 之后接近 4 倍。正文采用的 3 倍系数取自此处，并与 TrendForce 自带的 bit/投片占比反推值互相印证。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "Tight DRAM Supply Gives Suppliers Greater Pricing Power in HBM, with HBM Contract Prices Expected to Surge Multiples Higher in 2027",
+          "date": "2026-06-02",
+          "url": "https://www.trendforce.com/presscenter/news/20260602-13074.html",
+          "takeaway": "传导链第 2 环的量化支点：HBM 占三大厂 DRAM 投片比 2025 年约 18%、2026 年约 22%、2027 年约 30%，而只占 DRAM bit 供给的 8%/9%/13%（投片占比与 bit 占比的落差正是 DRAM WFE 需求的来源）；单颗 AI 芯片 HBM 容量由 96/192GB 升至 216/288GB，2027 年 Rubin Ultra 达 384GB。内部校验：由这两组数反推的单位容量晶圆耗用倍数为 2.5×（2025）、2.9×（2026）、2.9×（2027），支持「约 3 倍」；若套用 4×，反推 2026 年投片占比应为 28.3%，明显高于该来源自报的 22%，故 4× 不适用于本口径。"
+        },
+        {
+          "house": "SEMI",
+          "title": "Global Semiconductor Equipment Sales Forecast to Reach a Record $229 Billion in 2028, SEMI Reports（Mid-Year Total Semiconductor Equipment Forecast – OEM Perspective）",
+          "date": "2026-07-14",
+          "url": "https://www.prnewswire.co.uk/news-releases/global-semiconductor-equipment-sales-forecast-to-reach-a-record-229-billion-in-2028-semi-reports-302824214.html",
+          "takeaway": "本记录所有 WFE 数字的统一口径。总设备 2026 年 $165.9B、+23.2%，2028 年 $229.5B；WFE 2025 年创纪录 $116.9B → 2026 年 $143.9B、+23.1%，2027 年 +21.8%、2028 年 +14.1% 至约 $200B。WFE 分应用：代工/逻辑 2026 年 $78.0B、+18.9%（2027 +18.1%、2028 +13.6% 至 $104.7B），DRAM $38.8B、+39.0%（2028 年 $56.9B），NAND $13.9B、+30.7%（2028 年 $20.8B）。后道：测试设备 2025 年 +55.3%、2026 年 $15.3B、+31.0%；组装封装 2025 年 +20.8%、2026 年仅 $6.7B、+9.6%。算术校验：143.9+15.3+6.7=165.9 ✓；116.9×1.231=143.9 ✓。口径提醒：原文并未给出 2025 与 2027 年的总设备金额（2025 总额只能由 165.9/1.232 反推约 $134.7B），不要直接引用这两个数。"
+        },
+        {
+          "house": "KLA（公司 IR 股东信）",
+          "title": "Letter to Shareholders — Q4 Fiscal 2026（截至 2026 年 6 月 30 日季度）",
+          "date": "2026-07-28",
+          "url": "https://d1io3yog0oux5.cloudfront.net/_b9ee755a5f60dd0fb3f9e27967aed6af/klatencor/db/1117/10668/letter_to_shareholders/KLA+Earnings+Shareholder+Letter+-+Q4+FY26.pdf",
+          "takeaway": "设备商自报口径 + 先进封装金额 + 供给约束的一手件。把 CY2026「含先进封装的 wafer equipment 市场」上调至约 low $150B（前值 $140 billion plus，对应 CY2025 约 $120B）——注意这个口径含先进封装，与 SEMI 的 WFE 不是同一个篮子。先进封装过程控制系统 CY2026 约 $1.1B、同比增长超过 70%，接近先进封装市场增速的两倍。6 月季收入创纪录 $3.66B（环比 +7%、同比 +15%），non-GAAP 毛利 62.4%，服务收入 $820M、+17%、占季度收入 22%，将连续第 17 年增长；9 月季指引收入 $4.0B±$0.2B、non-GAAP 毛利 62.5%±1pp。客户结构须区分期间：过程控制系统 6 月季**实际**为 foundry/logic 79%、存储 21%（存储中 DRAM 83%、NAND 17%），9 月季**指引**为 73%/27%（DRAM 约 90%）。原文明确写出 fab space limitations；2026-06-11 完成 10 拆 1 拆股，跨期比较每股指标需先还原。"
+        },
+        {
+          "house": "Applied Materials（公司 8-K 全文，StockTitan 转载，二手转载但内容为 8-K 原文）",
+          "title": "Applied Materials Announces Third Quarter 2026 Results",
+          "date": "2026-08-13",
+          "url": "https://www.stocktitan.net/sec-filings/AMAT/8-k-applied-materials-inc-de-reports-material-event-d6a2ddc12eac.html",
+          "takeaway": "链条末端的公司级收入与双口径毛利（供同口径排序使用）：FQ3'26 收入 $9.12B、+25% YoY（去年同期 $7.30B），半导体系统 $7.04B、AGS $1.78B；GAAP 毛利 50.3%、non-GAAP 50.4%；non-GAAP EPS $3.50、+41%；经营现金流 $3.04B；FQ4'26 指引收入 $10.25B±$0.5B、non-GAAP EPS $4.02±$0.20。"
+        },
+        {
+          "house": "Applied Materials（FQ3'26 业绩电话会，Yahoo Finance 整理，二手）",
+          "title": "Applied Materials Q3 Earnings Call Highlights",
+          "date": "2026-08",
+          "url": "https://finance.yahoo.com/markets/stocks/articles/applied-materials-q3-earnings-call-220405111.html",
+          "takeaway": "AI 在 WFE 内部的结构归因，正文「增量集中在三段」这一环的唯一来源：管理层称先进 foundry/logic + DRAM（含 HBM）+ 先进封装约占 2026 与 2027 年 WFE **增量**的 80%——是增量口径，不是总量口径，引用时不可改写成「占 WFE 的 80%」。另：先进封装收入 CY2026 增速 >70%；DRAM（含 HBM 封装）收入同比 +52% 至纪录水平；中国占半导体系统与 AGS 合计收入的 26%。"
+        },
+        {
+          "house": "ASML（公司 IR，一手件）",
+          "title": "ASML reports €9.3 billion total net sales and €2.9 billion net income in Q2 2026",
+          "date": "2026-07-15",
+          "url": "https://www.asml.com/en/news/press-releases/2026/q2-2026-financial-results",
+          "takeaway": "供给硬上限与价格权的一手件：Q2'26 净销售 €9,326M、毛利 54.0%、净利 €2,918M，装机基座管理（服务）收入 €2,762M（占当季收入 29.6%），售出新光刻机 86 台、二手 5 台。指引：2026 全年净销售 €43–45B、毛利 54–56%；Q3 €11.0–12.0B、毛利 55–57%。两处口径务必照原文：(1) 原文只写 ASML increases outlook，**没有列出任何前值区间**，因此「由 51–53% 上修」「前值 €36–40B」这类说法无源，不可使用；(2) 原文是 our 2026 low NA EUV **capacity** of around 65 for 2027，65 是产能不是出货，2027 年产能 +30%，浸没式 DUV 2026 年产能约 130 台同样 +30%。另：ASML 季度业绩以 US GAAP 为主要会计准则，不披露 non-GAAP 毛利，故其毛利只能与他家的 GAAP 数并列。"
+        },
+        {
+          "house": "Teradyne（公司 IR，一手件）",
+          "title": "Teradyne Reports Second Quarter 2026 Results",
+          "date": "2026-07-28",
+          "url": "https://investors.teradyne.com/news-events/press-releases/detail/445/teradyne-reports-second-quarter-2026-results",
+          "takeaway": "测试环节的双向证据：Q2'26 收入 $1,329M（Q2'25 $652M、同比 +104%；Q1'26 $1,282M），其中半导体测试 $1,122M、产品测试 $107M、机器人 $100M（1,122+107+100=1,329 ✓）；GAAP EPS $2.38（Q1'26 为 $2.53）、non-GAAP $2.47；存储收入创纪录，由 DRAM 持续强势与 NAND 终测回暖驱动；Q3'26 指引收入 $1,200–1,300M，中值 $1,250M 对应环比约 -5.9%。**否定性结论（已逐字全文检索）**：本稿不含任何「AI 相关收入占公司总收入的比例」数字，唯一的 AI 提法是 CEO 的定性引语（从晶圆到 AI 数据中心的测试与机器人战略、Q3 指引反映强劲的 AI 相关需求），任何「AI 占比 60% 以上」之类的说法都不能挂到这条来源上。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "[News] Chip Equipment Crunch Reportedly Pushes Lead Times to 24 Months, Giving China's Toolmakers a Boost",
+          "date": "2026-08-19",
+          "url": "https://www.trendforce.com/news/2026/08/19/news-chip-equipment-crunch-reportedly-pushes-lead-times-to-24-months-giving-chinas-toolmakers-a-boost/",
+          "takeaway": "供给约束与中国口径的量化来源：刻蚀与薄膜沉积交期翻倍至约 12 个月，高端封装与测试设备 >18 个月，进口射频电源最长约 24 个月；AMAT、ASML、Lam、TEL、KLA 五家合计约占 70% 份额；2025 年中国占全球设备销售 36.51%，而本土供应商仅满足约 23% 的需求；中微刻蚀交期约 9 个月、拓荆 CVD 约 10 个月。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "capex_source",
+          "why": "第 1 环「英伟达 FY27Q2 数据中心 $89.0B、Q3 指引 $108B」是 AI 加速器实际出货最高频的公开刻度，对本行是领先 2–4 个季度的信号而非同步量（中间隔着晶圆厂 capex 决策、洁净室与 12–24 个月交期）；比收入更贴近本行的是它 10-Q 里的「Supply and capacity」承诺——措辞为 primarily memory and manufacturing facilities，即它在用自己的资产负债表替代工与存储厂预锁产能，这张表跳涨就是 12–18 个月后「缺口靠新建产能」那一环的 WFE 订单。",
+          "pull": [
+            "数据中心收入、同比/环比与下季总收入指引，及增速二阶导（press_releases 财报稿；financials hone_latest_quarter 核环比）",
+            "Supply and capacity 承诺总额、按财年拆分与措辞（memory / manufacturing facilities）（sec_filings 10-Q 索引 → web_search 核 Note 10；press_releases CFO Commentary）",
+            "管理层对「供给瓶颈持续到何时」「需求在加速」口径是否松动（transcript 按 year/quarter；正文受限时改 press_releases 与带绝对日期的 web_search）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬；FY27Q2 为 2026-08-26，下一季约 11 月下旬）",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；10-Q「Supply and capacity」承诺（primarily memory and manufacturing facilities）跳涨至 $279B。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "TSM",
+          "name": "台积电（美股 ADR）",
+          "relation": "capex_source",
+          "why": "「AI 占台积电 N3 产出近 60%」到「缺口靠新建产能：代工/逻辑 WFE $78.0B」这一步的最大单一出资方；它的年度 capex 指引区间与其中先进封装的分配是比 SEMI 预测更前置的读数，月度营收则是「AI 拉货强度 → 晶圆厂 capex 决策」的高频验证；先进封装那笔 capex 的绝对额直接决定 12–18 个月后 CoWoS 相关设备订单。",
+          "pull": [
+            "全年 capex 指引区间与修订方向、先进封装/测试/光罩的分配比例（transcript 法说会按 year/quarter 取正文；sec_filings 6-K 索引；二手转述的区间不采用）",
+            "capex 实际发生额（financials 季度现金流量表购置 PP&E）",
+            "月度营收与季度营收、毛利率、下季指引，≤7nm 占比（press_releases 6-K 业绩稿与月营收公告）",
+            "法说会后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "月度营收（每月 10 日前后）；季度法说会（1/4/7/10 月中）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "MU",
+          "name": "美光科技",
+          "relation": "capex_source",
+          "why": "「HBM 占三大厂 DRAM 投片比 18→22→30%，单位容量耗晶圆约 3 倍」这一环的放大器落在 DRAM 设备上（SEMI 口径 DRAM WFE 2026 年 +39.0%，本轮弹性最大的一段）；三大厂里只有美光是美股，它的 capex（FY2026 约 $270 亿、FY2027 逐季更高）与新 fab 节点是 DRAM/HBM 设备订单的直接出资方。",
+          "pull": [
+            "本财年 capex 指引与下财年方向、新 fab/新节点进度（press_releases 财报稿；transcript）",
+            "capex 实际发生额（financials 季度现金流量表）",
+            "HBM 占投片比、HBM4 产能爬坡与 DRAM bit 供给增速的管理层口径（transcript 按 year/quarter；press_releases）",
+            "毛利率与下季指引，用于判断存储厂有没有钱与动机继续扩产（financials；press_releases）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "server-oem",
+      "name": "AI 服务器与整机",
+      "parent": "ai-datacenter",
+      "one_liner": "把芯片、内存、光模块装成整机柜交付的一层：营收放大、毛利被压。",
+      "aliases": [
+        "服务器",
+        "整机",
+        "机柜",
+        "ODM",
+        "OEM",
+        "液冷整机"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "前九大 CSP 资本开支（TrendForce：2026 年 8867 亿美元、+90%）→ NVIDIA 数据中心收入（FY27Q2 890 亿、下季指引 1080 亿美元）→ NVL72 机柜台数（摩根士丹利：GB 世代 2026 年 7-8 万台）→ 单柜物料（同源 BOM：GB300 约 399 万、VR200 约 780 万美元）→ 须同世代相乘：7-8 万 × 399 万 ≈ 2800-3200 亿美元，即机柜层盘子→ 整机厂做成营收（广达单季 1.04 兆新台币）→ 但料越贵毛利率越低：VR200 里 GPU 51%＋内存 26%≈76% 是穿透物料，整机厂只赚组装、整合、液冷、测试这层加价，实测毛利率 5-6%→ 落点是营业利益的绝对金额（2026Q2 营益率：鸿海 3.75%、纬创 3.74%、广达 3.30%；Dell FY27Q1 ISG 10.5%），不是营收规模。",
+        "key_variables": [
+          {
+            "name": "前九大 CSP 季度资本开支（十亿美元，同比 %）",
+            "why": "链条起点，决定后面每一环的总盘子，也是唯一能提前看到景气见顶的地方。TrendForce 口径 2026 年合计超 8867 亿美元、同比约 +90%（北美超大规模云厂占近九成），2027 年约 1.3 万亿美元、同比近 +50%。",
+            "where": "微软/亚马逊/Alphabet/Meta/甲骨文等季报与电话会的 capex 指引；TrendForce 季度数据中心资本开支跟踪"
+          },
+          {
+            "name": "NVIDIA 数据中心单季收入与下季营收指引（十亿美元）",
+            "why": "这一行最高频、最可靠的上游代理量，用法是方向与时序，不是规模换算。NVIDIA 把 GPU/计算托盘交付后，整机厂要做完 L10/L11 才认列整柜营收，通常滞后一个季度，所以 FY27Q3 约 1080 亿美元的指引对应的是这一行下下季的出货强度。切忌用「数据中心收入 ÷ GPU 占比」反推机柜市场规模（见 core_watch 第 2 条的验算）。",
+            "where": "NVIDIA 季度财报新闻稿与 CFO Commentary（investor.nvidia.com）"
+          },
+          {
+            "name": "NVL72 级机柜季度出货台数，以及 GB 世代与 VR 世代的台数拆分",
+            "why": "把 CSP 资本开支翻译成这一行营收的唯一中间量，但必须连世代组合一起看：摩根士丹利估 2026 年 GB200+GB300 合计 7-8 万台（2025 年约 2.9 万台），而新旧世代单柜物料价差近一倍，只有台数没有组合就会把规模算错一倍。公开来源目前不给这个拆分，只能按区间处理。",
+            "where": "卖方供应链跟踪（摩根士丹利、TrendForce）；用台系 ODM 月营收与法说会给的新平台出货季度做交叉验证"
+          },
+          {
+            "name": "单机柜物料规模与 GPU/内存占比（百万美元/台，%）",
+            "why": "决定「营收放大倍数」与「毛利被压幅度」的核心系数。摩根士丹利 BOM 拆解：GB300 约 399 万美元、VR200 约 780.3 万美元；VR200 里 GPU 占 51%（单颗 5.5 万×72≈396 万）、内存约 200 万（占 26%），合计约 76%。注意口径：该拆解描述的是 ODM 采购/物料侧的价，不是 CSP 付给整机厂的售价；按整机厂 5-6% 的毛利率倒推，780 万对应售价约 825 万美元，两种读法只差不到一成，不改变量级，但改变「剩下那 24% 归谁」——那是 PCB、供电、散热、机构件等其他物料，不是整机厂的加价。",
+            "where": "摩根士丹利等卖方的 BOM 拆解；各 ODM 法说会关于新世代机柜 ASP 的定性指引"
+          },
+          {
+            "name": "季度毛利率、营益率（%），以及收入认列模式（买卖 vs 客户供料）",
+            "why": "链条最后一环的落点，也是最容易被会计口径骗到的地方。广达宣布 2026Q3 起把部分高单价零件由买卖模式改为客户供料——营收会缩、毛利率会跳升，营业利益金额却不变。不核口径就会把一次会计变更误读成基本面改善。2026Q2 实测毛利率：广达 5.02%、纬创 5.56%、鸿海 6.12%，对应营益率 3.30% / 3.74% / 3.75%。",
+            "where": "各公司季报与法说会（广达 2026-08-13、鸿海 2026-08-12、纬创 2026-08-04 均有披露）"
+          },
+          {
+            "name": "服务器 DRAM 合约价季度涨幅（% QoQ）与该公司的 LTA 覆盖情况",
+            "why": "BOM 成本环，直接决定毛利被压多少，也是同业毛利率分化的主要来源。TrendForce 口径 3Q26 服务器 DRAM 合约价环比再涨 13-18%，RDIMM 位元供给年增仅 15-20%；美系 CSP 的多年期 LTA 锁住其价格，涨价压力转移给没有 LTA 的买方。整机厂若走买卖模式又没锁价，这一项直接从毛利里出。",
+            "where": "TrendForce 月度/季度 DRAM 合约价；各整机厂财报电话会关于内存成本与供给的问答"
+          },
+          {
+            "name": "存货、应收账款与营运资金天数（天），及增资/GDR/发债金额",
+            "why": "单柜物料翻倍意味着同样台数要垫两倍的料，营运资金消耗是这一行盈利质量的真实约束，也是资产负债表撑不住的公司最早露相的地方。可观测动作已经很密集：纬创发行约新台币 450 亿元等值 GDR 优化资产负债表，广达 2026 年资本支出上修至新台币 400 亿元。",
+            "where": "各公司季度资产负债表与现金流量表；台湾重大讯息公告与美股 8-K"
+          }
+        ],
+        "multiple_anchor": "用 P/E 与 EV/EBIT（营业利益口径），不要用 EV/S，更不要套半导体那族倍数。理由有三层。第一，营收分母是脏的：机柜里绝大部分金额是穿透的 GPU 与内存物料（VR200 单柜 BOM 口径 GPU 51%＋内存 26%≈76%），营收规模不代表这一行创造的价值；而且随着平台换代（单柜物料 399 万 → 780 万美元），同样的活会让 EV/S 自动「变便宜」。第二，毛利率也不能当锚，因为收入认列口径会变——广达 2026Q3 起把部分高单价零件由买卖改为客户供料，营收缩、毛利率跳、营业利益金额不变。第三，锚要下在营业利益的绝对金额：营业利益 ≈ 机柜出货台数 × 单柜价值量 × 营益率。2026Q2 实测营益率鸿海 3.75%（单季营业利益 948 亿新台币）、纬创 3.74%、广达 3.30%；Dell FY27Q1 的 ISG 营益率 10.5%（营收 290 亿、营业利益约 31 亿美元）。倍数带要分两族给：台系 ODM 营益率 3-4%、客户高度集中、营运资金重，应对标制造代工而非科技成长股；品牌 OEM 必须做分部估值——Dell 光 ISG 内部 290 亿美元里就有 161 亿是 AI 优化服务器、其余约 129 亿是传统服务器、网络与存储，利润率完全不同，混成一个倍数必错。重置成本与 NAV 一族在这里完全不适用（没有稀缺资产）。EV/EBITDA 也不合适，但理由不是折旧大小——是单柜物料翻倍会把现金吃进存货与应收，所以对应的现金锚应该是自由现金流而不是 EBITDA。具体倍数带这里不给：台系 ODM 与美系 OEM 的历史 P/E / EV/EBIT 区间，没有找到可核实的公开时间序列。",
+        "anti_pattern": "不要因为营收增速看着像半导体就套半导体倍数或用 EV/S 估值。这一行的营收里有一大块是穿透物料，但这个比例不是全行业常数，别拿一个数字到处套：摩根士丹利拆解口径下 VR200 单柜 BOM 里 GPU＋内存约 76%，上一代 GB300 约 72%（GPU 63%＋内存约 9%）；品牌 OEM 的营收还含存储、服务、传统服务器与 PC，根本套不上；而广达 2026Q3 起转客户供料后，这些料压根不进营收，穿透比例会大幅下降。否定 EV/S 更稳的两条理由是：营益率只有 3-4%（营收规模与创造的价值不成比例），以及收入认列口径可变（同一批生意可以有两个营收数字）。也不要拿任何单季或单家的毛利率外推：同一个 2026Q2，广达 5.02%、纬创 5.56%、鸿海 6.12%，纬创管理层明说新世代机柜 ASP 大幅拉高会稀释毛利率、但靠新客户更合理的商务条件对冲得回来——毛利率是商务条款与承接层级的函数，不是行业常数，更不是可以外推的趋势。最后，别把整机厂的营收增长直接读成量增：这一行的营收弹性主要来自单机价值量而非台数，平台换代一次单柜物料就接近翻倍，台数不动营收也能翻倍。",
+        "multiple_anchor_short": "用 P/E 与 EV/EBIT，锚在营业利益的绝对金额＝机柜台数×单柜价值量×营益率；不用 EV/S，也不拿毛利率当锚（收入认列口径会变）；台系 ODM 对标制造代工，品牌 OEM 必须做分部估值。",
+        "anti_pattern_short": "不要因为营收增速看着像半导体就套半导体倍数：营收里一大块是穿透物料，且比例不是常数（VR200 约 76%、GB300 约 72%，广达转客户供料后还会大降），营益率只有 3-4%。"
+      },
+      "core_watch": [
+        {
+          "what": "前九大 CSP 的资本开支指引与实际执行",
+          "why": "链条起点，决定所有下游环节的总盘子，也是唯一能提前看到景气见顶的地方。TrendForce 口径 2026 年前九大 CSP 合计资本开支超 8867 亿美元、同比约 +90%，其中北美超大规模云厂占近九成；2027 年约 1.3 万亿美元、同比近 +50%。指引与实际执行要分开看：指引给方向，执行（当季实际 capex 与在建工程）给节奏。",
+          "cadence": "季度：美股四大云厂财报电话会；TrendForce 的季度更新"
+        },
+        {
+          "what": "NVIDIA 季报的 Data Center 收入、下季营收指引，以及新平台（Vera Rubin）的 ramp 节奏",
+          "why": "用法是方向与时序，不是规模换算。时序腿：NVIDIA 交付 GPU/计算托盘后，整机厂要做完 L10/L11 才认列整柜营收，通常滞后一个季度，所以 FY27Q3 约 1080 亿美元的指引对应这一行下下季的出货强度；方向腿：数据中心收入的环比方向就是这一行订单的方向。必须避开一个常见错算——不要用「数据中心收入 ÷ 单柜 GPU 占比」去反推机柜市场规模：890 亿 ÷ 51% ≈ 1745 亿美元/季、年化约 6980 亿，会占掉前九大 CSP 全年 8867 亿资本开支的近八成，而那笔钱里还要装土建、供电、变电、存储、网络与非英伟达算力，显然不成立；51% 是单柜 BOM 的构成，不是 NVIDIA 收入的构成，NVIDIA 数据中心收入里还含网络、HGX 板卡与大量非 NVL72 形态的 GPU。规模只能自下而上算：台数 × 单柜价值量。至于新平台占比，注意它不是财报披露字段——NVIDIA 新闻稿只给 Data Center 与 Edge Computing 两个口径，只能从电话会/CFO Commentary 的定性表述、ODM 法说会给的新平台出货季度、以及卖方供应链跟踪去拼。",
+          "cadence": "季度，NVIDIA 财年在 2/5/8/11 月发布"
+        },
+        {
+          "what": "整机厂的量价先行量：台系月营收（2317 鸿海、2382 广达、3231 纬创、6669 纬颖）与品牌 OEM 的 AI 在手订单及季度转化率",
+          "why": "两个都是营收先行量，但要和利润率成对读才有意义。台系月营收是「台数 × 单柜价值量」在公开数据里唯一的月频观测点，比所有人的季报早 1-2 个月看到拐点，也是交叉验证卖方机柜台数预估（摩根士丹利 2026 年 7-8 万台）是否兑现的工具；月营收同比与环比的背离通常先于毛利率变化出现。OEM 侧看订单转化：Dell FY27Q1 单季新接 AI 订单 244 亿美元、认列 161 亿，全年 AI 服务器指引三个月内由 500 亿上修到约 600 亿美元——订单上修与利润率下行同时出现是这一行的常态而非异常，只看订单会读反。",
+          "cadence": "台系月度（次月 10 日前公告）；Dell / SMCI 为季度财报"
+        },
+        {
+          "what": "毛利率、营益率，以及收入认列模式是否由买卖改为客户供料",
+          "why": "这一行的核心矛盾就落在这两行数字上，而且必须成对看。2026Q2 实测：广达毛利率 5.02%／营益率 3.30%，纬创 5.56%／3.74%（纬创毛利率同比 +1.22 个百分点、营益率同比 +1.78 个百分点），鸿海 6.12%／3.75%——同一时点同业就分化，说明毛利被压不是宿命，取决于商务条款和承接层级。同时广达已宣布 2026Q3 起把部分高单价零件转为客户供料，届时营收会掉、毛利率会跳升、营业利益金额不变，不核口径就会把会计变更读成基本面反转。",
+          "cadence": "季度法说会与季报"
+        },
+        {
+          "what": "服务器 DRAM 合约价涨幅与该公司是否被 LTA 锁价",
+          "why": "内存是这一代机柜 BOM 里涨得最凶的一项，单柜内存价值从上一代约 37 万美元跳到 VR200 的约 200 万美元、占整柜约 26%。TrendForce 口径 3Q26 服务器 DRAM 合约价还要环比涨 13-18%，RDIMM 位元供给年增只有 15-20%；关键结构是美系 CSP 已签多年期 LTA 锁住自己的价格，涨价压力转向没有 LTA 的买方及 LTA 之外的增量供给——整机厂若走买卖模式又没锁价，这一项就直接从毛利里出，这也是同业毛利率分化的主要来源。",
+          "cadence": "月度/季度（TrendForce 合约价追踪），以及各公司季度电话会的成本问答"
+        },
+        {
+          "what": "NVIDIA 的交付层级是否继续上移（L6 → L10 计算托盘 → L11 整柜）",
+          "why": "这一行最大的长期结构性风险，性质上不是景气风险而是价值分配风险，所以必须独立于景气之外单独盯。据 Tom's Hardware 的供应链消息源，NVIDIA 计划直接交付含 Vera CPU、Rubin GPU、内存、网络、供电与液冷的 L10 计算托盘，该托盘可能占整机成本约 90%，整机厂被压缩到只做机柜级整合、供电基础设施、冷却分配与管理软件；报道称整机厂将失去差异化空间、只能靠降价竞争并以利润为代价。换句话说，即使台数和单柜价值量都往上，这一行分到的加价比例仍可能被上游单方面改写。注意这是单一媒体的供应链消息源、非官方确认，应当作风险情景而非既成事实来跟踪。",
+          "cadence": "事件驱动：GTC、COMPUTEX、供应链报道，以及 ODM 法说会问答"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "DELL",
+          "name": "Dell Technologies",
+          "role": "品牌 OEM 里 AI 服务器规模最大的一家，靠企业与主权客户加上存储、服务的组合来补 AI 服务器的薄利。FY27Q1 的 ISG 营收 290 亿美元（同比 +181%）、营业利益约 31 亿美元（营益率 10.5%），其中 AI 优化服务器 161 亿、单季新接 AI 订单 244 亿美元，全年 AI 服务器指引三个月内由 500 亿上修到约 600 亿美元。ISG 内部混着三块利润率完全不同的生意，是这一行里最需要做分部估值的标的。"
+        },
+        {
+          "symbol": "SMCI",
+          "name": "Super Micro Computer",
+          "role": "美股里唯一以 AI 服务器为主业的品牌厂，靠机型广度、液冷与整柜建构块方案、以及新平台上市速度取胜，而不是靠规模。它的产品组合与平台切换对单季利润率的影响远大于台系 ODM，季度毛利率摆幅明显更大，因此任何单季利润率都不适合外推给倍数——用它做估值必须看整个财年。"
+        },
+        {
+          "symbol": "HPE",
+          "name": "Hewlett Packard Enterprise",
+          "role": "品牌 OEM 的第二梯队，AI 服务器规模明显小于 Dell，收入结构更偏企业存量、网络与服务；它的价值是当对照组——同一波 AI 需求下，不把资产负债表压在低毛利整机柜上的 OEM 会长成什么样。"
+        },
+        {
+          "symbol": "CLS",
+          "name": "Celestica",
+          "role": "北美 EMS 里少数直接吃到超大规模云厂机柜与网络交换订单的一家，业务重心比台系 ODM 更偏网络硬件平台与系统服务，是美股里除 Dell、SMCI 之外不多的 AI 数据中心整机与系统暴露口。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "TrendForce",
+          "title": "AI Server Shipments Forecast Raised to Nearly 31% YoY in 2026 as 90% Surge in CSP CapEx Fuels Infrastructure Expansion, Says TrendForce",
+          "date": "2026-08-03",
+          "url": "https://www.trendforce.com/presscenter/news/20260803-13161.html",
+          "takeaway": "2026 年 AI 服务器出货预估由同比 +28% 上修至近 +31%；前九大 CSP（Google/Amazon/Meta/Microsoft/Oracle/字节/腾讯/阿里/百度）2026 年合计资本开支超过 8867 亿美元、同比约 +90%，北美超大规模云厂占近九成；2027 年约 1.3 万亿美元、同比近 +50%。这是传导链起点的定量锚。"
+        },
+        {
+          "house": "摩根士丹利（经 BigGo 财经转述）",
+          "title": "GB Racks to Ship 80,000 Units Annually! Morgan Stanley Names Wistron Top AI Manufacturing Pick, Sets NT$210 Target",
+          "date": "2026-07-12",
+          "url": "https://finance.biggo.com/news/4123fb83-9dc9-4048-a8c2-b5401b81bc69",
+          "takeaway": "2026 年 GB200 + GB300 NVL72 机柜全年出货预估 7 万至 8 万台，2025 年约 2.9 万台。注意这是 GB 世代口径，不含 VR 世代，配对单柜价格时必须用同世代的 399 万美元而不是 VR200 的 780 万美元。"
+        },
+        {
+          "house": "摩根士丹利（经 BigGo 财经转述）",
+          "title": "Nvidia's $7.8 Million Vera Rubin Rack Rewrites AI Profit Map as GPU Share Shrinks",
+          "date": "2026-05-28",
+          "url": "https://finance.biggo.com/news/YTE6b54BoicNoOgC7T_y",
+          "takeaway": "VR200 NVL72 单柜约 780.3 万美元、上一代 GB300 机柜约 399 万美元；GPU 占整柜价值由 63% 降至 51%（单颗 5.5 万美元、涨 57%）、内存由约 37 万美元升至约 200 万美元（占 26%、涨 435%）、PCB 由 3.51 万升至 11.67 万美元、供电涨 32% 至约 7.6 万美元、散热涨 12% 至约 7.21 万美元。这是整条链里「价」和「BOM 穿透比例」两个系数的唯一定量来源。口径注意：原文措辞为 ODM purchase price、且注明拆解数据取自整机厂，指向物料采购侧而非 CSP 采购价，使用时不应直接当作整机厂售价。"
+        },
+        {
+          "house": "NVIDIA（公司 IR）",
+          "title": "NVIDIA Announces Financial Results for Second Quarter Fiscal 2027",
+          "date": "2026-08-26",
+          "url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+          "takeaway": "数据中心营收 890 亿美元（同比 +117%）、总营收 962 亿美元、毛利率 75.0%；FY27Q3 营收指引约 1080 亿美元（±2%）；Vera Rubin 正在爬坡至全面量产。与整机厂 3-6% 的毛利率并列，直观说明这条链上的利润分配格局。注意该稿只披露 Data Center 与 Edge Computing 两个口径，没有任何平台级（Blackwell / Vera Rubin）的营收拆分。"
+        },
+        {
+          "house": "Hon Hai Technology Group（公司 IR）",
+          "title": "Hon Hai Technology Group (Foxconn) Announces Second Quarter 2026 Financial Results",
+          "date": "2026-08-12",
+          "url": "https://www.foxconn.com/en-us/press-center/press-releases/latest-news/2095",
+          "takeaway": "单季营收新台币 2.53 万亿元（同比 +41%）、毛利 1545 亿元、毛利率 6.12%、营业利益 948 亿元、营益率 3.75%、净利率 2.37%、EPS 4.27 元；Q3 AI 机柜出货环比高双位数增长，全年 AI 服务器出货预期「翻倍以上」。官方口径确认了整机组装环节的真实利润率水平与营业利益的绝对量级。"
+        },
+        {
+          "house": "富果 Fugle（法说会纪要）",
+          "title": "【廣達法說會重點內容備忘錄】未來展望趨勢 20260813",
+          "date": "2026-08-13",
+          "url": "https://blog.fugle.tw/post/earnings-call-2382-2026-08-13",
+          "takeaway": "广达 2026Q2 营收新台币 1.04 兆元、毛利率 5.02%、营益率 3.30%、EPS 7.43 元；AI 服务器占服务器营收 75-80%、全年目标 80%；订单能见度到 2028 年；2026 年资本支出上修至 400 亿元；2026Q3 起部分高单价零件由买卖模式改为客户供料模式。最后一条是这一行最关键的会计口径变更。"
+        },
+        {
+          "house": "鉅亨網（法说会纪要）",
+          "title": "【緯創法說會AI摘要】2026/8/4",
+          "date": "2026-08-04",
+          "url": "https://m.cnyes.com/news/id/6559382",
+          "takeaway": "纬创 2026Q2 营收新台币 8954.43 亿元（同比 +62.43%）、毛利率 5.56%（同比 +1.22 个百分点）、营益率 3.74%（同比 +1.78 个百分点）；产品覆盖 L10（主板/组件）到 L11（整机柜）；管理层承认新世代机柜 ASP 大幅拉高会稀释毛利率，但靠新客户更合理的商务条件对冲；发行约新台币 450 亿元等值 GDR。这是「ASP 拉高稀释毛利」的第一方确认，也是「毛利被压可被条款对冲」的反例证据。"
+        },
+        {
+          "house": "Dell Technologies（公司 IR）",
+          "title": "Dell Technologies Delivers First Quarter Fiscal 2027 Financial Results",
+          "date": "2026-05-28",
+          "url": "https://www.dell.com/en-us/dt/corporate/newsroom/announcements/detailpage.press-releases~usa~2026~05~dell-technologies-delivers-first-quarter-fiscal-2027-financial-results.htm",
+          "takeaway": "ISG 单季营收 290 亿美元（同比 +181%）、营业利益约 31 亿美元（同比 +206%，ISG 营益率 10.5%）；AI 优化服务器单季营收 161 亿美元（同比 +757%）、新接 AI 订单 244 亿美元；FY27 全年 AI 服务器营收指引上调至约 600 亿美元（同比 +144%）。给出了 OEM 侧「营收放大」的量级和 ISG 的营益率锚点；由 290 减 161 可得 ISG 内非 AI 服务器部分约 129 亿美元，是做分部估值的拆分起点。该新闻稿本身不披露公司综合毛利率与 AI 在手订单总额。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "Long-Term Agreements Cap Price Increases; Server DRAM Contract Prices Expected to Rise 13-18% QoQ in 3Q26, Says TrendForce",
+          "date": "2026-07-09",
+          "url": "https://www.trendforce.com/presscenter/news/20260709-13140.html",
+          "takeaway": "3Q26 服务器 DRAM 合约价环比涨 13-18%；RDIMM 位元供给年增仅 15-20%；多家美系 CSP 已签多年期 LTA 锁价，涨价压力转向没有 LTA 的买方及 LTA 之外的增量供给。这条把「内存涨价压毛利」从定性变成了可跟踪的季度变量，也解释了为什么有无 LTA 会造成同业毛利率分化。"
+        },
+        {
+          "house": "Tom's Hardware（记者 Anton Shilov，供应链消息源；经 Yahoo Finance 转载）",
+          "title": "Price of Nvidia's Vera Rubin NVL72 racks skyrockets to as much as $8.8 million apiece, but server makers' margins will be tight — Nvidia is moving closer to shipping entire full-scale systems",
+          "date": "2026-03-24",
+          "url": "https://finance.yahoo.com/sectors/technology/articles/price-nvidias-vera-rubin-nvl72-100000086.html",
+          "takeaway": "NVIDIA 计划直接交付含 Vera CPU、Rubin GPU、内存、网络、供电与液冷的 L10 计算托盘，该托盘可能占整机成本约 90%，整机厂被压缩到只做机柜级整合、供电基础设施、冷却分配与管理软件，报道称其只能靠降价竞争、以利润为代价。这是这一行长期价值分配风险的唯一具体描述，属单一媒体的供应链消息源、非官方确认。标题里的 880 万美元指的是 Rubin Ultra 配置而非 VR200，不要与摩根士丹利的 780 万美元混用。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "supply_gate",
+          "why": "「NVIDIA 数据中心收入（FY27Q2 890 亿、下季指引 1080 亿美元）→ NVL72 机柜台数」这一环的上游代理量，用法是方向与时序而非规模换算：GPU/计算托盘交付后整机厂要做完 L10/L11 才认列整柜营收，通常滞后一个季度，所以它的下季指引对应本行下下季的出货强度；同时它的交付层级是否继续上移（L6→L10 计算托盘→L11 整柜）是本行最大的价值分配风险，独立于景气之外。",
+          "pull": [
+            "数据中心收入、环比与下季总收入指引（press_releases 财报稿）",
+            "新平台（Vera Rubin）ramp 节奏与 Blackwell 占比的定性表述（transcript 按 year/quarter；press_releases CFO Commentary）",
+            "交付层级（L10 计算托盘/整柜直供）的官方表述与供应链报道（press_releases GTC/COMPUTEX 稿；news）",
+            "库存、采购义务与供应承诺变化（financials 季度资产负债表；sec_filings 10-Q 索引）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬，比整机厂整柜营收领先约一个季度）；GTC（3 月）、COMPUTEX（5–6 月）",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%（L11 整柜营收通常滞后一个季度，对应本行下下季出货）。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "MU",
+          "name": "美光科技",
+          "relation": "supply_gate",
+          "why": "「单柜物料 → 但料越贵毛利率越低：VR200 里 GPU 51%＋内存 26%」那一环的定价方：server DRAM 合约价 3Q26 环比再涨 13–18%，整机厂若走买卖模式又没锁价，这一项直接从毛利里出；美光的毛利率、涨价表述与 LTA 结构是本行 BOM 成本环的一手供给侧读数。",
+          "pull": [
+            "非 GAAP 毛利率与下季指引、server DRAM/RDIMM 供需与价格表述（press_releases 财报稿；transcript）",
+            "长约（SCA/LTA）覆盖率与客户结构（是否以 CSP 为主）（press_releases；sec_filings 10-Q/10-K 索引）",
+            "capex 与新增投片（供给松动时点）（press_releases；financials 季度现金流量表）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "ORCL",
+          "name": "甲骨文",
+          "relation": "capex_source",
+          "why": "链条起点「前九大 CSP 资本开支」里最边际、最靠融资的买家：capex 几乎全投 AI 基础设施（FY26 556.63 亿、FCF −236.86 亿，靠发债与发股），RPO 兑现节奏直接决定机柜下单节奏，融资条件一收紧就先砍机柜；它是本行订单里「钱是否到位」这一项的先行读数。",
+          "pull": [
+            "capex 指引与 Capital Investment Program and Capital Funding 段、RPO 总额与单季增量（press_releases 8-K 财报稿）",
+            "capex 实际发生额、自由现金流（financials 季度现金流量表）",
+            "发债/发股公告与票面利率（sec_filings 8-K 索引；news）",
+            "Cloud IaaS 收入增速（press_releases 财报稿）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月中旬；财年 5 月底结束）；融资公告不定期",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "META",
+          "name": "Meta Platforms",
+          "relation": "capex_source",
+          "why": "链条起点「前九大 CSP 资本开支」里 capex 指引写得最明的一家（含融资租赁本金，直接写在 8-K 新闻稿），且 capex 全部自用、不做对外云，指引修订方向最接近「NVL72 机柜台数」本身；它是「指引给方向、执行给节奏」这一环最可核的样本。",
+          "pull": [
+            "全年 capex 指引区间与修订方向、口径（press_releases 8-K 财报稿 CFO Outlook 段）",
+            "capex 实际发生额与环比（financials 季度现金流量表）",
+            "自由现金流与净发债，融资是否约束建设速度（financials；sec_filings 8-K）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    },
+    {
+      "id": "hyperscaler",
+      "name": "云厂与 AI 平台",
+      "parent": "ai-datacenter",
+      "one_liner": "需求的源头：它们的资本开支指引是整条链的前瞻指标；同时它们自己也是一个可投资行业。",
+      "aliases": [
+        "云厂",
+        "超大规模",
+        "hyperscaler",
+        "capex",
+        "资本开支",
+        "AI平台"
+      ],
+      "ai_valuation_logic": {
+        "driver_chain": "起点是供给约束，微软称「需求持续超过可用供给」→ 逼出 capex：亚马逊合并现金 capex 由约 2,000 亿上修到 2,200 亿 → 但美元≠算力：DRAM+NAND 占 CSP capex 2026 年 47%、2027 年 68% → 钱先变合同：微软商业 RPO 6,780 亿 +84%，剔除 OpenAI 仅 +25% → 合同按久期摊成收入：微软 RPO 久期 2.3 年（12 个月内确认 30%），亚马逊长约 6.4 年 → 收入端见改善：Google Cloud +82%、分部经营利润 28.26→88.14 亿 → 成本端计提折旧：D&A 占收入 7%（2022）→12%（2027E）→ 终点是现金流分化：微软 FY26Q4 FCF +196 亿、甲骨文 FY26 −237 亿。定价看 backlog 转收入 ÷ 折旧与利息爬升的速度，不看 capex 绝对值。",
+        "key_variables": [
+          {
+            "name": "模型 API token 吞吐（十亿 tokens/分钟）——仅 Alphabet 单家口径",
+            "why": "需求最上游的可观测量，但只有 Alphabet 按季给绝对值：2026Q2 约 220 亿 tokens/分钟、上季 160 亿。它是单家的需求代理量，斜率可能来自 Gemini 自身的产品周期而非全行业需求，不可外推、也无法跨公司汇总；做行业判断时它只作侧面验证，主线仍回到 capex 与 backlog。",
+            "where": "Alphabet 季度电话会当日 blog.google 的 CEO remarks（Pichai 每季给绝对值）；其余四家不披露可比口径"
+          },
+          {
+            "name": "各家 capex 指引金额与口径（是否含融资租赁本金、折旧年限是否变更）",
+            "why": "全链最重要的前瞻指标，但口径不是一回事：Meta 的 1,300–1,450 亿明确「含融资租赁本金支付」；微软 FY26Q4 季度 capex 410 亿含融资租赁，而折旧年限由 15 年延到 25 年后更多租约转为经营租赁、不再计入 capex，日历 2026 口径因此调整为约 1,750 亿——公司同时说明「除年限影响外投入预期不变」。比较前必须先对齐口径，否则会把会计变更读成投入变化。",
+            "where": "Meta 写在 8-K 新闻稿的 CFO Outlook 段；微软、亚马逊只在电话会 CFO 展望段口头给，需读逐字稿；Alphabet 的 8-K 不含指引段，只能取现金流量表已发生值（Q2 购置不动产与设备 449.24 亿、上半年 805.98 亿）"
+          },
+          {
+            "name": "server DRAM 合约价涨幅与 DRAM+NAND 占 CSP 总 capex 的比重（%）",
+            "why": "capex 美元与实际算力之间的「汇率」。TrendForce 测 server DRAM 合约价 2026 年累计约 +270%，DRAM+NAND 占 CSP 总 capex 由 2026 年 47% 升到 2027 年 68%。占比越高，同样一美元买到的加速器越少，capex 增速会系统性高于可售算力增速；楔子具体多大公司未披露，只能用这个占比自行估算。",
+            "where": "TrendForce 记忆体产业新闻稿（月度合约价调查与季度产业报告，公开摘要）"
+          },
+          {
+            "name": "backlog / RPO 的环比增量与对手方集中度",
+            "why": "存量已大到看不出边际变化，增量与结构才有信息：甲骨文单季 +850 亿到 6,380 亿；微软 +84% 到 6,780 亿、但剔除 OpenAI 只有 +25%，同一次电话会又说明环比增量全部来自非前沿模型公司客户、全年云收入近九成来自这类客户——两句话方向相反，必须一起读。集中度还带关联性：AWS 与 OpenAI 在 2026Q1 扩大既有 380 亿美元多年期承诺，亚马逊同季从 Anthropic 投资录得 534 亿税前收益而 Anthropic 本身是 AWS 客户；甲骨文 6,380 亿里 750 亿是客户预付或客户自带 GPU。",
+            "where": "微软电话会与财报正文的 commercial RPO 段；甲骨文 8-K 的 Remaining Performance Obligations 段；亚马逊 10-Q 收入附注（约 4,960 亿）；Google Cloud backlog（5,140 亿）只在电话会口头给"
+          },
+          {
+            "name": "backlog 的确认速度（加权平均久期，年；12 个月内确认比例，%）",
+            "why": "同样规模的 backlog，久期 2 年和 6 年对应的现值差三倍，这是 backlog 折现的唯一节奏参数。目前只有两家能直接取到：微软 RPO 加权平均久期 2.3 年、约 30% 在未来 12 个月确认（该部分同比 +37%，12 个月以外的部分同比 +112%）；亚马逊 10-Q 称长期合同加权平均剩余期限 6.4 年。Alphabet 与甲骨文未公开确认节奏，只能用这两个端点做区间。",
+            "where": "微软季度电话会 CFO 财务段与 10-K/10-Q 的 RPO 附注；亚马逊 10-Q 收入附注"
+          },
+          {
+            "name": "云分部收入同比与分部经营利润（美元）",
+            "why": "链条的落地读数，也是判断「AI 投入是否已带来单位经济性改善」的地方。Google Cloud 收入 +82% 的同时分部经营利润由 28.26 亿升到 88.14 亿——收入与利润同步扩张，才说明不是在亏本卖算力；Azure +43%（FY27Q1 指引约 +45% 固定汇率）、AWS +36.7%（分部经营利润 166.21 亿、利润率 39.4%）。Meta 没有对外云收入，这一栏对它空缺。",
+            "where": "各家财报分部披露表与电话会（Alphabet 的 Google Cloud、微软的 Azure 增速、亚马逊的 AWS 分部、甲骨文的 Cloud IaaS）"
+          },
+          {
+            "name": "自由现金流、融资方式与 D&A 占收入比重",
+            "why": "链条最后一环的总读数，也是「折旧与利息爬升速度」这个分母的所在。高盛口径：2026 年 hyperscaler capex 共识约 7,700 亿，等于经营现金流的 100%；2025 年初以来净债增加 1,700 亿；D&A 占 hyperscaler 收入由 2022 年 7% 升至 2027 年 12%，共识隐含七大科技股 ROE 明年平均下降约 700bp。融资端：Alphabet 6 月净募 496 亿股权并设 400 亿 ATM；甲骨文 FY26 融资 430 亿债 + 50 亿股权、FY27 拟再融约 400 亿；Meta 当季净发债 249.1 亿。融资成本一旦变贵会直接砍掉建设速度，反过来卡住 capex 那一环。",
+            "where": "各家现金流量表与非 GAAP 调节表；甲骨文 8-K 的 Capital Investment Program and Capital Funding 段；Alphabet 8-K 的 Equity Capital Raise 段；高盛 2026-06-12 US Weekly Kickstart"
+          }
+        ],
+        "multiple_anchor": "这一行不能用单一倍数，要分三段拼起来看。第一段是成熟主业（Search 与 YouTube 广告、M365、电商与 Prime、数据库许可、Meta 广告），用 EV/EBIT 或 P/E 锚在各自的历史区间，这部分是现金牛，估值方法没有变。第二段是 AI 云增量，正确的锚不是 EV/S 而是 backlog：把已签约未确认收入按确认节奏折现，再减去为兑现它必须配套的 capex 与运营成本，本质是对云做一次项目级 DCF。节奏参数目前只有两家能取到——微软 RPO 加权平均久期 2.3 年、约 30% 在未来 12 个月确认；亚马逊 10-Q 称长期合同加权平均剩余期限 6.4 年。同样量级的 backlog，这两个久期对应的现值差三倍；Alphabet 与甲骨文未公开确认节奏，只能用这两个端点做区间。EV/S 只是这套算法的粗糙近似，横向比较前必须先确认两家的 backlog 口径是否一致。第三段是资产端交叉检验：资产强度明显上升、销售/资产周转率持续下滑（高盛口径），所以数据中心的重置成本与「每 GW 已通电装机对应多少 EV」成为有意义的第二把尺，对甲骨文与 Meta 这类自建为主的尤其重要——但各家已通电 GW 并未公开披露，这把尺目前只有方法、没有可直接套用的分母。倍数族上，EV/EBITDA 比 P/E 耐用，因为折旧年限是管理层可调的会计参数（微软 FY27 起 15 年→25 年）；但 EV/EBITDA 又把折旧整个免掉，恰好放过 AI 这门最重资产的生意，所以必须与自由现金流收益率或 EV/(EBITDA − capex) 配着看，两者背离时以后者为准。甲骨文要单独处理：它的估值已经不是 P/E 定的，是 6,380 亿 RPO 的兑现概率与融资成本定的（FY26 自由现金流 −236.86 亿，当年融资 430 亿债 + 50 亿股权，FY27 拟再融约 400 亿），框架更接近项目融资与信用分析，信用利差比市盈率更有信息量。Meta 也要单独处理：它没有对外云收入、没有 backlog，capex 回报只能从广告效率与新变现路径反推，用云厂的 backlog 倍数套它是错配。",
+        "anti_pattern": "一、不要用 P/E 给这一行定价，而且有两条互相独立的理由。折旧年限污染的是微软：FY27 起数据中心与办公楼由 15 年延到 25 年，同一动作还让更多数据中心租约从融资租赁转成经营租赁，日历 2026 capex 口径因此调整为约 1,750 亿；公司在同一次电话会里又说「除年限影响外投入预期不变」，所以拿这个 1,750 亿去和调整前口径的数字做同比就是错的——微软只公布过调整后这一个数字。非经营性重估污染的是 Alphabet 与亚马逊：Alphabet Q2 其他收入净额 980 亿（主要是股权证券未实现收益）把净利推到 +298%、EPS 9.11 美元；亚马逊 Q2 净利 626 亿里有 534 亿是 Anthropic 投资的非经营性税前收益。五家里两家的当季 EPS 由一次性重估决定，任何 TTM P/E 都失真，这跟折旧年限无关。二、不要把 capex 数字直接当算力读。亚马逊把 2,000→2,200 亿的上修归因于内存涨价（同一份逐字稿的编辑摘要另列了「容量需求增加」一项，两个驱动的占比公司未拆分）；TrendForce 测 DRAM+NAND 占 CSP 总 capex 由 2026 年 47% 升到 2027 年 68%。占比上升会让 capex 增速系统性高于可售算力增速，但楔子有多大公司没披露，只能用这个占比自行估算，不要据此推出「capex 涨而算力零增长」这类极端结论。三、不要把各家 backlog 当同质数横向排名：微软 6,780 亿是表内 commercial RPO，甲骨文 6,380 亿是表内 RPO（含 750 亿客户预付或客户自带 GPU），亚马逊 4,960 亿是 10-Q 附注里原始期限超一年的未确认履约义务，Google Cloud 5,140 亿只在电话会口头给且含 TPU 系统销售；久期还差三倍（微软 2.3 年 vs 亚马逊 6.4 年）。四、比口径更要紧的是对手方集中度与关联性。微软 RPO +84%、剔除 OpenAI 只有 +25%（公司同时说明环比增量全部来自非前沿模型公司客户、全年云收入近九成来自这类客户）；AWS 与 OpenAI 在 2026Q1 扩大既有 380 亿美元多年期承诺，而亚马逊当季从 Anthropic 投资录得 534 亿收益、Anthropic 同时是 AWS 客户。横向比大小之前，先看这几千亿签给了谁、买家的钱从哪来、卖方是否同时是买方的股东。五、不要看到 FCF 转负就当利空：Alphabet Q2 −58.55 亿、亚马逊 TTM −76 亿、甲骨文 FY26 −236.86 亿，这是建设期设计出来的结果而不是失控的证据，真正该看的是 backlog 环比增量与 capex 环比增量的比值有没有恶化。六、不要把「capex 上修」一律读成利好或利空——2026 年的上修里既有需求驱动也有成本驱动，性质完全相反，必须去电话会里找管理层对上修原因的原话。最后一条边界：CoreWeave、Nebius 这类没有成熟主业托底的纯 AI 云不在本表，归「新云」那张表；本表只收有现金牛主业托底的平台型云厂，用本表的框架直接去套新云，会漏掉最关键的合同久期与信用口径。",
+        "multiple_anchor_short": "分三段：成熟主业 EV/EBIT 锚历史区间；AI 云增量锚 backlog 折现再减配套 capex，久期差三倍（微软 2.3 年 vs 亚马逊 6.4 年）；EV/EBITDA 须配 FCF 收益率，背离以后者为准。",
+        "anti_pattern_short": "不要用 TTM P/E 给这一行定价：五家里两家的当季 EPS 由一次性重估决定（亚马逊 Q2 净利 626 亿里 534 亿是 Anthropic 投资收益），微软又把折旧年限由 15 年延到 25 年。"
+      },
+      "core_watch": [
+        {
+          "what": "各家 CFO 的 capex 指引，以及同一次电话会里对口径的改动（是否含融资租赁本金、折旧年限是否变更、融资租赁是否转经营租赁）",
+          "why": "全链最重要的前瞻指标：HBM、光模块、电力设备、ODM 的订单都排在它后面 1–3 个季度。但必须连口径一起看，否则会把会计变更读成需求变化——微软 FY27 起折旧年限 15→25 年，更多租约转为经营租赁，日历 2026 capex 口径因此调整为约 1,750 亿，而公司同时说明除年限影响外投入预期不变，投入本身并没有变。另要记住指引兑现还要过并网与电力这道物理闸门：排不到电，capex 指引再高也变不成机柜、变不成 backlog 的兑现。",
+          "cadence": "季度财报电话会（Meta 直接写在 8-K 新闻稿的 CFO Outlook 段；微软、亚马逊只在电话会口头给，需读逐字稿；Alphabet 的 8-K 不含指引段）"
+        },
+        {
+          "what": "「需求超过供给」这句话在不在",
+          "why": "2026Q2 三家都说了同一件事：微软「客户需求持续超过可用供给」、Google「我们仍然受供给约束」、Jassy「即便花到 2,200 亿，2026 年仍没有足够容量满足全部需求，2027 年我预计同样如此」。这句话消失、或口径从「供给约束」转成「需求正常化」的那一季，就是这一轮的顶部信号，比任何估值指标都早。",
+          "cadence": "季度财报电话会"
+        },
+        {
+          "what": "backlog / RPO 的环比增量、久期与对手方集中度（不是存量）",
+          "why": "存量已经大到看不出边际变化，增量与结构才有信息：甲骨文单季 +850 亿到 6,380 亿、微软 +84% 到 6,780 亿。但增速要拆客户——微软剔除 OpenAI 只有 +25%，同一次电话会又说环比增量全部来自非前沿模型公司客户、全年云收入近九成来自这类客户，两句话方向相反，必须一起读。还要盯久期（微软 2.3 年、12 个月内确认约 30%；亚马逊长约 6.4 年）与关联交易（AWS–OpenAI 380 亿承诺扩容、AWS 对 Anthropic 的投资、甲骨文 750 亿客户预付或自带 GPU）。",
+          "cadence": "季度财报（微软、甲骨文在财报正文与电话会；亚马逊在 10-Q 收入附注；Google Cloud backlog 只在电话会口头给）"
+        },
+        {
+          "what": "内存合约价与 DRAM+NAND 在 CSP 总 capex 中的占比",
+          "why": "这是 capex 美元与实际算力之间的汇率。TrendForce 测 server DRAM 合约价 2026 年累计约 +270%，DRAM+NAND 占 CSP 总 capex 由 2026 年 47% 升到 2027 年 68%，同期 CSP 总 capex 2026 年同比 +98%、2027 年再 +50%。涨价期间 capex 上修但可售算力不同步上修，云收入的弹性会明显低于 capex 的弹性——这正是把 capex 数字直接当算力读的人会踩的坑。",
+          "cadence": "TrendForce 月度合约价调查与季度产业报告"
+        },
+        {
+          "what": "英伟达 Data Center 分部收入与下季指引",
+          "why": "这一行也吃这条，但传导方向和光通信、新云是反的：对光模块与新云而言英伟达是需求源头，对云厂而言英伟达那一行是「交付确认单」。云厂在电话会说自己要花多少（承诺），英伟达 Data Center 收入说实际交付了多少（确认），两者的差额就是「钱花出去了但机器没到」，直接决定 Azure/GCP/AWS 未来两个季度的可售容量，也就是收入天花板。",
+          "cadence": "英伟达季度财报（每季一次，通常晚于四大云厂 3–4 周，正好用来验证上一轮 capex 指引的兑现度）"
+        },
+        {
+          "what": "自由现金流与融资渠道（发债、发股、ATM、表外合资）",
+          "why": "capex 已系统性超过经营现金流（高盛口径：2026 年 hyperscaler capex 共识约 7,700 亿，等于经营现金流的 100%；2025 年初以来净债增加 1,700 亿），融资条件成了建设速度的实际约束。Alphabet 6 月发行普通股与强制可转优先股净募 496 亿、另设最高 400 亿 ATM；甲骨文 FY26 融资 430 亿债 + 50 亿股权、FY27 拟再融约 400 亿；Meta 当季净发债 249.1 亿。融资利差走阔或股权融资受阻，会先反映在下一季的 capex 指引上，再传到全链。",
+          "cadence": "季度财报 + 债券发行与股权融资公告（不定期）"
+        }
+      ],
+      "members": [
+        {
+          "symbol": "MSFT",
+          "name": "微软",
+          "role": "唯一把自有模型、OpenAI 与第三方模型、以及全球 Azure 区域同时装进一套企业订阅体系的云厂；AI 收入的确定性最靠合同——商业 RPO 6,780 亿美元、+84%（剔除 OpenAI 为 +25%），加权平均久期 2.3 年、约 30% 在未来 12 个月确认；Azure +43%，FY27Q1 指引约 +45%（固定汇率）。也是五家里唯一在建设高峰期仍保持明显正自由现金流的（FY26Q4 196 亿）。同时是折旧口径变更的样本：FY27 起数据中心与办公楼由 15 年延至 25 年，更多租约转为经营租赁，日历 2026 capex 口径调整为约 1,750 亿。"
+        },
+        {
+          "symbol": "GOOGL",
+          "name": "Alphabet（谷歌）",
+          "role": "唯一自研加速器已形成对外产品收入的云厂——8-K 分部说明明确 Google Cloud 的产品收入主要来自 TPU 系统销售；也是唯一按季公开 token 吞吐绝对值的（模型 API 约 220 亿 tokens/分钟，上季 160 亿）。云收入 +82%、分部经营利润由 28.26 亿跳至 88.14 亿，是五家里 AI 单位经济性改善最明确的。但当季净利被 980 亿其他收入（主要为股权证券未实现收益）支配、EPS 9.11 美元，用 P/E 读它必然失真；Q2 自由现金流 −58.55 亿，6 月净募 496 亿股权并另设 400 亿 ATM。"
+        },
+        {
+          "symbol": "AMZN",
+          "name": "亚马逊",
+          "role": "规模最大的公有云（AWS 季度 422.32 亿、+36.7%，为 18 个季度最快，年化 1,690 亿，分部经营利润 166.21 亿、利润率 39.4%），自研 Trainium/Inferentia 使 AI 业务与自研芯片业务各自年化超 250 亿。注意口径：2026 年约 2,200 亿现金 capex 是亚马逊合并口径（含履约中心、运输等），管理层称其中大部分投向 AI 与 AWS，并非 AWS 分部数，引用时必须带这个限定。它也是观察 capex 与算力脱钩的最佳窗口——上修被归因于内存涨价与容量需求。当季净利 626 亿里 534 亿来自 Anthropic 投资的非经营性税前收益。"
+        },
+        {
+          "symbol": "META",
+          "name": "Meta Platforms",
+          "role": "这一行里最大的自用型买家而非云厂——capex 全部先服务自家推荐、广告与模型训练，是「需求源头」这重身份里最纯粹的一段，但作为可投资的云是最弱的：没有对外云收入、没有 backlog，回报只能从广告效率与新变现路径反推。而最近一期反推出来是负的：2026Q2 经营利润 187.75 亿、同比 −8%，经营利润率由 43% 降至 31%，净利 −14%（含 24 亿法律计提与 11.8 亿遣散）；capex（含融资租赁本金）310.8 亿，自由现金流只剩 7.84 亿，当季净发债 249.1 亿；2026 年 capex 指引 1,300–1,450 亿。"
+        },
+        {
+          "symbol": "ORCL",
+          "name": "甲骨文",
+          "role": "靠少数巨额 AI 训练合同把 RPO 顶到 6,380 亿美元（+363%、单季 +850 亿）的挑战者，收入确定性来自合同、风险来自融资：FY26 capex 556.63 亿、自由现金流 −236.86 亿，当年融资 430 亿债 + 50 亿股权，FY27 拟再融约 400 亿。RPO 里 750 亿是客户预付或客户自带 GPU 的部分，公司称这大幅减少了它需要筹集的资本，但口径与其他四家不同、不可直接横向比较。Q4 Cloud IaaS 收入 58 亿、+93%。这一行里唯一信用分析权重高于估值倍数的标的。"
+        },
+        {
+          "symbol": "BABA",
+          "name": "阿里巴巴",
+          "role": "中国最大的公有云与自研加速器方，是中国侧 AI capex 的主要出口；受出口管制约束，与美系四家不在同一条供给曲线上，因此不能用同一套「英伟达交付量」框架推演，判断其算力落地要看国产加速器供给而非 NVL72 机柜出货。本次未核实其最近一期 capex 金额与云收入增速，故此处只给定性判断、不写数字。"
+        }
+      ],
+      "sources": [
+        {
+          "house": "Microsoft Investor Relations",
+          "title": "Microsoft Fiscal Year 2026 Fourth Quarter Earnings Conference Call（含完整逐字稿）",
+          "date": "2026-07-29",
+          "url": "https://www.microsoft.com/en-us/investor/events/fy-2026/earnings-fy-2026-q4",
+          "takeaway": "本行信息密度最高的一份。商业 RPO 6,780 亿、+84%，剔除 OpenAI 为 +25%，环比增量全部来自非前沿模型公司客户；RPO 加权平均久期 2.3 年、约 30% 在未来 12 个月确认（该部分同比 +37%，12 个月以外部分 +112%）；季度 capex 410 亿（含融资租赁），约三分之二投向 CPU/GPU 等短寿命资产；FY27 起数据中心与办公楼折旧年限由 15 年延至 25 年，更多租约由融资租赁转经营租赁，日历 2026 capex 口径因此调整为约 1,750 亿，同时说明「除年限影响外投入预期不变」；Azure +43%、FY27Q1 指引约 +45%（固定汇率）；「需求持续超过可用供给」；FY26Q4 经营现金流 554 亿、自由现金流 196 亿；全年云收入超 2,140 亿，近九成来自非前沿模型公司客户。逐字稿全文未出现任何调整前的 capex 金额。"
+        },
+        {
+          "house": "Alphabet Inc.（SEC 8-K Exhibit 99.1）",
+          "title": "Alphabet Announces Second Quarter 2026 Results",
+          "date": "2026-07-22",
+          "url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000066/googexhibit991q22026.htm",
+          "takeaway": "Q2 收入 1,197.96 亿（+24%）、经营利润 407.70 亿（+30%）；Google Cloud 收入 247.68 亿（+82%）、分部经营利润 88.14 亿（去年同期 28.26 亿）；购置不动产与设备 Q2 449.24 亿、上半年 805.98 亿；Q2 自由现金流 −58.55 亿（39,069 − 44,924）、TTM 532.73 亿；其他收入净额 980 亿（主要为股权证券未实现收益）推动净利 +298%、EPS 9.11 美元；6 月发行普通股与强制可转优先股净募 496 亿并设最高 400 亿 ATM。分部说明明确「Google Cloud 的产品收入主要来自 TPU 系统销售」。注意：本文件不含任何 capex 指引段。"
+        },
+        {
+          "house": "Google（blog.google，CEO 电话会发言实录）",
+          "title": "Alphabet earnings call Q2 2026: Sundar Pichai remarks",
+          "date": "2026-07-22",
+          "url": "https://blog.google/company-news/inside-google/message-ceo/alphabet-earnings-q2-2026/",
+          "takeaway": "模型 API 吞吐约 220 亿 tokens/分钟，上一季度为 160 亿；Cloud backlog 增至 5,140 亿美元（只给存量，无上季基数与环比增量）；明确「我们仍然受供给约束」；近 500 家云客户过去一年各自处理超 1 万亿 token、逾 2,000 家企业超 1,000 亿 token；Gemini 应用 9.5 亿月活。全文无 capex 指引、无 backlog 确认节奏。"
+        },
+        {
+          "house": "Amazon.com, Inc.（SEC 8-K Exhibit 99.1）",
+          "title": "Amazon.com Announces Second Quarter Results",
+          "date": "2026-07-30",
+          "url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872426000024/amzn-20260630xex991.htm",
+          "takeaway": "净销售 2,006 亿（+20%）、经营利润 275 亿（+43%）；AWS 收入 422.32 亿（+36.7%，18 个季度最快）、年化 1,690 亿、分部经营利润 166.21 亿；Q2 购置不动产与设备 542.08 亿，TTM 净额 1,690.07 亿（+64%）、TTM 经营现金流 1,614.03 亿，TTM 自由现金流 −76.04 亿（去年同期 +181.84 亿）；净利 626 亿内含 534 亿来自 Anthropic 投资的非经营性税前收益（去年同期净利 182 亿）；AWS 的 AI 业务与自研芯片业务年化各超 250 亿。"
+        },
+        {
+          "house": "Amazon.com, Inc.（SEC Form 10-Q）",
+          "title": "Amazon.com, Inc. Quarterly Report for the quarterly period ended June 30, 2026",
+          "date": "2026-07-31",
+          "url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872426000026/amzn-20260630.htm",
+          "takeaway": "收入附注原文：原始期限超过一年的客户合同中尚未确认的履约义务约 4,960 亿美元、主要与 AWS 相关，且「长期合同的加权平均剩余期限为 6.4 年」——这是四家里唯一可直接取到的 backlog 期限口径，可作其余几家的粗略代理。附注另载 2026Q1 AWS 与 OpenAI 扩大既有 380 亿美元多年期承诺与商业安排，是 backlog 对手方集中度的表内出处。"
+        },
+        {
+          "house": "The Motley Fool（经 The Globe and Mail 转载的电话会逐字稿）",
+          "title": "Amazon (AMZN) Q2 2026 Earnings Call Transcript",
+          "date": "2026-07-30",
+          "url": "https://www.theglobeandmail.com/investing/markets/stocks/AMZN/pressreleases/3730734/amazon-amzn-q2-2026-earnings-call-transcript/",
+          "takeaway": "Jassy 原话确认口径：「我们此前说过计划 2026 年投入约 2,000 亿美元现金 capex，其中大部分用于支持 AI 与 AWS」——是亚马逊合并口径而非 AWS 分部；上修后「2026 年将投入约 2,200 亿美元现金 capex，内存成本上涨把这个数字从此前约 2,000 亿推了上去」，而同一份逐字稿的编辑摘要把上修归因写作「内存成本上涨与容量需求增加」两项，占比未拆分。另有「即便花到这个数，我们 2026 年仍没有足够容量满足全部需求，2027 年我预计同样如此」、backlog 4,960 亿三位数增长、点名内存与硬盘 SSD 当前价格被抬高。"
+        },
+        {
+          "house": "Meta Platforms, Inc.（SEC 8-K Exhibit 99.1）",
+          "title": "Meta Reports Second Quarter 2026 Results",
+          "date": "2026-07-29",
+          "url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026050596/meta-06302026xexhibit991.htm",
+          "takeaway": "Q2 收入 608.01 亿（+28%）；总成本费用 420.26 亿（+55%，含 24 亿法律事项计提与 11.8 亿裁员遣散）；经营利润 187.75 亿、同比 −8%，经营利润率由 43% 降至 31%，净利 −14%；capex（含融资租赁本金支付）310.8 亿；经营现金流 318.6 亿、自由现金流仅 7.84 亿；当季长期债务净发行 249.1 亿；CFO 展望：2026 年 capex 指引收窄至 1,300–1,450 亿（原 1,250–1,450），全年总费用 1,650–1,690 亿。Meta 是唯一把 capex 指引直接写进新闻稿的一家。"
+        },
+        {
+          "house": "Oracle Corporation（SEC 8-K Exhibit 99.1）",
+          "title": "Oracle Announces Record Q4 and FY 2026 Results Driven by Cloud Infrastructure & Cloud Applications",
+          "date": "2026-06-10",
+          "url": "https://www.sec.gov/Archives/edgar/data/1341439/000119312526265848/orcl-ex99_1.htm",
+          "takeaway": "RPO 期末 6,380 亿美元、同比 +363%、较 Q3 末环比 +850 亿；公司说明 Q3、Q4 的 RPO 增量多来自客户预付 GPU 或客户自带 GPU 的大型 AI 合同，该部分合计 750 亿并「大幅减少了 Oracle 必须筹集的资本」；FY26 capex 556.63 亿（FY25 为 212.15 亿）、经营现金流 319.77 亿，自由现金流 −236.86 亿；FY26 融资 430 亿债 + 50 亿股权，FY27 拟再融约 400 亿且日历 2026 年不再发债；Q4 Cloud IaaS 收入 58 亿（+93%）、Q4 总云收入 99 亿（+47%）。"
+        },
+        {
+          "house": "TrendForce",
+          "title": "Memory Prices Soar; DRAM and NAND Flash to Account for 68% of Major CSP CapEx in 2027",
+          "date": "2026-08-25",
+          "url": "https://www.trendforce.com/presscenter/news/20260825-13198.html",
+          "takeaway": "主要 CSP 总 capex 预计 2026 年同比 +98%、2027 年再 +50%；DRAM 与 NAND 合计占 CSP 总 capex 2026 年 47%、2027 年升至 68%；server DRAM 合约价 2H25 累计 +64%、2026 年预计再约 +270%，企业级 SSD 2H25 约 +35%、2026 年累计约 +235%；HBM 合约价 2027 年或再涨 70–140%。这是「capex 美元 ≠ 算力」这一环唯一的量化依据。"
+        },
+        {
+          "house": "Goldman Sachs Global Investment Research",
+          "title": "The impact of the AI capex boom on S&P 500 return on equity（US Weekly Kickstart）",
+          "date": "2026-06-12",
+          "url": "https://www.gspublishing.com/content/research/en/reports/2026/06/12/50f004d3-b246-4366-9d7d-0bc7e845644b.html",
+          "takeaway": "提供本行传导链「分母端」的行业基准：折旧摊销占 hyperscaler（AMZN、GOOGL、META、MSFT、ORCL）收入由 2022 年 7% 升至 2027 年 12%；共识估计 2026 年 hyperscaler capex 约 7,700 亿美元、等于经营现金流的 100%；2025 年初以来净债增加 1,700 亿、股本数开始上升；云厂资产强度上升、销售/资产周转率自 AI 周期开始持续下滑且预计 2027 年延续；共识隐含七大科技股 ROE 明年平均下降约 700bp。"
+        }
+      ],
+      "upstream_signals": [
+        {
+          "symbol": "NVDA",
+          "name": "英伟达",
+          "relation": "supply_gate",
+          "why": "本行链条「起点是供给约束，微软称『需求持续超过可用供给』」，而那个供给就是它：云厂在电话会说要花多少（承诺），英伟达 Data Center 收入尤其 Hyperscale 分项说实际交付了多少（确认），差额就是「钱花出去了但机器没到」，直接决定「合同按久期摊成收入」时 Azure/GCP/AWS 未来两个季度的可售容量；它的「Supply and capacity」承诺与 supply constrained 的 FY28 指引是这道闸门未来两年能开多大的唯一量化表，Hyperscale 与 ACIE 的环比差则是配额在向云厂还是向新云倾斜。方向别搞反：它不是本行的需求源头，云厂是它的客户；只有一小块反向角色——云服务协议承诺让它同时是云厂的客户。",
+          "pull": [
+            "数据中心收入中的 Hyperscale 分项金额与环比、与 ACIE 环比的差、当季有无重分类脚注（sec_filings 10-Q 索引 → web_search 核 Note 13；press_releases CFO Commentary）",
+            "下季总收入指引与 FY 增速指引及「supply constrained」措辞（press_releases 财报稿 Outlook 段；transcript 按 year/quarter）",
+            "Supply and capacity 承诺总额与按财年拆分（sec_filings 10-Q Note 10；press_releases CFO Commentary）",
+            "云服务协议承诺余额，即它作为云厂客户的一面（sec_filings 10-Q 索引 → web_search 核 Note 10）"
+          ],
+          "cadence": "季度财报（2/5/8/11 月下旬，通常晚于四大云厂 3–4 周，正好用来验证上一轮 capex 指引的兑现度）",
+          "latest": "FY27Q2（2026-08-26 发布）：数据中心收入 $89.0B（同比 +117%），Q3 总收入指引 $108B；毛利率实际 75.0%、下季指引 74.0%；FY28 指引措辞 supply constrained；「Supply and capacity」承诺 $119B→$279B。",
+          "latest_as_of": "2026-08-26"
+        },
+        {
+          "symbol": "AVGO",
+          "name": "博通",
+          "relation": "supply_gate",
+          "why": "自研 ASIC 路线的交付确认单：云厂的定制 XPU 由它设计交付，其 AI 半导体收入与指引说明「美元≠算力」那一环里非英伟达那一半算力实际到了多少，也是「收入端见改善：Google Cloud +82%」这条线（产品收入主要来自 TPU 系统销售）的上游读数；与英伟达一样，它的供给也撞同一批 CoWoS 与 HBM。",
+          "pull": [
+            "AI 半导体收入与下季指引、定制 XPU 与 AI 网络的拆分表述（press_releases 财报稿；transcript）",
+            "在手定制客户数与 AI bookings/backlog 口径（transcript 按 year/quarter；正文受限时改 news）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月上旬；FY26Q3 为 2026-09-02）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "MU",
+          "name": "美光科技",
+          "relation": "supply_gate",
+          "why": "「美元≠算力：DRAM+NAND 占 CSP capex 2026 年 47%、2027 年 68%」那一环的汇率制定者：占比越高同样一美元买到的加速器越少，capex 增速会系统性高于可售算力增速；美光的价格表述、与 CSP 的 LTA 及 capex 决定这个楔子未来几个季度是扩大还是收敛。",
+          "pull": [
+            "非 GAAP 毛利率与下季指引、server DRAM 供需与合约价方向的表述（press_releases 财报稿；transcript）",
+            "与 CSP 的长约（SCA/LTA）覆盖率与期限（press_releases；sec_filings 10-Q/10-K 索引）",
+            "capex 与新增投片，即供给松动、汇率改善的时点（press_releases；financials 季度现金流量表）"
+          ],
+          "cadence": "季度财报（3/6/9/12 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        },
+        {
+          "symbol": "GEV",
+          "name": "GE Vernova",
+          "relation": "supply_gate",
+          "why": "「钱先变合同 → 合同按久期摊成收入」之间还隔着并网与电力这道物理闸门：排不到电，capex 指引再高也变不成机柜、变不成 backlog 的兑现；GE Vernova 的燃机 backlog+档期预留（硬订单与档期预留要拆开看、已在卖 2031 年档期、产能 20 GW/年）是全行业「新增 GW 何时能通电」的实时读数，它越薄，云厂 backlog 转收入的节奏越往后拖。",
+          "pull": [
+            "燃机 backlog + slot reservation 总 GW、硬订单占比、在售交付年份与年产能（press_releases 财报稿；transcript 按 year/quarter）",
+            "当季燃机出货 GW 与新签 GW（press_releases 财报稿）",
+            "电网设备（变压器/开关）分部订单与交期表述（transcript；press_releases）",
+            "财报后评级/目标价动作（analyst_actions）"
+          ],
+          "cadence": "季度财报（1/4/7/10 月下旬）",
+          "latest": "",
+          "latest_as_of": ""
+        }
+      ]
+    }
+  ]
+}

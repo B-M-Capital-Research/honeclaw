@@ -1,14 +1,14 @@
 //! Authenticated, read-only projection of the user-authorized community archive.
 //!
-//! Source-protected files never leave this route: only resources already stored
-//! in Hone object storage can be streamed for inline preview.
+//! Only resources already stored in Hone object storage can be streamed. Missing
+//! archive bytes do not, on their own, establish a restriction at the source.
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -440,11 +440,22 @@ pub(crate) async fn handle_mark_community_seen(
     }
 }
 
+fn community_resource_unavailable_response(access_state: &str) -> Option<Response> {
+    let message = match access_state {
+        "stored" => return None,
+        "metadata_only" => "附件尚未归档，目前仅收录了名称，暂不能预览或下载",
+        "protected_in_app" => "原采集时记录访问受限，当前来源可用性尚未确认",
+        _ => "附件暂不可用，可到来源群组查找",
+    };
+    Some(json_error(StatusCode::CONFLICT, message))
+}
+
 /// GET /api/public/community/resources/:resource_id
 pub(crate) async fn handle_community_resource_preview(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path(resource_id): Path<i64>,
+    method: Method,
     Query(query): Query<CommunityResourceQuery>,
 ) -> Response {
     if let Err(response) = public_actor_storage_key(&state, &headers).await {
@@ -462,8 +473,8 @@ pub(crate) async fn handle_community_resource_preview(
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "社区资源不存在"),
         Err(error) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
-    if resource.access_state != "stored" {
-        return json_error(StatusCode::CONFLICT, "该资源受来源保护，仅保留了元数据");
+    if let Some(response) = community_resource_unavailable_response(&resource.access_state) {
+        return response;
     }
     let normalized_sha256 = normalized_community_resource_sha256(resource.sha256.as_deref());
     let current_version = normalized_sha256
@@ -474,11 +485,23 @@ pub(crate) async fn handle_community_resource_preview(
         Some(_) => return stale_community_resource_version_response(),
         None => false,
     };
-    let Some(uri) = resource.oss_uri.as_deref() else {
-        return json_error(StatusCode::NOT_FOUND, "该资源尚未归档到对象存储");
-    };
     let Some(store) = OssObjectStore::from_config(&state.core.config.cloud.oss) else {
         return json_error(StatusCode::SERVICE_UNAVAILABLE, "社区对象存储暂不可用");
+    };
+    respond_with_community_object(&store, resource, &headers, &method, immutable).await
+}
+
+async fn respond_with_community_object(
+    store: &OssObjectStore,
+    resource: CloudCommunityResourceRecord,
+    headers: &HeaderMap,
+    method: &Method,
+    immutable: bool,
+) -> Response {
+    let resource_id = resource.resource_id;
+    let normalized_sha256 = normalized_community_resource_sha256(resource.sha256.as_deref());
+    let Some(uri) = resource.oss_uri.as_deref() else {
+        return json_error(StatusCode::NOT_FOUND, "该资源尚未归档到对象存储");
     };
     let Some(key) = store.parse_managed_uri(uri) else {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "社区资源地址无效");
@@ -489,48 +512,81 @@ pub(crate) async fn handle_community_resource_preview(
     {
         return json_error(StatusCode::PAYLOAD_TOO_LARGE, "该资源超出在线预览大小上限");
     }
-    let object = match store
-        .get_object_limited(key, COMMUNITY_RESOURCE_MAX_BYTES)
-        .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            let status = if error.contains("大小超过允许上限") {
-                StatusCode::PAYLOAD_TOO_LARGE
-            } else {
-                StatusCode::BAD_GATEWAY
-            };
-            return json_error(status, format!("读取社区资源失败: {error}"));
+    let not_modified = normalized_sha256
+        .as_deref()
+        .is_some_and(|sha256| request_etag_matches(headers, &community_resource_etag(sha256)));
+    // A cached representation is already byte-verified by its original GET.
+    // Keep a live HEAD even for 304 so a missing/resized object cannot be
+    // silently presented as available; neither HEAD nor 304 downloads its body.
+    let (bytes, object_content_type, byte_size) = if *method == Method::HEAD || not_modified {
+        let metadata = match store.head_object_metadata(key).await {
+            Ok(Some(value)) => value,
+            Ok(None) => return json_error(StatusCode::BAD_GATEWAY, "社区归档对象不存在"),
+            Err(error) => {
+                return json_error(
+                    StatusCode::BAD_GATEWAY,
+                    format!("读取社区资源失败: {error}"),
+                );
+            }
+        };
+        if metadata.byte_size > COMMUNITY_RESOURCE_MAX_BYTES as u64 {
+            return json_error(StatusCode::PAYLOAD_TOO_LARGE, "该资源超出在线预览大小上限");
         }
-    };
-    if let Some(expected_sha256) = normalized_sha256.as_deref() {
-        let actual_sha256 = sha256_hex(&object.bytes);
-        if actual_sha256 != expected_sha256 {
-            let mut response = json_error(
-                StatusCode::BAD_GATEWAY,
-                "社区资源完整性校验失败，请稍后重试",
-            );
-            response.headers_mut().insert(
-                header::CACHE_CONTROL,
-                HeaderValue::from_static("private, no-store"),
-            );
-            return response;
+        if resource
+            .byte_size
+            .is_some_and(|expected| expected < 0 || metadata.byte_size != expected as u64)
+        {
+            return json_error(StatusCode::BAD_GATEWAY, "社区资源大小校验失败，请稍后重试");
         }
-    }
-    let content_type = resource.content_type.unwrap_or(object.content_type);
-    let inline_content_type = safe_inline_content_type(&content_type);
-    if let Some(sha256) = normalized_sha256.as_deref() {
-        let etag = community_resource_etag(sha256);
-        if request_etag_matches(&headers, &etag) {
+        if not_modified {
             let mut response = Response::new(Body::empty());
             *response.status_mut() = StatusCode::NOT_MODIFIED;
-            apply_community_resource_cache_headers(response.headers_mut(), Some(sha256), immutable);
+            apply_community_resource_cache_headers(
+                response.headers_mut(),
+                normalized_sha256.as_deref(),
+                immutable,
+            );
             return response;
         }
-    }
-    let mut response = Response::new(Body::from(object.bytes));
+        (Vec::new(), metadata.content_type, metadata.byte_size)
+    } else {
+        let object = match store
+            .get_object_limited(key, COMMUNITY_RESOURCE_MAX_BYTES)
+            .await
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let status = if error.contains("大小超过允许上限") {
+                    StatusCode::PAYLOAD_TOO_LARGE
+                } else {
+                    StatusCode::BAD_GATEWAY
+                };
+                return json_error(status, format!("读取社区资源失败: {error}"));
+            }
+        };
+        if let Some(expected_sha256) = normalized_sha256.as_deref() {
+            let actual_sha256 = sha256_hex(&object.bytes);
+            if actual_sha256 != expected_sha256 {
+                let mut response = json_error(
+                    StatusCode::BAD_GATEWAY,
+                    "社区资源完整性校验失败，请稍后重试",
+                );
+                response.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("private, no-store"),
+                );
+                return response;
+            }
+        }
+        let byte_size = object.bytes.len() as u64;
+        (object.bytes, object.content_type, byte_size)
+    };
+    let content_type = resource.content_type.unwrap_or(object_content_type);
+    let inline_content_type = safe_inline_content_type(&content_type);
+    let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::OK;
     let response_headers = response.headers_mut();
+    response_headers.insert(header::CONTENT_LENGTH, HeaderValue::from(byte_size));
     response_headers.insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static(inline_content_type.unwrap_or("application/octet-stream")),
@@ -575,6 +631,196 @@ pub(crate) async fn handle_community_resource_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn community_resource_availability_distinguishes_missing_bytes_from_past_restrictions() {
+        for (state, message) in [
+            (
+                "metadata_only",
+                "附件尚未归档，目前仅收录了名称，暂不能预览或下载",
+            ),
+            (
+                "protected_in_app",
+                "原采集时记录访问受限，当前来源可用性尚未确认",
+            ),
+            ("unknown_future_state", "附件暂不可用，可到来源群组查找"),
+            ("", "附件暂不可用，可到来源群组查找"),
+        ] {
+            let response = community_resource_unavailable_response(state).unwrap();
+            assert_eq!(response.status(), StatusCode::CONFLICT);
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["error"], message);
+        }
+    }
+
+    #[test]
+    fn community_resource_availability_only_stored_continues_to_object_delivery() {
+        assert!(community_resource_unavailable_response("stored").is_none());
+    }
+
+    async fn community_object_fixture(
+        status: StatusCode,
+        declared_size: usize,
+    ) -> (
+        OssObjectStore,
+        CloudCommunityResourceRecord,
+        Arc<std::sync::Mutex<Vec<Method>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let payload = b"verified community image";
+        let methods = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = methods.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(move |method: Method| {
+            let recorded = recorded.clone();
+            async move {
+                recorded.lock().unwrap().push(method.clone());
+                let mut response = Response::new(if method == Method::HEAD {
+                    Body::empty()
+                } else {
+                    Body::from(payload.as_slice())
+                });
+                *response.status_mut() = status;
+                response
+                    .headers_mut()
+                    .insert(header::CONTENT_LENGTH, HeaderValue::from(declared_size));
+                response
+                    .headers_mut()
+                    .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
+                response
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let config = hone_core::config::OssConfig {
+            provider: "s3".to_string(),
+            provider_env: String::new(),
+            access_key_id: "test-key".to_string(),
+            access_key_secret: "test-secret".to_string(),
+            bucket: "community-test".to_string(),
+            endpoint: format!("http://{address}"),
+            region: "auto".to_string(),
+            // Route the mock's HTTP requests explicitly to the same listener;
+            // developer-machine system proxies must not receive this fixture.
+            proxy: format!("http://{address}"),
+            proxy_env: String::new(),
+            ..Default::default()
+        };
+        let resource = CloudCommunityResourceRecord {
+            resource_id: 7,
+            ordinal: 0,
+            resource_kind: "image".to_string(),
+            display_name: Some("test.png".to_string()),
+            content_type: Some("image/png".to_string()),
+            byte_size: Some(payload.len() as i64),
+            sha256: Some(sha256_hex(payload)),
+            oss_uri: Some("oss://community-test/community/test.png".to_string()),
+            access_state: "stored".to_string(),
+        };
+        (
+            OssObjectStore::from_config(&config).unwrap(),
+            resource,
+            methods,
+            server,
+        )
+    }
+
+    #[tokio::test]
+    async fn community_head_checks_metadata_without_downloading_object() {
+        let (store, resource, methods, server) =
+            community_object_fixture(StatusCode::OK, b"verified community image".len()).await;
+        let response =
+            respond_with_community_object(&store, resource, &HeaderMap::new(), &Method::HEAD, true)
+                .await;
+        if response.status() != StatusCode::OK {
+            let status = response.status();
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            panic!(
+                "unexpected object response {status}: {}",
+                String::from_utf8_lossy(&body)
+            );
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_LENGTH], "24");
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+        assert!(
+            axum::body::to_bytes(response.into_body(), 1024)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(*methods.lock().unwrap(), vec![Method::HEAD]);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn community_revalidation_checks_existence_without_downloading_object() {
+        for (object_status, expected_status) in [
+            (StatusCode::OK, StatusCode::NOT_MODIFIED),
+            (StatusCode::NOT_FOUND, StatusCode::BAD_GATEWAY),
+        ] {
+            let (store, resource, methods, server) =
+                community_object_fixture(object_status, b"verified community image".len()).await;
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                header::IF_NONE_MATCH,
+                HeaderValue::from_str(&community_resource_etag(
+                    resource.sha256.as_deref().unwrap(),
+                ))
+                .unwrap(),
+            );
+            let response =
+                respond_with_community_object(&store, resource, &headers, &Method::GET, true).await;
+            assert_eq!(response.status(), expected_status);
+            assert_eq!(*methods.lock().unwrap(), vec![Method::HEAD]);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn community_head_rejects_resized_and_oversized_objects() {
+        for (size, expected_status) in [
+            (25, StatusCode::BAD_GATEWAY),
+            (
+                COMMUNITY_RESOURCE_MAX_BYTES + 1,
+                StatusCode::PAYLOAD_TOO_LARGE,
+            ),
+        ] {
+            let (store, resource, methods, server) =
+                community_object_fixture(StatusCode::OK, size).await;
+            let response = respond_with_community_object(
+                &store,
+                resource,
+                &HeaderMap::new(),
+                &Method::HEAD,
+                true,
+            )
+            .await;
+            assert_eq!(response.status(), expected_status);
+            assert_eq!(*methods.lock().unwrap(), vec![Method::HEAD]);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn community_full_get_still_verifies_object_sha256() {
+        let (store, mut resource, methods, server) =
+            community_object_fixture(StatusCode::OK, b"verified community image".len()).await;
+        resource.sha256 = Some("0".repeat(64));
+        let response =
+            respond_with_community_object(&store, resource, &HeaderMap::new(), &Method::GET, true)
+                .await;
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(*methods.lock().unwrap(), vec![Method::GET]);
+        server.abort();
+    }
 
     #[test]
     fn edge_session_matches_cross_language_golden_vector() {

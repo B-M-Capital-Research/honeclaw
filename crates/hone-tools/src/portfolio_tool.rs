@@ -4,6 +4,8 @@
 
 use async_trait::async_trait;
 use hone_core::ActorIdentity;
+use hone_memory::CronJobStorage;
+use hone_memory::cron_job::CronJob;
 use hone_memory::portfolio::{Holding, Portfolio, PortfolioStorage, normalize_holding_horizon};
 use serde_json::Value;
 
@@ -24,6 +26,79 @@ impl PortfolioTool {
     }
 }
 
+fn combined_cron_job_text(job: &CronJob) -> String {
+    let mut text = String::with_capacity(
+        job.name.len()
+            + job.task_prompt.len()
+            + job.tags.iter().map(String::len).sum::<usize>()
+            + 8,
+    );
+    text.push_str(&job.name);
+    text.push(' ');
+    text.push_str(&job.task_prompt);
+    if !job.tags.is_empty() {
+        text.push(' ');
+        text.push_str(&job.tags.join(" "));
+    }
+    text
+}
+
+fn mentions_exact_ticker(text: &str, ticker: &str) -> bool {
+    let upper = text.to_ascii_uppercase();
+    let target = ticker.to_ascii_uppercase();
+    upper
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '.'))
+        .any(|token| token == target)
+}
+
+fn looks_like_multi_subject_job(text: &str, ticker: &str) -> bool {
+    if !["、", "/", "+", ",", "，", "和", "与", "及", "以及"]
+        .iter()
+        .any(|marker| text.contains(marker))
+    {
+        return false;
+    }
+
+    let target = ticker.to_ascii_uppercase();
+    let upper = text.to_ascii_uppercase();
+    let ignored_non_tickers = [
+        "IPO", "AI", "ETF", "ADR", "EPS", "SEC", "FDA", "NASA", "PDUFA", "CPU", "GPU", "HBM",
+        "DRAM", "NAND", "SSD",
+    ];
+    let distinct_tokens = upper
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '.'))
+        .filter(|token| token.len() >= 2 && token.len() <= 10)
+        .filter(|token| *token != target)
+        .filter(|token| !ignored_non_tickers.contains(token))
+        .filter(|token| {
+            token.chars().any(|ch| ch.is_ascii_digit())
+                || token.chars().all(|ch| ch.is_ascii_uppercase() || ch == '.')
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+
+    distinct_tokens.len() >= 2
+}
+
+fn is_auto_removable_heartbeat(job: &CronJob, ticker: &str) -> bool {
+    if !job.enabled || !job.is_heartbeat() {
+        return false;
+    }
+    let text = combined_cron_job_text(job);
+    mentions_exact_ticker(&text, ticker) && !looks_like_multi_subject_job(&text, ticker)
+}
+
+fn is_related_heartbeat(job: &CronJob, ticker: &str) -> bool {
+    job.enabled && job.is_heartbeat() && mentions_exact_ticker(&combined_cron_job_text(job), ticker)
+}
+
+fn summarize_job(job: &CronJob) -> Value {
+    serde_json::json!({
+        "job_id": job.id,
+        "name": job.name,
+        "repeat": job.schedule.repeat,
+    })
+}
+
 #[async_trait]
 impl Tool for PortfolioTool {
     fn name(&self) -> &str {
@@ -31,7 +106,7 @@ impl Tool for PortfolioTool {
     }
 
     fn description(&self) -> &str {
-        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。"
+        "管理投资组合持仓与关注列表。支持股票和期权。支持操作：view（查看持仓与关注）、add（新增持仓,若该 ticker 原为关注会自动转持仓）、update（更新持仓）、replace_all（用当前列表整体覆盖全部持仓/关注）、remove（删除,持仓/关注通用）、watch（加入关注,只需 ticker）、unwatch（取消关注,不会误删真实持仓）。\n\n**用户持仓的唯一依据是本轮 action=\"view\" 的返回**：view 里没有某个 ticker，只能写「我这边没有你的 X 持仓记录，请确认」；本轮没调 view、或信息只来自会话历史与 compact 摘要时，不得断言「你没有 X」「你账户里没有 X 可交割」，更不得据此给出反向的仓位结论。\n\n**写操作前先解析实体**：执行 add / watch / update / replace_all 之前，本轮必须已有该中文名、别名或简写的 `data_fetch(search)` 返回，并在回复里回显「你说的 闪迪 → SanDisk (SNDK)」。解析出的代码与用户原词不同名、或返回多个候选时先问用户；禁止用母公司、旗下品牌或形近代码顶替（SNDK ≠ WDC）。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -46,6 +121,7 @@ impl Tool for PortfolioTool {
                     "add".into(),
                     "remove".into(),
                     "update".into(),
+                    "replace_all".into(),
                     "watch".into(),
                     "unwatch".into(),
                 ]),
@@ -201,27 +277,55 @@ impl Tool for PortfolioTool {
                     "portfolio": data
                 }))
             }
-            "add" | "update" => {
+            "add" | "update" | "replace_all" => {
                 let input_holdings = parse_holdings_from_args(&args)?;
 
-                let mut portfolio = storage
-                    .load(&self.actor)
-                    .await?
-                    .unwrap_or_else(|| Portfolio {
+                let mut portfolio = if action == "replace_all" {
+                    Portfolio {
                         actor: Some(self.actor.clone()),
                         user_id: self.actor.user_id.clone(),
                         holdings: Vec::new(),
                         updated_at: chrono::Utc::now().to_rfc3339(),
-                    });
+                    }
+                } else {
+                    storage
+                        .load(&self.actor)
+                        .await?
+                        .unwrap_or_else(|| Portfolio {
+                            actor: Some(self.actor.clone()),
+                            user_id: self.actor.user_id.clone(),
+                            holdings: Vec::new(),
+                            updated_at: chrono::Utc::now().to_rfc3339(),
+                        })
+                };
+
+                let existing_watchlist = if action == "replace_all" {
+                    storage
+                        .load(&self.actor)
+                        .await?
+                        .map(|portfolio| {
+                            portfolio
+                                .holdings
+                                .into_iter()
+                                .filter(|holding| holding.tracking_only.unwrap_or(false))
+                                .map(|holding| (holding.symbol, holding.asset_type))
+                                .collect::<std::collections::BTreeSet<_>>()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    std::collections::BTreeSet::new()
+                };
 
                 let mut processed = Vec::with_capacity(input_holdings.len());
 
                 for holding in input_holdings {
-                    let promoted_from_watchlist = if let Some(existing) =
-                        portfolio.holdings.iter_mut().find(|candidate| {
-                            candidate.symbol == holding.symbol
-                                && candidate.asset_type == holding.asset_type
-                        }) {
+                    let promoted_from_watchlist = if action == "replace_all" {
+                        existing_watchlist
+                            .contains(&(holding.symbol.clone(), holding.asset_type.clone()))
+                    } else if let Some(existing) = portfolio.holdings.iter_mut().find(|candidate| {
+                        candidate.symbol == holding.symbol
+                            && candidate.asset_type == holding.asset_type
+                    }) {
                         let was_watchlist = existing.tracking_only.unwrap_or(false);
                         *existing = Holding {
                             weight: None,
@@ -234,6 +338,14 @@ impl Tool for PortfolioTool {
                         portfolio.holdings.push(holding.clone());
                         false
                     };
+                    if action == "replace_all" {
+                        portfolio.holdings.push(Holding {
+                            weight: None,
+                            name: None,
+                            tracking_only: None,
+                            ..holding.clone()
+                        });
+                    }
                     processed.push(serde_json::json!({
                         "ticker": holding.symbol,
                         "asset_type": holding.asset_type,
@@ -367,6 +479,8 @@ impl Tool for PortfolioTool {
             }
             "unwatch" => {
                 let removals = parse_removals_from_args(&args)?;
+                let cron_storage = CronJobStorage::new(&self.data_dir).await;
+                let mut cron_jobs = cron_storage.list_jobs(&self.actor).await;
 
                 let mut processed = Vec::with_capacity(removals.len());
                 if let Some(mut portfolio) = storage.load(&self.actor).await? {
@@ -388,22 +502,61 @@ impl Tool for PortfolioTool {
                         } else {
                             "not_found"
                         };
+                        let mut removed_heartbeat_jobs = Vec::new();
+                        let mut active_heartbeat_jobs = Vec::new();
+                        let mut remaining_jobs = Vec::with_capacity(cron_jobs.len());
+                        for job in cron_jobs {
+                            if !is_related_heartbeat(&job, &removal.symbol) {
+                                remaining_jobs.push(job);
+                                continue;
+                            }
+                            if is_auto_removable_heartbeat(&job, &removal.symbol) {
+                                cron_storage.remove_job(&self.actor, &job.id).await?;
+                                removed_heartbeat_jobs.push(summarize_job(&job));
+                            } else {
+                                active_heartbeat_jobs.push(summarize_job(&job));
+                                remaining_jobs.push(job);
+                            }
+                        }
+                        cron_jobs = remaining_jobs;
+                        let success = removed || !removed_heartbeat_jobs.is_empty();
                         processed.push(serde_json::json!({
                             "ticker": removal.symbol,
                             "asset_type": removal.asset_type,
                             "result": reason,
-                            "success": removed,
+                            "success": success,
+                            "removed_heartbeat_jobs": removed_heartbeat_jobs,
+                            "active_heartbeat_jobs": active_heartbeat_jobs,
                         }));
                     }
                     portfolio.updated_at = chrono::Utc::now().to_rfc3339();
                     storage.save(&self.actor, &portfolio).await?;
                 } else {
                     for removal in &removals {
+                        let mut removed_heartbeat_jobs = Vec::new();
+                        let mut active_heartbeat_jobs = Vec::new();
+                        let mut remaining_jobs = Vec::with_capacity(cron_jobs.len());
+                        for job in cron_jobs {
+                            if !is_related_heartbeat(&job, &removal.symbol) {
+                                remaining_jobs.push(job);
+                                continue;
+                            }
+                            if is_auto_removable_heartbeat(&job, &removal.symbol) {
+                                cron_storage.remove_job(&self.actor, &job.id).await?;
+                                removed_heartbeat_jobs.push(summarize_job(&job));
+                            } else {
+                                active_heartbeat_jobs.push(summarize_job(&job));
+                                remaining_jobs.push(job);
+                            }
+                        }
+                        cron_jobs = remaining_jobs;
                         processed.push(serde_json::json!({
                             "ticker": removal.symbol,
                             "asset_type": removal.asset_type,
                             "result": "not_found",
-                            "success": false,
+                            "success": !removed_heartbeat_jobs.is_empty(),
+                            "removed_heartbeat_jobs": removed_heartbeat_jobs,
+                            "active_heartbeat_jobs": active_heartbeat_jobs,
                         }));
                     }
                 }
@@ -411,11 +564,23 @@ impl Tool for PortfolioTool {
                 let overall_success = processed
                     .iter()
                     .all(|result| result["success"].as_bool().unwrap_or(false));
+                let removed_heartbeat_jobs = processed
+                    .iter()
+                    .filter_map(|result| result["removed_heartbeat_jobs"].as_array())
+                    .flat_map(|jobs| jobs.iter().cloned())
+                    .collect::<Vec<_>>();
+                let active_heartbeat_jobs = processed
+                    .iter()
+                    .filter_map(|result| result["active_heartbeat_jobs"].as_array())
+                    .flat_map(|jobs| jobs.iter().cloned())
+                    .collect::<Vec<_>>();
                 let mut response = serde_json::json!({
                     "action": "unwatch",
                     "count": processed.len(),
                     "holdings": processed,
-                    "success": overall_success
+                    "success": overall_success,
+                    "removed_heartbeat_jobs": removed_heartbeat_jobs,
+                    "active_heartbeat_jobs": active_heartbeat_jobs,
                 });
                 if let Some(first) = response["holdings"]
                     .as_array()
@@ -425,7 +590,21 @@ impl Tool for PortfolioTool {
                     response["ticker"] = first["ticker"].clone();
                     response["asset_type"] = first["asset_type"].clone();
                     response["result"] = first["result"].clone();
-                    if first["result"] == "not_watchlist" {
+                    if first["removed_heartbeat_jobs"]
+                        .as_array()
+                        .is_some_and(|jobs| !jobs.is_empty())
+                    {
+                        response["message"] = serde_json::json!(
+                            "已同步停止同标的的单标的 heartbeat；若还有多标的任务，需要单独确认后删除"
+                        );
+                    } else if first["active_heartbeat_jobs"]
+                        .as_array()
+                        .is_some_and(|jobs| !jobs.is_empty())
+                    {
+                        response["message"] = serde_json::json!(
+                            "关注记录已处理，但仍有相关 heartbeat 在运行；请按任务逐个确认删除"
+                        );
+                    } else if first["result"] == "not_watchlist" {
                         response["message"] =
                             serde_json::json!("未找到关注记录;若要删除持仓,请使用 action=remove");
                     } else if first["result"] == "not_found" {
@@ -1170,6 +1349,122 @@ mod tests {
         assert_eq!(holdings[0]["shares"], 50.0);
         assert_eq!(holdings[0]["avg_cost"], 120.0);
         assert_eq!(holdings[0]["kind"], "holding");
+    }
+
+    #[tokio::test]
+    async fn portfolio_replace_all_clears_omitted_holdings_and_watchlist() {
+        let data_dir = make_temp_dir("hone_portfolio_tool_replace_all");
+        let actor = ActorIdentity::new("feishu", "u_replace_all", None::<String>).expect("actor");
+        let tool = PortfolioTool::new(&data_dir, actor);
+
+        tool.execute(serde_json::json!({"action":"watch","ticker":"GLW"}))
+            .await
+            .expect("seed watchlist");
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"QCOM",
+            "quantity":10.0,
+            "cost_basis":150.0
+        }))
+        .await
+        .expect("seed qcom");
+        tool.execute(serde_json::json!({
+            "action":"add",
+            "ticker":"INTC",
+            "quantity":20.0,
+            "cost_basis":25.0
+        }))
+        .await
+        .expect("seed intc");
+
+        let replace_response = tool
+            .execute(serde_json::json!({
+                "action":"replace_all",
+                "holdings":[
+                    {"ticker":"SNDK","quantity":50.0,"cost_basis":41.0},
+                    {"ticker":"MU","quantity":30.0,"cost_basis":118.0}
+                ]
+            }))
+            .await
+            .expect("replace all");
+
+        assert_eq!(replace_response["action"], "replace_all");
+        assert_eq!(replace_response["count"], 2);
+
+        let view_response = tool
+            .execute(serde_json::json!({"action":"view"}))
+            .await
+            .expect("view replaced portfolio");
+        let holdings = view_response["portfolio"]["holdings"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let watchlist = view_response["portfolio"]["watchlist"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+
+        assert_eq!(holdings.len(), 2);
+        assert!(watchlist.is_empty());
+        let symbols = holdings
+            .iter()
+            .filter_map(|holding| holding["symbol"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(symbols, ["SNDK", "MU"]);
+    }
+
+    #[test]
+    fn single_ticker_heartbeat_is_auto_removable_for_unwatch() {
+        let job = hone_memory::cron_job::CronJob {
+            id: "j_cb".to_string(),
+            name: "Cerebras IPO与业务进展心跳监控".to_string(),
+            schedule: hone_memory::cron_job::CronSchedule {
+                hour: 0,
+                minute: 0,
+                repeat: "heartbeat".to_string(),
+                weekday: None,
+                date: None,
+            },
+            task_prompt: "请持续跟踪 CBRS 的 IPO 与业务进展，命中后提醒我。".to_string(),
+            push: serde_json::json!({}),
+            enabled: true,
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "u".to_string(),
+            tags: Vec::new(),
+            created_at: None,
+            last_run_at: None,
+            bypass_quiet_hours: false,
+        };
+        assert!(is_auto_removable_heartbeat(&job, "CBRS"));
+        assert!(is_related_heartbeat(&job, "CBRS"));
+    }
+
+    #[test]
+    fn multi_ticker_heartbeat_requires_explicit_follow_up() {
+        let job = hone_memory::cron_job::CronJob {
+            id: "j_multi".to_string(),
+            name: "AI 与科技持仓观察关键事件心跳提醒".to_string(),
+            schedule: hone_memory::cron_job::CronSchedule {
+                hour: 0,
+                minute: 0,
+                repeat: "heartbeat".to_string(),
+                weekday: None,
+                date: None,
+            },
+            task_prompt: "请持续跟踪 AAPL、NVDA、CBRS 的关键事件，命中后提醒我。".to_string(),
+            push: serde_json::json!({}),
+            enabled: true,
+            channel: "feishu".to_string(),
+            channel_scope: None,
+            channel_target: "u".to_string(),
+            tags: Vec::new(),
+            created_at: None,
+            last_run_at: None,
+            bypass_quiet_hours: false,
+        };
+        assert!(!is_auto_removable_heartbeat(&job, "CBRS"));
+        assert!(is_related_heartbeat(&job, "CBRS"));
     }
 
     #[tokio::test]

@@ -14,7 +14,7 @@
 
 ## 状态
 
-- New
+- Fixed
 
 ## GitHub Issue
 
@@ -67,3 +67,14 @@
 - 收紧 `session_info_update.title` 的生成来源，只允许短摘要、公司名或任务名，限制长度并剥离 prompt-like 块。
 - 在写入 title 前统一过滤 `Skill:`、`Invoked Skill Context`、`Base directory`、`【Session 上下文】`、本机绝对路径和服务端工具候选扫描块。
 - 增加 ACP event / Web direct 回归：包含技能上下文的投研工作流应只产生短标题，不能把完整上下文写入 `session_info_update.title`。
+
+## 修复记录
+
+- `2026-08-27` 代码级修复：
+  - `crates/hone-channels/src/runners/acp_common/log.rs` 现在会在 ACP 事件落盘前检查 `session/update.params.update.title`。
+  - 含 `Invoked Skill Context`、`【Session 上下文】`、`Base directory`、本机绝对路径或多行 prompt-like 内容的 title 会统一替换为 `内部上下文标题已脱敏`。
+  - 非敏感 title 仍保留，但会被截断到 120 个字符以内，避免标题字段继续承载大段上下文。
+
+## 验证
+
+- `cargo test -p hone-channels log_acp_payload_redacts_internal_session_update_titles --lib -- --nocapture` 通过。

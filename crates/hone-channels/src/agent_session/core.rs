@@ -28,9 +28,10 @@ use crate::investment_response_guard::{
     deterministic_investment_fallback_response, enforce_server_data_time_prefix,
     forbidden_investment_tool_calls, has_main_agent_entity_discovery_seed,
     investment_contract_failure_message, investment_preflight_failure_message,
-    missing_investment_response_sections, missing_required_agent_seed_symbols,
-    prepare_verified_investment_turn, should_emit_investment_preflight,
-    uses_main_agent_entity_discovery,
+    market_session_clock_fact, missing_investment_response_sections,
+    missing_required_agent_seed_symbols, prepare_verified_investment_turn,
+    should_emit_investment_preflight, uses_main_agent_entity_discovery,
+    wants_market_session_clock_step,
 };
 use crate::prompt::PromptOptions;
 use crate::prompt_audit::PromptAuditMetadata;
@@ -41,7 +42,7 @@ use crate::response_finalizer::{
 use crate::runners::{
     AgentRunnerEmitter, AgentRunnerEvent, AgentRunnerRequest, AgentRunnerResult,
     DeliveredPushContext, DeliveredPushContextBatch, REQUIRE_EARNINGS_PDF_COMPLETION_METADATA_KEY,
-    ServiceOwnedInitialPrefix,
+    ServiceOwnedInitialPrefix, TerminalStreamPolicy,
 };
 use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
@@ -135,7 +136,6 @@ pub(super) enum PreparedTurnReexecutionPolicy {
     ExecuteOnce,
 }
 
-const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
 const SERVICE_OWNED_PREFIX_SEPARATOR: &str = "；行情口径：";
 const DELIVERED_PUSH_CONTEXT_MAX_RECORDS: usize = 20;
 const DELIVERED_PUSH_CONTEXT_MAX_BODY_CHARS: usize = 12_000;
@@ -471,7 +471,7 @@ pub(super) fn recover_response_with_committed_prefix(
         return false;
     }
     let trimmed_start = response.content.trim_start_matches(char::is_whitespace);
-    if trimmed_start.starts_with(SERVICE_OWNED_PREFIX_START) {
+    if crate::investment_response_guard::matched_data_time_prefix(trimmed_start).is_some() {
         let Some(first_newline) = trimmed_start.find('\n') else {
             return false;
         };
@@ -1329,6 +1329,27 @@ impl AgentSession {
                 use_native_codex_turn_input,
             )
             .await;
+        // Market questions get the session clock as a completed progress fact
+        // before any provider call: the trail opens with "which session are we
+        // actually in" instead of a silent window. Native Codex and strict
+        // fallback turns both pass through here; retry attempts reuse their
+        // prepared context and must not repeat the step.
+        if prepared_investment.is_none()
+            && !options.dedicated_earnings_workflow
+            && wants_market_session_clock_step(
+                options
+                    .entity_resolution_input
+                    .as_deref()
+                    .unwrap_or(runtime_user_input),
+                options.turn_origin,
+            )
+        {
+            self.emit(session_progress_event(
+                "session.clock",
+                Some(market_session_clock_fact(&answer_time_local)),
+            ))
+            .await;
+        }
         if options.dedicated_earnings_workflow {
             if !self.prompt_options.is_admin || options.runner_override.is_none() {
                 return Err((
@@ -1444,8 +1465,11 @@ impl AgentSession {
                 }
             };
             if emit_preturn_progress {
-                self.emit(session_progress_event("preturn.enrichment.done", None))
-                    .await;
+                self.emit(session_progress_event(
+                    "preturn.enrichment.done",
+                    (preloaded_evidence_calls > 0).then(|| preloaded_evidence_calls.to_string()),
+                ))
+                .await;
             }
             if emit_market_data_progress {
                 let completed_stage = match &contract_result {
@@ -1514,6 +1538,8 @@ impl AgentSession {
                 gemini_stream: self.default_gemini_stream_options(options.timeout),
                 session_metadata: restored.session_metadata,
                 model_override: options.model_override.clone(),
+                turn_images: options.turn_images.clone(),
+                turn_origin: options.turn_origin,
                 runner_selection: match options.runner_override {
                     Some(AgentRunRunnerOverride::OpencodeAcp) if self.prompt_options.is_admin => {
                         ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator
@@ -1595,8 +1621,8 @@ impl AgentSession {
             execution.runner_request.service_owned_initial_prefix = Some(
                 ServiceOwnedInitialPrefix {
                     content: format!(
-                        "数据时间：运行时时区 {answer_time_local}；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
-                        hone_core::runtime_timezone_name()
+                        "{}{answer_time_local}；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
+                        crate::investment_response_guard::data_time_prefix()
                     ),
                     // Preserve the established first-line format, but publish
                     // it only with a completed usable answer. Whole-answer
@@ -1605,6 +1631,18 @@ impl AgentSession {
                     commit_before_model: false,
                 },
             );
+            // Stream the final answer as it is written instead of holding the
+            // whole body until Done. This is the narrow shape that avoids the
+            // hazard which disabled streaming in 75ca1957: with
+            // commit_before_model=false nothing becomes irreversible until the
+            // model's own final answer reproduces the server-anchored header
+            // line, and only bytes the security sanitizer provably keeps
+            // (validated header, complete safe body lines) are committed.
+            // A direct final inside an active tool round streams just the
+            // header and defers its retry-unstable body; the tools-disabled
+            // terminal synthesis streams the body line by line.
+            execution.runner_request.terminal_stream_policy =
+                TerminalStreamPolicy::CanonicalInvestmentHeader;
         }
         Ok((execution, investment_context))
     }
@@ -2292,10 +2330,10 @@ impl AgentSession {
             ConversationQuotaReserveResult::Bypassed => Ok(None),
             ConversationQuotaReserveResult::Rejected(snapshot) => {
                 Err(hone_core::HoneError::Other(format!(
-                    "已达到今日对话上限（{}/{}，运行时时区 {}，日期 {}），请明天再试",
+                    "已达到今日对话上限（{}/{}，{} {}），请明天再试",
                     snapshot.success_count + snapshot.in_flight,
                     snapshot.limit,
-                    hone_core::runtime_timezone_name(),
+                    crate::investment_response_guard::local_clock_label(),
                     snapshot.quota_date
                 )))
             }

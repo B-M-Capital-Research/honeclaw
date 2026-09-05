@@ -14,13 +14,89 @@
 
 ## 状态
 
-- Fixed
+- New
 
 ## GitHub Issue
 
 - [#53](https://github.com/B-M-Capital-Research/honeclaw/issues/53)
 
 ## 最新进展
+
+- 2026-09-05 22:01 CST 运行态持续活跃复核，状态保持 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - 最近四小时窗口 18:01-22:01 CST 内新增 `sessions=0`、`session_messages=0`、`cron_job_runs=0`、`web_push_messages=0`。
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-31T00:04:16.160352+08:00`
+      - `web_push_messages.max(created_at)=2026-08-31T00:03:17.507836+08:00`
+    - `data/logs/hone-console-page-source.log`
+      - 正常 source runtime 日志仍只推进到 `2026-09-05T02:04:17Z` / 10:04 CST；本轮 18:01-22:01 CST 没有新的 source runtime、heartbeat、scheduler 或 event-engine 正常推进日志。
+    - `data/runtime/task_runs.2026-09-05.jsonl`
+      - 最新 task run 仍停在 `2026-09-05T02:04:14Z` / 10:04 CST；最后记录为 `internal.daily_report skipped`。
+    - `data/logs/hone-console-page-source.err.log`
+      - 文件 mtime 推进到 22:02 CST，仍在追加 `failed to initialize cloud session storage: Config("Postgres 连接失败: error connecting to server")` 的 `bot_core.rs:96` panic。
+      - 当前文件累计 8520 次同类 panic；上一轮 18:02 CST 记录为 2840 次，说明本轮窗口内 panic loop 持续放大。
+    - 进程表：
+      - 22:01 CST 未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-telegram`、`hone-web-api`、`hone-desktop`、`hone-console-page` 或 scheduler 运行进程。
+    - 最近提交：
+      - 18:01-22:01 CST 没有非文档代码提交；未见可证明 live runtime 恢复的代码或重启证据。
+  - 判断：
+    - 本轮仍是同一根因和同一影响范围：运行承载进程缺席或持续重启失败，导致渠道接入、scheduler、event-engine 增量与运行台账无法健康推进。
+    - 问题仍是功能性 `P1`；当前未见错投、数据破坏或跨用户泄漏，因此不升级为 `P0`。
+    - 已有关联 Issue #53；本轮确认活跃 P1，但不重复创建 GitHub Issue。
+
+- 2026-09-05 18:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - 最近四小时窗口 14:02-18:02 CST 内新增 `sessions=0`、`session_messages=0`、`cron_job_runs=0`、`web_push_messages=0`。
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-31T00:04:16.160352+08:00`
+      - `web_push_messages.max(created_at)=2026-08-31T00:03:17.507836+08:00`
+    - `data/logs/hone-console-page-source.log`
+      - 正常 source runtime 日志仍只推进到 `2026-09-05T02:04:17Z` / 10:04 CST；本轮 14:02-18:02 CST 没有新的 source runtime、heartbeat、scheduler 或 event-engine 正常推进日志。
+    - `data/runtime/task_runs.2026-09-05.jsonl`
+      - 最新 task run 仍停在 `2026-09-05T02:04:14Z` / 10:04 CST；最后阶段只有 `internal.daily_report skipped`、`poller.fmp.price ok`、`poller.fmp.extended_hours ok`。
+    - `data/logs/hone-console-page-source.err.log`
+      - 18:02-18:03 CST 仍在追加 `failed to initialize cloud session storage: Config("Postgres 连接失败: error connecting to server")` 的 `bot_core.rs:96` panic。
+      - 当前文件累计 2840 次同类 panic；上一轮 14:01 CST 记录为 1403 次，说明本轮窗口内 panic loop 仍在持续。
+    - 进程表：
+      - 18:02 CST 未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-telegram`、`hone-web-api`、`hone-desktop`、`hone-console-page` 或 scheduler 运行进程；命中项仅为本轮查询进程。
+    - 最近提交：
+      - 14:02-18:02 CST 没有非文档代码提交；未见可证明 live runtime 恢复的代码或重启证据。
+  - 判断：
+    - 本轮证据仍落在同一根因与同一影响范围：运行承载进程缺席或持续重启失败，导致渠道接入、scheduler、event-engine 增量与运行台账无法健康推进。
+    - 问题仍是功能性 `P1`；当前未见错投、数据破坏或跨用户泄漏，因此不升级为 `P0`。
+    - 已有关联 Issue #53；本轮确认活跃 P1，但不重复创建 GitHub Issue。
+
+- 2026-09-05 14:01 CST 运行态复核，状态从 `Fixed/P1` 回退为 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`
+    - `data/logs/hone-console-page-source.log`
+      - 本轮真实运行日志只推进到 `2026-09-05T02:04:17Z` / 10:04 CST；之后到 14:01 CST 没有新的 source runtime、heartbeat、scheduler 或 event-engine 正常推进日志。
+      - 10:01-10:04 CST 仍可见 `subscription registry refreshed` 从 `56` 变为 `0`，以及 cloud portfolio / cron job storage 持续报 Postgres 连接失败。
+    - `data/logs/hone-console-page-source.err.log`
+      - 到 14:01 CST 仍在追加 `failed to initialize cloud session storage: Config("Postgres 连接失败: error connecting to server")` 的 `bot_core.rs:96` panic；当前文件累计 1403 次同类 panic。
+    - `data/runtime/task_runs.2026-09-05.jsonl`
+      - 上次巡检点后仅有 `internal.daily_report skipped=3`、`poller.fmp.price ok=1`、`poller.fmp.extended_hours ok=1`，最新 task run 停在 `2026-09-05T02:04:14Z` / 10:04 CST。
+    - 进程表：
+      - 14:02 CST 未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-telegram`、`hone-web-api`、`hone-desktop`、`hone-console-page` 或 scheduler 运行进程；命中项仅为本轮查询、ChatGPT worker 和本地测试 PostgreSQL。
+    - 最近提交：
+      - 10:01-14:01 CST 有 public community、PDF 渲染和 3D industry explorer 相关非文档提交，但未见可解释当前 channel runtime panic loop 或证明 live runtime 已恢复的提交 / 重启证据。
+  - 判断：
+    - 当前坏态再次落在本单“运行承载进程缺席或持续重启失败，导致直聊与 scheduler 无法推进”的同一根因和影响范围，不新建重复缺陷。
+    - 这已经不只是 `sessions_sqlite_mirror...` 的本地台账落后：source log、task_runs、进程表和 stderr panic loop 同时表明当前运行承载链路没有健康推进。
+    - 该问题会影响渠道接入、定时任务触发、event-engine 增量和运行审计，维持功能性 `P1`；未见错投、数据破坏或跨用户泄漏，因此不是 `P0`。
+    - 已有关联 Issue #53；本轮确认活跃 P1，但不重复创建 GitHub Issue。
 
 - 2026-08-02 22:04 CST 运行态复核，状态从 `New/P1` 调整为 `Fixed/P1`：
   - 证据来源：

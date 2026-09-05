@@ -343,9 +343,11 @@ impl OpenAiCompatibleProvider {
     ) -> hone_core::HoneResult<Value> {
         let mut body = Map::new();
         body.insert("model".to_string(), Value::String(model.to_string()));
+        // Promotes content to a multimodal parts array on turns carrying media;
+        // text-only turns serialize exactly as before.
         body.insert(
             "messages".to_string(),
-            serde_json::to_value(messages).map_err(|e| hone_core::HoneError::Llm(e.to_string()))?,
+            crate::provider::messages_to_wire_value(messages)?,
         );
         if let Some(tools) = tools {
             body.insert("tools".to_string(), Value::Array(tools.to_vec()));
@@ -711,6 +713,7 @@ mod tests {
         provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("answer".to_string()),
                     reasoning_content: None,
@@ -776,6 +779,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("answer".to_string()),
                     reasoning_content: None,
@@ -873,6 +877,7 @@ mod tests {
         let err = provider
             .chat_with_tools(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
                     reasoning_content: None,
@@ -961,6 +966,7 @@ mod tests {
             .chat_with_tools(
                 &[
                     Message {
+                        images: Vec::new(),
                         role: "user".to_string(),
                         content: Some("find data".to_string()),
                         reasoning_content: None,
@@ -969,6 +975,7 @@ mod tests {
                         name: None,
                     },
                     Message {
+                        images: Vec::new(),
                         role: "assistant".to_string(),
                         content: Some(String::new()),
                         reasoning_content: Some("need tool lookup first".to_string()),
@@ -984,6 +991,7 @@ mod tests {
                         name: None,
                     },
                     Message {
+                        images: Vec::new(),
                         role: "tool".to_string(),
                         content: Some(r#"{"ok":true}"#.to_string()),
                         reasoning_content: None,
@@ -1060,6 +1068,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("lookup".to_string()),
                     reasoning_content: None,
@@ -1171,6 +1180,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("lookup CRWV".to_string()),
                     reasoning_content: None,
@@ -1450,6 +1460,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("lookup".to_string()),
                     reasoning_content: None,
@@ -1548,6 +1559,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("write the final answer".to_string()),
                     reasoning_content: None,
@@ -1634,6 +1646,7 @@ mod tests {
         let response = provider
             .chat_with_tools(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
                     reasoning_content: None,

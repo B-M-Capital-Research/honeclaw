@@ -15,7 +15,7 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { Portal } from "solid-js/web";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
@@ -78,6 +78,8 @@ import {
   sendPublicChat,
   sendPublicFinanceCalendar,
   uploadPublicAttachments,
+  ensurePublicMediaEdgeSession,
+  publicMediaEdgeObjectPath,
 } from "@/lib/api";
 import { buildApiUrl } from "@/lib/backend";
 import {
@@ -98,6 +100,8 @@ import {
   PUBLIC_RESTORE_TIMEOUT_MS,
   publicAttachmentFileLabel,
   appendPublicChatProgressStep,
+  appendPublicChatReasoning,
+  isPublicChatToolCompletion,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
   publicChatTerminalEventPatch,
@@ -292,11 +296,26 @@ function AccountButton(props: {
   );
 }
 
-function publicAttachmentUrl(att: PublicChatAttachment): string {
-  if (att.previewUrl) return att.previewUrl;
+function publicAttachmentOriginUrl(att: PublicChatAttachment): string {
   return buildApiUrl(
     `${PUBLIC_IMAGE_ENDPOINT}?path=${encodeURIComponent(att.path)}`,
   );
+}
+
+/**
+ * Where to load an attachment from. Prefers the media edge, which serves the
+ * object out of R2 at the nearest Cloudflare PoP instead of round-tripping it
+ * through the origin in us-central1.
+ *
+ * Every caller pairs this with {@link publicAttachmentOriginUrl} as a fallback:
+ * the edge read cookie is short-lived, so a tab left open past its expiry — or
+ * an edge that is turned off mid-session — must degrade to the origin proxy
+ * rather than to a broken image.
+ */
+function publicAttachmentUrl(att: PublicChatAttachment): string {
+  if (att.previewUrl) return att.previewUrl;
+  const edgePath = publicMediaEdgeObjectPath(att.path);
+  return edgePath ? buildApiUrl(edgePath) : publicAttachmentOriginUrl(att);
 }
 
 function renamePasteFile(file: File) {
@@ -335,6 +354,8 @@ function assistantMarkdownClass(white = false) {
 
 function ProgressiveMessageImage(props: {
   src: string;
+  /** Retried once when `src` fails, so an expired edge session is invisible. */
+  fallbackSrc?: string;
   alt: string;
   testId?: string;
   aspectRatio?: string;
@@ -343,6 +364,13 @@ function ProgressiveMessageImage(props: {
 }) {
   const [loaded, setLoaded] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
+  const [usingFallback, setUsingFallback] = createSignal(false);
+  const currentSrc = () =>
+    usingFallback() && props.fallbackSrc ? props.fallbackSrc : props.src;
+  createEffect(() => {
+    props.src;
+    setUsingFallback(false);
+  });
   return (
     <span
       class="public-chat-media-frame"
@@ -355,7 +383,7 @@ function ProgressiveMessageImage(props: {
     >
       <img
         data-testid={props.testId}
-        src={props.src}
+        src={currentSrc()}
         alt={props.alt}
         loading="lazy"
         decoding="async"
@@ -364,7 +392,13 @@ function ProgressiveMessageImage(props: {
           setLoaded(true);
           setFailed(false);
         }}
-        onError={() => setFailed(true)}
+        onError={() => {
+          if (props.fallbackSrc && !usingFallback()) {
+            setUsingFallback(true);
+            return;
+          }
+          setFailed(true);
+        }}
       />
       <Show when={failed()}>
         <small>{CONTENT.chat_page.composer.finance_calendar_image_failed}</small>
@@ -489,6 +523,7 @@ function ImageMosaic(props: {
                 <ProgressiveMessageImage
                   testId="user-attachment-image"
                   src={publicAttachmentUrl(img)}
+                  fallbackSrc={publicAttachmentOriginUrl(img)}
                   alt={img.name}
                   aspectRatio="1 / 1"
                   objectFit="cover"
@@ -514,6 +549,7 @@ function ImageMosaic(props: {
         <ProgressiveMessageImage
           testId="user-attachment-image"
           src={publicAttachmentUrl(props.images[0]!)}
+          fallbackSrc={publicAttachmentOriginUrl(props.images[0]!)}
           alt={props.images[0]!.name}
           aspectRatio="4 / 3"
           flush
@@ -879,9 +915,39 @@ function AssistantBubble(props: {
         <Show when={(props.message.steps?.length ?? 0) > 0 && !hasContent()}>
           <ul class="pub-assistant-turn-steps">
             <For each={props.message.steps}>
-              {(step) => <li>{step}</li>}
+              {(step, index) => (
+                <li
+                  classList={{
+                    "is-done":
+                      index() < (props.message.steps?.length ?? 0) - 1 ||
+                      !pending(),
+                  }}
+                >
+                  {step}
+                </li>
+              )}
             </For>
           </ul>
+        </Show>
+        <Show
+          when={
+            pending() &&
+            !hasContent() &&
+            (props.message.reasoningLog?.length ?? 0) > 0
+          }
+        >
+          <div class="pub-assistant-reasoning">
+            <p class="pub-assistant-reasoning-live">
+              {(() => {
+                const log = props.message.reasoningLog ?? "";
+                return log.length > 150 ? `…${log.slice(-150)}` : log;
+              })()}
+            </p>
+            <details class="pub-assistant-reasoning-trace">
+              <summary>查看完整思考轨迹</summary>
+              <p>{props.message.reasoningLog}</p>
+            </details>
+          </div>
         </Show>
         <Show when={hasContent()}>
           <div class="pub-assistant-turn-content">
@@ -1086,6 +1152,15 @@ function AttachPreview(props: {
                   <img
                     src={publicAttachmentUrl(item)}
                     alt={item.name}
+                    onError={(event) => {
+                      // Same one-shot degrade as ProgressiveMessageImage: if the
+                      // edge read cookie has lapsed, fall back to the origin
+                      // proxy instead of showing a broken thumbnail.
+                      const fallback = publicAttachmentOriginUrl(item);
+                      if (event.currentTarget.src !== fallback) {
+                        event.currentTarget.src = fallback;
+                      }
+                    }}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -1220,208 +1295,31 @@ function AttachMenu(props: {
   );
 }
 
-function ProactiveModeTips(props: { openRequest?: number }) {
-  const [open, setOpen] = createSignal(false);
-  const [copiedExample, setCopiedExample] = createSignal<number | null>(null);
-  let copiedTimer: number | undefined;
-  let handledOpenRequest = props.openRequest ?? 0;
-
-  createEffect(() => {
-    const request = props.openRequest ?? 0;
-    if (request <= handledOpenRequest) return;
-    handledOpenRequest = request;
-    setOpen(true);
-  });
-
-  const copyText = async (text: string) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
-  };
-
-  const copyExample = async (text: string, index: number) => {
-    await copyText(text);
-    setCopiedExample(index);
-    if (copiedTimer) window.clearTimeout(copiedTimer);
-    copiedTimer = window.setTimeout(() => setCopiedExample(null), 1200);
-  };
-
+/// iOS Safari lets the page behind a fixed-backdrop modal keep scrolling
+/// (worst when the keyboard opens): the document scroll-jumps under the
+/// overlay and the layout visually shatters. Lock the root scroll while a
+/// quick-action modal is open.
+function useModalScrollLock(open: () => boolean) {
   createEffect(() => {
     if (!open()) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    onCleanup(() => document.removeEventListener("keydown", onKey));
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    onCleanup(() => {
+      root.style.overflow = previousOverflow;
+    });
   });
+}
 
-  onCleanup(() => {
-    if (copiedTimer) window.clearTimeout(copiedTimer);
-  });
-
+function DataCenterQuickAction() {
   return (
-    <>
-      <button
-        type="button"
-        class="public-chat-proactive-tip"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          class="public-chat-proactive-tip-icon"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1" />
-          <path d="M5 6h14a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-          <path d="M3 12h18" />
-          <path d="M12 10.5v3" />
-        </svg>
-        <span>{CONTENT.chat_page.composer.proactive_tip}</span>
-      </button>
-      <Show when={open()}>
-        <div
-          class="public-chat-proactive-modal-backdrop"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            class="public-chat-proactive-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="public-chat-proactive-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              class="public-chat-proactive-close"
-              aria-label={CONTENT.chat_page.composer.proactive_close_aria}
-              onClick={() => setOpen(false)}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-            <h2 id="public-chat-proactive-title">
-              {CONTENT.chat_page.composer.proactive_title}
-            </h2>
-            <p class="public-chat-proactive-intro">
-              {CONTENT.chat_page.composer.proactive_intro}
-            </p>
-            <div class="public-chat-proactive-list">
-              <For each={CONTENT.chat_page.composer.proactive_items}>
-                {(item) => (
-                  <div class="public-chat-proactive-item">
-                    <span class="public-chat-proactive-item-mark" />
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>{item.body}</small>
-                    </span>
-                  </div>
-                )}
-              </For>
-            </div>
-            <div class="public-chat-proactive-examples">
-              <div>{CONTENT.chat_page.composer.proactive_examples_title}</div>
-              <For each={CONTENT.chat_page.composer.proactive_examples}>
-                {(example, index) => (
-                  <span class="public-chat-proactive-example-row">
-                    <button
-                      type="button"
-                      class="public-chat-proactive-copy"
-                      aria-label={CONTENT.chat_page.actions.copy_aria}
-                      title={
-                        copiedExample() === index()
-                          ? CONTENT.chat_page.actions.copied
-                          : CONTENT.chat_page.actions.copy_aria
-                      }
-                      onClick={() => void copyExample(example, index())}
-                    >
-                      <Show
-                        when={copiedExample() === index()}
-                        fallback={
-                          <svg
-                            width="13"
-                            height="13"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <rect
-                              x="9"
-                              y="9"
-                              width="13"
-                              height="13"
-                              rx="2"
-                              ry="2"
-                            />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        }
-                      >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                      </Show>
-                    </button>
-                    <span>{example}</span>
-                  </span>
-                )}
-              </For>
-            </div>
-            <button
-              type="button"
-              class="public-chat-proactive-primary"
-              onClick={() => setOpen(false)}
-            >
-              {CONTENT.chat_page.composer.proactive_got_it}
-            </button>
-          </div>
-        </div>
-      </Show>
-    </>
+    <A href="/data-center" class="public-chat-proactive-tip" {...routePrefetchHandlers("data-center")}>
+      <svg class="public-chat-proactive-tip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+        <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
+        <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+      </svg>
+      <span>3D 数据中心</span>
+    </A>
   );
 }
 
@@ -1442,6 +1340,19 @@ function EarningsResearchQuickAction(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string>();
   let fileInputRef: HTMLInputElement | undefined;
+  let companyInputRef: HTMLInputElement | undefined;
+  useModalScrollLock(open);
+
+  // Focusing at open pops the mobile keyboard while the sheet is still
+  // animating in; on iOS Safari that scroll-jumps the page behind the fixed
+  // backdrop and breaks the layout. Keep the convenience focus for fine
+  // pointers only.
+  createEffect(() => {
+    if (!open()) return;
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      queueMicrotask(() => companyInputRef?.focus());
+    }
+  });
   const isPreview = () => props.kind === "preview";
   const label = () =>
     isPreview()
@@ -1551,10 +1462,10 @@ function EarningsResearchQuickAction(props: {
               <label class="public-chat-earnings-field">
                 <span>公司名称或股票代码</span>
                 <input
+                  ref={companyInputRef}
                   data-testid={`earnings-${props.kind}-company`}
                   value={company()}
                   maxlength={120}
-                  autofocus
                   disabled={busy()}
                   placeholder={CONTENT.chat_page.earnings.company_placeholder}
                   onInput={(event) => setCompany(event.currentTarget.value)}
@@ -1620,6 +1531,7 @@ function FinanceCalendarQuickAction(props: {
   openRequest?: number;
 }) {
   const [open, setOpen] = createSignal(false);
+  useModalScrollLock(open);
   const [selectedMonth, setSelectedMonth] = createSignal(
     defaultFinanceCalendarMonth(),
   );
@@ -2364,7 +2276,6 @@ function Composer(props: {
   isSending: boolean;
   remaining: number | undefined;
   dailyLimit: number | undefined;
-  trackingOpenRequest: number;
   calendarOpenRequest: number;
   isAdmin: boolean;
   onOpenPanel: (panel: string) => void;
@@ -2440,7 +2351,7 @@ function Composer(props: {
     >
       <div class="public-chat-proactive-tip-wrap">
         <ChatToolsMenu isAdmin={props.isAdmin} onOpenPanel={props.onOpenPanel} />
-        <ProactiveModeTips openRequest={props.trackingOpenRequest} />
+        <DataCenterQuickAction />
         <Show when={props.isAdmin}>
           <EarningsResearchQuickAction
             kind="preview"
@@ -2698,7 +2609,6 @@ export default function PublicChatPage() {
   >([]);
   const [workspaceCalendar, setWorkspaceCalendar] =
     createSignal<FinanceCalendarPayload>();
-  const [trackingOpenRequest, setTrackingOpenRequest] = createSignal(0);
   const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
   const [conversationStartIndex, setConversationStartIndex] = createSignal<number | null>(null);
   // True when the user has scrolled up far enough to lose track of the latest
@@ -2874,6 +2784,18 @@ export default function PublicChatPage() {
         pinToBottom(1800);
       });
     });
+  });
+
+  createEffect(() => {
+    if (authState() !== "ready") return;
+    // The read cookie is short-lived by design, so renew it while the tab is
+    // open. Each renewal is a small POST; the image bytes themselves never come
+    // back through the origin.
+    void ensurePublicMediaEdgeSession();
+    const timer = setInterval(() => {
+      void ensurePublicMediaEdgeSession();
+    }, 300_000);
+    onCleanup(() => clearInterval(timer));
   });
 
   const refreshPushUnread = async () => {
@@ -3582,13 +3504,16 @@ export default function PublicChatPage() {
       phase: "thinking",
       statusText: CONTENT.chat_page.status.thinking,
       startedAt: Date.now(),
+      // Every send opens a progress trail: run_progress / tool_call events
+      // append human-readable steps so the wait reads as visible work instead
+      // of one static status line.
       steps: input?.earningsWorkflow
         ? [
             input.earningsWorkflow.kind === "analysis"
               ? CONTENT.chat_page.earnings.loading_analysis_skill
               : CONTENT.chat_page.earnings.loading_preview_skill,
           ]
-        : undefined,
+        : [],
     });
     if (!input) setPendingAttachments(reconcile([], { key: "path" }));
     scrollToBottom();
@@ -3679,24 +3604,43 @@ export default function PublicChatPage() {
               (message) => message.id === assistantId,
             );
             if (index >= 0) {
+              const statusText = publicChatToolStatusText(
+                ev.data,
+                CONTENT.chat_page.status.running,
+              );
               setMessages(index, {
                 phase: "running",
-                statusText: publicChatToolStatusText(
-                  ev.data,
-                  CONTENT.chat_page.status.running,
-                ),
-                ...(messages[index].steps
+                statusText,
+                // Completion events only refresh the status line; the action
+                // step already carries the checkmark, so appending would just
+                // spam "数据已取得" between every real action.
+                ...(messages[index].steps &&
+                !isPublicChatToolCompletion(ev.data.status)
                   ? {
                       steps: appendPublicChatProgressStep(
                         messages[index].steps,
-                        publicChatToolStatusText(
-                          ev.data,
-                          CONTENT.chat_page.status.running,
-                        ),
+                        statusText,
                       ),
                     }
                   : {}),
               });
+            }
+          }
+          if (ev.event === "reasoning_delta") {
+            const reasoning =
+              typeof ev.data.content === "string" ? ev.data.content : "";
+            if (reasoning.trim()) {
+              const index = messages.findIndex(
+                (message) => message.id === assistantId,
+              );
+              if (index >= 0) {
+                setMessages(index, {
+                  reasoningLog: appendPublicChatReasoning(
+                    messages[index].reasoningLog,
+                    reasoning,
+                  ),
+                });
+              }
             }
           }
           if (ev.event === "assistant_delta") {
@@ -4100,7 +4044,6 @@ export default function PublicChatPage() {
                           isSending={isSendingOrStreaming()}
                           remaining={sessionInfo()?.remainingToday}
                           dailyLimit={sessionInfo()?.dailyLimit}
-                          trackingOpenRequest={trackingOpenRequest()}
                           calendarOpenRequest={calendarOpenRequest()}
                           isAdmin={currentUser()?.is_admin === true}
                           onOpenPanel={openChatPanel}
@@ -4167,6 +4110,14 @@ export default function PublicChatPage() {
         <div class="lightbox-overlay" onClick={() => setLightbox(null)}>
           <img
             src={publicAttachmentUrl(lightbox()!.images[lightbox()!.index]!)}
+            onError={(event) => {
+              const fallback = publicAttachmentOriginUrl(
+                lightbox()!.images[lightbox()!.index]!,
+              );
+              if (event.currentTarget.src !== fallback) {
+                event.currentTarget.src = fallback;
+              }
+            }}
             class="lightbox-img"
           />
           <button class="lightbox-close">×</button>

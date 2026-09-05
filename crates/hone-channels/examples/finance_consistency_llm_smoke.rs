@@ -126,6 +126,7 @@ async fn run_case(spec: &ModelSpec, case: &CaseSpec) -> Result<CaseResult> {
     );
     let messages = vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system_prompt),
             reasoning_content: None,
@@ -134,6 +135,7 @@ async fn run_case(spec: &ModelSpec, case: &CaseSpec) -> Result<CaseResult> {
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(case.user_prompt.to_string()),
             reasoning_content: None,

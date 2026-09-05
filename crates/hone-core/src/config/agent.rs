@@ -24,6 +24,11 @@ pub struct LlmConfig {
     pub default_profile: String,
     #[serde(default)]
     pub auxiliary_profile: String,
+    /// Profile used only for interactive user conversations (strict
+    /// function-calling route). Scheduled tasks and heartbeats keep
+    /// `default_profile` / `auxiliary_profile`. Empty means no split.
+    #[serde(default)]
+    pub conversation_profile: String,
 }
 
 impl Default for LlmConfig {
@@ -37,6 +42,7 @@ impl Default for LlmConfig {
             profiles: BTreeMap::new(),
             default_profile: String::new(),
             auxiliary_profile: String::new(),
+            conversation_profile: String::new(),
         }
     }
 }
@@ -290,6 +296,18 @@ pub struct AgentConfig {
     pub codex_model: String,
     #[serde(default = "default_daily_conversation_limit")]
     pub daily_conversation_limit: u32,
+    /// 管理员是否使用具备宿主机能力的原生 runner（codex_acp 等）。
+    /// 设为 false 时管理员对话与普通用户一样走 strict function-calling
+    /// 链路（从而使用 `llm.conversation_profile`），但保留配额豁免等
+    /// 其余管理员权益。
+    #[serde(default = "default_admins_use_native_runner")]
+    pub admins_use_native_runner: bool,
+    /// 交互投研（agent-owned finance loop）的研究预算。默认与编译内保守值
+    /// 一致；调大后同一 Agent 可以为"最新进展"类问题多轮追证,
+    /// `gap_closure_rounds` > 0 时终稿自述的证据缺口会被送回工具循环
+    /// 做针对性补证。
+    #[serde(default)]
+    pub finance_research: FinanceResearchConfig,
     #[serde(default = "default_agent_step_timeout_seconds")]
     pub step_timeout_seconds: u64,
     #[serde(default = "default_agent_overall_timeout_seconds")]
@@ -455,6 +473,8 @@ impl Default for AgentConfig {
             runner: default_agent_runner(),
             codex_model: default_codex_model(),
             daily_conversation_limit: default_daily_conversation_limit(),
+            admins_use_native_runner: default_admins_use_native_runner(),
+            finance_research: FinanceResearchConfig::default(),
             step_timeout_seconds: default_agent_step_timeout_seconds(),
             overall_timeout_seconds: default_agent_overall_timeout_seconds(),
             gemini_acp: GeminiAcpConfig::default(),
@@ -626,6 +646,9 @@ pub struct AdminConfig {
     /// Discord 管理员用户 ID 列表（数字字符串，如 "123456789012345678"）
     #[serde(default)]
     pub discord_user_ids: Vec<String>,
+    /// Web 管理员用户 ID 列表（如 "web-user-1234abcd5678"，即 web 渠道的 actor user_id）
+    #[serde(default)]
+    pub web_user_ids: Vec<String>,
     /// 运行时管理员注册口令；建议留空并改用环境变量
     #[serde(default)]
     pub runtime_admin_registration_passphrase: String,
@@ -659,6 +682,51 @@ fn default_runtime_admin_registration_passphrase_env() -> String {
 
 fn default_daily_conversation_limit() -> u32 {
     100
+}
+
+fn default_admins_use_native_runner() -> bool {
+    true
+}
+
+/// 交互投研研究预算；字段语义见 hone-agent 的 `FinanceResearchBudget`。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FinanceResearchConfig {
+    #[serde(default = "default_finance_tool_rounds")]
+    pub tool_rounds: u32,
+    #[serde(default = "default_finance_tool_calls")]
+    pub tool_calls: u32,
+    #[serde(default = "default_finance_data_fetch_calls")]
+    pub data_fetch_calls: u32,
+    #[serde(default = "default_finance_web_search_calls")]
+    pub web_search_calls: u32,
+    /// 终稿自述证据缺口时允许的补证轮数；0 表示关闭缺口闭环。
+    #[serde(default)]
+    pub gap_closure_rounds: u32,
+}
+
+impl Default for FinanceResearchConfig {
+    fn default() -> Self {
+        Self {
+            tool_rounds: default_finance_tool_rounds(),
+            tool_calls: default_finance_tool_calls(),
+            data_fetch_calls: default_finance_data_fetch_calls(),
+            web_search_calls: default_finance_web_search_calls(),
+            gap_closure_rounds: 0,
+        }
+    }
+}
+
+fn default_finance_tool_rounds() -> u32 {
+    5
+}
+fn default_finance_tool_calls() -> u32 {
+    24
+}
+fn default_finance_data_fetch_calls() -> u32 {
+    20
+}
+fn default_finance_web_search_calls() -> u32 {
+    6
 }
 
 fn default_agent_step_timeout_seconds() -> u64 {

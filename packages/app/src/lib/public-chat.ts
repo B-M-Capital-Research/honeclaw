@@ -67,6 +67,10 @@ export function publicEarningsWorkflowMessage(
   return template.replace("{company}", name);
 }
 
+/** How many progress steps the trail keeps; mirrors the server-side
+ * ACTIVE_RUN_MAX_STEPS so live streaming and refresh recovery agree. */
+export const PUBLIC_CHAT_MAX_PROGRESS_STEPS = 8;
+
 export function appendPublicChatProgressStep(
   current: string[] | undefined,
   status: string,
@@ -75,7 +79,30 @@ export function appendPublicChatProgressStep(
   if (!normalized) return current ?? [];
   const steps = current ?? [];
   if (steps[steps.length - 1] === normalized) return steps;
-  return [...steps, normalized].slice(-6);
+  return [...steps, normalized].slice(-PUBLIC_CHAT_MAX_PROGRESS_STEPS);
+}
+
+/** 工具完成态只该更新状态行，不该在步骤轨迹里再挤出一条
+ *  “数据已取得，正在组织回答”——动作行由 UI 的对勾表达完成。 */
+export function isPublicChatToolCompletion(status: unknown): boolean {
+  return (
+    typeof status === "string" &&
+    ["completed", "complete", "success", "succeeded", "finished", "done"].includes(
+      status.trim().toLowerCase(),
+    )
+  );
+}
+
+/** 把新的思考句并进累计日志，超长时从头截断（保尾部最新内容）。 */
+export function appendPublicChatReasoning(
+  current: string | undefined,
+  delta: string,
+  maxChars = 6000,
+): string {
+  const chunk = delta.trim();
+  if (!chunk) return current ?? "";
+  const joined = current && current.length > 0 ? `${current} ${chunk}` : chunk;
+  return joined.length > maxChars ? joined.slice(-maxChars) : joined;
 }
 
 export type PublicChatMessage = {
@@ -90,6 +117,9 @@ export type PublicChatMessage = {
   runId?: string;
   statusUpdatedAt?: number;
   steps?: string[];
+  /** 运行期间模型的实时思考摘要（reasoning_delta 累积，截尾保留）。
+   *  只在进度卡渲染，最终回答落地后不再展示。 */
+  reasoningLog?: string;
   attachments?: PublicChatAttachment[];
   financeCalendar?: HistoryFinanceCalendar;
   scheduledPush?: {
@@ -233,7 +263,7 @@ export function resolvePublicChatRecovery(input: {
         steps: (activeRun.steps ?? [])
           .map((step) => step.trim())
           .filter((step, index, all) => step.length > 0 && all[index - 1] !== step)
-          .slice(-6),
+          .slice(-PUBLIC_CHAT_MAX_PROGRESS_STEPS),
       },
     };
   }

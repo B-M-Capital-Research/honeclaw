@@ -1051,6 +1051,7 @@ mod tests {
         let err = provider
             .chat(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
                     reasoning_content: None,
@@ -1091,6 +1092,7 @@ mod tests {
         let err = provider
             .chat_with_tools(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("hello".to_string()),
                     reasoning_content: None,
@@ -1180,6 +1182,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("finish".to_string()),
                     reasoning_content: None,
@@ -1299,6 +1302,7 @@ mod tests {
             ..LlmRequestOptions::default()
         });
         let messages = [Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some("lookup".to_string()),
             reasoning_content: None,
@@ -1394,6 +1398,7 @@ mod tests {
         let events = provider
             .chat_with_tools_stream(
                 &[Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some("write the final answer".to_string()),
                     reasoning_content: None,
@@ -1459,6 +1464,7 @@ mod tests {
             64,
         );
         let messages = [Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some("answer".to_string()),
             reasoning_content: None,
@@ -1522,6 +1528,7 @@ mod tests {
             64,
         );
         let messages = [Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some("answer".to_string()),
             reasoning_content: None,

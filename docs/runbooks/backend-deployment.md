@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-08-16
+Last updated: 2026-09-05
 
 ## When to Use
 
@@ -17,6 +17,7 @@ The public entrypoint is split into two layers:
 - `hone-claw.com`: Cloudflare Pages serves the static public web bundle
 - `hone-claw.com/api/public/*`: Cloudflare Worker proxies public API requests to the backend origin
 - `origin.hone-claw.com`: backend origin hostname used by Cloudflare, not a user-facing entrypoint
+- `hone-claw.com/_media/v1/*`: Cloudflare Worker reads and writes chat image objects directly in R2; these bytes never reach the backend origin
 
 Do not document private host location, workstation names, tunnel provider internals, credentials, or concrete process owner details in public files. Use “backend origin” or “managed backend host” in public-facing documentation.
 
@@ -197,6 +198,12 @@ the token in command arguments/history, reuse a broad personal token, copy the
 temporary config into `/root/.docker`, or leave any registry credential on the
 host. A failed minimal-auth export stops before staging or cutover.
 
+### Public frontend fallback alongside an immutable runtime
+
+The GHCR runtime manifest does not include a public Web bundle. Do not point `HONE_PUBLIC_WEB_DIST_DIR` at an absent path inside `/opt/hone/current`, and do not add files or symlinks to the verified runtime release. Build `dist-public` from the same exact source revision in a clean checkout, retain a per-file size/SHA manifest, and stage it separately under `/opt/hone/public-web/releases/<revision>/dist-public`. Verify the complete manifest before atomically pointing `/opt/hone/public-web/current` at that release's `dist-public` directory. Set `HONE_PUBLIC_WEB_DIST_DIR=/opt/hone/public-web/current` in the managed environment with a restricted backup, then use the normal idle-checked service restart. If the old value exists only in the unit's `Environment=` setting, verify that source and add the reviewed override to its `EnvironmentFile`; do not assume the key already exists in that file. Keep the previous public bundle for rollback as well as the previous binary release.
+
+After restart, compare the loopback `8088/chat` and public Pages entry/chunk hashes with the exact source build. A successful Pages deployment does not prove the origin fallback exists. The September 5 recovery found the previous path missing and loopback `/chat` returning 404; see its handoff for the accepted replacement and exact hashes.
+
 The current GHCR runtime bundle is executable-only: it contains the six managed
 binaries, release metadata, the soul asset, and verification tooling, but it
 does not contain the repository `skills/` tree or public share images. A
@@ -328,8 +335,9 @@ cloud_oss_health.ok=true
 local_durable_dependency_count=0
 ```
 
-Also compare the supervisor's actual working directory with the intended
-repository root and fail the deployment if they differ. Do not infer authority
+Also verify the supervisor's actual working directory and explicit managed
+environment match the reviewed launch contract. A service with a complete
+explicit environment need not start in the repository root. Do not infer authority
 from a separate `cloud doctor` command launched in a different working
 directory; that command may have loaded a different `.env` from the live
 process.
@@ -599,7 +607,20 @@ hone-cli cloud community-assets --manifest /path/to/verified-assets.json
 hone-cli cloud community-assets --manifest /path/to/verified-assets.json --apply
 ```
 
-`community-contents` is a bootstrap/recovery command that requires the complete source timeline: `source_topic_index` and source file positions must each be contiguous from zero. It first reconciles existing file-backed rows by source file position, then uses `candidate_fingerprint + occurrence` as the stable identity for missing or non-file posts. Apply mode locks the community space and inserts every missing post and its ordered resources in one PostgreSQL transaction. A second dry-run must report `would_insert=0` before the migration is considered complete. **Do not use this command for the weekly append:** inserting newer topics at the front shifts source file positions and can match new rows to old content. Until a dedicated idempotent `community-append` workflow is implemented and reviewed, stop rather than improvising an incremental `community-contents --apply`.
+`community-contents` is a bootstrap/recovery command that requires the complete source timeline: `source_topic_index` and source file positions must each be contiguous from zero. It first reconciles existing file-backed rows by source file position, then uses `candidate_fingerprint + occurrence` as the stable identity for missing or non-file posts. Apply mode locks the community space and inserts every missing post and its ordered resources in one PostgreSQL transaction. A second dry-run must report `would_insert=0` before the migration is considered complete. **Do not use this command for the weekly append:** inserting newer topics at the front shifts source file positions and can match new rows to old content. Use the dedicated `community-append` workflow below for incremental updates; never substitute positional bootstrap reconciliation.
+
+Production community commands must go through `scripts/community_production.py`, not a bare CLI in the repository directory. The wrapper reads the managed service environment over IAP, checks a previously reviewed PostgreSQL identity, creates a loopback-only tunnel and runs the CLI from an isolated temporary directory. Credentials remain in memory. The ignored `data/community-imports/production-operator.json` contains only `project`, `instance`, `zone` and `expected_pg_identity_sha256`; review those values against the managed service before provisioning or changing them. A fingerprint mismatch requires investigation, not automatic repinning. Repository `.env` is not production authority.
+
+```bash
+cargo build -p hone-cli
+python3 scripts/community_production.py cloud community-inspect --anchor-only
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json --apply
+python3 scripts/community_production.py cloud community-append --manifest /path/to/append.json
+python3 scripts/community_production.py cloud community-assets --manifest /path/to/verified-assets.json
+```
+
+`community-inspect --anchor-only` emits the exact anchor object without model-derived hashes. `community-append` accepts continuous newest-first source items with stable identities and verifies the original anchor even on replay. New inserts also require the current head to match, and are written oldest-first so the database's timestamp/ID ordering preserves the source's same-minute order. Existing source identities must have matching author, time, body and ordered resources; a previously unknown file identity may be legitimately completed by asset backfill. The operation is atomic and a replay must show zero inserts. Use the production wrapper for asset apply and publisher operations too. See [Community insights sync](community-insights-daily-sync.md) for the capture and scheduling workflow.
 
 `community-assets` accepts only ordinary non-symlink files with an allowlisted MIME/magic signature, exact manifest byte size, and exact SHA-256. It verifies or creates a full-SHA immutable object key, reads the object back from R2, and only then promotes the PostgreSQL resource row through an optimistic lock. Never put source cookies, signed download URLs, or authorization headers in either manifest. Source-protected resources stay metadata-only unless the authorized source UI legitimately exposes their bytes.
 
@@ -608,6 +629,14 @@ Every promoted resource keeps the previous SHA, size, object URI, and access sta
 The migrator uploads recognized durable files and indexes them in PG `cloud_documents`. It also imports legacy `sessions/*.json` into PG `cloud_sessions`, `conversation_quota/*.json`, `runtime/skill_registry.json`, `notif_prefs/*.json`, `portfolio/*.json`, and actor-scoped `company_profiles/**/*.md`; use the matching narrow `--*-only --apply` modes for fast idempotent passes before the larger object migration. The completed Web-auth and LLM-audit import flags intentionally reject further use. The retained `--event-store-only` channel reads `events.sqlite3` only as historical input and imports the five event tables into PG. Use the lower-concurrency `--reuse-existing` retry when proxy or OSS connections drop during a large upload. All runtime stores are PostgreSQL-backed; generated images, uploads, and attachment/document surfaces use OSS where configured and otherwise retain their explicit local file fallback.
 
 ## Public Community Private-R2 Edge Rollout
+
+### Current recovery and historical rollout evidence
+
+The July rollout narrative below is historical. A September 5 audit found that the Worker had since been enabled and configured with a managed HTTPS fallback, while the backend signing secret was absent from the managed process environment and a local automation had published a different database into the same R2 prefix. Do not redeploy the July Worker configuration over the live version. Inspect actual deployed code, bindings and variables first; preserve the reviewed origin fallback and signing secret. The current recovery and exact acceptance results are recorded in [the September 5 handoff](../handoffs/2026-09-05-community-freshness-assets-latency.md).
+
+Publish from the same production PostgreSQL authority used by the API before enabling edge grants. An immutable key conflict must never be overwritten: use a new delivery prefix with matching Worker feed/resource configuration and cache isolation if a projection migration requires it. `latest.json` is published last, after resources and older pages. Bounded parallel metadata preflight reduces publication time while preserving conflict checks and full-byte verification during apply.
+
+The backend grant secret must be in the managed supervisor environment file, not only a checkout `.env`. Apply environment updates atomically with restricted permissions and use the normal managed restart. Resource HEAD and conditional GET responses inspect object metadata and size without downloading the body; ordinary GET still verifies full SHA-256. A metadata response is not evidence of full-byte integrity.
 
 This is an operator-run rollout. At implementation close on 2026-07-19, the work had published and idempotently rechecked the initial **private** R2 derived snapshot (`662` contents, `833` resources, `719` edge descriptors, `34` feed pages, `754` publication objects; final dry-run `no_op=true`, `would_write=0`, `conflicts=[]`) without deploying a Worker or Pages bundle, changing a production variable or secret, switching traffic, or restarting the backend.
 
@@ -880,6 +909,189 @@ For a single resource/version that must stop being served, use this order:
 
 Immutable R2 bytes/descriptors may remain for forensics and rollback; the per-request active-index gate, not object deletion, is the revocation authority. Shared resource cache entries expire within one hour, but revocation never waits for that TTL because the active index is checked before cache lookup.
 
+## Public Media Edge Rollout
+
+Chat image attachments move browser <-> nearest Cloudflare PoP <-> R2. The
+backend origin in us-central1 only mints short-lived signed capabilities; it
+never carries image bytes on either leg. Before this path existed, a pasted
+screenshot crossed the Pacific to be stored and crossed back in full to render a
+72px thumbnail.
+
+Components:
+
+- `workers/public-media-edge` — Worker on `hone-claw.com/_media/v1/*`, R2 binding
+  `MEDIA_BUCKET` -> the existing private `honeclaw` bucket.
+- `POST /api/public/media/session` — issues the `hone_media_edge` read cookie.
+- `POST /api/public/media/upload-grant` — issues one single-use upload
+  capability per file and refreshes the read cookie in the same response.
+- `cloud.media_delivery` in backend config; secret in
+  `HONE_MEDIA_EDGE_HMAC_SECRET`.
+
+### Authorization model
+
+Reads and writes are deliberately authorized differently.
+
+| | Read | Write |
+| --- | --- | --- |
+| Carrier | `hone_media_edge` cookie, `HttpOnly; Secure; SameSite=Strict; Path=/_media/v1/` | `X-Hone-Media-Token` request header |
+| Scope | the caller's own `public-uploads/<user>/` prefix | one exact object key |
+| Also bound to | — | content type, byte ceiling |
+| Lifetime | `read_ttl_secs`, clamped 60..3600 | `write_ttl_secs`, clamped 30..300 |
+| Reuse | until expiry | single use: the edge refuses to overwrite an existing object |
+
+Why a cookie for reads rather than a signed URL: a capability in a query string
+leaks through `Referer`, browser history, and any intermediary's access log.
+Why a header for writes: the client must not choose the key, and a custom header
+cannot be set by a cross-site form, so it doubles as the CSRF guard. The Worker
+answers no CORS preflight and rejects any request whose `Origin` is not
+`https://hone-claw.com`.
+
+What the Worker enforces independently of the origin's signature:
+
+- Key shape: exactly `public-uploads/<owner>/<day>/<stored-name>`, every segment
+  matching `[A-Za-z0-9._-]+` and never `.` or `..`; `%` anywhere is rejected, so
+  there is no second decoding pass to disagree about.
+- Ownership: the requested key must start with the signed `pfx`, and `pfx` must
+  itself be a two-segment owner root under the configured upload prefix. A grant
+  that authenticates one tenant while minting a key for another fails here even
+  though its signature is valid.
+- Content type: `image/png`, `image/jpeg`, `image/webp`, `image/gif` only.
+  **`image/svg+xml` is excluded and must stay excluded** — an SVG served from
+  `hone-claw.com` is same-origin script, so accepting one would turn the upload
+  box into stored XSS.
+- Magic bytes: the leading bytes must match the signed content type, so a token
+  signed for `image/png` cannot be used to store HTML or SVG.
+- Size: `Content-Length` is required and checked against the token's ceiling, and
+  the body is read through a cap so a lying `Content-Length` cannot exhaust
+  memory. The declared and actual lengths must agree.
+- Responses carry `Content-Security-Policy: default-src 'none'; sandbox`,
+  `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`,
+  `Referrer-Policy: no-referrer`, and `Content-Disposition: inline`.
+
+The token wire format is pinned by matching golden vectors on both sides
+(`routes::public_media::tests` and `workers/public-media-edge/test`). A change to
+claim order or encoding on either side fails a test instead of silently breaking
+uploads in production.
+
+### Fail-closed defaults
+
+- `MEDIA_EDGE_DISABLED` absent disables the Worker. Activation is an explicit
+  `MEDIA_EDGE_DISABLED=false`, preserved across deploys by `keep_vars`.
+- A missing, short, or oversized secret returns `503`; so does an unbound bucket.
+- Backend `mode: "off"` issues no capabilities at all.
+- The client falls back to the origin proxy (`/api/public/upload`,
+  `/api/public/image`) whenever the edge is off, a grant is refused, or a `PUT`
+  is not acknowledged. A `PUT` counts as acknowledged only on `201` with a JSON
+  `{"ok":true}` body, because a missing Worker route makes Pages answer
+  `/_media/v1/*` with the SPA shell and a `200`.
+
+### Deployment record
+
+2026-08-30: `hone-public-media-edge` deployed and activated on
+`hone-claw.com/_media/v1/*` (version `8ddb8edc-2f31-4d5e-b1d3-d405ee8ecf92`),
+bound to R2 bucket `honeclaw`, `MEDIA_EDGE_DISABLED=false`, secret
+`MEDIA_EDGE_HMAC_SECRET` installed.
+
+Deployed with a scoped API token named `hone-media-edge-deploy` rather than
+`wrangler login`: three permissions only — account `Workers Scripts:Edit` and
+`Workers R2 Storage:Edit`, zone `Workers Routes:Edit` limited to hone-claw.com.
+The OAuth flow was rejected for this purpose because it grants 29 scopes
+including Pages:Write, Email Sending, Connectivity Directory Admin, and a
+persistent refresh token. Note that a runtime variable set in the dashboard does
+not reach the running Worker until the next deploy; `keep_vars: true` preserves
+it, so `wrangler deploy` is the way to activate it.
+
+Verified live against the deployed Worker (self-test objects removed afterwards):
+
+| Case | Result |
+| --- | --- |
+| GET, no cookie | `401 missing_media_session` |
+| GET, valid cookie, own prefix, absent object | `404 not_found` |
+| GET, valid cookie, another tenant's key | `403 object_outside_session_scope` |
+| GET, expired / wrong-audience / over-broad `pfx` / tampered signature | `401` |
+| GET, duplicated cookie header | `401` |
+| Read cookie presented as an upload token | `401 invalid_upload_token` |
+| PUT, no token | `401 missing_upload_token` |
+| PUT, SVG bytes under an `image/png` token | `415 unsupported_image_format` |
+| PUT, body over the token's ceiling | `413 upload_too_large` |
+| PUT, token key ≠ request path | `403 upload_token_key_mismatch` |
+| PUT, valid | `201 {"ok":true}` |
+| PUT, replayed token | `409 object_already_exists` |
+| Read back | `200`, `image/png`, `inline`, `nosniff`, CSP, bytes identical |
+
+**The backend half is not deployed yet**, so no capability is minted in
+production and the edge 401s every request. The client keeps using the origin
+proxy until `cloud.media_delivery.mode` is set. `HONE_MEDIA_EDGE_HMAC_SECRET`
+must be installed on the origin with the exact bytes already held by the Worker
+before switching the mode; a mismatch fails closed.
+
+2026-08-30（后端半边）：`37d8fbaa` 上线到 GCE `instance-20260731-081043`。
+`cloud.media_delivery` 写进 `/srv/honeclaw/config.yaml`（先落 `off`，再翻到 `shadow`），
+`HONE_MEDIA_EDGE_HMAC_SECRET` 装进 `/etc/hone/runtime.env`（600 root:root，`openssl rand -base64 48`，
+64 字节）。两个后端端点已验活：`POST /api/public/media/session` → `401`、
+`/api/public/media/upload-grant` → `415`（都不是 404，说明路由挂上了）。
+Worker 侧外部复验：`GET /_media/v1/o/...` 无 cookie → `401` 且带 CSP / CORP / nosniff / Referrer-Policy，
+`OPTIONS` → `405 Allow: GET, HEAD, PUT`（无 CORS 预检），路由绑定正常。
+
+密钥对齐走的是**反方向**：不动 Worker，把 origin 改成 Worker 已经持有的那份。
+部署 Worker 的那次会话把密钥留在了工作目录里（`media_edge_secret`，64 字节，
+时间戳与 `wrangler secret put` 同一分钟），指纹核对一致后用管道写进 origin 的 runtime.env，
+值不落盘、不回显。**这条路径不需要任何 Cloudflare 凭据**——Cloudflare 的 secret 写入后读不回来，
+但要对齐并不一定要往那边写。
+
+`mode: "prefer"` 已生效。对线上 Worker 的三条端到端验证（用同一份密钥按契约自签读 cookie）：
+
+| 用例 | 结果 | 说明 |
+| --- | --- | --- |
+| 自己 prefix 下不存在的对象 | `404 not_found` | Worker **接受了 origin 的签名**，这就是两边密钥一致的证明 |
+| 同一 cookie 够别人的 prefix | `403 object_outside_session_scope` | 归属隔离生效 |
+| 签名改一个字节 | `401 invalid_media_session` | 确实在验签，不是放行一切 |
+
+剩下的只有浏览器侧那一条（runbook 第 6 步）：粘一张图，devtools 里确认 `PUT` 打到
+`/_media/v1/o/...` 拿 `201`，且后面没有 `/api/public/upload`。
+
+### Rollout order
+
+1. Deploy the Worker with `MEDIA_EDGE_DISABLED` absent and confirm every
+   `/_media/v1/*` request returns the Worker-owned `503`.
+2. Install the same secret in both places — Worker secret
+   `MEDIA_EDGE_HMAC_SECRET` and backend `HONE_MEDIA_EDGE_HMAC_SECRET`. Generate
+   with `openssl rand -base64 48`. It is a secret, never a Worker var.
+3. Confirm `workers/public-media-edge/wrangler.jsonc` still binds `MEDIA_BUCKET`
+   to `bucket_name = honeclaw`, the active `HONE_OSS_BUCKET`. Do not create a
+   public duplicate bucket and do not hand the browser a bucket URL.
+4. Set backend `cloud.media_delivery.mode: "shadow"` and restart. Capabilities
+   are minted; clients still use the origin proxy.
+5. Set `MEDIA_EDGE_DISABLED=false` on the Worker and verify by hand:
+
+```bash
+curl -i https://hone-claw.com/_media/v1/o/public-uploads/x/y/z.png
+curl -i -X OPTIONS https://hone-claw.com/_media/v1/o/public-uploads/x/y/z.png
+```
+
+   Expect `401 {"error":"missing_media_session"}` for the first and
+   `405` with `Allow: GET, HEAD, PUT` for the second. A Pages HTML body or a
+   Cloudflare-branded error is a stop condition: the route is not bound.
+
+6. Move backend to `mode: "prefer"` and restart. Paste an image in a logged-in
+   browser and confirm in devtools that the `PUT` goes to `/_media/v1/o/...`,
+   returns `201`, and that no `/api/public/upload` request follows.
+7. Confirm the send path still works end to end: the chat turn must accept the
+   `oss://` path and the model must receive the image.
+
+### Rollback
+
+Fastest first:
+
+1. Backend `cloud.media_delivery.mode: "off"` and restart — clients return to the
+   origin proxy on their next call; already-stored objects keep rendering through
+   `/api/public/image`.
+2. Or remove `MEDIA_EDGE_DISABLED` from the Worker — every `/_media/v1/*` request
+   becomes `503` and the client falls back on error.
+3. Rotating `HONE_MEDIA_EDGE_HMAC_SECRET` invalidates every outstanding cookie
+   and upload capability immediately. Rotate the Worker secret and the backend
+   env together; a mismatch is fail-closed, not fail-open.
+
 ## Worker Route
 
 The Cloudflare Worker must route:
@@ -1004,6 +1216,9 @@ The runtime also recognizes the validated Codex ACP `1.1.7` structured response 
 - Do not commit API tokens, tunnel tokens, runtime databases, or exported production config.
 - Prefer documenting stable host roles over physical or personal infrastructure details.
 - If the backend origin moves, update the Worker origin hostname or DNS target first, then rerun the verification commands above.
+- The media edge secret (`HONE_MEDIA_EDGE_HMAC_SECRET` / Worker `MEDIA_EDGE_HMAC_SECRET`) is the whole authorization boundary for chat image objects. Keep it out of YAML and out of Worker vars, and rotate both sides together.
+- Never add `image/svg+xml` to the media edge content-type allowlist. Objects are served from `hone-claw.com`, so an SVG there is same-origin script.
+- Do not add CORS headers to `/_media/v1/*`. Same-origin-only is what keeps a leaked upload capability unusable from another site.
 
 ## Rollback
 
@@ -1022,3 +1237,13 @@ Backend rollback:
 curl -i https://origin.hone-claw.com/api/public/auth/me
 curl -i https://hone-claw.com/api/public/auth/me
 ```
+
+## Frontend-only public fallback updates
+
+Once the running managed service already has `HONE_PUBLIC_WEB_DIST_DIR=/opt/hone/public-web/current`, a frontend-only update can replace that public symlink without changing `runtime.env`, the binary release symlink, or the service process. `crates/hone-web-api/src/runtime.rs` keeps the configured directory as a lexical `PathBuf`; `build_public_app` passes it directly to `ServeDir` and its `ServeFile` index fallback. The pinned `tower-http` implementation opens the resulting path on each request rather than canonicalizing the release at startup. This procedure applies only after that initial stable-path configuration is live; a different environment value requires the normal reviewed environment update and restart.
+
+Build from a clean, exact source revision with the intended public build settings. Keep the archive SHA-256 and an independently reviewed `BUILD_MANIFEST.json` SHA-256, full source commit, entry filename/SHA-256, index SHA-256, file count, and every public file SHA-256. The archive contains only regular `BUILD_MANIFEST.json` and `dist-public/<manifest file>` members. Validate the complete archive and manifest, reject links, special files, duplicate names and path traversal, then stage under `/opt/hone/public-web/releases/<revision>/dist-public`. Treat an existing release as immutable: an exact match is reusable; any mismatch requires investigation rather than overwriting it. Keep the build manifest outside the served directory.
+
+Before activation, verify that the live service still uses the stable public path and record the current public release revision. Serialize frontend deployments with `/opt/hone/public-web/.deploy.lock`, recheck that exact previous symlink identity immediately before replacement, and stop if another deployment changed it. Atomically replace only `/opt/hone/public-web/current`; retain the previous release for a reviewed rollback. Do not use the backend runtime symlink or an unreviewed shared-worktree build for this operation.
+
+After replacement, request the loopback public `/chat` fallback and the exact hashed JavaScript entry and compare their response SHA-256 values with the reviewed build. Confirm that the managed service PID and start time did not change. Also verify the public Pages entry and the affected authenticated browser flow. Retain the selected revision, complete build manifest, previous public release, and HTTP hash results with the task's deployment evidence. If HTTP verification fails after the switch, preserve both releases and inspect the result before a separate reviewed rollback; do not restart or silently switch the backend runtime.

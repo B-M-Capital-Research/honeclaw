@@ -3,6 +3,7 @@ pub(crate) mod billing;
 pub(crate) mod channel_settings;
 pub(crate) mod chat;
 pub(crate) mod community_forum;
+pub(crate) mod company_facts;
 pub(crate) mod company_profiles;
 pub(crate) mod company_ratings;
 pub(crate) mod cron;
@@ -12,6 +13,7 @@ pub(crate) mod events;
 pub(crate) mod files;
 pub(crate) mod history;
 pub(crate) mod imessage;
+pub(crate) mod industry_map;
 pub(crate) mod influencer_digest;
 pub(crate) mod key_event_chain;
 pub(crate) mod llm_audit;
@@ -27,6 +29,7 @@ pub(crate) mod public_admin;
 pub(crate) mod public_community;
 pub(crate) mod public_digest;
 pub(crate) mod public_finance_calendar;
+pub(crate) mod public_media;
 pub(crate) mod public_portfolio;
 pub(crate) mod public_pushes;
 pub(crate) mod public_quotes;
@@ -357,6 +360,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/community/edge-session",
             post(public_community::handle_community_edge_session),
         )
+        .route("/media/session", post(public_media::handle_media_session))
+        .route(
+            "/media/upload-grant",
+            post(public_media::handle_media_upload_grant),
+        )
         .route(
             "/community/seen",
             post(public_community::handle_mark_community_seen),
@@ -471,6 +479,11 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route(
             "/company-ratings",
             get(company_ratings::handle_get_company_ratings),
+        )
+        .route("/industry-map", get(industry_map::handle_get_industry_map))
+        .route(
+            "/industry-map/edits",
+            post(industry_map::handle_post_industry_edit),
         )
         .route(
             "/valuation-lab",

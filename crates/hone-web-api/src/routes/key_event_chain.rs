@@ -1343,6 +1343,7 @@ fn analysis_messages(topic: &TopicDef, input: &[serde_json::Value]) -> Vec<Messa
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system.into()),
             reasoning_content: None,
@@ -1351,6 +1352,7 @@ fn analysis_messages(topic: &TopicDef, input: &[serde_json::Value]) -> Vec<Messa
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user),
             reasoning_content: None,

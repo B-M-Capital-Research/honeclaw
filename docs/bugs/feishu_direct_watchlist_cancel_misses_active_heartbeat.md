@@ -3,8 +3,33 @@
 - 发现时间：2026-07-21 19:02 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed（代码级，待部署复核）
 - GitHub Issue：无，非 P1
+
+## 代码级修复（2026-08-22 CST）
+
+- `portfolio(action="unwatch")` 现在会在 actor 作用域内同步检查 enabled heartbeat：
+  - 若命中“单标的 + 精确 ticker” heartbeat，会在取消关注时一并删除该 heartbeat，避免继续后台运行。
+  - 若命中的是多标的 heartbeat，则不会静默误删，而是把剩余任务结构化回传给 answer/finalizer，要求后续显式删除。
+- `response_finalizer` 不再把这类结果统一收口成“已取消关注”：
+  - 当 heartbeat 已自动停掉时，会明确回告“当前不在关注列表中，但已停止相关心跳任务”。
+  - 当 heartbeat 仍在运行且属于多标的任务时，会明确提示仍有任务在跑，并要求用户显式确认删除，而不是伪成功。
+- 这次修复聚焦本缺陷暴露出的错误确认与遗漏取消链路；它不把所有 `unwatch` 都扩展成无差别批量删任务，只对“精确 ticker + 单标的 heartbeat”做自动联动，避免误删组合型监控。
+
+## 验证（2026-08-22 CST）
+
+- `cargo test -p hone-tools single_ticker_heartbeat_is_auto_removable_for_unwatch -- --nocapture`
+- `cargo test -p hone-tools multi_ticker_heartbeat_requires_explicit_follow_up -- --nocapture`
+- `cargo test -p hone-channels unwatch_confirmation_mentions_removed_heartbeat_jobs --lib -- --nocapture`
+- `cargo test -p hone-channels unwatch_confirmation_warns_about_remaining_heartbeat_jobs --lib -- --nocapture`
+- `cargo check -p hone-tools -p hone-channels --tests`
+
+## 待部署复核
+
+- 本轮没有重启现有 runtime，也没有复放 2026-07-21 的真实 Feishu 会话。
+- 后续真实窗口应重点复核两类结果：
+  - 单标的 heartbeat：用户说“取消对 cbrs 的关注”后，不再看到“CBRS 不在关注列表中”伪成功，且对应 heartbeat 不再继续执行。
+  - 多标的 heartbeat：final 必须明确提示仍有相关 heartbeat 在运行，并要求显式删除，而不是直接说“无需取消”。
 
 ## 证据来源
 

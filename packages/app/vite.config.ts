@@ -1,6 +1,7 @@
 import { defineConfig } from "vite"
 import solid from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
+import { communityPdfAssets } from "./community-pdf-assets"
 
 const backend = process.env.HONE_WEB_BACKEND_URL ?? "http://127.0.0.1:8077"
 const port = Number(process.env.HONE_APP_PORT ?? "3000")
@@ -18,7 +19,11 @@ export default defineConfig({
       communityEdgeDiscovery,
     ),
   },
-  plugins: [solid(), tailwindcss()],
+  plugins: [solid(), tailwindcss(), communityPdfAssets()],
+  optimizeDeps: {
+    // Avoid a dev-server reload when the PDF display module is first opened.
+    include: ["pdfjs-dist/legacy/build/pdf.mjs"],
+  },
   esbuild: {
     jsx: "automatic",
     jsxImportSource: "solid-js",

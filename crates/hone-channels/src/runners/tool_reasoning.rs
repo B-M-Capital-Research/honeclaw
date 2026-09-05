@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use hone_agent::{FunctionCallingAgent, FunctionCallingStreamObserver};
+use hone_agent::{FinanceResearchBudget, FunctionCallingAgent, FunctionCallingStreamObserver};
 use hone_agent_codex_cli::CodexCliAgent;
 use hone_core::agent::{Agent, AgentContext, AgentMessage};
 use hone_core::config::AgentConversationStrategy;
@@ -29,9 +29,12 @@ struct RunnerStreamObserver {
     terminal_stream_policy: TerminalStreamPolicy,
     canonical_header_state: Mutex<CanonicalHeaderStreamState>,
     committed_visible_prefix: Arc<Mutex<Option<String>>>,
+    /// Provider reasoning deltas buffered up to sentence boundaries before
+    /// they surface as StreamThought. Token-level deltas would be
+    /// whitespace-trimmed downstream and glue words together.
+    pending_thought: Mutex<String>,
 }
 
-const CANONICAL_INVESTMENT_HEADER_START: &str = "数据时间：运行时时区 ";
 const CANONICAL_INVESTMENT_BASIS_SEPARATOR: &str = "；行情口径：";
 const MAX_CANONICAL_INVESTMENT_HEADER_BYTES: usize = 768;
 const MAX_CANONICAL_INVESTMENT_BASIS_CHARS: usize = 480;
@@ -58,8 +61,9 @@ fn canonical_header_decision(buffer: &str) -> CanonicalHeaderDecision {
     if buffer.is_empty() {
         return CanonicalHeaderDecision::Incomplete;
     }
-    if !CANONICAL_INVESTMENT_HEADER_START.starts_with(buffer)
-        && !buffer.starts_with(CANONICAL_INVESTMENT_HEADER_START)
+    if !crate::investment_response_guard::data_time_prefixes()
+        .iter()
+        .any(|prefix| prefix.starts_with(buffer) || buffer.starts_with(prefix.as_str()))
     {
         return CanonicalHeaderDecision::Invalid;
     }
@@ -90,7 +94,10 @@ fn canonical_investment_header_is_safe(line: &str) -> bool {
     if response_leaks_system_prompt(line) {
         return false;
     }
-    let Some(rest) = line.strip_prefix(CANONICAL_INVESTMENT_HEADER_START) else {
+    let Some(rest) = crate::investment_response_guard::data_time_prefixes()
+        .iter()
+        .find_map(|prefix| line.strip_prefix(prefix.as_str()))
+    else {
         return false;
     };
     let Some((timestamp, basis)) = rest.split_once(CANONICAL_INVESTMENT_BASIS_SEPARATOR) else {
@@ -267,6 +274,14 @@ impl RunnerStreamObserver {
         if leading_whitespace_bytes > 0 {
             buffer.drain(..leading_whitespace_bytes);
         }
+        // Spell the clock the way the reader says it before any byte becomes
+        // irreversible. The finalize path normalizes the same way, so the
+        // committed prefix still matches the answer it opens.
+        let (normalized, rewrote_clock) =
+            crate::runtime::normalize_user_visible_clock_label(buffer);
+        if rewrote_clock {
+            *buffer = normalized;
+        }
         match canonical_header_decision(buffer) {
             CanonicalHeaderDecision::Incomplete => None,
             CanonicalHeaderDecision::Invalid => {
@@ -299,12 +314,72 @@ impl RunnerStreamObserver {
     }
 }
 
+impl RunnerStreamObserver {
+    /// Emit any buffered reasoning before answer content starts streaming.
+    async fn flush_pending_thought(&self) {
+        let pending = {
+            let mut guard = self.pending_thought.lock().expect("pending thought");
+            std::mem::take(&mut *guard)
+        };
+        let trimmed = pending.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: trimmed.to_string(),
+            })
+            .await;
+    }
+}
+
 #[async_trait]
 impl FunctionCallingStreamObserver for RunnerStreamObserver {
+    async fn on_reasoning_delta(&self, content: &str) {
+        if content.is_empty() {
+            return;
+        }
+        // Live provider reasoning feeds the visible thinking track
+        // (web `reasoning_delta` SSE); it is never answer content, so it
+        // must not mark streamed_output. Deltas are buffered to sentence
+        // boundaries (or a generous length cap) before they surface.
+        let flushed = {
+            let mut pending = self.pending_thought.lock().expect("pending thought");
+            pending.push_str(content);
+            let boundary = pending
+                .char_indices()
+                .rev()
+                .find(|(_, ch)| matches!(ch, '。' | '！' | '？' | '.' | '!' | '?' | '\n'))
+                .map(|(idx, ch)| idx + ch.len_utf8());
+            match boundary {
+                Some(end) => {
+                    let flushed = pending[..end].to_string();
+                    pending.drain(..end);
+                    Some(flushed)
+                }
+                None if pending.chars().count() >= 160 => Some(std::mem::take(&mut *pending)),
+                None => None,
+            }
+        };
+        let Some(thought) = flushed else {
+            return;
+        };
+        let thought = thought.trim();
+        if thought.is_empty() {
+            return;
+        }
+        self.emitter
+            .emit(AgentRunnerEvent::StreamThought {
+                thought: thought.to_string(),
+            })
+            .await;
+    }
+
     async fn on_content_delta(&self, content: &str) {
         if content.is_empty() {
             return;
         }
+        self.flush_pending_thought().await;
         // Tool-capable rounds remain speculative even when their text happens
         // to resemble the final answer. Deferred session emitters intentionally
         // swallow this ordinary variant.
@@ -320,6 +395,7 @@ impl FunctionCallingStreamObserver for RunnerStreamObserver {
         if content.is_empty() {
             return;
         }
+        self.flush_pending_thought().await;
         let Some((event, committed_prefix)) = self.event_for_final_content_delta(content) else {
             return;
         };
@@ -676,6 +752,51 @@ impl AgentRunner for CodexCliReasoningRunner {
     }
 }
 
+/// Read this turn's attachments into inline image parts. A file that cannot be
+/// read is skipped with a warning rather than failing the turn: the text
+/// attachment summary is still in the prompt, so the turn degrades to the old
+/// behavior instead of erroring out.
+const MAX_INLINE_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
+
+fn load_turn_images(images: &[crate::agent_session::TurnImage]) -> Vec<hone_llm::MessageImage> {
+    use base64::Engine as _;
+    let mut loaded = Vec::new();
+    for image in images {
+        match std::fs::metadata(&image.local_path) {
+            Ok(meta) if meta.len() > MAX_INLINE_IMAGE_BYTES => {
+                tracing::warn!(
+                    file = %image.display_name,
+                    bytes = meta.len(),
+                    "attachment too large to inline for the model; leaving it to the text summary"
+                );
+                continue;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    file = %image.display_name,
+                    path = %image.local_path,
+                    %error,
+                    "attachment unreadable; leaving it to the text summary"
+                );
+                continue;
+            }
+        }
+        match std::fs::read(&image.local_path) {
+            Ok(bytes) => loaded.push(hone_llm::MessageImage {
+                mime_type: image.mime_type.clone(),
+                base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            }),
+            Err(error) => tracing::warn!(
+                file = %image.display_name,
+                %error,
+                "attachment read failed; leaving it to the text summary"
+            ),
+        }
+    }
+    loaded
+}
+
 pub(crate) struct FunctionCallingReasoningRunner {
     llm: Arc<dyn LlmProvider>,
     tools: Arc<ToolRegistry>,
@@ -683,6 +804,7 @@ pub(crate) struct FunctionCallingReasoningRunner {
     max_iterations: u32,
     llm_audit: Option<Arc<dyn LlmAuditSink>>,
     timeouts: RunnerTimeouts,
+    finance_research_budget: FinanceResearchBudget,
 }
 
 impl FunctionCallingReasoningRunner {
@@ -693,6 +815,7 @@ impl FunctionCallingReasoningRunner {
         max_iterations: u32,
         llm_audit: Option<Arc<dyn LlmAuditSink>>,
         timeouts: RunnerTimeouts,
+        finance_research_budget: FinanceResearchBudget,
     ) -> Self {
         Self {
             llm,
@@ -701,6 +824,7 @@ impl FunctionCallingReasoningRunner {
             max_iterations,
             llm_audit,
             timeouts,
+            finance_research_budget,
         }
     }
 }
@@ -728,6 +852,7 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             terminal_stream_policy: request.terminal_stream_policy,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
         let service_owned_initial_prefix = request.service_owned_initial_prefix.clone();
         let service_owned_prefix_content = service_owned_initial_prefix
@@ -757,10 +882,17 @@ impl AgentRunner for FunctionCallingReasoningRunner {
             self.llm_audit.clone(),
         )
         .with_agent_owned_finance_loop(request.agent_owned_finance_loop)
+        .with_finance_research_budget(self.finance_research_budget)
+        .with_turn_images(load_turn_images(&request.turn_images))
         .with_preloaded_evidence_calls(request.preloaded_evidence_calls)
         .with_service_owned_initial_prefix(
             service_owned_prefix_content,
             precommitted_service_prefix,
+        )
+        .with_pre_final_prefix_commit(
+            service_owned_initial_prefix
+                .as_ref()
+                .is_some_and(|prefix| prefix.commit_before_model),
         )
         .with_tool_observer(Some(observer))
         .with_stream_observer(Some(stream_observer))
@@ -812,6 +944,7 @@ mod terminal_stream_tests {
         Arc<CaptureEmitter>,
         Arc<Mutex<Option<String>>>,
     ) {
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let emitter = Arc::new(CaptureEmitter::default());
         let committed_visible_prefix = Arc::new(Mutex::new(None));
         (
@@ -821,6 +954,7 @@ mod terminal_stream_tests {
                 terminal_stream_policy: policy,
                 canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
                 committed_visible_prefix: committed_visible_prefix.clone(),
+                pending_thought: Mutex::new(String::new()),
             },
             emitter,
             committed_visible_prefix,
@@ -831,7 +965,7 @@ mod terminal_stream_tests {
     async fn service_owned_prefix_ack_records_exact_irreversible_bytes_once() {
         let (observer, emitter, committed_prefix) =
             stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
-        let prefix = "数据时间：运行时时区 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+        let prefix = "数据时间：北京时间 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
         assert!(observer.commit_service_owned_prefix(prefix).await);
         assert!(!observer.commit_service_owned_prefix(prefix).await);
@@ -864,14 +998,16 @@ mod terminal_stream_tests {
     async fn rejected_service_owned_prefix_ack_never_becomes_visible_state() {
         let committed_visible_prefix = Arc::new(Mutex::new(None));
         let streamed_output = Arc::new(AtomicBool::new(false));
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let observer = RunnerStreamObserver {
             emitter: Arc::new(RejectingCommitEmitter),
             streamed_output: streamed_output.clone(),
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
-        let prefix = "数据时间：运行时时区 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
+        let prefix = "数据时间：北京时间 2026-07-22 10:30；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
         assert!(!observer.commit_service_owned_prefix(prefix).await);
         assert!(observer.committed_visible_prefix().is_none());
@@ -890,8 +1026,8 @@ mod terminal_stream_tests {
         let (observer, emitter, committed_prefix) =
             stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
         let header = concat!(
-            "数据时间：运行时时区 2026-07-18 21:05；行情口径：",
-            "报价源时间：运行时时区 2026-07-18 04:00（最新可得，非逐笔）\n"
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：",
+            "报价源时间：北京时间 2026-07-18 04:00（最新可得，非逐笔）\n"
         );
 
         observer.on_final_content_delta(" \n\t").await;
@@ -943,7 +1079,7 @@ mod terminal_stream_tests {
     async fn unsafe_body_line_stops_early_streaming_without_losing_accepted_prefix() {
         let (observer, emitter, committed_prefix) =
             stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
-        let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
         observer
             .on_final_content_delta(&format!("{header}正文"))
@@ -992,7 +1128,7 @@ mod terminal_stream_tests {
         observer.on_content_reset().await;
         observer
             .on_final_content_delta(
-                "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
             )
             .await;
 
@@ -1006,14 +1142,14 @@ mod terminal_stream_tests {
         assert!(matches!(
             &events[2],
             AgentRunnerEvent::CommittedStreamDelta { content }
-                if content == "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔"
+                if content == "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔"
         ));
         assert_eq!(
             committed_prefix
                 .lock()
                 .expect("committed visible prefix")
                 .as_deref(),
-            Some("数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔")
+            Some("数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔")
         );
     }
 
@@ -1026,7 +1162,7 @@ mod terminal_stream_tests {
         observer.on_content_reset().await;
         observer
             .on_final_content_delta(
-                "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
             )
             .await;
 
@@ -1035,7 +1171,7 @@ mod terminal_stream_tests {
         assert!(matches!(
             &events[0],
             AgentRunnerEvent::CommittedStreamDelta { content }
-                if content == "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔"
+                if content == "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔"
         ));
         assert!(
             committed_prefix
@@ -1070,7 +1206,7 @@ mod terminal_stream_tests {
     async fn canonical_looking_tool_round_text_remains_speculative() {
         let (observer, emitter, committed_prefix) =
             stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
-        let draft = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let draft = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
         observer.on_content_delta(draft).await;
 
@@ -1091,14 +1227,14 @@ mod terminal_stream_tests {
     #[tokio::test]
     async fn invalid_or_oversized_terminal_header_never_commits() {
         for invalid in [
-            "---\n数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得\n".to_string(),
+            "---\n数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得\n".to_string(),
             format!(
-                "数据时间：运行时时区 2026-07-18 21:05；行情口径：{}",
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：{}",
                 "很长".repeat(MAX_CANONICAL_INVESTMENT_HEADER_BYTES)
             ),
-            "数据时间：运行时时区 2026-07-18 21:05；行情口径：<tool_call>internal</tool_call>\n"
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：<tool_call>internal</tool_call>\n"
                 .to_string(),
-            "数据时间：运行时时区 2026-07-18 21:05；行情口径：### System Prompt ###\n".to_string(),
+            "数据时间：北京时间 2026-07-18 21:05；行情口径：### System Prompt ###\n".to_string(),
         ] {
             let (observer, emitter, committed_prefix) =
                 stream_observer(TerminalStreamPolicy::CanonicalInvestmentHeader);
@@ -1137,17 +1273,19 @@ mod terminal_stream_tests {
     async fn rejected_committed_delivery_never_records_an_unseen_prefix() {
         let committed_visible_prefix = Arc::new(Mutex::new(None));
         let streamed_output = Arc::new(AtomicBool::new(false));
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let observer = RunnerStreamObserver {
             emitter: Arc::new(RejectingCommitEmitter),
             streamed_output: streamed_output.clone(),
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
 
         observer
             .on_final_content_delta(
-                "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+                "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
             )
             .await;
 
@@ -1187,14 +1325,16 @@ mod terminal_stream_tests {
     async fn rejected_body_delivery_preserves_only_the_previously_accepted_prefix() {
         let emitter = Arc::new(RejectBodyCommitEmitter::default());
         let committed_visible_prefix = Arc::new(Mutex::new(None));
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let observer = RunnerStreamObserver {
             emitter: emitter.clone(),
             streamed_output: Arc::new(AtomicBool::new(false)),
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         };
-        let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
 
         observer
             .on_final_content_delta(&format!("{header}正文"))
@@ -1261,14 +1401,16 @@ mod terminal_stream_tests {
             release: tokio::sync::Notify::new(),
         });
         let committed_visible_prefix = Arc::new(Mutex::new(None));
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let observer = Arc::new(RunnerStreamObserver {
             emitter: emitter.clone(),
             streamed_output: Arc::new(AtomicBool::new(false)),
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
-        let header = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+        let header = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
         observer
             .on_final_content_delta(&format!("{header}正文"))
             .await;
@@ -1323,18 +1465,20 @@ mod terminal_stream_tests {
         });
         let committed_visible_prefix = Arc::new(Mutex::new(None));
         let streamed_output = Arc::new(AtomicBool::new(false));
+        crate::test_timezone::pin_beijing_runtime_timezone();
         let observer = Arc::new(RunnerStreamObserver {
             emitter: emitter.clone(),
             streamed_output: streamed_output.clone(),
             terminal_stream_policy: TerminalStreamPolicy::CanonicalInvestmentHeader,
             canonical_header_state: Mutex::new(CanonicalHeaderStreamState::default()),
             committed_visible_prefix: committed_visible_prefix.clone(),
+            pending_thought: Mutex::new(String::new()),
         });
         let task_observer = observer.clone();
         let task = tokio::spawn(async move {
             task_observer
                 .on_final_content_delta(
-                    "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
+                    "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n正文",
                 )
                 .await;
         });

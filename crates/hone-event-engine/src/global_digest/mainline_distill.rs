@@ -151,6 +151,7 @@ impl MainlineDistiller for LlmMainlineDistiller {
             .replace("{{TICKER}}", ticker)
             .replace("{{PROFILE}}", profile_md);
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(prompt),
             reasoning_content: None,
@@ -187,6 +188,7 @@ impl MainlineDistiller for LlmMainlineDistiller {
             .replace("{{N}}", &all_profiles.len().to_string())
             .replace("{{PROFILES_BLOCK}}", &block);
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(prompt),
             reasoning_content: None,

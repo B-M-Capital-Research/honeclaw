@@ -19,7 +19,7 @@ description: HONE 的美股投资判断与自然对话 Skill。用于股票分�
 
 1. 判断用户真正要解决的是公司质量、产业趋势、当前估值、回调去留、市场状态还是组合风险。
 2. 涉及当前价格、财报、订单、产能、新闻、政策、估值输入或持仓时，调用本轮真实工具核实实体、数据时间和来源。搜索摘要只能作为线索；能打开公司 IR、SEC、公告或原始材料时优先原文。
-3. 若本轮系统上下文提供“历史公司研究基线”，必须同时加载 `company-thesis-ratings`。先使用对应公司卡判断商业模式、基本面结构、护城河、产业链位置、风险和证伪条件，再用第 2 步的当前证据检验它；不能把历史卡片当成最新事实。
+3. 若本轮系统上下文提供“历史公司研究基线”，必须同时加载 `company-thesis-ratings`。先使用对应公司卡判断商业模式、基本面结构、护城河、产业链位置、估值框架、风险和证伪条件，再用第 2 步的当前证据检验它；不能把历史卡片当成最新事实。
 4. 只读取与问题有关的框架。公司研究通常读取 `references/soul.md`、`references/investment-frameworks.md`、`references/decision-rubric.md` 和 `references/boundaries.md`；需要历史案例时再读 `references/case-patterns.md`。
 5. 先判断原逻辑有没有被破坏，再判断公司能否获得产业价值，最后判断当前价格还剩多少赔率。不要把“公司好”直接等同于“现在值得增加暴露”。
 6. 使用 `references/decision-rubric.md` 选择一个当前研究区间。只要关键证据足以区分，就必须选边；次要数据缺失不能成为含糊回答的借口。
@@ -43,6 +43,29 @@ description: HONE 的美股投资判断与自然对话 Skill。用于股票分�
 - 用户问持仓时，先读取真实组合。信息不足时不编精确比例；可以给增加暴露、维持、降低暴露或优先复核的条件。
 
 ## 资源路由
+
+### 先按问题类型接力，再谈本 skill 的 references
+
+本 skill 负责**判断纪律与输出契约**，不负责某一维怎么取数、怎么算。系统会在每个投研轮强制加载它，
+所以它常常是模型唯一加载的 skill——那正是要避免的情况：**判断纪律到位、执行口径缺席，答案就会停在
+「持有区（中置信度）」而给不出算出来的价格区间**。本轮问题落在下表哪一行，就把对应 skill 一起加载
+（函数调用运行时用 `skill_tool(skill_name="...")`）：
+
+| 本轮问题 | 除本 skill 外还要加载 |
+|---|---|
+| 深度个股（分析一下 X / X 怎么样 / 值得建仓吗） | `stock_research`（九段结构、收口纪律、以及它内部的视角 skill 路由表） |
+| 估值、贵不贵、合理价、目标价区间 | `valuation-audit` |
+| 为什么涨/跌、异动归因、大盘与宏观 | `market_analysis` |
+| 板块推荐、多标的选股与配比 | `sector-to-stock` |
+| ETF / 基金 | `etf-analysis` |
+| 投行评级、目标价、研报 | `analyst-coverage` |
+| 追问护城河 / 稀缺与差异化 / 底层公式 / 财务质量（哪怕同一轮还问了别的） | `moat`、`scarcity-differentiation`、`first-principles`、`fundamentals`；同一轮问题里除这一维外还问了影响股价的因素、现在能不能买、值不值得、还有没有空间当中的任意一项时，再把 `valuation-audit` 一起加载，由它收口到合理价区间与现价位置 |
+| 持仓复核、仓位与成本价 | `position_advice`、`portfolio_management` |
+
+上表只给指针。**取哪些字段、判定锚点、产出格式一律以被指向的 skill 为准，本 skill 不重写它们的口径。**
+若本轮系统提示已经给出【本轮相关技能提示】，以那份提示与本表的并集为准，不要因为本 skill 已加载就停下。
+
+### 本 skill 自己的 references
 
 - 世界观与表达底线：`references/soul.md`
 - 六个投资框架：`references/investment-frameworks.md`

@@ -45,12 +45,15 @@ impl AgentRunnerEmitter for DeferredUserOutputEmitter {
         match event {
             forward @ AgentRunnerEvent::Progress { .. }
             | forward @ AgentRunnerEvent::ToolStatus { .. }
+            // Live reasoning is a display-only thinking track, never part of
+            // the deferred answer text, so it streams through like tool
+            // status instead of being withheld with speculative StreamDelta.
+            | forward @ AgentRunnerEvent::StreamThought { .. }
             | forward @ AgentRunnerEvent::CommittedStreamDelta { .. } => {
                 self.inner.emit(forward).await;
             }
             AgentRunnerEvent::StreamDelta { .. }
             | AgentRunnerEvent::StreamReset
-            | AgentRunnerEvent::StreamThought { .. }
             | AgentRunnerEvent::Error { .. } => {}
         }
     }
@@ -457,9 +460,15 @@ mod tests {
             .await;
 
         let events = inner.events.lock().expect("runner events");
-        assert_eq!(events.len(), 1, "{events:?}");
+        // Thoughts are display-only and stream through the deferral; committed
+        // answer bytes remain the only forwarded ANSWER content.
+        assert_eq!(events.len(), 2, "{events:?}");
         assert!(matches!(
             &events[0],
+            AgentRunnerEvent::StreamThought { thought } if thought == "internal"
+        ));
+        assert!(matches!(
+            &events[1],
             AgentRunnerEvent::CommittedStreamDelta { content } if content == committed
         ));
     }

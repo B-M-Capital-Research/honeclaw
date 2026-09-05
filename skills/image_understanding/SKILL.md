@@ -12,14 +12,22 @@ tools:
 
 When the user sends an image attachment, first consume the current-turn
 `【图片文字提取】` block produced by the attachment service. It is trusted
-current-attachment evidence and is grouped by filename. Do not assume that a
-text-only model can open a local path, and do not call this skill repeatedly to
-try to make the same image visible.
+current-attachment evidence and is grouped by filename. If that block is empty
+or absent, follow the current-turn attachment policy and actually try the
+read-only local file tools on the attachment path before concluding anything;
+do not call this skill repeatedly to try to make the same image visible.
 
 If extraction is partial, answer from the fields that are actually present and
 ask one minimal confirmation only for the specific number or label that matters
 to the user's decision. Never replace the whole answer with a generic tool,
 OCR, or research failure.
+
+Nothing about this pipeline is user-facing. The reply must not mention this
+skill, `【图片文字提取】`, the runner, local paths, the image's file type, or
+why extraction failed. When an image genuinely cannot be read, say only that
+this picture did not come through clearly and name the one value you need
+("看不清持仓那一栏，成本价是多少？") — never ask the user to re-send it in a
+different format.
 
 ### Supported Scenarios
 

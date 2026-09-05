@@ -309,7 +309,9 @@ event_engine:
       max_summary_tokens: 800
       # SEC EDGAR 强制要求 User-Agent 包含联系邮箱,否则会被限流或拒绝。
       # 部署方应改成自己的真实联系邮箱(SEC 不强制可达,但需有公司 / 产品名 + 邮箱)。
-      user_agent: "honeclaw event-engine ops@honeclaw.local"
+      # SEC 要求 UA 带可联系的邮箱；保留域名（.local/.test/example.com 等）会被
+      # 联系方式闸门判为不合格，整条 SEC 通道随之关闭。换成你自己的邮箱。
+      user_agent: "honeclaw research bm@hone-claw.com"
 
   # 全局 digest LLM 子配置 —— UnifiedDigestScheduler 在每个 slot 触发时把这一节
   # 作为 global news path 的采集 / dedup / LLM 旋钮使用。
@@ -410,6 +412,10 @@ llm:
   provider: openrouter
   default_profile: main
   auxiliary_profile: aux
+  # Optional. Interactive user conversations (strict function-calling route)
+  # use this profile when set; scheduled tasks stay on default_profile and
+  # heartbeats stay on auxiliary_profile. Empty disables the split.
+  conversation_profile: ""
   openrouter:
     # Legacy config-only fallback. Prefer the llm.providers.openrouter.api_key/api_keys pool.
     model: "moonshotai/kimi-k2.5"
@@ -543,6 +549,21 @@ cloud:
     # trimming whitespace it must be 32..1024 UTF-8 bytes. Never put the
     # secret bytes themselves in this YAML file.
     secret_env: "HONE_COMMUNITY_EDGE_HMAC_SECRET"
+  media_delivery:
+    # off | shadow | prefer. `shadow` mints capabilities so the edge can be
+    # exercised while clients keep using the origin proxy; only `prefer` moves
+    # image bytes onto hone-claw.com/_media/v1/*.
+    mode: "off"
+    # Read cookie lifetime, clamped to 60..3600 seconds. Must not exceed the
+    # Worker's MAX_READ_TOKEN_LIFETIME_SECONDS.
+    read_ttl_secs: 900
+    # Single-use upload capability lifetime, clamped to 30..300 seconds. Must not
+    # exceed the Worker's MAX_WRITE_TOKEN_LIFETIME_SECONDS.
+    write_ttl_secs: 120
+    # Name of the environment variable holding the HMAC secret shared with the
+    # hone-public-media-edge Worker. After trimming it must be 32..1024 UTF-8
+    # bytes. Never put the secret bytes themselves in this YAML file.
+    secret_env: "HONE_MEDIA_EDGE_HMAC_SECRET"
   postgres:
     database_url: ""
     database_url_env: "DATABASE_URL"
@@ -691,7 +712,24 @@ agent:
   # Only used when runner=codex_cli; empty means use the codex-cli default model
   codex_model: "gpt-5.6-sol"
   # Daily successful-reply quota for user conversations. Set to 0 to disable the limit.
+  # Configured admins (see `admins:`) always bypass this quota.
   daily_conversation_limit: 100
+  # When false, admin conversations also use the strict function-calling route
+  # (and therefore llm.conversation_profile) instead of the host-capable native
+  # runner above. Admin perks such as the quota bypass are unaffected.
+  admins_use_native_runner: true
+  # Research budget for interactive investment turns (agent-owned finance
+  # loop). Defaults are the conservative compiled values. Raising them lets
+  # the same agent keep chasing evidence across more tool rounds, and
+  # gap_closure_rounds > 0 sends a final draft that still self-reports
+  # missing first-party evidence ("本轮未读到…原文") back into the tool loop
+  # with a targeted checklist before its gaps are accepted as honest.
+  finance_research:
+    tool_rounds: 5
+    tool_calls: 24
+    data_fetch_calls: 20
+    web_search_calls: 6
+    gap_closure_rounds: 0
   # Single-step timeout used by internal runner phases such as initialize/load and stream idle gaps
   step_timeout_seconds: 180
   # Full-run timeout used for one complete answer round

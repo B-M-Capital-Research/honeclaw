@@ -1,6 +1,61 @@
 # Archive Index
 
-Last updated: 2026-08-17
+Last updated: 2026-09-05
+
+## 2026-09-05
+
+### Community freshness, resource delivery and PDF recovery
+
+- Status: deployed; blocked on remaining source attachments and foreground user-browser acceptance
+- Date: 2026-09-05
+- Plan: `docs/current-plans/public-community-edge-production-rollout.md` (retained active; not archived as complete)
+- Handoff: `docs/handoffs/2026-09-05-community-freshness-assets-latency.md`
+- Commits: `e0278ed1`, `719b38c5`, `6cf77eaa`; current managed backend and public Web both `6cf77eaa`
+- Runbooks / regressions: `docs/runbooks/community-insights-daily-sync.md`, `docs/runbooks/backend-deployment.md`; community CLI/core/API tests, `test_community_production_wrapper.sh`, `e2e/public-community.spec.ts`
+- Current conclusion: production PG and edge agree on 869 topics / September 4 latest; 76 resources recovered and 845 fully hash-verified objects published. Two-hour production sync repaired, final publisher no-op, real edge feed/image/PDF transfer canaries passed. PDF canvas implementation and exact Web rollout passed independent real-file rendering and production download checks. Existing unrelated broad-test failures are retained in the handoff.
+- Attachment usability follow-up: accurate unarchived/historical-restriction states and an actionable explanation/source entry are now deployed. Web 567/API 17/E2E 5 pass; required broad failures remain the same baseline. This phase recovered no additional files. Live audit separates 159 metadata-only files from 114 historical restriction records; same-source duplicate candidates did not prove reusable identity.
+- Next entry point: complete the pending official Knowledge Planet OAuth authorization and verify actual file API capability, or restore normal source downloading, then recover the 273 missing files. Unlock the user's Mac to finish foreground Chrome PDF pixel/navigation acceptance. Keep the repaired production identity and environment; never reuse the old local database or overwrite immutable edge descriptors.
+
+
+### 3D 数据中心与行业分析导航
+
+- Status: done; frontend and backend deployed as 505cf737
+- Date: 2026-09-05
+- Plan: `docs/archive/plans/3d-data-center-explorer.md`
+- Handoff: `docs/handoffs/2026-09-05-3d-data-center-explorer.md`
+- Decision: `docs/decisions.md#d-2026-09-05-01-ai-infrastructure-explorer-and-authenticated-industry-reading`
+- Regressions: `packages/app/e2e/public-data-center.spec.ts`; `packages/app/src/lib/data-center-{model,geometry}.test.ts`; `packages/app/src/lib/industry-map-navigation.test.ts`; `industry_map::tests`
+- Current conclusion: [3D 数据中心](https://hone-claw.com/data-center) is live at 505cf737, with a responsive six-zone scene linked to eight canonical industries. All logged-in users may read; edits and internal edit identities/notes remain administrator-only. Relevant Web/API/E2E checks passed, exact Pages and origin assets matched, and the single joint runtime cutover passed cloud health checks. Existing workspace/finance baseline failures are recorded in the handoff.
+- Next entry point: live `/data-center`; Safari/iPhone device acceptance remains optional follow-up. Community PDF frontend updates proceed independently; paired runtime/Web rollback details and exact artifacts are retained in the handoff.
+
+
+## 2026-08-23
+
+### Inactive User Scheduled Push Cleanup
+
+- Status: done; production live with two documented iMessage delivery gaps
+- Date: 2026-08-23
+- Plan: `docs/archive/plans/inactive-user-scheduled-push-cleanup-2026-08-23.md`
+- Handoff: `docs/handoffs/2026-08-23-inactive-user-scheduled-push-cleanup.md`
+- Decision / ADR: no new ADR; this exposes the existing `CronJobUpdate.enabled` capability and preserves existing storage/scheduler boundaries
+- Related PRs / commits: direct `main` commit `011d73118dbf1d6b0cc09a793882dc796f23aa9f`; no PR, release, or tag
+- Related runbooks / regressions: isolated PostgreSQL cron tool regression; Runtime Image `32612578070`; GCE exact-meta/cloud/public-auth/channel reconnect acceptance
+- Current conclusion: 26 inactive direct users initially had 45 jobs paused without deletion. One notified Feishu user then actively removed 2 jobs, leaving 25 users and 43 preserved disabled jobs. Feishu 18/18 and Web 6/6 notices were acknowledged; two inactive iMessage recipients remain undelivered because no macOS channel is online. Production now accepts conversational `enabled=false/true` updates so preserved tasks can be resumed by request.
+- Next entry point: restore tagged jobs only after the owning user asks; if a real iMessage channel returns, recheck current state before sending the two missed notices.
+
+## 2026-08-22
+
+### Market Move Same-Day News And Research Activation
+
+- Status: done; production live
+- Date: 2026-08-22
+- Plan: `docs/archive/plans/market-move-date-grounding-2026-08-22.md`
+- Handoff: `docs/handoffs/2026-08-22-market-move-date-grounding.md`
+- Decision / ADR: no new ADR; this reuses the existing investment research flow and market-move date anchor
+- Related PRs / commits: direct `main` implementation commit `e08bb4607a5a8cd559c4320db220063fc021e0b4`; no PR, release, or tag
+- Related runbooks / regressions: `hone-agent` 152/152; investment response guard 136/136; WebSearch 19/19; focused three-crate compile check; immutable Runtime Image run `32544207247`; GCE cloud-authority/public-auth/channel reconnect acceptance
+- Current conclusion: market-move preturn Web searches use Tavily `day/news`, preserve provider `published_date`, and enter the existing finance research loop before the first model response. Production runs exact revision `e08bb460…` from digest `sha256:314d82c…cbf96`; PostgreSQL/S3 authority and Feishu connectivity are healthy. GitHub CI's sole Rust failure is the unchanged `soul.md` character-budget baseline already present on the parent commit, not this diff.
+- Next entry point: obtain explicit authorization before sending an MRVL canary from a logged-in user account; separately handle the pre-existing `soul.md` mechanical-budget failure and audit the stale `origin.hone-claw.com` ngrok alias while preserving the healthy public Worker path.
 
 ## 2026-08-17
 
@@ -2671,6 +2726,18 @@ Use this file as the historical entry point for completed or paused work that sh
 - Verification: workspace tests 2575 passed / 0 failed across 30 targets; 92 ignored hone-memory PostgreSQL tests passed; 22 CI-safe regressions passed; Web 486 passed / 0 failed; cloud doctor reported PostgreSQL healthy and schema ensured; `cargo tree -i rusqlite --workspace` showed only `hone-cli` and `hone-imessage`
 - Current conclusion: PostgreSQL is the only Hone runtime database backend. All alternate storage configuration, shadow/backfill tooling, stale fixtures, prompts, policies, and current architecture/runbook references are removed. `hone-cli` retains a read-only historical event-store importer, while `hone-imessage` independently reads macOS `chat.db`; neither is runtime persistence.
 - Next entry point: no migration work remains. Future storage changes must preserve the PostgreSQL authority and treat the two read-only consumers as narrow compatibility boundaries.
+
+### Structured Market Data Before Open Web Search
+
+- Status: deployed to production
+- Date: 2026-08-22
+- Plans: `docs/archive/plans/market-data-source-priority.md`, `docs/archive/plans/financial-report-data-verification-guidance.md`, `docs/archive/plans/market-data-financial-guidance-production-rollout.md`
+- Handoff: `docs/handoffs/2026-08-22-market-data-source-priority.md`
+- Decision / ADR: no new ADR; the durable soft-priority rule is recorded in `docs/invariants.md`
+- Related PRs / commits: direct `main` implementation commit `3678558483628b605aa927cfa168539a22eca84a`; no PR or tag
+- Related runbooks / regressions: DataFetch 57/57 plus financial bundle guidance 1/1; WebSearch 19/19; registry 5/5; function-calling Agent 153/153; pure channel priority and financial guidance tests; workspace compile; GitHub frontend/Edge and Secret Scan; Runtime Image `32548881694`; production exact-meta/cloud/public soak
+- Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate. Production runs exact revision `36785584…` from immutable digest `sha256:fc6029b4…`; PostgreSQL/OSS/cloud authority and public API acceptance are healthy, with `e08bb460…` retained for immediate rollback.
+- Next entry point: with action-time confirmation to create user-visible messages, run named-company, relationship, AAOI-style move and fresh-report financial-metric canaries; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
 
 ### Atlas Cloud Optional Image Provider
 

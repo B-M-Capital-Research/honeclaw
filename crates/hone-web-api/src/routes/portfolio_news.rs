@@ -520,6 +520,7 @@ fn analysis_messages(input: &[serde_json::Value]) -> Vec<Message> {
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".to_string(),
             content: Some(system.to_string()),
             reasoning_content: None,
@@ -528,6 +529,7 @@ fn analysis_messages(input: &[serde_json::Value]) -> Vec<Message> {
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(user),
             reasoning_content: None,

@@ -1041,6 +1041,13 @@ pub async fn start_server(
             routes::valuation_lab::valuation_lab_worker(valuation_state).await
         }));
 
+        // 公司基础数据是下面几个 worker 的输入（估值实验室要股本算市值、
+        // 评级要基本面），所以它排在最前、时刻也定在最早的 19:00。
+        let company_facts_state = state.clone();
+        task_handles.push(tokio::spawn(async move {
+            routes::company_facts::company_facts_worker(company_facts_state).await
+        }));
+
         let rating_state = state.clone();
         task_handles.push(tokio::spawn(async move {
             routes::company_ratings::company_rating_worker(rating_state).await

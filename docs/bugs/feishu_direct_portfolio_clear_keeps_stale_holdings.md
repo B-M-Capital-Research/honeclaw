@@ -3,7 +3,7 @@
 - 发现时间：2026-07-29 14:02 CST
 - Bug Type：Business Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -56,3 +56,16 @@
 1. 为 Feishu direct 持仓更新增加回归：用户给出持仓全集并说“其他没有了”后，后续分析不得出现未列出旧标的。
 2. 在持仓工具层支持显式 `replace_all` / `clear_missing` 语义，或在无法确认时要求用户确认将删除哪些旧持仓。
 3. 在 answer 阶段加入最新用户持仓全集覆盖规则，避免 compact summary / persistent portfolio 旧记录压过当前 turn。
+
+## 修复记录
+
+- `2026-08-27` 代码级修复：
+  - `crates/hone-tools/src/portfolio_tool.rs` 新增 `portfolio(action="replace_all")`，允许用户用当前 holdings 列表整体覆盖现有持仓/关注，避免“只更新提到的几只、其余旧仓继续残留”。
+  - `crates/hone-channels/src/prompt.rs` 新增持仓全集覆盖约束：当用户明确表达“以这次给的为准 / 只有这些股票 / 其他没有了 / 清掉旧持仓”时，必须调用 `replace_all`，后续分析只能基于新列表。
+  - `crates/hone-channels/src/response_finalizer.rs` 为 `replace_all` 增加显式用户态确认文案，避免模型或服务端继续把结果表述成普通增量更新。
+
+## 验证
+
+- `cargo test -p hone-tools portfolio_replace_all_clears_omitted_holdings_and_watchlist -- --nocapture` 通过。
+- `cargo test -p hone-channels replace_all_confirmation_makes_full_replacement_explicit --lib -- --nocapture` 通过。
+- `cargo test -p hone-channels build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy --lib -- --nocapture` 因当前机器缺少可用 PostgreSQL 测试实例而未完成：仓库要求显式 `HONE_POSTGRES_*`，`bash scripts/dev_pg.sh up` 又因本机没有 Docker 无法启动。

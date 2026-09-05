@@ -283,6 +283,12 @@ fn default_fmp_timeout() -> u64 {
 pub struct SearchConfig {
     #[serde(default = "default_tavily")]
     pub provider: String,
+    /// Tavily-compatible search endpoint. Defaults to Tavily's own API; point
+    /// it at a local proxy (e.g. hone-gemini-proxy's /search) to front the
+    /// same wire contract with a different backend and keep Tavily as the
+    /// proxy-side fallback.
+    #[serde(default)]
+    pub endpoint: Option<String>,
     #[serde(default)]
     pub api_keys: Vec<String>,
     #[serde(default = "default_search_depth")]
@@ -504,6 +510,102 @@ pub struct CloudConfig {
     pub oss: OssConfig,
     #[serde(default)]
     pub community_delivery: CommunityDeliveryConfig,
+    #[serde(default)]
+    pub media_delivery: MediaDeliveryConfig,
+}
+
+/// Opt-in delivery controls for the public media edge path.
+///
+/// When enabled, chat image bytes travel browser <-> nearest Cloudflare PoP <->
+/// R2 and never traverse this origin. The origin only mints short-lived signed
+/// capabilities. As with the community edge, the signing secret is
+/// environment-only and is never deserialized from YAML, and the default is
+/// `off` so the origin proxy stays authoritative until an operator opts in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaDeliveryConfig {
+    #[serde(default = "default_media_delivery_mode")]
+    pub mode: String,
+    /// Lifetime of the read cookie the edge Worker accepts for `GET`.
+    #[serde(default = "default_media_read_ttl_secs")]
+    pub read_ttl_secs: u64,
+    /// Lifetime of a single-use upload capability. Kept short: it is spent
+    /// immediately after it is issued.
+    #[serde(default = "default_media_write_ttl_secs")]
+    pub write_ttl_secs: u64,
+    #[serde(default = "default_media_delivery_secret_env")]
+    pub secret_env: String,
+}
+
+impl Default for MediaDeliveryConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_media_delivery_mode(),
+            read_ttl_secs: default_media_read_ttl_secs(),
+            write_ttl_secs: default_media_write_ttl_secs(),
+            secret_env: default_media_delivery_secret_env(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaDeliveryMode {
+    Off,
+    /// Capabilities are issued so the path can be exercised, but the client
+    /// keeps using the origin proxy. Used to prove the edge works before it
+    /// carries real traffic.
+    Shadow,
+    /// Capabilities are issued and the client routes image bytes through the
+    /// edge, falling back to the origin proxy on any failure.
+    Prefer,
+}
+
+impl MediaDeliveryMode {
+    pub fn from_config_value(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "shadow" => Self::Shadow,
+            "prefer" => Self::Prefer,
+            _ => Self::Off,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Shadow => "shadow",
+            Self::Prefer => "prefer",
+        }
+    }
+
+    pub fn issues_capabilities(self) -> bool {
+        matches!(self, Self::Shadow | Self::Prefer)
+    }
+}
+
+impl MediaDeliveryConfig {
+    pub const MIN_READ_TTL_SECS: u64 = 60;
+    // Mirrors MAX_READ_TOKEN_LIFETIME_SECONDS in workers/public-media-edge.
+    pub const MAX_READ_TTL_SECS: u64 = 3_600;
+    pub const MIN_WRITE_TTL_SECS: u64 = 30;
+    // Mirrors MAX_WRITE_TOKEN_LIFETIME_SECONDS in workers/public-media-edge.
+    pub const MAX_WRITE_TTL_SECS: u64 = 300;
+
+    pub fn effective_mode(&self) -> MediaDeliveryMode {
+        MediaDeliveryMode::from_config_value(&self.mode)
+    }
+
+    pub fn effective_read_ttl_secs(&self) -> u64 {
+        self.read_ttl_secs
+            .clamp(Self::MIN_READ_TTL_SECS, Self::MAX_READ_TTL_SECS)
+    }
+
+    pub fn effective_write_ttl_secs(&self) -> u64 {
+        self.write_ttl_secs
+            .clamp(Self::MIN_WRITE_TTL_SECS, Self::MAX_WRITE_TTL_SECS)
+    }
+
+    pub fn resolved_secret(&self) -> String {
+        env_value(&self.secret_env)
+    }
 }
 
 /// Opt-in delivery controls for the public community edge path.
@@ -897,6 +999,22 @@ fn default_community_delivery_token_ttl_secs() -> u64 {
 
 fn default_community_delivery_secret_env() -> String {
     "HONE_COMMUNITY_EDGE_HMAC_SECRET".to_string()
+}
+
+fn default_media_delivery_mode() -> String {
+    "off".to_string()
+}
+
+fn default_media_read_ttl_secs() -> u64 {
+    900
+}
+
+fn default_media_write_ttl_secs() -> u64 {
+    120
+}
+
+fn default_media_delivery_secret_env() -> String {
+    "HONE_MEDIA_EDGE_HMAC_SECRET".to_string()
 }
 
 fn default_database_url_env() -> String {

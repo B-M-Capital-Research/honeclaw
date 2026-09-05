@@ -35,6 +35,7 @@ async fn one_long_chat(
     prompt: &str,
 ) -> anyhow::Result<String> {
     let messages = vec![Message {
+        images: Vec::new(),
         role: "user".into(),
         content: Some(prompt.into()),
         reasoning_content: None,

@@ -225,6 +225,7 @@ fn build_review_messages(system_prompt: &str, event: &MarketEvent, context: &str
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".into(),
             content: Some(system_prompt.to_string()),
             reasoning_content: None,
@@ -233,6 +234,7 @@ fn build_review_messages(system_prompt: &str, event: &MarketEvent, context: &str
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".into(),
             content: Some(user),
             reasoning_content: None,

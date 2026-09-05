@@ -923,7 +923,12 @@ pub(crate) async fn fetch_fmp_json_once(
     Ok(value)
 }
 
-fn stable_fmp_base_url(base_url: &str) -> String {
+/// FMP `stable/` 端点的 base。配置里的 `fmp.base_url` 是 `https://financialmodelingprep.com/api`
+/// （也可能带 `/v3`），而 stable 端点挂在 host 根下的 `/stable/...`——两个后缀都要剥掉。
+///
+/// `pub(crate)`：company_facts 的 worker 也要拼 stable 端点。这段逻辑已经在仓库里被
+/// 抄过三遍，第四遍抄错一次就是一整段功能静默失效（详见 company_facts.rs 的 URL 测试）。
+pub(crate) fn stable_fmp_base_url(base_url: &str) -> String {
     let mut base = base_url.trim_end_matches('/').to_string();
     for suffix in ["/api/v3", "/api"] {
         if let Some(stripped) = base.strip_suffix(suffix) {

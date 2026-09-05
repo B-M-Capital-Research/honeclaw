@@ -50,6 +50,9 @@ const MAX_AGENT_OWNED_HISTORY_CHARS: usize = 4_000;
 /// Three rounds is enough to confirm a price and stop. Answering why a business
 /// moved needs the release, the comparison and the reaction, which is a round
 /// each — the budget, not the model, was what kept answers at headline depth.
+/// These constants are the conservative defaults; deployments raise them via
+/// `FinanceResearchBudget` (config `agent.finance_research`) for gap-driven
+/// research without changing the tested legacy behavior.
 const MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS: u32 = 5;
 /// Entity identity resolution is a precondition of research, not research
 /// itself. A turn whose first rounds only ask "which security is this?" must
@@ -80,6 +83,7 @@ const MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS: u32 = 6;
 const MAX_MARKET_MOVE_FINAL_CORRECTIONS: u32 = 2;
 const MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS: usize = 3_000;
 const MAX_LISTING_FINAL_CORRECTIONS: u32 = 1;
+const MAX_LANGUAGE_FINAL_CORRECTIONS: u32 = 1;
 /// The one structural marker an investment answer must open with. It is the
 /// existing answer contract, not a classifier vocabulary.
 const CANONICAL_RESEARCH_ANSWER_HEADER: &str = "数据时间：";
@@ -93,13 +97,14 @@ const AGENT_STEP_TIMEOUT_ERROR: &str = "agent_timeout: function-calling step dea
 const AGENT_OWNED_FINANCE_FORCED_FINAL_TOOL_ERROR: &str =
     "agent_owned_finance_forced_final_returned_tool_call";
 const AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION: &str = "【本轮研究预算已完成】当前轮次不再提供工具。请由同一 Agent 仅根据本轮已经取得的真实工具结果，直接生成一次完整自然终稿；已有证据不足的项目如实披露具体缺口，不得补写模型记忆、不得要求用户重试，也不要提及预算、内部轮次或工具已关闭。";
+const READ_ONLY_TRACE_FINALIZATION_INSTRUCTION: &str = "【内部只读证据收口】当前轮次不再提供工具。本轮已经取得真实只读工具结果，但工具轮在形成终稿前结束。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实工具结果；缺少的数据做最小、具体披露，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称未实际执行的查询已经完成，也不要向用户提及工具、轮次上限、内部状态或本说明。";
 const AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION: &str = "【本轮尚未取得任何实质证据】到目前为止本轮只做过证券身份查询，没有取得任何回答用户原问题所需的实质资料。请立刻停止继续解析、补查或重试证券代码：本轮出现的大写缩写可能根本不是证券代码，而是宏观、策略、指标或行业术语（例如 CTA、RSI、QT、TTM 这类）。本轮请重新完整阅读用户原话，判断用户真正想知道什么，并用 `web_search` 等开放检索工具，围绕用户原问题的真实主题发起检索；需要时可并行多条查询。取得资料后再按用户原问题作答；确实检索不到时，如实说明检索过的方向与缺口，不得直接回答“无法提供具体数字”或要求用户重试，也不要向用户提及内部轮次、预算或本说明。";
 const BLOCKED_TOOL_FINALIZATION_INSTRUCTION: &str = "【内部安全收口】上一批工具调用没有执行，也没有形成任何工具结果。当前轮次不再提供工具。请由同一 Agent 继续回答用户原问题：只使用本轮已经取得的真实证据；缺少的数据做最小、具体披露或确认，不得把整轮改写成“研究未完成”“请稍后再试”或其它通用拒答；不得声称被拦截的查询或操作已经执行，也不要向用户提及工具、安全边界、内部轮次或本说明。";
 const CONTEXT_OVERFLOW_FINALIZATION_INSTRUCTION: &str = "【内部有界证据收口】当前轮次不再提供工具。上一阶段已经取得的完整工具结果仍保留在内部审计中；为保证本轮继续执行，下面只提供这些结果的机械有界副本。每条记录保留真实 tool_call_id、工具名、参数和可容纳的结果字段；`result_compacted=true` 表示部分长字符串或数组尾部未进入本副本，不代表原结果为空或事实不存在。请由同一 Agent 直接回答原问题：只能使用副本中实际可见的事实，未出现的字段作具体缺口披露，不得凭模型记忆补齐，不得要求用户重试或切换会话，也不要向用户提及上下文、压缩、载荷、内部轮次、工具关闭或本说明。";
 const PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION: &str = "【内部写后核验收口】上一项持久化操作返回了不确定错误，系统没有重放该写操作，而是通过同一用户范围内的只读查询取得了操作后的权威状态。当前轮次不再提供工具。请只根据原请求和只读核验结果回答操作是否已经生效；已生效就明确确认，未生效就明确说明当前状态，无法从核验结果判断的字段只披露该具体缺口。不得再次调用或建议重放写操作，不得使用“可能已执行”“状态不确定”“请重试”等模糊结论，也不要向用户提及内部错误、工具、核验机制或本说明。";
-const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题点名任何公司、证券、基金、指数或加密资产，第一轮先只调用真实工具，不写最终正文，并把互不依赖的候选发现放进同一批工具调用：(1) 为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）；(2) 同时按用户原始公司名与问题主题并行发起可用的 Web/news/filing/industry 候选来源检索，优先发现公司公告、监管文件或其它一手来源。这类候选来源检索不依赖标准 ticker，可以和 DataFetch search 同轮并行；quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
-const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前已通过 DataFetch 进入金融数据工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。只使用用户原始公司名与问题主题、不依赖标准 symbol 的 Web/news/filing/industry 候选来源检索，可以与这些 search 同轮并行。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮并行执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。对每条路线选中的标准 symbol 执行同代码 quote/profile；crypto 使用 search 返回的结构化 CRYPTO 路由与 crypto_quote，不要求 stock profile。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
-const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；`hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得用旧收购或退市记忆否认；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
+const OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION: &str = "【本轮 Agent 工具决策】先完整阅读本轮用户原话，再决定是否调用工具。若问题明确点名任何公司、证券、基金、指数或加密资产，第一轮优先完成结构化实体发现，不写最终正文：为你识别出的每个点名标的分别并行调用一次 DataFetch search，每个调用都填写互不复用且后续原样复用的 `entity_route`，并填写本次调用自己的 `identity_match`（ticker 用 `exact_symbol`，公司名、中文名或别名用 `name_or_alias`）。search 返回标准 symbol 后，下一步优先为每条路线调用 DataFetch snapshot；它是 quote + profile + news + 可得盘后字段的聚合行情入口。snapshot 不适用时再组合 quote/profile；用户询问盘前、盘后或常规盘与扩展时段对比时补 extended_hours。结构化行情的工具选择优先级高于开放 Web 搜索；Web/news/filing/industry 用于随后补充公告、监管文件、关系、事件和因果等行情工具不能证明的内容。这里描述的是优先级而不是完成门禁：provider 无覆盖、工具失败或问题本身不需要行情时，不得反复补取或拒绝回答，可继续使用当前证据和开放检索并自然披露缺口。quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search 返回标准 symbol 后再执行，禁止猜测、补全或凭记忆构造代码。用户可能用小写、混合大小写或带市场常用分隔符书写 ticker；证券语境里的代码仍按 ticker 处理并用标准代码精确查询，不能因为写成小写就先改走公司别名搜索。不要只处理第一个标的，也不要等服务端按字符串拆分问题。若并非证券/公司研究问题，则按用户实际意图正常处理，不要生造证券实体。";
+const POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION: &str = "【内部研究取证轮】当前轮已进入金融研究工具链，但证券实体、行情或资产路由证据仍未完整。先由你完整分析用户实际点名的全部公司/证券，不要依赖固定问法扫描器。为每个标的分配一个本轮稳定且互不复用的 `entity_route`（内部短键，不是用户可见结论）；每个标的分别发起一个 search（可在同一轮并行，禁止把多个标的拼成一个 query），并由你依据完整语义在每一次 search 调用里明确填写 call-scoped `identity_match`：query 是 ticker 时用 `exact_symbol`，是公司名、中文名或别名时用 `name_or_alias`；用户书写的 ticker 不要求大写，证券语境里的小写或混合大小写代码应先规范成标准代码并走 `exact_symbol`，不能仅因大小写改走别名 refinement；前一次声明不会授权后一次 search，也不要让服务端按大小写或长度猜。标准 symbol 已确认的路线优先调用 snapshot，一次取得 quote、profile、报价源时间、服务端涨跌口径和可得盘后字段；snapshot 不适用时组合 quote/profile，问题涉及盘前、盘后或常规盘与扩展时段对比时补 extended_hours。完成或实际尝试这组结构化行情读取后，再用 Web/news/filing/industry 检索补充行情工具不能证明的公告、关系、事件与因果；互不依赖且确有时效需要时可以与行情调用同批，但应把行情调用列在 Web 之前。这个顺序是 Agent 选择信号，不是缺失即拒答的门禁；provider 无覆盖或调用失败时继续搜索和回答，不反复重试。quote/profile/snapshot 等依赖某条路线标准 symbol 的调用必须等待该路线 search 结果返回；若当前上下文已经有该路线的标准 symbol，可在本轮执行，否则禁止猜测、补全或凭记忆构造代码。后续 refinement、quote、profile/snapshot 与其它该标的调用都原样携带同一路线键。显式 ticker 路线的同代码约束在后续公司名补查中仍持续有效，不能切换成名字里提到该代码的其它产品；有限 provider 分隔写法可等价。若此前调用缺少路线键，补查时重复原 query，或用 `supersedes_query` 逐字指向那次旧 query，以便只迁移该路线。`refines_query` 与 `supersedes_query` 严格互斥，每次 search 最多填写一个：前者只连接同路线的空结果补查，后者只迁移一条漏写路线键的旧 query。若中文名、别名或代码搜索为空，在同一 `entity_route` 下换用公司正式英文名或标准 ticker 做精确补查；可在 `refines_query` 中逐字填写原始空 query，但不得另建或复用其它实体的路线来抵消。随后按用户原始问题继续取得财务、新闻、网页、公告、持仓或其它业务证据。尽量在同一轮批量或并行调用互不依赖的工具。不得把 data_fetch(search) 或 profile 当成公司关系、事件或因果证据。合理取证已经完成或必要来源经实际尝试后明确不可得时，由同一 Agent 直接形成一次自然终稿。";
+const AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION: &str = "【同一 Agent 自然研究轮】继续阅读完整用户原话和本轮真实工具结果，自主决定是补充当前问题真正需要的业务工具，还是直接形成一次完整终稿。明确公司/证券路线已有标准 symbol、但尚未尝试完整行情时，优先调用 snapshot；snapshot 不适用时组合 quote/profile，扩展时段问题补 extended_hours，之后再用 Web 搜索补事件和因果。当前时刻处于美股盘前、盘后、隔夜（夜盘）或休市而用户问最新涨跌或行情时，extended_hours（个股）与指数期货或 SPY/QQQ 扩展时段（宽基）就是主数据源：取到后直接围绕该窗口作答，常规时段口径一句带过即可，不必反复对照或解释时段差异。这个行情优先顺序只是工具选择信号，不是终稿门禁；provider 无覆盖或调用失败时不反复补取，继续使用当前证据回答并披露具体缺口。证据不足时只调用当前需要的真实工具；合理取证已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，直接返回自然语言最终回答。实体 search/profile 只证明身份或公司自述，不证明关系、事件和因果；宽泛关系问题通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告。所有事实使用当前工具结果；`hone_security_listing_evidence.status=active_listing` 是本轮同代码当前上市证据，不得用旧收购或退市记忆否认；单项数据缺失时如实披露，并继续完成当前证据能够支持的部分。";
 #[cfg(test)]
 const ACTIVE_RESEARCH_SYSTEM_INSTRUCTION: &str = "【内部研究工具轮】当前仍是工具轮，同时提供真实业务工具和 `finish_research`。请由同一 Agent 重新阅读完整用户原话与本轮真实工具结果；当前结构状态只覆盖 Agent 已声明的路线，不证明点名实体集合完整、工具调用成功或业务证据充分。证据不足时本轮只调用当前最需要的真实业务工具；合理研究已经完成，或必要来源经实际尝试后明确不可得并可如实披露时，本轮只提交 `finish_research` 的结构化证据交接进入无工具终稿。不要把完成信号与业务工具混用，也不要在工具轮写最终正文。实体 search/profile 只证明身份，不证明公司关系；关系、事件和因果结论必须先取得本轮 web/news/公告证据。对宽泛关系问题，由你从完整语义自主枚举与当前问题有关的关系轴；通常至少分别核查商业/客户供应/技术合同与投资持股，优先查 SEC、公司 IR 或双方公告，不能用一次泛搜索或“没有搜到”推出否定事实。准备写入终稿的每个外部事实都要在 finish 交接里引用本轮 tool call 与逐字 excerpt/JSON 字段；其余内容进入 gaps，不得从模型记忆补齐。";
 #[cfg(test)]
@@ -108,9 +113,10 @@ const FINAL_ANSWER_EVIDENCE_CONTRACT: &str = concat!(
     "`reasoning_content`、隐藏思考、未采用草稿、内部状态文本以及模型记忆都不是事实证据，不得从中提取或补齐关系、日期、行情、财务或估值事实。",
     "当前上市状态必须服从本轮同代码结构化证据。若 `hone_security_listing_evidence.status=active_listing`，必须视为当前上市交易；不得再回答该证券未上市、已退市或应替换成旧母公司。公司过去被收购或退市的历史不能覆盖其后续分拆、重新上市事实。若本轮当前权威监管文件与 provider 证据冲突，继续取得并披露监管证据与冲突，不得凭模型记忆裁决。",
     "数据时间只能采用本轮 Session 北京时间；quote 的 provider timestamp 只能写在‘行情口径’里，绝不能冒充数据时间。用户可见的报价源时间优先使用 `hone_quote_time.beijing`；该字段缺失时才能如实使用其它已核验时间并明确时区。`hone_quote_time.market_date_new_york` 只是纽约时区的日历日期，`hone_quote_time.new_york` 也只是纽约时区的时间；二者都不证明交易所、交易时段或已经收盘，绝不能据此写‘纽交所’或‘收盘价’。证券所属交易所只能来自 quote/profile 的 `exchange` 或 `exchangeShortName` 字段。没有行情证据时仍保留‘行情口径’字段并说明范围，不得伪造报价时间或盘前/盘后时段。",
-    "回答“为什么大跌/暴跌/下跌”前，先锁定用户所指对象或市场范围与目标时段，并先核验该对象在该时段是否真的发生所述波动。用户明确给出的日期、星期或时段优先；不得因为 latest quote、当前日历日或另一日新闻更容易取得，就静默改答前一日、后一日或其它波动。latest quote 的涨跌幅只证明其 provider timestamp 对应的快照，不能证明另一历史交易日。宽基指数、行业板块与单只证券必须分开；若宽基不支持用户的“大跌”前提，明确说明观察范围不一致并继续核验板块/个股或做最小澄清，不得擅自挑另一天的大跌替换问题。原因事实必须由本轮明确覆盖同一对象与同一绝对市场本地日期的 Web/news/公告原文支持；否则先回答已核验的实际波动与范围，再写“原因本轮未完全核验”。",
+    "回答“为什么大跌/暴跌/下跌”前，先锁定用户所指对象或市场范围与目标时段，并先核验该对象在该时段是否真的发生所述波动。用户明确给出的日期、星期或时段优先；用户未指明时段时，以当前运行时刻所处的市场时段为默认目标时段——处于盘前、盘后、隔夜（夜盘）或休市时，默认指最新可得的延长时段行情，个股直接以 extended_hours 的最新时段窗口为主叙事，宽基优先指数期货或 SPY/QQQ 扩展时段；主窗口锁定后直接进入原因分析，其它口径最多一句带过，不必展开多窗口对照（这是默认锚定引导，不是核验门禁）。不得因为 latest quote、当前日历日或另一日新闻更容易取得，就静默改答前一日、后一日或其它波动。latest quote 的涨跌幅只证明其 provider timestamp 对应的快照，不能证明另一历史交易日。宽基指数、行业板块与单只证券必须分开；若宽基不支持用户的“大跌”前提，明确说明观察范围不一致并继续核验板块/个股或做最小澄清，不得擅自挑另一天的大跌替换问题。原因事实必须由本轮明确覆盖同一对象与同一绝对市场本地日期的 Web/news/公告原文支持；否则先回答已核验的实际波动与范围，再写“原因本轮未完全核验”。",
     "逐项复核所有公司关系、新闻因果、日期、行情、财务与估值数字：实体 search/profile 只证明标的身份，不证明公司关系；关系、事件与因果结论必须有当前 web/news/公告或工具原文明确支持，并在相关事实同句或紧邻句末使用本轮工具实际返回的来源标题与原始 URL 做内联引用。URL 只用于定位来源，不证明句中内容；外部事实里的数字、排名或角色、合同权利义务、产品或芯片型号、估值标签都必须直接出现在该 URL 本轮返回的 title/content/snippet 中，否则删除。不得只写来源名、域名或与事实脱节的文末来源清单，也不得使用历史会话或模型记忆中的 URL。基于已核验事实形成的判断必须另起句并以‘推断：’开头。只有二级摘要时应继续找公司公告、监管文件或其它一手来源，若仍不可得则明确披露证据层级。未找到证据不等于事实不存在；否定某种关系同样需要本轮来源直接支持，否则只能披露本轮检索边界。",
     "年度数据不得写成 TTM；单季数据必须标明季度与报告期，年化时必须显示是“单季×4”还是“最近四季求和”及算术、分子分母口径，并披露季节性限制。",
+    "准备在终稿引用营收、净利润、EPS、EBIT、EBITA、EBITDA、利润率、经营现金流、自由现金流或资产负债表数字时，先核对本轮 financials / earnings_outlook 中最新已披露报告期，把每个数字绑定到对应 date/period、hone_latest_quarter、hone_ttm.period_ends 或 hone_forward.forward_period_ends；“最新”只表示工具可见的最新已披露报告期，不得暗示未发布季度。检查季度、年度、最近四季与 forward 是否混用；EBIT、EBITA、EBITDA 与营业利润不得互相代替，来源未明确给出时不得自行补算。若关键数字的 provider 窗口可能滞后或来源冲突，优先针对性查公司 IR、财报公告或监管文件核对报告日期与关键数字。这是生成前的时效和准确性复核引导，不是逐数字双来源、缺项拒答或自动改写门禁；官方二次核对不可得时，按当前结构化证据标明截至日、来源层级和具体缺口后继续回答。",
     "未取得净债务或企业价值时不得使用 EV 或 EV/EBITDA 标签，也不得把市值/EBITDA 写成 EV/EBITDA。quote 返回的 PE 未明确标注 forward 时不得称为 Forward PE；已核验期间 EBITDA 为正时不得声称公司需到未来才转正。",
     "没有直接证据与完整输入时，不得给出目标价、概率、仓位比例、止损位或精确支撑位；第三方分析师目标价必须标注为第三方聚合口径与对应时间，不得直接作为交易锚点。",
     "某项证据不可得时，披露缺项并继续完成能够被当前证据支持的分析。回答范围和篇幅跟随用户原问题：关系问答只回答已核验关系、必要推断和关键缺口，不得为凑单股模板扩写公司介绍、风险清单或交易建议。最终回答只面向用户问题与本轮证据。"
@@ -293,6 +299,12 @@ pub trait FunctionCallingStreamObserver: Send + Sync {
     async fn commit_service_owned_prefix(&self, _prefix: &str) -> bool {
         false
     }
+
+    /// A provider reasoning/thinking delta (deepseek `reasoning_content`,
+    /// or adapters mapping upstream reasoning summaries onto that field).
+    /// Never part of the visible answer; observers may surface it as a live
+    /// thinking track. Default keeps existing observers source-compatible.
+    async fn on_reasoning_delta(&self, _content: &str) {}
 
     async fn on_content_reset(&self);
 }
@@ -1064,6 +1076,13 @@ fn tool_choice_mode_name(mode: ToolChoiceMode) -> &'static str {
     }
 }
 
+fn trace_has_only_known_read_only_calls(tool_calls: &[ToolCallMade]) -> bool {
+    !tool_calls.is_empty()
+        && tool_calls
+            .iter()
+            .all(|call| tool_call_is_known_read_only(&call.name, &call.arguments))
+}
+
 fn observe_stream_finish(
     finish: &mut Option<ChatStreamFinishReason>,
     reason: ChatStreamFinishReason,
@@ -1124,6 +1143,85 @@ fn require_complete_stream(
 }
 
 /// Function Calling Agent
+/// Lines in a would-be final answer that self-report missing first-party
+/// evidence ("本轮未读到…原文" style). They are the gap checklist a
+/// gap-closure round hands back to the same agent.
+/// A Chinese question answered by an essentially English body. Soft prompt
+/// guidance alone proved insufficient for long structured answers built from
+/// English sources (audited in production: a Chinese question about MRVL came
+/// back with an English report carrying only the injected Chinese first line),
+/// so the final draft gets one language-repair round before publication.
+/// Thresholds are deliberately conservative: ordinary Chinese finance answers
+/// are CJK-dense even when packed with tickers and tables.
+fn final_language_mismatch(user_input: &str, draft: &str) -> bool {
+    let cjk = |text: &str| {
+        text.chars()
+            .filter(|ch| matches!(*ch as u32, 0x3400..=0x4DBF | 0x4E00..=0x9FFF))
+            .count()
+    };
+    let question_cjk = cjk(user_input);
+    if question_cjk < 2 {
+        return false;
+    }
+    let draft_letters = draft.chars().filter(char::is_ascii_alphabetic).count();
+    if draft_letters < 600 {
+        return false;
+    }
+    let draft_cjk = cjk(draft);
+    draft_cjk * 100 < draft_letters * 15
+}
+
+fn language_final_correction_prompt(draft: &str) -> String {
+    let bounded: String = draft.chars().take(24_000).collect();
+    format!(
+        "【内部终稿语言纠正】上一版终稿尚未发布正文。用户以中文提问，终稿必须全程使用简体中文。\
+         把 <unpublished_draft> 完整改写为简体中文成品：所有事实、数字、百分比、表格结构、ticker、交易所代码、链接与引用来源逐项保留，不新增、不删减、不重算任何事实；英文引用的原文标题可保留原文并附中文说明；小标题与结论一并译为中文。\
+         重写稿仍须从精确数据时间首行开始。不要向用户提及本检查。\n<unpublished_draft>\n{bounded}\n</unpublished_draft>"
+    )
+}
+
+fn research_gap_lines(content: &str) -> Vec<String> {
+    const GAP_MARKERS: [&str; 8] = [
+        "未读到",
+        "未能读到",
+        "未核验",
+        "无法确认",
+        "未能确认",
+        "没有直接原文",
+        "未见一手",
+        "未取得一手",
+    ];
+    let mut lines: Vec<String> = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && GAP_MARKERS.iter().any(|marker| line.contains(marker)))
+        .map(|line| line.chars().take(200).collect())
+        .collect();
+    lines.truncate(8);
+    lines
+}
+
+fn gap_closure_feedback_prompt(gap_lines: &[String], draft: &str) -> String {
+    let checklist = gap_lines
+        .iter()
+        .map(|line| format!("- {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let draft_excerpt: String = draft
+        .chars()
+        .take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS)
+        .collect();
+    format!(
+        "【内部缺口闭环轮】上一版终稿尚未发布，其中仍自述缺少下列一手证据：\n{checklist}\n\
+         本轮工具重新开放。请针对上述每一项分别继续取证，每项至少换用两种不同策略：\
+         `web_search` 换英文或本地化关键词（可用 site: 限定市政府、公司 IR、SEC、监管机构等官方域名）、\
+         `data_fetch` 的 sec_filings / press_releases / transcript / analyst_actions 等一手类型，必要时并行多条查询。\
+         取得的证据融入终稿并附来源链接；经两种以上策略实际尝试仍不可得的项目，才保留为缺口并写明尝试过的方向。\
+         终稿仍从精确数据时间首行开始。不要向用户提及本说明、内部轮次或工具预算。\n\
+         <unpublished_draft>\n{draft_excerpt}\n</unpublished_draft>"
+    )
+}
+
 pub struct FunctionCallingAgent {
     pub llm: Arc<dyn LlmProvider>,
     pub tools: Arc<ToolRegistry>,
@@ -1142,10 +1240,48 @@ pub struct FunctionCallingAgent {
     pub preloaded_evidence_calls: u32,
     pub service_owned_initial_prefix: Option<String>,
     pub precommitted_service_prefix: Option<String>,
+    /// Whether the service authorized committing its owned prefix before the
+    /// model's own final answer reproduces it (the runner's before-model
+    /// pre-commit and this agent's post-evidence mid-loop commit). When false,
+    /// the only commit source is real final-answer bytes flowing through the
+    /// stream observer.
+    pub allow_pre_final_prefix_commit: bool,
+    /// Research budget for the agent-owned finance loop. Defaults to the
+    /// conservative constants; deployments raise it (and enable gap-closure
+    /// rounds) via config so "最新进展"-style questions can keep chasing
+    /// self-reported evidence gaps instead of settling at the first draft.
+    pub finance_research_budget: FinanceResearchBudget,
+    /// Images attached to the current user turn. Handed to the model as real
+    /// image parts on the turn's user message, so a vision-capable model sees
+    /// the attachment instead of reasoning from its filename.
+    pub turn_images: Vec<hone_llm::MessageImage>,
     #[cfg(test)]
     pub finish_research_terminal_synthesis: bool,
     pub step_timeout: Option<Duration>,
     pub overall_timeout: Option<Duration>,
+}
+
+/// Tool budget for one agent-owned finance turn plus how many gap-closure
+/// rounds a self-reported-incomplete final draft may trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FinanceResearchBudget {
+    pub tool_rounds: u32,
+    pub tool_calls: u32,
+    pub data_fetch_calls: u32,
+    pub web_search_calls: u32,
+    pub gap_closure_rounds: u32,
+}
+
+impl Default for FinanceResearchBudget {
+    fn default() -> Self {
+        Self {
+            tool_rounds: MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS,
+            tool_calls: MAX_AGENT_OWNED_FINANCE_TOOL_CALLS,
+            data_fetch_calls: MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS,
+            web_search_calls: MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS,
+            gap_closure_rounds: 0,
+        }
+    }
 }
 
 impl FunctionCallingAgent {
@@ -1172,9 +1308,12 @@ impl FunctionCallingAgent {
             max_tool_calls: None,
             tool_call_limits: HashMap::new(),
             agent_owned_finance_loop: false,
+            finance_research_budget: FinanceResearchBudget::default(),
+            turn_images: Vec::new(),
             preloaded_evidence_calls: 0,
             service_owned_initial_prefix: None,
             precommitted_service_prefix: None,
+            allow_pre_final_prefix_commit: false,
             #[cfg(test)]
             finish_research_terminal_synthesis: false,
             step_timeout: None,
@@ -1249,6 +1388,20 @@ impl FunctionCallingAgent {
         self
     }
 
+    /// Override the agent-owned finance research budget (config-driven).
+    /// Values below the compiled defaults are honored as tighter budgets.
+    pub fn with_finance_research_budget(mut self, budget: FinanceResearchBudget) -> Self {
+        self.finance_research_budget = budget;
+        self
+    }
+
+    /// Attach this turn's user images. They ride the current user message only;
+    /// replayed history stays text so old turns cannot resend media.
+    pub fn with_turn_images(mut self, images: Vec<hone_llm::MessageImage>) -> Self {
+        self.turn_images = images;
+        self
+    }
+
     /// Attach a trusted service-owned first line and separately record whether
     /// the Web publication sink ACKed it. An unacknowledged prefix still
     /// constrains the final model output, but never counts as visible bytes.
@@ -1259,6 +1412,11 @@ impl FunctionCallingAgent {
     ) -> Self {
         self.service_owned_initial_prefix = required;
         self.precommitted_service_prefix = precommitted;
+        self
+    }
+
+    pub fn with_pre_final_prefix_commit(mut self, allow: bool) -> Self {
+        self.allow_pre_final_prefix_commit = allow;
         self
     }
 
@@ -1325,6 +1483,7 @@ impl FunctionCallingAgent {
                 (_, None) => self.system_prompt.clone(),
             };
             messages.push(Message {
+                images: Vec::new(),
                 role: "system".to_string(),
                 content: Some(system_prompt),
                 reasoning_content: None,
@@ -1336,6 +1495,7 @@ impl FunctionCallingAgent {
 
         for msg in &context.messages[message_start..] {
             messages.push(Message {
+                images: Vec::new(),
                 role: msg.role.clone(),
                 content: msg.content.clone(),
                 reasoning_content: msg
@@ -1352,6 +1512,15 @@ impl FunctionCallingAgent {
                 tool_call_id: msg.tool_call_id.clone(),
                 name: msg.name.clone(),
             });
+        }
+
+        // This turn's attachments ride the most recent user message. Replayed
+        // history stays text-only, so an old turn can never resend its media
+        // and re-bill it on every later round.
+        if !self.turn_images.is_empty()
+            && let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
+        {
+            last_user.images = self.turn_images.clone();
         }
 
         messages
@@ -1441,6 +1610,7 @@ impl FunctionCallingAgent {
             messages.insert(
                 insert_at + offset,
                 Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(prompt.to_string()),
                     reasoning_content: None,
@@ -1454,6 +1624,7 @@ impl FunctionCallingAgent {
             messages.insert(
                 insert_at + invoked_skill_count,
                 Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(history),
                     reasoning_content: None,
@@ -1489,6 +1660,7 @@ impl FunctionCallingAgent {
         };
         vec![
             Message {
+                images: Vec::new(),
                 role: "system".to_string(),
                 content: Some(system_prompt),
                 reasoning_content: None,
@@ -1497,6 +1669,7 @@ impl FunctionCallingAgent {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".to_string(),
                 content: Some(user_input.to_string()),
                 reasoning_content: None,
@@ -1505,6 +1678,7 @@ impl FunctionCallingAgent {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".to_string(),
                 content: Some(format!(
                     "【本轮已执行工具的有界证据副本】\n{}",
@@ -1618,7 +1792,12 @@ impl FunctionCallingAgent {
                         }
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta {
                     index,
                     id,
@@ -1725,6 +1904,21 @@ impl FunctionCallingAgent {
         let mut done = false;
         let stream_started = std::time::Instant::now();
         let early_final_eligible = eligible_final_prefix.is_some();
+        // A canonical header the observer committed in an earlier round of this
+        // same turn is irreversible visible output, whether or not the caller
+        // has recorded it yet. Only the market-move correction branch recorded
+        // it, so a listing correction re-entered this stream with the prefix
+        // still marked uncommitted, forwarded those exact bytes a second time,
+        // and the reader saw `数据时间：…` twice before the body — the doubled
+        // first line audited on `rklb的估值`. Re-derive the committed state here
+        // so every retry path forwards only what is genuinely new.
+        let observed_committed_prefix = self
+            .stream_observer
+            .as_ref()
+            .and_then(|observer| observer.committed_visible_prefix())
+            .filter(|prefix| committed_prefix_matches_required(prefix, eligible_final_prefix));
+        let precommitted_service_prefix =
+            precommitted_service_prefix.or(observed_committed_prefix.as_deref());
         let mut forwarded_final_delta = false;
         let mut eligible_visible_candidate = String::new();
         let mut early_final_rejected = false;
@@ -1836,7 +2030,12 @@ impl FunctionCallingAgent {
                         }
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta {
                     index,
                     id,
@@ -2051,7 +2250,12 @@ impl FunctionCallingAgent {
                         emitted_visible_content = true;
                     }
                 }
-                ChatStreamEvent::ReasoningDelta(delta) => reasoning_content.push_str(&delta),
+                ChatStreamEvent::ReasoningDelta(delta) => {
+                    if let Some(observer) = &self.stream_observer {
+                        observer.on_reasoning_delta(&delta).await;
+                    }
+                    reasoning_content.push_str(&delta);
+                }
                 ChatStreamEvent::ToolCallDelta { .. } => unexpected_tool_call = true,
                 ChatStreamEvent::Usage(value) => usage = Some(value),
                 ChatStreamEvent::Finish(reason) => {
@@ -2157,6 +2361,7 @@ impl FunctionCallingAgent {
         terminal_messages.retain(|message| matches!(message.role.as_str(), "system" | "user"));
         let terminal_prompt = terminal_synthesis_prompt(required_prefix, handoff);
         terminal_messages.push(Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(terminal_prompt),
             reasoning_content: None,
@@ -2383,6 +2588,7 @@ fn terminal_recovery_messages(
         prompt.push_str(&recovery_constraint);
     } else {
         recovery_messages.push(Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(recovery_constraint),
             reasoning_content: None,
@@ -4070,10 +4276,20 @@ fn original_market_move_request(runtime_input: &str) -> &str {
     .min()
     .map(|end| runtime_input[..end].trim())
     .unwrap_or_else(|| runtime_input.trim());
-    current_turn_and_context
-        .rfind("【本轮用户输入】")
-        .map(|start| current_turn_and_context[start + "【本轮用户输入】".len()..].trim())
-        .unwrap_or(current_turn_and_context)
+    // Without the header the user's words open the input, followed by the
+    // server-appended sections (canonical facts, routing gates, evidence).
+    let request = match current_turn_and_context.rfind("【本轮用户输入】") {
+        Some(start) => &current_turn_and_context[start + "【本轮用户输入】".len()..],
+        None => current_turn_and_context,
+    };
+    // Anything after the next section marker is server-injected context
+    // (pre-turn evidence, conversation memory), and a week of production
+    // showed news snippets in there tripping the move-cause gate on
+    // questions that never asked about a move.
+    request
+        .find("\n\n【")
+        .map_or(request, |end| &request[..end])
+        .trim()
 }
 
 fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
@@ -4083,24 +4299,42 @@ fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
         return false;
     }
     let normalized = original_market_move_request(runtime_input).to_ascii_lowercase();
-    [
-        "大跌",
-        "暴跌",
-        "大涨",
-        "暴涨",
-        "下跌原因",
-        "上涨原因",
-        "跌的原因",
-        "涨的原因",
-        "为什么跌",
-        "为什么涨",
-        "why did",
-        "why is",
-        "selloff",
-        "rally",
+    // The mechanical final check exists to stop a fabricated *cause* for a
+    // move. A question that mentions a move on the way to a valuation,
+    // position or macro ask ("暴跌到 165 美元，现在值得买入吗", "非农数据不好，
+    // 市场跳水了，加息预期是不是又大了") is not asking for a cause, and a
+    // week of production showed those turns ending as the gap stub instead of
+    // an answer. Both a move word and a cause cue are required.
+    let mentions_move = [
+        "大跌", "暴跌", "大涨", "暴涨", "跳水", "拉升", "下跌", "上涨", "跌", "涨", "selloff",
+        "sell-off", "rally", "plunge", "surge", "slump", "crash", "down", "up",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker))
+    .any(|marker| normalized.contains(marker));
+    let asks_for_cause = [
+        "为什么",
+        "为何",
+        "原因",
+        "怎么回事",
+        "什么情况",
+        "发生了什么",
+        "因为",
+        "缘故",
+        "why",
+        "what happened",
+        "because",
+        "reason",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    mentions_move && asks_for_cause
+}
+
+fn market_move_starts_investment_research(
+    runtime_input: &str,
+    agent_owned_finance_loop: bool,
+) -> bool {
+    agent_owned_finance_loop && is_market_move_final_check_enabled(runtime_input)
 }
 
 fn chinese_weekday_label(weekday: Weekday) -> &'static str {
@@ -4177,6 +4411,13 @@ fn content_contains_date(content: &str, date: NaiveDate) -> bool {
         "november",
         "december",
     ][date.month0() as usize];
+    // The first three letters are the standard English abbreviation for all
+    // twelve months, so this needs no second table. It matters because the
+    // `published_date` a Tavily result carries is RFC 2822
+    // (`Fri, 28 Aug 2026 20:48:00 GMT`), whose day is zero-padded — without the
+    // abbreviated spellings a search result could never be shown to cover the
+    // target date it actually reports.
+    let month_abbr = &month_name[..3];
     [
         date.format("%Y-%m-%d").to_string(),
         date.format("%Y/%m/%d").to_string(),
@@ -4185,6 +4426,10 @@ fn content_contains_date(content: &str, date: NaiveDate) -> bool {
         format!("{month_name} {}, {}", date.day(), date.year()),
         format!("{month_name} {} {}", date.day(), date.year()),
         format!("{} {month_name} {}", date.day(), date.year()),
+        format!("{month_abbr} {}, {}", date.day(), date.year()),
+        format!("{month_abbr} {} {}", date.day(), date.year()),
+        format!("{} {month_abbr} {}", date.day(), date.year()),
+        format!("{:02} {month_abbr} {}", date.day(), date.year()),
     ]
     .iter()
     .any(|candidate| normalized.contains(candidate))
@@ -4213,11 +4458,17 @@ fn collect_market_move_quote_evidence(value: &Value, evidence: &mut Vec<MarketMo
                 .and_then(Value::as_str)
                 .map(str::trim)
                 .filter(|symbol| !symbol.is_empty())
-                .zip(fields.get("changesPercentage").and_then(|value| {
-                    value
-                        .as_f64()
-                        .or_else(|| value.as_str()?.parse::<f64>().ok())
-                }))
+                .zip(
+                    fields
+                        .get("hone_change_basis")
+                        .and_then(Value::as_object)
+                        .and_then(|basis| basis.get("pct"))
+                        .and_then(|value| {
+                            value
+                                .as_f64()
+                                .or_else(|| value.as_str()?.parse::<f64>().ok())
+                        }),
+                )
                 .zip(
                     quote_time
                         .and_then(|time| time.get("market_date_new_york"))
@@ -4402,6 +4653,18 @@ fn collect_tool_result_urls(value: &Value, urls: &mut BTreeMap<String, String>) 
     }
 }
 
+/// Every tool result of the current turn contributes its URLs, `web_search`
+/// included. An earlier version dropped whole `web_search` messages whose
+/// `hone_search_contract.evidence_scope` was snippet-scoped, but
+/// `annotate_basic_search_evidence` stamps `full_page_content = false` and
+/// `kind = "search_snippets"` onto *every* successful Tavily search, so that
+/// skip removed every searched URL from the turn. The cause-paragraph rule then
+/// asked for "本轮工具实际返回的原始 URL" on the very retrieval path the
+/// date-anchor block tells the agent to use, and could never be satisfied — the
+/// answer was replaced by the gap template no matter how well it was sourced.
+/// Evidence strength is still gated, one level down, by requiring the cited
+/// URL's own result record to cover the target date; do not re-add a
+/// scope-based skip here.
 fn current_turn_tool_result_urls(
     context: &AgentContext,
     turn_message_start: usize,
@@ -4415,18 +4678,6 @@ fn current_turn_tool_result_urls(
             continue;
         };
         if let Ok(value) = serde_json::from_str::<Value>(content) {
-            let snippet_only = message.name.as_deref() == Some("web_search")
-                && (value
-                    .pointer("/hone_search_contract/evidence_scope/full_page_content")
-                    .and_then(Value::as_bool)
-                    == Some(false)
-                    || value
-                        .pointer("/hone_search_contract/evidence_scope/kind")
-                        .and_then(Value::as_str)
-                        == Some("search_snippets"));
-            if snippet_only {
-                continue;
-            }
             collect_tool_result_urls(&value, &mut urls);
         }
     }
@@ -4444,64 +4695,6 @@ fn current_turn_source_urls_for_date(
         .collect()
 }
 
-fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
-    let normalized = paragraph.to_ascii_lowercase();
-    if [
-        "原因本轮未完全核验",
-        "原因尚未核验",
-        "无法确认",
-        "未能确认",
-        "不能确认",
-        "证据不足",
-        "候选原因",
-        "如果",
-        "可能",
-        "或许",
-        "预计",
-        "假设",
-        "情景",
-        "bull",
-        "bear",
-        "base case",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-        || normalized.contains("推断：")
-    {
-        return false;
-    }
-    [
-        "已核验原因",
-        "原因（已核验",
-        "原因(已核验",
-        "主要原因",
-        "直接原因",
-        "下跌原因",
-        "上涨原因",
-        "已核验新闻",
-        "原因是",
-        "原因包括",
-        "核心驱动",
-        "主要驱动",
-        "最强驱动",
-        "公开新闻指向",
-        "公开归因",
-        "导致",
-        "直接导致",
-        "直接压制",
-        "拖累",
-        "打压",
-        "归因于",
-        "源于",
-        "触发",
-        "引发",
-        "催化剂",
-        "共振",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-}
-
 fn append_market_move_quote_fact_violations(
     content: &str,
     context: &AgentContext,
@@ -4513,21 +4706,24 @@ fn append_market_move_quote_fact_violations(
         return;
     }
 
-    let normalized_content = content.to_ascii_lowercase();
-    let close_value_claim = Regex::new(r"(?:收报|收于|收在|收)\s*[$¥€£]?\s*[0-9]")
-        .expect("market-move close value regex")
-        .is_match(content);
-    if ["收盘", "收市", "常规交易收盘"]
-        .iter()
-        .any(|marker| content.contains(marker))
-        || ["closing price", "closed at", "close price"]
-            .iter()
-            .any(|marker| normalized_content.contains(marker))
-        || close_value_claim
+    // What this has to catch is a draft presenting the plain quote price as a
+    // closing price. It used to fire on the bare words 收盘 / 收市 anywhere in
+    // the answer, which also hit the comparison the change-basis rules require
+    // ("较上一常规交易日收盘价下跌 6.22%"), and on `收` + digit, which hit
+    // 营收 6.5 亿 / 回收 3 亿. Require a close word attached to a price-shaped
+    // number — a percentage after it means it is a change, not a price.
+    let close_value_claim = Regex::new(
+        r"(?i)(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?|closing price(?:\s+(?:of|was|is))?|closed at|close price(?:\s+(?:of|was|is))?)\s*[:：]?\s*[$¥€£]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:%|％)?",
+    )
+    .expect("market-move close value regex");
+    if let Some(hit) = close_value_claim
+        .find_iter(content)
+        .find(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
     {
-        violations.push(
-            "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价".to_string(),
-        );
+        violations.push(format!(
+            "普通 quote 的时间字段不证明交易时段或收盘，不能把其 price 写成收盘价（本稿写的是「{}」，改成报价并注明时间字段，或改用 extended_hours 的 session 汇总）",
+            violation_excerpt(hit.as_str(), 24)
+        ));
     }
 
     for quote in &quotes {
@@ -4561,10 +4757,26 @@ fn append_market_move_quote_fact_violations(
                     else {
                         continue;
                     };
+                    // A move-attribution answer is supposed to quantify the
+                    // event (dilution, margin, share, implied upside). Those
+                    // percentages sit on the same line as the ticker but are
+                    // not change claims, so only reconcile a percentage whose
+                    // lead-in does not name a different metric.
+                    let lead_in = captures
+                        .get(0)
+                        .zip(captures.get(1))
+                        .map(|(whole, number)| &line[whole.start()..number.start().min(line.len())])
+                        .unwrap_or("");
+                    if percentage_names_another_metric(lead_in) {
+                        continue;
+                    }
                     if (displayed - quote.change_percentage).abs() > 0.015 {
                         violations.push(format!(
-                            "{} 的涨跌幅应来自 changesPercentage（约 {:+.2}%），不能把 change 等其它字段写成百分比",
-                            quote.symbol, quote.change_percentage
+                            "{} 的涨跌幅应来自服务端 hone_change_basis.pct（约 {:+.2}%），不能使用 provider changesPercentage 或把 change 等其它字段写成百分比（本稿这一处写的是 {:+.2}%，出现在「{}」）",
+                            quote.symbol,
+                            quote.change_percentage,
+                            displayed,
+                            violation_excerpt(line, 40)
                         ));
                     }
                 }
@@ -4856,7 +5068,15 @@ fn listing_final_violations(
     let states = current_turn_listing_states(tool_calls_made);
     let mut symbols = explicit_security_symbols(runtime_input);
     symbols.extend(states.keys().cloned());
-    let mut violations = BTreeSet::new();
+    // A one-letter code matches as a substring of every uppercased line that
+    // contains that letter, so `SpaceX 未上市` reads as a denial about `X`.
+    // Nothing in the audited turn had resolved `X` either: it came from the
+    // `valuation-audit` skill hint's placeholders (`分析下X`, `X和Y更看好哪个`),
+    // which the turn builder places inside the same 【本轮用户输入】 section as
+    // the user's own words. Keep a single letter only when this turn's
+    // structured evidence actually resolved it as a security.
+    symbols.retain(|symbol| symbol.chars().count() > 1 || states.contains_key(symbol));
+    let mut violations = BTreeMap::<String, String>::new();
     for line in content.split(['\n', '。', '！', '？']) {
         if !listing_denial_line(line) {
             continue;
@@ -4866,26 +5086,40 @@ fn listing_final_violations(
             let state = states.get(symbol);
             // A denial may name the security by symbol or by provider company
             // name; `CoreWeave 尚未上市` and `CRWV 尚未上市` are the same claim.
-            let named = state
+            let Some(matched_label) = state
                 .map(|state| listing_entity_labels(symbol, state))
                 .unwrap_or_else(|| vec![symbol.to_ascii_uppercase()])
                 .into_iter()
-                .any(|label| upper.contains(&label));
-            if !named {
+                .find(|label| upper.contains(label.as_str()))
+            else {
                 continue;
-            }
+            };
             if state.is_some_and(|state| state.inactive && !state.active) {
                 continue;
             }
-            let reason = if state.is_some_and(|state| state.active) {
-                "本轮结构化证据已确认 active_listing，终稿却断言退市或未上市"
+            let (reason, origin) = if state.is_some_and(|state| state.active) {
+                (
+                    "本轮结构化证据已确认 active_listing，终稿却断言退市或未上市",
+                    "本轮同代码工具结果里的标的",
+                )
             } else {
-                "本轮没有 inactive_listing 结构化证据，终稿却用历史记忆断言退市或未上市"
+                (
+                    "本轮没有 inactive_listing 结构化证据，终稿却用历史记忆断言退市或未上市",
+                    "从本轮请求文本解析出的候选代码",
+                )
             };
-            violations.insert(format!("{symbol}: {reason}"));
+            // Name the span, not just the rule. The audited correction round was
+            // handed `X: …` with no `X` anywhere in the turn and no quote of the
+            // sentence that tripped it, and it never converged.
+            violations.entry(symbol.clone()).or_insert_with(|| {
+                format!(
+                    "{symbol}: {reason}（{symbol} 是{origin}，本次以「{matched_label}」命中终稿的「{}」）",
+                    violation_excerpt(line, 40)
+                )
+            });
         }
     }
-    violations.into_iter().collect()
+    violations.into_values().collect()
 }
 
 /// The service already requires an investment answer to open with the exact
@@ -4948,11 +5182,45 @@ fn listing_final_correction_prompt(
     )
 }
 
-fn deterministic_listing_gap_response(
+fn violated_listing_symbols(violations: &[String]) -> Vec<String> {
+    violations
+        .iter()
+        .filter_map(|violation| violation.split(':').next())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Replacing the whole answer costs everything the turn actually produced: on
+/// `rklb的估值` it turned 14 tool calls' worth of valuation work into a hundred
+/// characters, and the symbol it was defending (`X`) was a skill-hint
+/// placeholder. So the wholesale template now applies only to the case this
+/// turn can settle objectively — a symbol whose own current-turn structured
+/// evidence says `active_listing` while the draft says it is delisted. When the
+/// check fired on the *absence* of evidence, the corrective content was never
+/// more than a disclaimer anyway: append that disclaimer to the Agent's answer
+/// instead of publishing it in place of one.
+fn listing_gap_final_answer(
     required_prefix: Option<&str>,
+    draft: &str,
     tool_calls_made: &[ToolCallMade],
     violations: &[String],
 ) -> String {
+    let states = current_turn_listing_states(tool_calls_made);
+    let symbols = violated_listing_symbols(violations);
+    let contradicted = symbols
+        .iter()
+        .filter(|symbol| states.get(*symbol).is_some_and(|state| state.active))
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if contradicted.is_empty() && !draft.trim().is_empty() {
+        return format!(
+            "{}\n\n补充说明：{} 的当前上市状态这次没有取到可对照的交易行情或公司资料；上文中涉及其退市或未上市的说法，请以交易所与公司公告为准。",
+            draft.trim_end(),
+            symbols.join("、")
+        );
+    }
     let first_line = match required_prefix {
         Some(prefix) if prefix.ends_with("；行情口径：") => {
             format!("{prefix}本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露")
@@ -4960,27 +5228,15 @@ fn deterministic_listing_gap_response(
         Some(prefix) => prefix.to_string(),
         None => "本轮仅使用可核验资料。".to_string(),
     };
-    let states = current_turn_listing_states(tool_calls_made);
-    let active = states
-        .iter()
-        .filter(|(_, state)| state.active)
-        .map(|(symbol, _)| symbol.as_str())
-        .collect::<Vec<_>>();
-    if !active.is_empty() {
+    if !contradicted.is_empty() {
         return format!(
             "{first_line}\n\n{} 的本轮同代码结构化行情与公司资料已确认其当前上市交易；不能用历史收购或旧退市记录否认当前上市。财报前瞻的其它项目本轮未形成足够可靠的完整证据，因此不补写未经核验的数字。",
-            active.join("、")
+            contradicted.join("、")
         );
     }
-    let symbols = violations
-        .iter()
-        .filter_map(|violation| violation.split(':').next())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
-        .join("、");
     format!(
-        "{first_line}\n\n本轮没有取得足以判断 {symbols} 当前上市状态的结构化证据，因此不能用历史并购或旧代码记忆断言其已退市或未上市。财报前瞻的其它项目也暂不补写未经核验的数字。"
+        "{first_line}\n\n本轮没有取得足以判断 {} 当前上市状态的结构化证据，因此不能用历史并购或旧代码记忆断言其已退市或未上市。财报前瞻的其它项目也暂不补写未经核验的数字。",
+        symbols.join("、")
     )
 }
 
@@ -5027,30 +5283,12 @@ fn market_move_final_violations(
         );
     }
 
-    let current_urls = current_turn_tool_result_urls(context, turn_message_start);
-    for paragraph in content.split("\n\n") {
-        if !paragraph_has_definitive_market_cause(paragraph) {
-            continue;
-        }
-        let matching_sources = current_urls
-            .iter()
-            .filter(|(url, _)| paragraph.contains(url.as_str()))
-            .collect::<Vec<_>>();
-        let has_current_url = !matching_sources.is_empty();
-        let has_target_date =
-            target_date.is_some_and(|date| content_contains_date(paragraph, date));
-        let source_record_has_target_date = target_date.is_some_and(|date| {
-            matching_sources
-                .iter()
-                .any(|(_, evidence)| content_contains_date(evidence, date))
-        });
-        if !has_current_url || !has_target_date || !source_record_has_target_date {
-            violations.push(
-                "每个确定性原因段落都必须在同一段内给出目标日期和本轮工具实际返回的原始 URL，且该 URL 的本轮结果记录本身也须覆盖目标日期；否则降级为“原因本轮未完全核验”"
-                    .to_string(),
-            );
-        }
-    }
+    // The per-paragraph "cause must carry a same-turn URL and the target
+    // date" rule was a content gate, not a fact check: in one production week
+    // it turned 11 of 134 real answers into the gap stub, three of them after
+    // the user asked again. Sourcing discipline stays in the prompt; what is
+    // still enforced here is objective — dates, weekdays, quote figures and
+    // the scope the user actually asked about.
 
     violations.sort();
     violations.dedup();
@@ -5062,6 +5300,25 @@ fn bounded_market_move_draft(content: &str) -> String {
         .chars()
         .take(MAX_MARKET_MOVE_DRAFT_FEEDBACK_CHARS)
         .collect()
+}
+
+/// The mechanical round repairs the named facts, not the answer's depth. An
+/// earlier version also capped the body at ~350 characters, capped causes at
+/// two, and banned scenarios and recommendations, so one wrong percentage
+/// permanently flattened every move answer; do not restore any of those.
+/// A bounded, char-safe excerpt of the offending text, so a mechanical
+/// violation can point at the sentence it is about. The correction round is
+/// asked to repair a specific span; naming only the rule made the model guess
+/// which of a multi-thousand-character draft to touch, and it guessed wrong
+/// three rounds running on the same answer.
+fn violation_excerpt(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    let taken: String = trimmed.chars().take(limit).collect();
+    if trimmed.chars().count() > limit {
+        format!("{taken}…")
+    } else {
+        taken
+    }
 }
 
 fn market_move_final_correction_prompt_with_sources(
@@ -5086,10 +5343,79 @@ fn market_move_final_correction_prompt_with_sources(
         eligible_source_urls.join("、")
     };
     format!(
-        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据已有真实工具结果重写一份简短终稿，不要向用户提及本检查。逐项修正：{}。机械目标日期：{target}。当前工具结果中记录本身覆盖该日期的可用原始 URL 仅限：{sources}。正文控制在首行后约 350 个汉字：先列已核验 quote 的对象、涨跌幅和 provider 时间，明确宽基/风格/个股范围；再只用上述可用 URL 写 1—2 条同日确定性因素，每条都在同一段写出目标绝对日期和 URL。不得写其它日期的原因、无来源数字、收盘断言、Bull/Bear/Base Case、点位预测或交易建议。若可用 URL 为“无”或不足以支持原因，就保留行情范围并明确写“原因本轮未完全核验”。修订稿仍须从精确数据时间首行开始。\n<unpublished_draft>\n{}\n</unpublished_draft>",
+        "【内部终稿机械一致性纠正】上一版终稿尚未发布正文，只保留了服务端精确首行。请由同一 Agent 根据本轮已有真实工具结果，对本条消息末尾附上的那份原稿做定点修正，整篇输出完整终稿，不要只回复改动处或修改说明，也不要向用户提及本检查。逐项修正：{}。机械目标日期：{target}。当前工具结果中记录本身覆盖该日期的可用原始 URL 仅限：{sources}。除被点名的这几处及依赖它们的句子外，原稿其余部分保留原意与篇幅，不因这次修正而删减或压缩。原稿若还没走完 `market_analysis`「归因之后的三段」（事件换算成数字、长期公式动没动、落到条件化应对），这一轮按该 skill 的口径补上；全篇数值一律取自本轮工具结果或由其推导，推导值在同句交代输入项或算式，第三段照旧按 `market_analysis` 第 10 条处理买卖点。这三段属于推断，按该 skill 的「事实/推断分离」与已核验事实分段写；确定性归因措辞只出现在同段内已给出目标绝对日期和上述可用 URL 的那几段里，不写其它日期的原因。百分比命名与区间涨跌幅的写法按 `market_analysis` 那条。若可用 URL 为“无”或不足以支持原因，只把原因那一段降级为“原因本轮未完全核验”，已核验行情与上述三段照常保留。修订稿仍须从同一条精确数据时间首行开始；草稿若在句中断开，说明后面被截去，按同一结构写完整，不要停在断开处。\n<unpublished_draft>\n{}\n</unpublished_draft>",
         violations.join("；"),
         bounded_market_move_draft(draft)
     )
+}
+
+/// True when the text between a ticker and a percentage names a metric other
+/// than the security's price change, so the percentage must not be reconciled
+/// against `hone_change_basis.pct`.
+fn percentage_names_another_metric(lead_in: &str) -> bool {
+    const OTHER_METRICS: &[&str] = &[
+        "毛利率",
+        "利润率",
+        "净利率",
+        "税率",
+        "费用率",
+        "占比",
+        "比例",
+        "份额",
+        "稀释",
+        "摊薄",
+        "收益率",
+        "增速",
+        "增长",
+        "复合",
+        "折价",
+        "溢价",
+        "覆盖",
+        "良率",
+        "利用率",
+        "分位",
+        "概率",
+        "中位",
+        "权重",
+        "仓位",
+        "转化",
+        "合理价",
+        "目标价",
+        "估值",
+        "隐含",
+        "空间",
+        "回报",
+        "利差",
+        "换手",
+        "股息",
+    ];
+    const OTHER_METRICS_ASCII: &[&str] = &[
+        "margin",
+        "share",
+        "dilut",
+        "yield",
+        "growth",
+        "cagr",
+        "ratio",
+        "coverage",
+        "percentile",
+        "probability",
+        "discount",
+        "premium",
+        "allocation",
+        "weight",
+        "utilization",
+        "conversion",
+        "upside",
+        "downside",
+    ];
+    if OTHER_METRICS.iter().any(|word| lead_in.contains(word)) {
+        return true;
+    }
+    let lowered = lead_in.to_ascii_lowercase();
+    OTHER_METRICS_ASCII
+        .iter()
+        .any(|word| lowered.contains(word))
 }
 
 fn format_market_move_change(change_percentage: f64) -> String {
@@ -5098,6 +5424,35 @@ fn format_market_move_change(change_percentage: f64) -> String {
     } else {
         format!("{change_percentage:.2}%")
     }
+}
+
+/// The draft stays; the server's unresolved cross-checks are disclosed under it
+/// in plain language so the reader knows which figures did not reconcile.
+fn append_market_move_disclosure(content: &str, violations: &[String]) -> String {
+    let mut items = violations
+        .iter()
+        .map(|violation| {
+            violation
+                .split("（本稿")
+                .next()
+                .unwrap_or(violation)
+                .trim()
+                .to_string()
+        })
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    items.dedup();
+    if items.is_empty() {
+        return content.to_string();
+    }
+    let mut out = content.trim_end().to_string();
+    out.push_str("\n\n**口径提示**：以下几处未能与本轮行情源机械对齐，读时请以对账数据为准：\n");
+    for item in items.iter().take(4) {
+        out.push_str("- ");
+        out.push_str(item);
+        out.push('\n');
+    }
+    out.trim_end().to_string()
 }
 
 fn deterministic_market_move_gap_response(
@@ -5201,11 +5556,21 @@ fn canonical_prefix_delta(
     {
         return Err(());
     }
-    let target_bytes = visible_candidate.len().min(expected_prefix.len());
+    let mut target_bytes = visible_candidate.len().min(expected_prefix.len());
+    // Once the candidate moves past the expected header line, forward its
+    // terminating newline as well: that single byte is what lets the stream
+    // observer validate the completed canonical header and commit it while
+    // the retry-unstable body stays deferred. Without it the header could
+    // only ever commit through a service-side pre-commit.
+    if visible_candidate.len() > expected_prefix.len()
+        && visible_candidate.as_bytes()[expected_prefix.len()] == b'\n'
+    {
+        target_bytes = expected_prefix.len() + 1;
+    }
     if target_bytes < forwarded_bytes {
         return Err(());
     }
-    Ok(expected_prefix[forwarded_bytes..target_bytes].to_string())
+    Ok(visible_candidate[forwarded_bytes..target_bytes].to_string())
 }
 
 fn exact_final_answer_prefix(user_input: &str) -> Option<String> {
@@ -5273,7 +5638,7 @@ fn active_business_turn_prompt(
         )
     } else {
         format!(
-            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search / quote / profile（crypto 用 crypto_quote）缺项，并按用户原始问题补关系、财务、新闻、网页或公告证据。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。宽泛关系要由你自主拆出相关的商业/客户供应/技术合同与投资持股待证维度，并尽量并行查一手来源。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交结构化 finish_research。{}",
+            "【本轮只取证，不作答】下面仅是 Agent 已声明路线的结构调用状态，不证明用户点名实体已经完整、工具调用成功或问题所需业务证据充分：\n{}\n重新阅读完整用户原话。本轮必须只返回一个或多个真实业务工具调用，禁止输出数据时间、摘要、解释、草稿或最终正文。先补齐上面逐路线列出的 search；标准 symbol 已确认后优先调用 snapshot 获取 quote、profile、报价时间、服务端涨跌口径和可得盘后字段，snapshot 不适用时再组合 quote/profile，扩展时段问题补 extended_hours。完成或实际尝试结构化行情后，再按用户原始问题补关系、财务、新闻、网页或公告证据；这是工具选择优先级，不是缺行情即拒答的门禁。每个 search 都重新填写本次调用自己的 entity_route 与 identity_match；关系问题的 Web 结果只是摘要证据，不能靠模型记忆补故事。宽泛关系要由你自主拆出相关的商业/客户供应/技术合同与投资持股待证维度，并尽量并行查一手来源。完成这些调用并读取结果后，再由下一轮决定继续取证还是提交结构化 finish_research。{}",
             route_guidance, finish_feedback,
         )
     }
@@ -5304,11 +5669,11 @@ fn agent_owned_business_turn_prompt(
         );
     }
     let route_guidance = format!(
-        "{route_guidance}\n【有界筛选约束】本轮最多接纳 {MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES} 条实体路线，优先用户明确点名标的，筛选结果通常最多保留 {MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES} 条新候选；达到上限后只完成已接纳路线，不再扩展公司清单。已有 Web 结果能命名候选时，当前批次直接为候选执行 identity search，不要重复泛搜。后续 snapshot / quote / profile 的 entity_route 必须逐字复制上方 guidance 中的原键，不得翻译、缩写或重命名；支持 snapshot 时优先一次完成行情与资产路由。同一工具与相同参数已有成功结果时不得重复调用。"
+        "{route_guidance}\n【有界筛选约束】本轮最多接纳 {MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES} 条实体路线，优先用户明确点名标的，筛选结果通常最多保留 {MAX_AGENT_OWNED_SCREENING_CANDIDATE_ROUTES} 条新候选；达到上限后只完成已接纳路线，不再扩展公司清单。已有 Web 结果能命名候选时，当前批次直接为候选执行 identity search，不要重复泛搜。后续 snapshot / quote / profile 的 entity_route 必须逐字复制上方 guidance 中的原键，不得翻译、缩写或重命名；支持 snapshot 时优先一次完成 quote、profile、报价时间、服务端涨跌口径和可得盘后字段，扩展时段问题另补 extended_hours。结构化行情的工具选择优先级高于 Web 搜索，但这不是完成门禁；provider 无覆盖或调用失败时不反复补取，继续使用当前证据和开放检索。同一工具与相同参数已有成功结果时不得重复调用。"
     );
     if !evidence_floor_satisfied {
         return format!(
-            "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。把互不依赖的候选发现放在同一批：为尚缺身份候选的每条路线分别调用 search，同时按用户原始公司名与问题主题并行调用可用的 Web/news/filing/industry 检索，优先发现一手来源。每个 search 都携带自己的 entity_route 与 identity_match；用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。quote、profile/snapshot（crypto 用 crypto_quote）等依赖标准 symbol 的调用必须等待对应 search 结果返回；当前上下文已有该路线标准 symbol 时才可并行执行，禁止猜测、补全或凭记忆构造代码。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
+            "【本轮只取证，不作答】下面只是同一 Agent 当前建立的实体路线与结构调用状态，不证明工具结果成功或问题所需证据充分：\n{}\n重新阅读完整用户原话。本轮只返回一个或多个真实业务工具调用，不输出数据时间、摘要、解释、草稿或最终正文。先为尚缺身份候选的每条路线分别调用 search；每个 search 都携带自己的 entity_route 与 identity_match，用户书写的 ticker 不要求大写，小写或混合大小写代码应先规范成标准代码并走 exact_symbol。标准 symbol 已确认后优先调用 snapshot 获取完整行情与资产路由，snapshot 不适用时再组合 quote/profile（crypto 用 crypto_quote），扩展时段问题补 extended_hours；之后再按用户原始公司名与问题主题调用 Web/news/filing/industry 检索一手来源。互不依赖且确有时效需要时，行情与 Web 可同批，但应把行情调用列在 Web 之前。quote、profile/snapshot 等依赖标准 symbol 的调用必须等待对应 search 结果返回；当前上下文已有该路线标准 symbol 时才可执行，禁止猜测、补全或凭记忆构造代码。行情优先只是工具选择信号，不是终稿门禁；provider 无覆盖或调用失败时继续搜索和回答，不反复补取。关系题不能把 search/profile 当关系证据，应按完整语义核查商业/客户供应/技术合同与投资持股等相关维度。真实工具结果进入当前上下文后，由下一轮同一 Agent 继续取证或直接自然作答。",
             route_guidance,
         );
     }
@@ -5741,15 +6106,16 @@ impl Agent for FunctionCallingAgent {
             .collect::<BTreeSet<_>>();
         let mut tool_calls_made: Vec<ToolCallMade> = Vec::new();
         let mut tool_call_counts: HashMap<String, u32> = HashMap::new();
+        let finance_budget = self.finance_research_budget;
         let finance_max_tool_calls = Some(
             self.max_tool_calls
-                .unwrap_or(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS)
-                .min(MAX_AGENT_OWNED_FINANCE_TOOL_CALLS),
+                .unwrap_or(finance_budget.tool_calls)
+                .min(finance_budget.tool_calls),
         );
         let mut finance_tool_call_limits = self.tool_call_limits.clone();
         for (name, cap) in [
-            ("data_fetch", MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS),
-            ("web_search", MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS),
+            ("data_fetch", finance_budget.data_fetch_calls),
+            ("web_search", finance_budget.web_search_calls),
         ] {
             finance_tool_call_limits
                 .entry(name.to_string())
@@ -5758,7 +6124,11 @@ impl Agent for FunctionCallingAgent {
         }
         let mut total_tool_calls = 0u32;
         let mut iterations: u32 = 0;
-        let mut investment_research_started = false;
+        // A market-move request already carries a service-owned date anchor.
+        // Enter the existing finance loop from the first model round so a
+        // Web-only answer cannot bypass DataFetch identity/quote evidence.
+        let mut investment_research_started =
+            market_move_starts_investment_research(user_input, self.agent_owned_finance_loop);
         let mut research_evidence = ResearchEvidenceLedger::with_identity_route_limit(
             self.agent_owned_finance_loop
                 .then_some(MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUTES),
@@ -5778,11 +6148,16 @@ impl Agent for FunctionCallingAgent {
         let mut active_business_failures = 0u32;
         let mut pending_market_move_final_correction: Option<String> = None;
         let mut market_move_final_corrections = 0u32;
+        let mut pending_gap_closure_feedback: Option<String> = None;
+        let mut gap_closure_rounds = 0u32;
         let mut pending_listing_final_correction: Option<String> = None;
+        let mut pending_language_final_correction: Option<String> = None;
         let mut research_evidence_retries = 0u32;
         let mut research_evidence_retry_pending = false;
         let mut listing_final_corrections = 0u32;
+        let mut language_final_corrections = 0u32;
         let mut blocked_tool_finalization: Option<String> = None;
+        let mut read_only_trace_finalization: Option<String> = None;
         let mut context_overflow_finalization = false;
         let mut persistent_mutation_finalization = false;
         #[cfg(test)]
@@ -5827,7 +6202,7 @@ impl Agent for FunctionCallingAgent {
                     .len()
                     >= 2;
             let finance_budget_final_due = bounded_finance_research_active
-                && (finance_tool_rounds >= MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS
+                && (finance_tool_rounds >= finance_budget.tool_rounds
                     || tool_budget_exhausted
                     || market_move_bounded_final_ready
                     || blocked_tool_finalization.is_some());
@@ -5867,9 +6242,15 @@ impl Agent for FunctionCallingAgent {
 
             if iterations >= self.max_iterations
                 && blocked_tool_finalization.is_none()
+                && read_only_trace_finalization.is_none()
                 && !force_context_overflow_final
                 && !persistent_mutation_finalization
             {
+                if trace_has_only_known_read_only_calls(&tool_calls_made) {
+                    read_only_trace_finalization =
+                        Some(format!("max_iterations_exceeded:{}", self.max_iterations));
+                    continue;
+                }
                 // The iteration bound is a normal failed run, never implicit
                 // finish authority. A bounded finance final receives its own
                 // tools-disabled iteration before reaching this guard.
@@ -5906,6 +6287,7 @@ impl Agent for FunctionCallingAgent {
                 round_tools.push(finish_research_tool_schema(&research_sources));
             }
             if force_finance_final
+                || read_only_trace_finalization.is_some()
                 || force_context_overflow_final
                 || force_persistent_mutation_final
             {
@@ -5941,6 +6323,8 @@ impl Agent for FunctionCallingAgent {
                 PERSISTENT_MUTATION_FINALIZATION_INSTRUCTION
             } else if force_finance_final {
                 AGENT_OWNED_FINANCE_FORCED_FINAL_SYSTEM_INSTRUCTION
+            } else if read_only_trace_finalization.is_some() {
+                READ_ONLY_TRACE_FINALIZATION_INSTRUCTION
             } else if evidence_rescue_due {
                 AGENT_OWNED_OPEN_RESEARCH_RESCUE_INSTRUCTION
             } else if active_business_round {
@@ -5976,7 +6360,10 @@ impl Agent for FunctionCallingAgent {
                     required_final_answer_prefix.as_deref(),
                     investment_research_started || self.agent_owned_finance_loop,
                 )
-            } else if active_business_round || self.agent_owned_finance_loop {
+            } else if active_business_round
+                || self.agent_owned_finance_loop
+                || read_only_trace_finalization.is_some()
+            {
                 // Keep only bounded historical user wording for pronoun and
                 // follow-up resolution. Old assistant/tool traces never enter
                 // a new research ledger, so stale prices or entities cannot be
@@ -6020,6 +6407,7 @@ impl Agent for FunctionCallingAgent {
                     )
                 };
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(active_turn_prompt),
                     reasoning_content: None,
@@ -6032,6 +6420,7 @@ impl Agent for FunctionCallingAgent {
                 && let Some(feedback) = pending_market_move_final_correction.as_deref()
             {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(feedback.to_string()),
                     reasoning_content: None,
@@ -6040,8 +6429,31 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
+            if active_business_round && let Some(feedback) = pending_gap_closure_feedback.take() {
+                messages.push(Message {
+                    images: Vec::new(),
+                    role: "user".to_string(),
+                    content: Some(feedback),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             if let Some(feedback) = pending_listing_final_correction.as_deref() {
                 messages.push(Message {
+                    images: Vec::new(),
+                    role: "user".to_string(),
+                    content: Some(feedback.to_string()),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
+            if let Some(feedback) = pending_language_final_correction.as_deref() {
+                messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(feedback.to_string()),
                     reasoning_content: None,
@@ -6053,6 +6465,7 @@ impl Agent for FunctionCallingAgent {
             if force_finance_final && let Some(blocked_call) = blocked_tool_finalization.as_deref()
             {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(format!(
                         "{BLOCKED_TOOL_FINALIZATION_INSTRUCTION}\n内部未完成步骤（不要对用户披露）：{blocked_call}"
@@ -6063,9 +6476,25 @@ impl Agent for FunctionCallingAgent {
                     name: None,
                 });
             }
+            if read_only_trace_finalization.is_some()
+                && let Some(reason) = read_only_trace_finalization.as_deref()
+            {
+                messages.push(Message {
+                    images: Vec::new(),
+                    role: "user".to_string(),
+                    content: Some(format!(
+                        "{READ_ONLY_TRACE_FINALIZATION_INSTRUCTION}\n内部收口原因（不要对用户披露）：{reason}"
+                    )),
+                    reasoning_content: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+            }
             #[cfg(test)]
             if !active_business_round && let Some(feedback) = pending_finish_feedback.as_deref() {
                 messages.push(Message {
+                    images: Vec::new(),
                     role: "user".to_string(),
                     content: Some(format!(
                         "【内部工具协议纠正】{feedback} 不要向用户提及这条内部纠正；请继续正常调用可用业务工具，或直接给出非空的自然回答。"
@@ -6160,6 +6589,63 @@ impl Agent for FunctionCallingAgent {
                                     Some(research_evidence_precondition_prompt());
                                 continue;
                             }
+                            // Gap-closure: a natural final that still self-reports
+                            // missing first-party evidence goes back into the tool
+                            // loop with a targeted checklist while round budget
+                            // remains, instead of publishing "本轮未读到" gaps the
+                            // agent never actually chased. Disabled unless the
+                            // deployment budget grants gap-closure rounds; the
+                            // market-move flow keeps its own deterministic gap
+                            // machinery.
+                            // Only before any user-visible byte is irreversible: this
+                            // draft was already streamed, and re-entering the tool loop
+                            // appends the next rounds' narration onto the same visible
+                            // body instead of replacing it. A committed canonical prefix
+                            // cannot be retracted, so a gap there stays a disclosed gap.
+                            let visible_stream_is_retractable =
+                                self.stream_observer.as_ref().is_none_or(|observer| {
+                                    observer.committed_visible_prefix().is_none()
+                                });
+                            if gap_closure_rounds < finance_budget.gap_closure_rounds
+                                && !is_market_move_final_check_enabled(user_input)
+                                && blocked_tool_finalization.is_none()
+                                && iterations < self.max_iterations
+                                && finance_tool_rounds + 1 < finance_budget.tool_rounds
+                                && visible_stream_is_retractable
+                                && finance_max_tool_calls
+                                    .is_none_or(|cap| total_tool_calls + 4 <= cap)
+                            {
+                                let gap_lines = research_gap_lines(&response.content);
+                                if !gap_lines.is_empty() {
+                                    tracing::info!(
+                                        session_id = %context.session_id,
+                                        iteration = iterations,
+                                        gap_closure_rounds,
+                                        gaps = gap_lines.len(),
+                                        finance_tool_rounds,
+                                        total_tool_calls,
+                                        "agent-owned final self-reported evidence gaps; granting a gap-closure research round"
+                                    );
+                                    if let Some(observer) = &self.stream_observer {
+                                        observer
+                                            .on_reasoning_delta(&format!(
+                                                "终稿自检：仍有 {} 项一手证据缺口，重新开放工具进行第 {} 轮针对性补证。\n",
+                                                gap_lines.len(),
+                                                gap_closure_rounds + 1
+                                            ))
+                                            .await;
+                                    }
+                                    // Retract the speculative draft so the next round
+                                    // starts from a clean visible stream rather than
+                                    // appending to a published one.
+                                    self.reset_emitted_content(true).await;
+                                    gap_closure_rounds = gap_closure_rounds.saturating_add(1);
+                                    pending_gap_closure_feedback = Some(
+                                        gap_closure_feedback_prompt(&gap_lines, &response.content),
+                                    );
+                                    continue;
+                                }
+                            }
                             let listing_violations = listing_final_violations(
                                 user_input,
                                 &response.content,
@@ -6186,8 +6672,9 @@ impl Agent for FunctionCallingAgent {
                                         ));
                                     continue;
                                 }
-                                response.content = deterministic_listing_gap_response(
+                                response.content = listing_gap_final_answer(
                                     required_final_answer_prefix.as_deref(),
+                                    &response.content,
                                     &tool_calls_made,
                                     &listing_violations,
                                 );
@@ -6213,10 +6700,6 @@ impl Agent for FunctionCallingAgent {
                                             date,
                                         )
                                     });
-                                let cause_evidence_missing = violations.iter().any(|violation| {
-                                    violation
-                                        .contains("每个确定性原因段落都必须在同一段内给出目标日期")
-                                }) && eligible_source_urls.is_empty();
                                 tracing::warn!(
                                     session_id = %context.session_id,
                                     iteration = iterations,
@@ -6224,12 +6707,10 @@ impl Agent for FunctionCallingAgent {
                                     market_move_final_corrections,
                                     target_date = ?target_date,
                                     eligible_source_count = eligible_source_urls.len(),
-                                    cause_evidence_missing,
                                     "agent-owned market-move final failed mechanical pre-publication checks"
                                 );
                                 if market_move_final_corrections < MAX_MARKET_MOVE_FINAL_CORRECTIONS
                                     && iterations < self.max_iterations
-                                    && !cause_evidence_missing
                                 {
                                     if precommitted_service_prefix.is_none()
                                         && let Some(prefix) = self
@@ -6259,14 +6740,52 @@ impl Agent for FunctionCallingAgent {
                                     continue;
                                 }
                                 if let Some(prefix) = required_final_answer_prefix.as_deref() {
-                                    response.content = deterministic_market_move_gap_response(
-                                        user_input,
-                                        &response.content,
-                                        prefix,
-                                        context,
-                                        turn_message_start,
-                                    );
+                                    // Corrections exhausted. Publishing the analysis
+                                    // with the unresolved cross-checks disclosed beats
+                                    // replacing it with the gap stub: a production
+                                    // week showed the stub answering nothing for 11
+                                    // real questions, three of them asked twice. The
+                                    // stub is kept only for an empty draft.
+                                    if response.content.trim().is_empty() {
+                                        response.content = deterministic_market_move_gap_response(
+                                            user_input,
+                                            &response.content,
+                                            prefix,
+                                            context,
+                                            turn_message_start,
+                                        );
+                                    } else {
+                                        response.content = append_market_move_disclosure(
+                                            &response.content,
+                                            &violations,
+                                        );
+                                    }
                                 }
+                            }
+                            // Language repair runs last so it rewrites the
+                            // already-corrected draft rather than racing the
+                            // factual correction rounds above.
+                            if final_language_mismatch(user_input, &response.content)
+                                && language_final_corrections < MAX_LANGUAGE_FINAL_CORRECTIONS
+                                && iterations < self.max_iterations
+                            {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    iteration = iterations,
+                                    "agent-owned final answered a Chinese question with an English body; granting one language-repair round"
+                                );
+                                if let Some(observer) = &self.stream_observer {
+                                    observer
+                                        .on_reasoning_delta(
+                                            "终稿自检：正文语言与提问语言不一致，正在整体改写为中文。\n",
+                                        )
+                                        .await;
+                                }
+                                language_final_corrections =
+                                    language_final_corrections.saturating_add(1);
+                                pending_language_final_correction =
+                                    Some(language_final_correction_prompt(&response.content));
+                                continue;
                             }
                             response
                         }
@@ -6683,8 +7202,9 @@ impl Agent for FunctionCallingAgent {
                         }
                     }
 
-                    // Once DataFetch has made this a finance-research loop, it
-                    // is read-only. Reject write-capable calls before adding a
+                    // Once the service date anchor or DataFetch has made this
+                    // a finance-research loop, it is read-only. Reject
+                    // write-capable calls before adding a
                     // tool trace, notifying observers, or entering the
                     // registry. An initial non-finance portfolio/cron request
                     // remains unaffected until the DataFetch boundary exists.
@@ -6868,10 +7388,10 @@ impl Agent for FunctionCallingAgent {
 
                     // Every nonempty Interactive turn enters the open Agent
                     // discovery path, including non-finance questions that may
-                    // use Web/file/skill tools. Activate the canonical finance
-                    // protocol only at the structural DataFetch boundary that
-                    // the investment prompt requires for every security turn;
-                    // do not infer it from a closed question vocabulary.
+                    // use Web/file/skill tools. A service-owned market-move
+                    // date anchor activates finance from the first round;
+                    // other security turns still activate only at the
+                    // structural DataFetch boundary.
                     if actionable_tool_calls.is_empty() {
                         #[cfg(test)]
                         {
@@ -7381,6 +7901,7 @@ impl Agent for FunctionCallingAgent {
                         if finance_round_is_read_only
                             && investment_research_started
                             && service_prefix_commit_eligible
+                            && self.allow_pre_final_prefix_commit
                             && precommitted_service_prefix.is_none()
                             && let (Some(prefix), Some(observer)) = (
                                 self.service_owned_initial_prefix.as_deref(),
@@ -7449,8 +7970,9 @@ impl Agent for FunctionCallingAgent {
                     ));
                     continue;
                 }
-                let content = deterministic_listing_gap_response(
+                let content = listing_gap_final_answer(
                     required_final_answer_prefix.as_deref(),
+                    &result.content,
                     &tool_calls_made,
                     &listing_violations,
                 );
@@ -7487,6 +8009,47 @@ impl Agent for FunctionCallingAgent {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn final_language_mismatch_flags_english_body_for_chinese_question() {
+        let question = "mrvl昨晚财报后为什么跌";
+        // The audited production shape: injected Chinese first line, then a
+        // long English report with a couple of Chinese marker words.
+        let english_body = format!(
+            "数据时间：运行时时区 2026-08-28 09:02；行情口径：本轮仅使用可核验资料\n\n### Conclusion\n{}\n*推断：* priced-for-perfection expectations.",
+            "Marvell delivered a fundamentally robust quarter with record revenue and accelerating data center momentum. ".repeat(12)
+        );
+        assert!(super::final_language_mismatch(question, &english_body));
+
+        // A normal Chinese finance answer stays untouched even when dense
+        // with tickers, numbers, and table markup.
+        let chinese_body = format!(
+            "数据时间：运行时时区 2026-08-28 09:02；行情口径：最新可得\n\n### 结论\n{}\n| MRVL | $222.62 | -7.80% |",
+            "美满电子本季度数据中心收入同比增长46%，指引超一致预期，盘后下跌主要来自高估值下的获利了结与情绪回落。".repeat(10)
+        );
+        assert!(!super::final_language_mismatch(question, &chinese_body));
+
+        // English question keeps English answers.
+        assert!(!super::final_language_mismatch(
+            "why did mrvl drop after earnings",
+            &english_body
+        ));
+
+        // Short English fragments never trigger a rewrite.
+        assert!(!super::final_language_mismatch(
+            question,
+            "Double beat; guidance raised."
+        ));
+    }
+
+    #[test]
+    fn language_final_correction_prompt_carries_draft_and_rules() {
+        let prompt = super::language_final_correction_prompt("### Conclusion\nEnglish body");
+        assert!(prompt.contains("内部终稿语言纠正"));
+        assert!(prompt.contains("<unpublished_draft>"));
+        assert!(prompt.contains("English body"));
+        assert!(prompt.contains("精确数据时间首行"));
+    }
     use super::*;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
@@ -7883,6 +8446,18 @@ mod tests {
                     chat_with_tools_calls: 0,
                     next_chat_response: Some(content.to_string()),
                     next_tool_responses: VecDeque::new(),
+                    seen_tool_messages: Vec::new(),
+                })),
+            }
+        }
+
+        fn with_chat_and_tool_responses(chat_response: &str, responses: Vec<ChatResponse>) -> Self {
+            Self {
+                state: Arc::new(Mutex::new(MockState {
+                    chat_calls: 0,
+                    chat_with_tools_calls: 0,
+                    next_chat_response: Some(chat_response.to_string()),
+                    next_tool_responses: responses.into(),
                     seen_tool_messages: Vec::new(),
                 })),
             }
@@ -8361,6 +8936,10 @@ mod tests {
                     "symbol": symbol,
                     "change": change,
                     "changesPercentage": change_percentage,
+                    "hone_change_basis": {
+                        "pct": change_percentage,
+                        "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                    },
                     "exchange": exchange,
                     "hone_quote_time": {
                         "beijing": "2026-07-25 04:00:00 +08:00",
@@ -8371,16 +8950,20 @@ mod tests {
         }
     }
 
-    struct SnippetOnlyMarketMoveWebTool;
+    /// Snippet scope is no longer what disqualifies a cause source — Tavily
+    /// marks every successful search snippet-scoped — so this fixture now
+    /// models the condition that still does: a result whose own record reports
+    /// some other day than the target date.
+    struct UndatedMarketMoveWebTool;
 
     #[async_trait]
-    impl Tool for SnippetOnlyMarketMoveWebTool {
+    impl Tool for UndatedMarketMoveWebTool {
         fn name(&self) -> &str {
             "web_search"
         }
 
         fn description(&self) -> &str {
-            "snippet-only market news"
+            "market news dated to another day"
         }
 
         fn parameters(&self) -> Vec<ToolParameter> {
@@ -8396,8 +8979,9 @@ mod tests {
                     }
                 },
                 "results": [{
-                    "title": "Why Is Stock Market Down Today, July 24, 2026?",
-                    "url": "https://example.test/july-24-snippet",
+                    "title": "Why Is Stock Market Down Today?",
+                    "url": "https://example.test/market-down-snippet",
+                    "published_date": "Wed, 22 Jul 2026 11:05:00 GMT",
                     "content": "renewed geopolitical tensions and a spike in oil"
                 }]
             }))
@@ -10122,15 +10706,17 @@ mod tests {
         );
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
-                .contains("Web/news/filing/industry 候选来源检索")
+                .contains("结构化行情的工具选择优先级高于开放 Web 搜索")
         );
         assert!(
             OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION
                 .contains("quote/profile/snapshot 等依赖标准 ticker 的调用必须等待 search")
         );
+        assert!(OPEN_AGENT_ENTITY_DISCOVERY_SYSTEM_INSTRUCTION.contains("不是完成门禁"));
         assert!(pending.contains("小写或混合大小写代码应先规范成标准代码并走 exact_symbol"));
-        assert!(pending.contains("把互不依赖的候选发现放在同一批"));
+        assert!(pending.contains("优先调用 snapshot 获取完整行情与资产路由"));
         assert!(pending.contains("Web/news/filing/industry 检索"));
+        assert!(pending.contains("行情优先只是工具选择信号，不是终稿门禁"));
         assert!(pending.contains("禁止猜测、补全或凭记忆构造代码"));
         assert!(pending.contains("由下一轮同一 Agent 继续取证或直接自然作答"));
         assert!(!pending.contains(prefix));
@@ -10142,6 +10728,8 @@ mod tests {
         assert!(eligible.contains("`hone_security_listing_evidence.status=active_listing`"));
         assert!(eligible.contains("不得再回答该证券未上市、已退市或应替换成旧母公司"));
         assert!(eligible.contains("高度依赖、锁定和多重绑定"));
+        assert!(eligible.contains("EBIT、EBITA、EBITDA 与营业利润不得互相代替"));
+        assert!(eligible.contains("不是逐数字双来源、缺项拒答或自动改写门禁"));
         for final_prompt in [&eligible, &forced] {
             assert!(final_prompt.contains("先锁定用户所指对象或市场范围与目标时段"));
             assert!(final_prompt.contains("不得因为 latest quote"));
@@ -12200,8 +12788,8 @@ mod tests {
                 .lock()
                 .expect("tool choice modes")
                 .as_slice(),
-            [ToolChoiceMode::Auto, ToolChoiceMode::Auto],
-            "two representative broad-market groups must open natural-final mode without identity-search deadlock"
+            [ToolChoiceMode::Required, ToolChoiceMode::Auto],
+            "a market-move turn must require initial research, then two representative broad-market groups open natural-final mode without identity-search deadlock"
         );
         let records = audit.records.lock().expect("audit records");
         let direct_final = records.last().expect("direct final audit");
@@ -12254,7 +12842,7 @@ mod tests {
         let audit = Arc::new(RecordingAuditSink::default());
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(MarketMoveCanaryFinanceTool));
-        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        registry.register(Box::new(UndatedMarketMoveWebTool));
         let agent = FunctionCallingAgent::new(
             Arc::new(llm),
             Arc::new(registry),
@@ -14073,6 +14661,151 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gap_closure_never_reopens_a_turn_whose_visible_prefix_is_committed() {
+        // The draft has already crossed an irreversible publication boundary.
+        // Re-entering the tool loop there appends the next rounds' narration
+        // onto the published body instead of replacing it — the regression that
+        // published 23k chars of inter-round narration as the answer.
+        let prefix =
+            "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_committed".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NBIS","entity_route":"nbis","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(gap_draft.clone())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver {
+            prefix: prefix.clone(),
+            accumulated: Mutex::new(prefix.clone()),
+            events: Mutex::new(Vec::new()),
+        });
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            10,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_finance_research_budget(FinanceResearchBudget {
+            gap_closure_rounds: 2,
+            ..FinanceResearchBudget::default()
+        })
+        .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()))
+        .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("gap-closure-committed".to_string());
+
+        let response = agent
+            .run("某数据中心项目最近有什么进展", &mut context)
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        // The gap draft is published as-is; its disclosed gap stays disclosed.
+        assert_eq!(response.content, gap_draft);
+        let all = seen_messages.lock().expect("seen messages");
+        assert!(
+            !all.iter().flatten().any(|message| message
+                .content
+                .as_deref()
+                .is_some_and(|c| c.contains("内部缺口闭环轮"))),
+            "no gap-closure round may be granted once the prefix is committed"
+        );
+    }
+
+    #[tokio::test]
+    async fn gap_closure_budget_sends_incomplete_finals_back_to_the_tool_loop() {
+        let prefix =
+            "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料".to_string();
+        let gap_draft = format!("{prefix}\n\n项目按期推进。本轮未读到市政停工令原文。");
+        let closed_final = format!("{prefix}\n\n已取得市政停工令原文，项目于 8 月复工。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_gap".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"NBIS","entity_route":"nbis","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_gap_1".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"vineland stop work order"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(gap_draft.clone())],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_web_gap_2".to_string()),
+                name: Some("web_search".to_string()),
+                arguments: r#"{"query":"site:vinelandcity.org stop work order data center"}"#
+                    .to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(closed_final.clone())],
+        ]);
+        let seen_messages = llm.seen_messages.clone();
+        let audit = Arc::new(RecordingAuditSink::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(GroundedFinanceEvidenceTool));
+        registry.register(Box::new(GroundedRelationshipEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm),
+            Arc::new(registry),
+            String::new(),
+            10,
+            Some(audit.clone()),
+        )
+        .with_agent_owned_finance_loop(true)
+        .with_finance_research_budget(FinanceResearchBudget {
+            gap_closure_rounds: 1,
+            ..FinanceResearchBudget::default()
+        })
+        .with_service_owned_initial_prefix(Some(prefix.clone()), Some(prefix.clone()));
+        let mut context = AgentContext::new("gap-closure-budget".to_string());
+
+        let response = agent
+            .run("某数据中心项目最近有什么进展", &mut context)
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        // The gap draft is not published; the closed final wins.
+        assert_eq!(response.content, closed_final);
+        let all_messages = seen_messages.lock().expect("seen messages");
+        let gap_prompts: Vec<&Message> = all_messages
+            .iter()
+            .flatten()
+            .filter(|message| {
+                message
+                    .content
+                    .as_deref()
+                    .is_some_and(|content| content.contains("内部缺口闭环轮"))
+            })
+            .collect();
+        assert_eq!(
+            gap_prompts.len(),
+            1,
+            "exactly one gap-closure feedback round"
+        );
+        assert!(
+            gap_prompts[0]
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("本轮未读到市政停工令原文")),
+            "gap checklist carries the self-reported missing evidence line"
+        );
+        // With the default budget (gap closure disabled) the same draft would
+        // have been accepted; guard the default so tests keep meaning.
+        assert_eq!(FinanceResearchBudget::default().gap_closure_rounds, 0);
+    }
+
+    #[tokio::test]
     async fn precommitted_prefix_forces_empty_tools_final_after_the_web_only_research_budget() {
         let prefix = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
         let answer = format!("{prefix}\n\n连续三轮网页取证后的同 Agent 自然终稿。");
@@ -14668,6 +15401,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-service-prefix".to_string());
 
@@ -14790,6 +15524,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-prefix-unknown-after".to_string());
 
@@ -14849,6 +15584,7 @@ mod tests {
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 1, None)
                 .with_agent_owned_finance_loop(true)
                 .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_pre_final_prefix_commit(true)
                 .with_stream_observer(Some(stream_observer.clone()));
         let mut context = AgentContext::new("deferred-prefix-mixed-initial".to_string());
 
@@ -14859,13 +15595,15 @@ mod tests {
         assert_eq!(response.iterations, 2);
         assert!(response.tool_calls_made.is_empty());
         assert_eq!(unknown_calls.load(Ordering::SeqCst), 0);
+        // The header line forwards together with its terminating newline so
+        // the downstream observer can validate and commit the completed line.
         assert_eq!(
             stream_observer
                 .events
                 .lock()
                 .expect("stream events")
                 .as_slice(),
-            [format!("final:{prefix}")]
+            [format!("final:{prefix}\n")]
         );
         assert_eq!(
             stream_observer.committed_visible_prefix(),
@@ -15166,6 +15904,17 @@ mod tests {
         let unsupported = listing_final_violations(runtime_input, denied, &[]);
         assert_eq!(unsupported.len(), 1);
         assert!(unsupported[0].contains("没有 inactive_listing"));
+        // Absence of evidence is not a contradiction this turn can settle, and
+        // the corrective content is only a disclaimer. Append it; do not
+        // publish it in place of whatever the Agent did manage to research.
+        let kept = listing_gap_final_answer(
+            Some("数据时间：北京时间 2026-08-03 12:52；行情口径："),
+            denied,
+            &[],
+            &unsupported,
+        );
+        assert!(kept.starts_with(denied), "{kept}");
+        assert!(kept.contains("补充说明：SNDK"), "{kept}");
 
         let active = vec![ToolCallMade {
             name: "data_fetch".to_string(),
@@ -15181,8 +15930,9 @@ mod tests {
         let contradicted = listing_final_violations(runtime_input, denied, &active);
         assert_eq!(contradicted.len(), 1);
         assert!(contradicted[0].contains("已确认 active_listing"));
-        let deterministic = deterministic_listing_gap_response(
+        let deterministic = listing_gap_final_answer(
             Some("数据时间：北京时间 2026-08-03 12:52；行情口径："),
+            denied,
             &active,
             &contradicted,
         );
@@ -15346,6 +16096,196 @@ mod tests {
         assert!(correction.contains("active_listing 标的：SNDK"));
     }
 
+    /// The audited `rklb的估值` turn published its `数据时间：…` line twice. The
+    /// first direct final had already committed the canonical header through
+    /// the unique Web sink; the listing correction round then re-entered the
+    /// stream with that prefix still marked uncommitted, forwarded the same
+    /// bytes a second time, and the reader got the first line, the first line
+    /// again, and only then the body. Only the market-move correction branch
+    /// recorded the commit before continuing, so every other retry path
+    /// carried this.
+    #[tokio::test]
+    async fn a_listing_correction_round_never_republishes_the_committed_first_line() {
+        let prefix = "数据时间：北京时间 2026-08-03 13:19；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露".to_string();
+        let denied = format!("{prefix}\n\nSNDK 已于 2016 年退市，无法提供财报前瞻，请改看 WDC。");
+        let still_denied = format!("{prefix}\n\nSNDK 已退市，本轮不做前瞻。");
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_sndk".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"SNDK","entity_route":"sndk","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_outlook_sndk".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"earnings_outlook","ticker":"SNDK","entity_route":"sndk"}"#.to_string(),
+            }],
+            vec![ChatStreamEvent::ContentDelta(denied)],
+            vec![ChatStreamEvent::ContentDelta(still_denied)],
+        ]);
+        let data_calls = Arc::new(AtomicUsize::new(0));
+        let stream_observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.clone()));
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(SndkFinanceEvidenceTool {
+            calls: data_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 5, None)
+                .with_agent_owned_finance_loop(true)
+                .with_service_owned_initial_prefix(Some(prefix.clone()), None)
+                .with_stream_observer(Some(stream_observer.clone()));
+        let mut context = AgentContext::new("listing-gap-first-line".to_string());
+
+        let response = agent
+            .run(
+                "【本轮用户输入】\nsndk财报前瞻\n\n【本轮最终回答契约：由主 Agent 一次完成】",
+                &mut context,
+            )
+            .await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(
+            *stream_observer
+                .accumulated
+                .lock()
+                .expect("accumulated stream content"),
+            format!("{prefix}\n"),
+            "the canonical header crosses the Web sink exactly once per turn"
+        );
+        assert!(
+            response.content.starts_with(&prefix),
+            "{}",
+            response.content
+        );
+        assert_eq!(
+            response.content.matches(prefix.as_str()).count(),
+            1,
+            "{}",
+            response.content
+        );
+        assert!(
+            response.content.contains("当前上市交易"),
+            "{}",
+            response.content
+        );
+    }
+
+    /// The audited `rklb的估值` turn was corrected against symbol `X`, which is
+    /// not RKLB and is not any entity the turn resolved: the turn builder puts
+    /// the matched skill hints inside the same 【本轮用户输入】 section as the
+    /// user's words, so the `valuation-audit` hint's placeholders parse as
+    /// one-letter tickers, and a one-letter label matches as a substring of
+    /// every uppercased line containing that letter — here `SpaceX 未上市`, a
+    /// true statement about a private company. The violation also named no
+    /// span, so the one correction round had nothing to repair.
+    #[test]
+    fn listing_violations_drop_one_letter_placeholders_and_name_the_matched_span() {
+        let runtime_input = concat!(
+            "【本轮用户输入】\n【本轮相关技能提示】\n",
+            "- valuation-audit: 可复算的估值与买点方法 - 也适用于开放式单票研究",
+            "（分析下X、X怎么样、X如何）与偏好比较（X和Y更看好哪个）\n\n",
+            "rklb的估值\n\n【本轮最终回答契约：由主 Agent 一次完成】"
+        );
+        // The placeholders really do parse as candidate codes; the listing
+        // check is what must stop treating them as securities.
+        let parsed = explicit_security_symbols(runtime_input);
+        assert!(parsed.contains("X"), "{parsed:?}");
+        assert!(parsed.contains("RKLB"), "{parsed:?}");
+
+        let spacex_draft = concat!(
+            "数据时间：北京时间 2026-08-30 01:37；行情口径：可核验\n\n",
+            "对标的 SpaceX 目前仍未上市，只能用一级市场融资估值做参考。\n",
+            "RKLB 当前在 Nasdaq 交易，下面按现价给出区间。"
+        );
+        assert!(
+            listing_final_violations(runtime_input, spacex_draft, &[]).is_empty(),
+            "a one-letter placeholder no current-turn evidence resolved is not a security"
+        );
+
+        let denied = concat!(
+            "数据时间：北京时间 2026-08-30 01:37；行情口径：可核验\n\n",
+            "RKLB 早已退市，只能参考历史资料。"
+        );
+        let violations = listing_final_violations(runtime_input, denied, &[]);
+        assert_eq!(violations.len(), 1, "{violations:?}");
+        let violation = &violations[0];
+        assert!(violation.starts_with("RKLB: "), "{violation}");
+        assert!(
+            violation.contains("从本轮请求文本解析出的候选代码"),
+            "the correction round has to know where the symbol came from: {violation}"
+        );
+        assert!(
+            violation.contains("RKLB 早已退市"),
+            "the correction round has to know which sentence tripped it: {violation}"
+        );
+    }
+
+    /// Each mechanical violation has to name the span it is about. Without that
+    /// the correction round is told a rule and left to guess which of a
+    /// multi-thousand-character draft breaks it — on the production answer for
+    /// "aaoi为什么突然大跌" the same three violations came back unchanged for all
+    /// three correction rounds before the loop gave up and shipped the template.
+    #[test]
+    fn violation_excerpt_is_bounded_and_char_safe() {
+        assert_eq!(violation_excerpt("  abc  ", 10), "abc");
+        assert_eq!(violation_excerpt("收盘价为 $106.23 元", 6), "收盘价为 $…");
+        // A byte slice at 3 would split the first character.
+        assert_eq!(violation_excerpt("每股收益", 3), "每股收…");
+        assert_eq!(violation_excerpt("", 5), "");
+    }
+
+    #[test]
+    fn market_move_final_check_needs_a_cause_cue_in_the_users_own_words() {
+        let anchor = "\n\n【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到今天；候选日期是 2026-09-04 周五。\n\n\
+            【本轮前置检索结果：上下文，不是结论】\n原因：候选新闻说市场为什么大跌。";
+        for (input, expected) in [
+            (
+                "非农就业数据是不是 不好。我看市场跳水了 加息预期是不是又大了",
+                false,
+            ),
+            (
+                "请问美股crdo昨天暴跌到165美元,这个股价现在值得买入吗",
+                false,
+            ),
+            (
+                "7月底大涨前割了40%仓位，也就是sndk1000左右的价格时，现在迟迟找不到机会入手",
+                false,
+            ),
+            ("为什么今天美股光通信大跌，lite,cohr和glw", true),
+            ("be盘中大涨和盘后涨 为什么 这波行情能到330吗", true),
+            ("aaoi为什么突然大跌", true),
+        ] {
+            let runtime_input =
+                format!("【当前时间】\n2026-09-05 10:00:00\n\n【本轮用户输入】\n{input}{anchor}");
+            assert_eq!(
+                is_market_move_final_check_enabled(&runtime_input),
+                expected,
+                "{input}"
+            );
+            let bare = format!("{input}{anchor}");
+            assert_eq!(
+                is_market_move_final_check_enabled(&bare),
+                expected,
+                "bare: {input}"
+            );
+            // Production appends the canonical-facts and routing-gate sections
+            // between the user's words and the anchor; their wording ("归因门禁",
+            // "原因") must not count as the user asking for a cause.
+            let with_gates = format!(
+                "{input}\n\n【本轮服务端规范事实（最高优先级）】\n现价与涨跌幅以此为准。\n\n\
+                 【本轮代码级市场行情与归因门禁，必须完整执行】\n原因事实必须由本轮来源支持。{anchor}"
+            );
+            assert_eq!(
+                is_market_move_final_check_enabled(&with_gates),
+                expected,
+                "with gates: {input}"
+            );
+        }
+    }
+
     #[test]
     fn market_move_final_check_rejects_wrong_weekday_and_unlocalized_cause() {
         let runtime_input = "美股周五为什么暴跌\n\n\
@@ -15378,9 +16318,10 @@ mod tests {
                 .any(|violation| violation.contains("星期应为周五"))
         );
         assert!(
-            violations
+            !violations
                 .iter()
-                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL"))
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "cause sourcing is prompt guidance, not a publication gate: {violations:?}"
         );
 
         let valid = "数据时间：北京时间 2026-07-26 16:00；行情口径：可核验\n\n\
@@ -15409,6 +16350,131 @@ mod tests {
     }
 
     #[test]
+    fn market_move_date_anchor_starts_existing_investment_research_flow() {
+        let runtime_input = "mrvl下跌原因是啥呢\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            目标日期候选是 2026-08-21 周五。";
+
+        assert!(market_move_starts_investment_research(runtime_input, true));
+        assert!(!market_move_starts_investment_research(
+            runtime_input,
+            false
+        ));
+        assert!(!market_move_starts_investment_research(
+            "mrvl最近怎么看",
+            true
+        ));
+    }
+
+    #[test]
+    fn close_price_claim_does_not_fire_on_revenue_or_change_wording() {
+        // `收` used to be its own alternative (hitting 营收 / 回收 / 吸收) and the
+        // bare words 收盘 / 收市 fired anywhere, including the comparison the
+        // change-basis rules themselves require.
+        let close_claim = |content: &str| {
+            regex::Regex::new(
+                r"(?i)(?:收报|收于|收在|收盘价?\s*(?:为|是|报)?|closing price(?:\s+(?:of|was|is))?|closed at|close price(?:\s+(?:of|was|is))?)\s*[:：]?\s*[$¥€£]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:%|％)?",
+            )
+            .expect("close value regex")
+            .find_iter(content)
+            .any(|hit| !hit.as_str().ends_with('%') && !hit.as_str().ends_with('％'))
+        };
+        for benign in [
+            "AAOI 单季营收 6.5 亿美元，同比下滑。",
+            "本季度净营收 8000 万美元。",
+            "公司回收 3 亿美元现金用于偿债。",
+            "AAOI 较上一常规交易日收盘价下跌 6.22%。",
+            "常规日涨跌用 regular 窗口的 close-to-close 口径，收盘价对比为 -5.57%。",
+        ] {
+            assert!(!close_claim(benign), "should not fire: {benign}");
+        }
+        for claim in [
+            "AAOI 收于 $18.20。",
+            "股价收报 18.20 美元。",
+            "常规时段收盘价 18.20 美元。",
+            "NVDA closed at 217.55 on Friday.",
+        ] {
+            assert!(close_claim(claim), "should fire: {claim}");
+        }
+    }
+
+    #[test]
+    fn change_basis_reconciliation_skips_percentages_that_are_other_metrics() {
+        // A move answer has to quantify the event; those percentages sit on the
+        // same line as the ticker but are not change claims.
+        for other in [
+            " 的毛利率从 ",
+            " 本次增发的稀释比例约 ",
+            " 的数据中心收入占比 ",
+            " implied upside of ",
+            " 的合理价下移约 ",
+        ] {
+            assert!(
+                percentage_names_another_metric(other),
+                "should be skipped: {other}"
+            );
+        }
+        for change in [" 下跌 ", " 当日 ", "：", " closed down "] {
+            assert!(
+                !percentage_names_another_metric(change),
+                "should still be reconciled: {change}"
+            );
+        }
+    }
+
+    #[test]
+    fn market_move_quote_evidence_prefers_server_change_basis() {
+        let mut context = AgentContext::new("aaoi-change-basis".to_string());
+        context.add_tool_result(
+            "tc_aaoi",
+            "data_fetch",
+            &json!({
+                "data": [{
+                    "symbol": "AAOI",
+                    "price": 124.82,
+                    "previousClose": 129.10,
+                    "changesPercentage": -3.46,
+                    "hone_change_basis": {
+                        "pct": -3.32,
+                        "label": "常规时段涨跌（最新价较上一交易日收盘）",
+                        "from": 129.10,
+                        "to": 124.82
+                    },
+                    "hone_quote_time": {
+                        "market_date_new_york": "2026-08-21"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+
+        let quotes = current_turn_market_move_quotes(&context, 0);
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].symbol, "AAOI");
+        assert_eq!(quotes[0].change_percentage, -3.32);
+
+        let mut raw_only = AgentContext::new("aaoi-raw-provider-change".to_string());
+        raw_only.add_tool_result(
+            "tc_aaoi_raw",
+            "data_fetch",
+            &json!({
+                "data": [{
+                    "symbol": "AAOI",
+                    "changesPercentage": -3.46,
+                    "hone_quote_time": {
+                        "market_date_new_york": "2026-08-21"
+                    }
+                }]
+            })
+            .to_string(),
+        );
+        assert!(
+            current_turn_market_move_quotes(&raw_only, 0).is_empty(),
+            "raw provider changesPercentage must not become authoritative quote evidence"
+        );
+    }
+
+    #[test]
     fn market_move_final_uses_quote_date_and_preserves_verified_scope_in_gap_response() {
         let runtime_input = "美股为什么大跌\n\n\
             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
@@ -15428,6 +16494,10 @@ mod tests {
                     "data": [{
                         "symbol": symbol,
                         "changesPercentage": change,
+                        "hone_change_basis": {
+                            "pct": change,
+                            "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                        },
                         "hone_quote_time": {
                             "beijing": "2026-07-25 04:00:00 +08:00",
                             "market_date_new_york": "2026-07-24"
@@ -15493,8 +16563,17 @@ mod tests {
         assert!(!gap.contains("目标时段：2026-07-26"));
     }
 
+    /// Renamed from `..._and_snippet_only_causes`, and the two snippet
+    /// assertions inverted, because the policy changed: a snippet-scoped
+    /// `web_search` result whose own record covers the target date now *does*
+    /// satisfy the cause-paragraph source rule. Refusing it was unreachable
+    /// rigor — `annotate_basic_search_evidence` marks every Tavily search
+    /// snippet-scoped, so the rule rejected 100% of the retrieval path both the
+    /// date-anchor block and the `web_search` contract
+    /// (`cite_same_result_url_inline`, `hone_evidence.citable`) tell the agent
+    /// to cite. The quote-field half of this test is unchanged.
     #[test]
-    fn market_move_final_rejects_quote_field_confusion_and_snippet_only_causes() {
+    fn market_move_final_rejects_quote_field_confusion_and_accepts_dated_snippet_cause_source() {
         let runtime_input = "周五美股大跌是不是因为一个没有来源的市场传言？只说本轮能核验的\n\n\
             【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
             当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-07-24 周五。\n\n\
@@ -15512,6 +16591,10 @@ mod tests {
                         "symbol": symbol,
                         "change": if symbol == "SPY" { 0.75 } else { -7.73 },
                         "changesPercentage": change,
+                        "hone_change_basis": {
+                            "pct": change,
+                            "label": "常规时段涨跌（最新价较上一交易日收盘）"
+                        },
                         "exchange": exchange,
                         "hone_quote_time": {
                             "beijing": "2026-07-25 04:00:00 +08:00",
@@ -15554,7 +16637,9 @@ mod tests {
         let violations = market_move_final_violations(runtime_input, invalid, &context, 0);
 
         assert!(violations.iter().any(|violation| {
-            violation.contains("SPY 的涨跌幅应来自 changesPercentage（约 +0.10%）")
+            violation.contains("SPY 的涨跌幅应来自服务端 hone_change_basis.pct（约 +0.10%）")
+                // the correction round needs the offending span, not just the rule
+                && violation.contains("+0.75%")
         }));
         assert!(violations.iter().any(|violation| {
             violation.contains("普通 quote 的时间字段不证明交易时段或收盘")
@@ -15565,17 +16650,24 @@ mod tests {
                 .any(|violation| violation.contains("SPY 的交易所声明")
                     && violation.contains("exchange=AMEX"))
         );
-        assert!(violations.iter().any(|violation| {
-            violation.contains("目标日期和本轮工具实际返回的原始 URL")
-        }));
         assert!(
+            !violations.iter().any(|violation| {
+                violation.contains("目标日期和本轮工具实际返回的原始 URL")
+            }),
+            "the cause paragraph names the target date and cites a searched URL whose own \
+             result record reports that same date, so the source rule is satisfied even \
+             though the search was snippet-scoped: {violations:?}"
+        );
+        assert_eq!(
             current_turn_source_urls_for_date(
                 &context,
                 0,
                 NaiveDate::from_ymd_opt(2026, 7, 24).expect("valid date")
-            )
-            .is_empty(),
-            "snippet-only search results must not satisfy original-source cause evidence"
+            ),
+            vec!["https://example.test/july-24-snippet".to_string()],
+            "a snippet-scoped search result whose record covers the target date is eligible \
+             cause evidence; the old policy excluded it and thereby excluded every web_search \
+             result there is"
         );
 
         let gap = deterministic_market_move_gap_response(
@@ -15605,19 +16697,115 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn snippet_only_market_cause_uses_verified_quote_gap_without_another_generation() {
-        let prefix = "数据时间：北京时间 2026-07-26 17:56；行情口径：";
-        let invalid = format!(
-            "{prefix}本轮仅使用可核验资料\n\n\
-             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化。\n\n\
-             | 标的 | 收盘价 | 涨跌幅 |\n\
-             | SPY | $738.93 | +0.75% |\n\
-             | QQQ | $684.23 | -1.12% |\n\n\
-             DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
-             **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
-             https://example.test/july-24-snippet"
+    /// The production shape of a Tavily hit: `annotate_basic_search_evidence`
+    /// stamps `evidence_scope.full_page_content = false` /
+    /// `kind = "search_snippets"` on every successful search, and the result's
+    /// own `published_date` is RFC 2822. Both halves of the old implementation
+    /// had to change before such a URL could ever satisfy the cause-paragraph
+    /// rule — the message-level `web_search` skip dropped it from the turn, and
+    /// `content_contains_date` knew no abbreviated month, so even a correctly
+    /// dated record read as undated. The rule that measures evidence is kept:
+    /// the cited URL's own record still has to report the target date.
+    #[test]
+    fn tavily_snippet_cause_url_passes_only_when_its_own_record_reports_the_target_date() {
+        let runtime_input = "aaoi为什么突然大跌\n\n\
+            【本轮涨跌归因日期锚点：只指导主 Agent 取证，不是行情或交易日事实】\n\
+            当前原话提到周五；不晚于当前市场本地日历的最近同名候选日期是 2026-08-28 周五。\n\n\
+            【本轮最终回答契约：由主 Agent 一次完成】";
+        let target_date = NaiveDate::from_ymd_opt(2026, 8, 28).expect("valid date");
+        // The URL carries no date of its own, so only `published_date` can make
+        // the record cover the target day.
+        let cause_url = "https://example.test/aaoi-offering";
+        let content = format!(
+            "数据时间：北京时间 2026-08-29 06:00；行情口径：本轮仅使用可核验资料\n\n\
+             目标时段：2026-08-28（周五）。AAOI 当日显著走弱。\n\n\
+             **2026-08-28 的下跌原因**：公司宣布的增发定价直接压制了估值。{cause_url}"
         );
+        let tavily_result = |published_date: &str| {
+            json!({
+                "hone_search_contract": {
+                    "evidence_scope": {
+                        "kind": "search_snippets",
+                        "search_depth": "basic",
+                        "full_page_content": false
+                    },
+                    "claim_policy": { "cite_same_result_url_inline": true }
+                },
+                "results": [{
+                    "title": "AAOI shares slide after equity offering",
+                    "url": cause_url,
+                    "published_date": published_date,
+                    "content": "Applied Optoelectronics fell after pricing an offering",
+                    "hone_evidence": {
+                        "kind": "search_snippet",
+                        "citation_field": "url",
+                        "citable": true
+                    }
+                }]
+            })
+            .to_string()
+        };
+
+        let mut on_target = AgentContext::new("aaoi-dated-snippet".to_string());
+        on_target.add_tool_result(
+            "tc_web",
+            "web_search",
+            &tavily_result("Fri, 28 Aug 2026 20:48:00 GMT"),
+        );
+        assert_eq!(
+            current_turn_source_urls_for_date(&on_target, 0, target_date),
+            vec![cause_url.to_string()],
+            "an RFC 2822 published_date on a snippet-scoped Tavily result is real date coverage"
+        );
+        let violations = market_move_final_violations(runtime_input, &content, &on_target, 0);
+        assert!(
+            !violations
+                .iter()
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "the cause paragraph names the target date and cites a URL this turn's search \
+             actually returned, dated to that same day: {violations:?}"
+        );
+
+        let mut off_target = AgentContext::new("aaoi-other-day-snippet".to_string());
+        off_target.add_tool_result(
+            "tc_web",
+            "web_search",
+            &tavily_result("Wed, 26 Aug 2026 11:05:00 GMT"),
+        );
+        assert!(
+            current_turn_source_urls_for_date(&off_target, 0, target_date).is_empty(),
+            "a result dated to another day is not evidence for the target day"
+        );
+        assert!(
+            !market_move_final_violations(runtime_input, &content, &off_target, 0)
+                .iter()
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "cause sourcing is prompt guidance, not a publication gate: a source dated to \
+             another day narrows the eligible-source list for the correction prompt but no \
+             longer rejects the answer"
+        );
+    }
+
+    /// Renamed from `snippet_only_...`: the turn falls back to the
+    /// deterministic quote gap because the cited search result reports another
+    /// day, not because the search was snippet-scoped. Snippet scope stopped
+    /// being disqualifying — it describes every Tavily search — while "the
+    /// URL's own result record must cover the target date" is the check that
+    /// still has to hold.
+    #[tokio::test]
+    async fn undated_market_cause_source_no_longer_forces_the_quote_gap_stub() {
+        let prefix = "数据时间：北京时间 2026-07-26 17:56；行情口径：";
+        // Quote figures follow the server change basis and no session claim is
+        // made, so nothing objective is wrong with this draft; its only "flaw"
+        // is a cause source whose record carries no date — which a production
+        // week showed turning real answers into the gap stub.
+        let draft = format!(
+            "{prefix}本轮仅使用可核验资料\n\n\
+             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化：SPY +0.10%、QQQ -1.12%。\n\n\
+             **2026-07-24 下跌原因**：地缘风险与油价冲击。\
+             https://example.test/market-down-snippet"
+        );
+        let invalid = draft.clone();
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
                 ChatStreamEvent::ToolCallDelta {
@@ -15645,7 +16833,7 @@ mod tests {
         let calls = llm.seen_messages.clone();
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(MarketMoveCanaryFinanceTool));
-        registry.register(Box::new(SnippetOnlyMarketMoveWebTool));
+        registry.register(Box::new(UndatedMarketMoveWebTool));
         let agent =
             FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 4, None)
                 .with_agent_owned_finance_loop(true);
@@ -15666,17 +16854,13 @@ mod tests {
         assert_eq!(
             calls.lock().expect("seen calls").len(),
             2,
-            "missing original-source cause evidence must select the deterministic quote gap instead of asking the model to rewrite"
+            "an undated cause source is neither a rewrite trigger nor a stub trigger"
         );
-        assert!(response.content.starts_with(prefix));
-        assert!(response.content.contains("2026-07-24（周五"));
-        assert!(response.content.contains("SPY +0.10%"));
-        assert!(response.content.contains("QQQ -1.12%"));
-        assert!(response.content.contains("原因本轮未完全核验"));
-        assert!(!response.content.contains("+0.75%"));
-        assert!(!response.content.contains("收盘价"));
-        assert!(!response.content.contains("纽交所"));
-        assert!(!response.content.contains("july-24-snippet"));
+        assert_eq!(
+            response.content, draft,
+            "the draft is published as written; sourcing discipline lives in the prompt"
+        );
+        assert!(!response.content.contains("原因本轮未完全核验"));
     }
 
     #[tokio::test]
@@ -15720,6 +16904,7 @@ mod tests {
             vec![ChatStreamEvent::ContentDelta(corrected.clone())],
         ]);
         let seen_messages = llm.seen_messages.clone();
+        let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
         let observer = Arc::new(CommittedPrefixStreamObserver::new(prefix.to_string()));
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(GroundedFinanceEvidenceTool));
@@ -15744,6 +16929,23 @@ mod tests {
         assert_eq!(response.content, corrected);
         assert_eq!(response.iterations, 4);
         assert_eq!(response.tool_calls_made.len(), 3);
+        assert_eq!(
+            seen_tool_choice_modes
+                .lock()
+                .expect("tool choice modes")
+                .first(),
+            Some(&ToolChoiceMode::Required),
+            "market-move turns must enter the existing investment research flow before any model answer"
+        );
+        let first_research_prompt = seen_messages
+            .lock()
+            .expect("seen messages")
+            .first()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message.content.as_deref())
+            .map(str::to_string)
+            .expect("first research prompt");
+        assert!(first_research_prompt.contains("本轮只取证，不作答"));
         assert_eq!(
             observer
                 .events
@@ -15770,7 +16972,16 @@ mod tests {
         assert!(correction_prompt.contains("内部终稿机械一致性纠正"));
         assert!(correction_prompt.contains("2026-07-24 的星期应为周五"));
         assert!(correction_prompt.contains("https://example.test/capacity"));
-        assert!(correction_prompt.contains("约 350 个汉字"));
+        let correction_template = correction_prompt
+            .split("<unpublished_draft>")
+            .next()
+            .expect("correction template");
+        assert!(correction_template.contains("整篇输出完整终稿"));
+        assert!(correction_template.contains("归因之后的三段"));
+        assert!(
+            !correction_template.contains("个汉字") && !correction_template.contains("Bull/Bear"),
+            "the mechanical correction round must not cap length or ban the answer's own analysis"
+        );
         assert!(
             context
                 .messages
@@ -17891,13 +19102,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn iteration_limit_fails_without_terminal_call() {
+    async fn iteration_limit_fails_without_terminal_call_when_trace_is_not_known_read_only() {
         let llm =
             StreamingMockLlmProvider::with_rounds(vec![vec![ChatStreamEvent::ToolCallDelta {
                 index: 0,
-                id: Some("tc_data_fetch".to_string()),
-                name: Some("data_fetch".to_string()),
-                arguments: "{}".to_string(),
+                id: Some("tc_echo".to_string()),
+                name: Some("echo_tool".to_string()),
+                arguments: r#"{"text":"abc"}"#.to_string(),
             }]]);
         let seen_tool_counts = llm.seen_tool_counts.clone();
         let seen_tool_choice_modes = llm.seen_tool_choice_modes.clone();
@@ -17905,7 +19116,7 @@ mod tests {
         let audit = Arc::new(RecordingAuditSink::default());
         let observer = Arc::new(RecordingStreamObserver::default());
         let mut registry = ToolRegistry::new();
-        registry.register(Box::new(FinanceEvidenceTool));
+        registry.register(Box::new(EchoTool));
         let agent = FunctionCallingAgent::new(
             Arc::new(llm),
             Arc::new(registry),
@@ -17953,6 +19164,65 @@ mod tests {
                 .expect("audit operations lock")
                 .iter()
                 .all(|operation| operation != "chat_terminal_without_tools")
+        );
+    }
+
+    #[tokio::test]
+    async fn iteration_limit_with_known_read_only_trace_gets_one_tools_disabled_final_answer() {
+        let answer = "数据时间：北京时间 2026-08-26 09:31；行情口径：已取得当前轮只读证据\n\n基于现有 quote 和检索结果，先给出可执行结论。";
+        let llm = MockLlmProvider::with_chat_and_tool_responses(
+            answer,
+            vec![ChatResponse {
+                content: String::new(),
+                reasoning_content: None,
+                tool_calls: Some(vec![ToolCall {
+                    id: "tc_data_fetch".to_string(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: "data_fetch".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }]),
+                usage: None,
+            }],
+        );
+        let observer = Arc::new(RecordingStreamObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        let agent = FunctionCallingAgent::new(
+            Arc::new(llm.clone()),
+            Arc::new(registry),
+            String::new(),
+            1,
+            None,
+        )
+        .with_stream_observer(Some(observer.clone()));
+        let mut context = AgentContext::new("iteration-limit-read-only-recovery".to_string());
+
+        let response = agent.run("research", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 2);
+        assert_eq!(response.tool_calls_made.len(), 1);
+        assert!(
+            observer
+                .events
+                .lock()
+                .expect("stream events lock")
+                .is_empty()
+        );
+        let state = llm.state.lock().expect("mock state lock");
+        assert_eq!(state.chat_with_tools_calls, 1);
+        assert_eq!(state.chat_calls, 1);
+        assert_eq!(state.seen_tool_messages.len(), 1);
+        drop(state);
+        assert!(
+            context
+                .messages
+                .last()
+                .and_then(|message| message.content.as_deref())
+                == Some(answer)
         );
     }
 

@@ -1,5 +1,18 @@
 #!/usr/bin/env node
 
+// 一次性 bootstrap 脚本，不是 company-cards.json 的当前来源。
+//
+// 2026-06-20 用它从研究工作簿生成了第一版 52 张卡。此后 company-cards.json 已被多轮手工加深：
+// 2026-08-27 重写了 MU / SNDK / RKLB 的 valuation_method 与 watch_items；
+// 2026-08-29 重写了其余 49 张卡的 valuation_method / watch_items / falsifiers，
+// 并修正了 SBET / STX / WDC / ADEA 的 theme 错标。
+// 本脚本里的 valuationMethod()、watch_items 与 theme 仍是 2026-06-20 的生成口径，
+// **重跑会静默覆盖上述全部手工内容**，且 JSON 由 prompt.rs 用 include_str! 编进二进制，
+// 覆盖会直接进生产提示词而不触发任何测试失败。
+//
+// 需要新增公司时：手工在 company-cards.json 里按 MU / SNDK / RKLB 的形态补一张卡，
+// 不要重跑本脚本。确实要重跑时，先备份 JSON 并逐卡 diff 回填。
+
 import fs from "node:fs";
 import path from "node:path";
 

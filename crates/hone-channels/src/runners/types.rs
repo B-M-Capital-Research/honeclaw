@@ -408,6 +408,8 @@ pub struct AgentRunnerRequest {
     /// tool work. It only tells the loop that the turn is not evidence-free.
     pub preloaded_evidence_calls: u32,
     pub terminal_stream_policy: TerminalStreamPolicy,
+    /// Images attached to this turn, for runners whose model can see them.
+    pub turn_images: Vec<crate::agent_session::TurnImage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

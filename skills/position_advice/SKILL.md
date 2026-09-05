@@ -1,24 +1,73 @@
 ---
 name: Position Advice
-description: OWCW position advice skill that combines market conditions, stock-specific developments, and the user's current holdings to provide professional position-adjustment suggestions
+description: Cost-basis-aware position adjustment advice — add / hold / trim / cut-loss judgments grounded in the user's actual holdings, current-turn quotes, and per-ticker event-risk checks
+when_to_use: Use when the user asks whether to add, trim, hold, average down, or cut losses on specific positions — 加仓/减仓/补仓/割肉/回本/被套 — or wants rebalancing advice tied to their cost basis or current holdings
+user-invocable: true
+context: inline
 aliases:
-  - OWCW
+  - 加仓
+  - 减仓
+  - 补仓
+  - 割肉
+  - 被套了怎么办
+  - 回本
+  - 调仓建议
+  - position advice
   - rebalance advice
-tools:
+  - OWCW  - 继续拿着
+  - 该不该加
+allowed-tools:
   - portfolio
-  - web_search
   - data_fetch
+  - web_search
 ---
 
-## Position Advice (OWCW / Position Advice)
+## Position Advice Skill
 
-This is one of the core skills in the [US-stock specialist capability]. Activate it when the user says `OWCW`, `Position Advice`, or `position advice`.
+成本价语境（被套/回本/加仓/割肉）的调仓判断。核心纪律：先把持仓事实摆对，再逐只核验证据，最后给**条件化**建议——"若X则A，若Y则B"，并附证伪条件。
 
-### Workflow
-1. Use `portfolio(action="get")` first to fetch the user's current holdings.
-2. Combine `data_fetch(data_type="sector_performance")` with current sector strength, or use `web_search` directly on the user's concentrated holdings to find risk notes.
-3. Evaluate concentration, liquidity, catalyst exposure, and downside scenarios, then explain what would need to happen for the user to consider reducing, maintaining, or restructuring exposure.
+### 第一步：实体解析 + 持仓事实复述
 
-### Output Goal
+1. 逐个解析用户点名的标的：`data_fetch(data_type="search", query="...")`。对 `07709` 这类非美股写法、中文名、缩写尤其要确认——实体解错，后面全错。解析结果向用户复述"你说的 X 我理解为 NAME (SYMBOL)"，有歧义就列候选请用户挑。
+2. `portfolio(action="view")` 拉取真实持仓。找到该标的时，先复述持仓事实再谈建议：成本价、数量、当前价（当前轮 quote）、浮动盈亏%（自己算：(现价−成本)/成本）。
+3. 标的不在持仓记录里但用户在谈成本（"我 180 买的"）：按用户口述成本计算，标注"以下按你口述的成本 XX 计算"，顺手问是否要记入持仓。
+4. 用户完全没给成本、持仓里也没有：仍然作答，但明确说明这是"不含你成本语境的标的判断"，补上成本后结论可能不同。
 
-Provide a risk-management oriented assessment: where the portfolio is concentrated, which names carry elevated event risk, what trigger conditions deserve attention, and what position-sizing or hedging questions the user should review before making any change.
+### 第二步：逐只核验（覆盖完整性）
+
+用户点名 N 只就核验 N 只、表态 N 只。每只至少覆盖：
+
+| 证据 | 调用 | 用途 |
+|---|---|---|
+| 现价与涨跌 | `data_fetch(data_type="quote", ticker=...)` | 浮盈计算、当日语境 |
+| 财报临近度 | `data_fetch(data_type="earnings_status", ticker=...)` | 下次财报日期、最新已发布季度——财报前夕加仓是事件风险，要主动提示 |
+| 估值锚 | `data_fetch(data_type="valuation", ticker=...)` | 现价贵贱的粗锚 |
+| 边际变化 | `data_fetch(data_type="news", ...)` / `analyst_actions` / `web_search` | 近期利空利好、评级与目标价变动 |
+
+个别标的某项数据取不到：该只单独标注"证据不足（缺X）"，基于已有证据给方向性判断并降低置信度，其余标的照常完整表态。**价格字段只有两种写法**：本轮 quote 返回的数（带时间），或「本轮未取到行情」；「~$414（公开行情）」「按最近交易区间估算」这类估算价一律不许出现，也不许拿估算价去算浮盈、权重或给价位。没取到行情的标的只能落「证据不足 + 补证清单」，不给清仓 / 减仓 / 加仓指令；组合权重只按已核验行情的标的计算并写明覆盖了几只。
+该标的在本轮提示的【本轮相关行业】树里时，「关键证据」第一条就是那条「上游最近动作」（带日期数字），再写它怎么传到这家——加仓 / 持仓这类短路由也不例外，飞书渠道也不例外。不要因为一只缺数据就整体不答，也不要只核验了两只却对五只给出整体动作暗示——组合层面的话只能建立在全覆盖或明示缺口之上。
+
+### 第三步：条件化建议
+
+对每只标的输出五件套：
+
+1. **持仓事实**：成本/数量/现价/浮盈%，附 quote 时间
+2. **关键证据**：2-4 条；财务数字标注期间(季度/FY/TTM)+单位+GAAP/Non-GAAP+性质(历史 actual/公司指引/一致预期/分析师假设)
+3. **四态结论**：加仓 / 持有观察 / 减仓·止损 / 证据不足
+4. **条件化动作**：一律用若-则结构，如"若想控制事件风险，则等 X 月 X 日财报落地再定；若接受波动且长逻辑未变，则分批、单次不超过现有仓位的一定比例"。不给无条件的"今天可以加仓"
+5. **证伪条件**：什么信号出现说明这个判断错了（如毛利率连续两季下滑、指引下修、关键客户流失、财报不及一致预期）
+
+触发条件只认三类：估值区间端点、可查日期的事件（财报、FOMC、指数生效日）、可观测的经营指标；不用均线、整数关口、阻力 / 支撑位、「成交量萎缩确认」做触发或止损线。
+仓位表达用相对/区间语言（"分批""不超过现有仓位的一半"）；不写「目标 25%」这类精确比例，不给整仓清仓 / 一次性翻倍的指令。用户提出「翻倍」「暴富」一类目标时，先用概率与最大回撤把目标本身讲清（要多大的集中度与波动才可能，历史上这种路径的失败率），再谈结构；不顺着目标把持仓压到两三只上。目标价只在当前轮证据里真实存在时引用，并标注来源与性质（一致预期/单家分析师观点）；没有就不编造精确点位。
+
+### 数据不全时的出路
+
+固定三步：如实披露缺口 → 基于已核验证据给方向性判断，用降置信度措辞（"倾向于""证据偏向"）→ 给补证清单（等哪天的财报、看哪份 filing、跟用户确认成本价）。每只标的永远落在四态之一，哪怕落点是"证据不足 + 补证清单"——没有结论本身就是一种失败。
+
+### 组合层面追问
+
+用户追问"那整体怎么调"：先回读本对话已给出的逐只结论，在其基础上汇总，不另起炉灶重排；新结论与早先表态矛盾时先承认并修正自己。集中度与相关性要点名提示（如五只全在半导体/硬件链上，同涨同跌，分散意义有限）。
+
+### 表达边界
+
+以研究参考的口吻给建议：证据、条件、证伪写清楚，最终决策留给用户。不堆免责声明，结尾一句"以上为基于当前数据快照的研究参考"即可。

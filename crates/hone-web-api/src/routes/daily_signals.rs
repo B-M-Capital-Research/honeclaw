@@ -31,6 +31,16 @@ const FRED_CSV_BASE: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const FRED_USER_AGENT: &str = "honeclaw/0.15 (+https://github.com/B-M-Capital-Research/honeclaw)";
 const SEC_COMPANYFACTS_BASE: &str = "https://data.sec.gov/api/xbrl/companyfacts";
 const INCOMPLETE_RETRY_SECS: i64 = 15 * 60;
+/// Retries one report date gets before the worker goes back to waiting for
+/// 20:00. Each one re-fetches 17 FRED series and four SEC companyfacts
+/// documents, so an uncapped fifteen-minute loop would repeat that ~96 times on
+/// a day upstream is unreachable, against endpoints that throttle by user
+/// agent. Four covers a typical upstream blip.
+const MAX_INCOMPLETE_RETRIES: u32 = 4;
+/// Points kept per market-confirmation line. Ten years of daily closes is ~2500
+/// observations per series; at this cap the wire cost stays near the existing
+/// sparkline budget while a one-year window still draws from ~35 points.
+const MARKET_TREND_MAX_POINTS: usize = 400;
 
 static REFRESH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -85,10 +95,55 @@ pub(crate) struct SignalDimension {
     pub score: Option<f64>,
     pub signal: String,
     pub trend_label: String,
+    /// Observation date the score was computed from, e.g. `2026-04-01`.
+    ///
+    /// The panel renders dimensions, not evidence, so before this field the
+    /// only place a date existed was `evidence[0].period` — behind a collapsed
+    /// `<details>`. A quarterly row four months old and a daily row one day old
+    /// looked identical in the grid while the header printed a single cutoff.
+    #[serde(default)]
+    pub period: Option<String>,
+    /// 日频 / 月频 / 季频, derived from `SeriesSpec::frequency`.
+    #[serde(default)]
+    pub frequency_label: String,
+    /// Days between `period` and the report date. **Display metadata only** —
+    /// nothing in the scoring path reads it, and it must stay that way: an age
+    /// penalty would silently turn a publication calendar into a verdict about
+    /// the economy.
+    #[serde(default)]
+    pub lag_days: Option<i64>,
     pub reason: String,
     pub threshold: String,
     pub trend: Vec<TrendPoint>,
     pub evidence: Vec<EvidencePoint>,
+}
+
+/// The dimension whose observation is the oldest of the ones that scored.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct OldestDimension {
+    pub id: String,
+    pub label: String,
+    pub period: String,
+}
+
+/// One index line on the market-confirmation chart.
+///
+/// Deliberately shaped so it cannot be scored: no `score`, `weight`, `role` or
+/// `signal` field exists for the weighted loop in `generate_macro_report` to
+/// pick up, even by accident. `SP500` already carries 0.06 of the macro weight;
+/// drawing the same "did US equities go up" factor a second time and letting it
+/// count again would inflate the health score in every bull market.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct MarketTrendSeries {
+    pub id: String,
+    pub label: String,
+    /// The ETF that tracks this index. FRED carries indices, not ETFs, so the
+    /// chart may never be labelled as a QQQ or SPY price.
+    pub tracker: String,
+    pub as_of: Option<String>,
+    pub base_period: Option<String>,
+    pub latest_value: Option<f64>,
+    pub points: Vec<TrendPoint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,8 +204,28 @@ pub(crate) struct DailySignalReport {
     pub kind: String,
     pub title: String,
     pub report_date: String,
+    /// Latest observation among the daily market and rate series only.
+    ///
+    /// Previously this was the max over *all* dimensions, which made it equal
+    /// to `data_cutoff` by construction — the client's "print the market day
+    /// when it differs from the cutoff" branch could never fire.
     pub market_date: Option<String>,
+    /// Newest observation behind the score. Unchanged in meaning, because
+    /// snapshots already on disk carry it and are not re-generated; the honest
+    /// part of the fix is the two fields below, not a silent redefinition.
     pub data_cutoff: Option<String>,
+    /// Oldest observation behind the score. With `data_cutoff` this is the real
+    /// answer to "as of when": on 2026-08-28 the pair was 2026-04-01 ~
+    /// 2026-08-28, and 26% of the weight sat on the older end.
+    #[serde(default)]
+    pub data_cutoff_oldest: Option<String>,
+    /// Weight-median observation date: the date at which half the scoring
+    /// weight is at least as new. This, not `data_cutoff`, is the date the
+    /// headline score actually speaks for.
+    #[serde(default)]
+    pub data_cutoff_weighted: Option<String>,
+    #[serde(default)]
+    pub oldest_dimension: Option<OldestDimension>,
     pub generated_at: DateTime<Utc>,
     #[serde(alias = "generated_at_beijing")]
     pub generated_at_local: String,
@@ -169,6 +244,11 @@ pub(crate) struct DailySignalReport {
     pub dimensions: Vec<SignalDimension>,
     pub company_scores: Vec<AiCompanyScore>,
     pub hardware_signals: Vec<HardwareSignal>,
+    /// Display-only index lines. `#[serde(default)]` so snapshots written
+    /// before this field still deserialize — no MODEL_VERSION bump, which would
+    /// have blanked the score and shown `framework_only` for a day.
+    #[serde(default)]
+    pub market_trend: Vec<MarketTrendSeries>,
     pub alerts: Vec<String>,
     pub evidence: Vec<EvidencePoint>,
     pub sources: Vec<SourceLink>,
@@ -291,27 +371,49 @@ pub(crate) async fn daily_signal_worker(state: Arc<AppState>) {
     let today = report_date(Utc::now());
     let missing = [ReportKind::Macro, ReportKind::Ai]
         .into_iter()
-        .any(|kind| !latest_is_date(&state, kind, &today));
+        .any(|kind| !latest_is_complete(&state, kind, &today));
     if missing {
-        refresh_all(&state, false).await;
+        refresh_all(&state, false, 0).await;
     }
+    // Retries are counted per report date, so a day upstream is unreachable
+    // cannot turn into an all-day poll; the counter resets when the date rolls.
+    let mut retry_date = String::new();
+    let mut retries = 0_u32;
     loop {
         let now = Utc::now();
+        let today = report_date(now);
+        if retry_date != today {
+            retry_date = today.clone();
+            retries = 0;
+        }
         let scheduled = next_refresh(now);
+        // Whether today's file *exists* is not the question. `refresh_all`
+        // writes on every pass, and on a day FRED is unreachable the file it
+        // writes is `preserve_success_when_incomplete`'s copy of yesterday —
+        // stamped with today's date and `status = "stale"`. The old date test
+        // excluded only `framework_only`, so it still caught a machine that had
+        // never scored anything, but read those restamped days as finished:
+        // once one scored snapshot existed on disk, the fifteen-minute retry
+        // could no longer fire. The question is whether the file on disk
+        // carries a score this run computed.
         let incomplete = [ReportKind::Macro, ReportKind::Ai]
             .into_iter()
-            .any(|kind| !latest_is_date(&state, kind, &report_date(now)));
-        let next = worker_wake_at(now, incomplete);
+            .any(|kind| !latest_is_complete(&state, kind, &today));
+        let next = worker_wake_at(now, incomplete, retries);
         let wait = (next - Utc::now())
             .to_std()
             .unwrap_or_else(|_| Duration::from_secs(60));
-        info!(next_refresh = %next, incomplete, "daily signal worker waiting");
+        info!(next_refresh = %next, incomplete, retries, "daily signal worker waiting");
         tokio::time::sleep(wait).await;
-        refresh_all(&state, next == scheduled).await;
+        let scheduled_run = next == scheduled;
+        if !scheduled_run {
+            retries += 1;
+        }
+        refresh_all(&state, scheduled_run, retries).await;
     }
 }
 
-async fn refresh_all(state: &AppState, force: bool) {
+async fn refresh_all(state: &AppState, force: bool, retries: u32) {
     let lock = REFRESH_LOCK.get_or_init(|| Mutex::new(()));
     let Ok(_guard) = lock.try_lock() else {
         info!("daily signal refresh already running; duplicate skipped");
@@ -320,7 +422,7 @@ async fn refresh_all(state: &AppState, force: bool) {
 
     for kind in [ReportKind::Macro, ReportKind::Ai] {
         let today = report_date(Utc::now());
-        if !force && latest_is_date(state, kind, &today) {
+        if !force && latest_is_complete(state, kind, &today) {
             continue;
         }
         let prior = read_latest(state, kind)
@@ -335,7 +437,14 @@ async fn refresh_all(state: &AppState, force: bool) {
             prior.as_ref(),
             &read_history_reports(state, kind, 8).await,
         );
-        let final_report = preserve_success_when_incomplete(prior, generated);
+        let mut final_report = preserve_success_when_incomplete(prior, generated);
+        // The panel prints this field as 「下次 XX-XX 20:00 更新」. Now that the
+        // retry can actually fire, an incomplete day's next wake is fifteen
+        // minutes out — until that day's retry budget is spent — so the promise
+        // is written from the same function the worker sleeps on. A complete
+        // report gets the value it always had.
+        final_report.next_refresh_at =
+            worker_wake_at(Utc::now(), !has_fresh_score(&final_report), retries);
         if let Err(error) = write_report(state, kind, &final_report).await {
             warn!(kind = kind.slug(), "daily signal write failed: {error}");
         } else {
@@ -357,17 +466,45 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
             HashMap::new()
         });
 
+    // The market-confirmation chart is display-only, so it borrows the SP500
+    // series the macro pass already fetched and only pays for what is missing.
+    // This has to happen before the loop below, which drains `by_id`.
+    let market_trend = {
+        let missing = market_trend_specs()
+            .into_iter()
+            .filter(|spec| !by_id.contains_key(spec.id))
+            .collect::<Vec<_>>();
+        let mut source: HashMap<String, FredSeries> = if missing.is_empty() {
+            HashMap::new()
+        } else {
+            fetch_fred_batch(&state.http_client, &missing, &start)
+                .await
+                .unwrap_or_else(|error| {
+                    warn!("FRED market-trend batch unavailable: {error}");
+                    HashMap::new()
+                })
+        };
+        for spec in market_trend_specs() {
+            if let Some(series) = by_id.get(spec.id) {
+                source.insert(spec.id.to_string(), series.clone());
+            }
+        }
+        market_trend_series(&source)
+    };
+
     let mut dimensions = Vec::new();
     let mut evidence = Vec::new();
     let mut weighted = 0.0;
     let mut weights = 0.0;
     let mut negative_leaders = 0;
-    let mut latest_period: Option<String> = None;
-    for spec in specs {
+    // Vintage rows come from the dimensions that actually scored, so the dates
+    // the header prints and the number it prints them next to are the same set.
+    let mut vintages: Vec<VintageRow> = Vec::new();
+    for spec in &specs {
         let dimension = if let Some(series) = by_id.remove(spec.id) {
-            macro_dimension(&series, fetched_at, &mut latest_period)
+            macro_dimension(&series, fetched_at)
         } else {
-            unavailable_dimension(&spec, fetched_at)
+            unavailable_dimension(spec, fetched_at)
         };
         if let Some(score) = dimension.score {
             weighted += score * spec.weight;
@@ -375,10 +512,20 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
             if spec.role == "leading" && score < 50.0 {
                 negative_leaders += 1;
             }
+            if let Some(period) = dimension.period.clone() {
+                vintages.push(VintageRow {
+                    id: dimension.id.clone(),
+                    label: dimension.label.clone(),
+                    frequency_label: frequency_label(spec.frequency),
+                    weight: spec.weight,
+                    period,
+                });
+            }
         }
         evidence.extend(dimension.evidence.clone());
         dimensions.push(dimension);
     }
+    let vintage = vintage_spread(&vintages);
     let score = (weights >= 0.55).then(|| round1(weighted / weights));
     let raw_score = score.map(|value| round1((100.0 - value) / 10.0));
     let (signal, phase) = macro_phase(score, negative_leaders);
@@ -389,18 +536,47 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
             .count(),
         dimensions.len(),
     );
-    let summary = macro_summary(score, phase, negative_leaders, &status);
+    let summary = macro_summary(score, phase, negative_leaders, &status, &vintage);
     let now = Utc::now();
-    let alerts = macro_alerts(&dimensions, raw_score);
+    let alerts = macro_alerts(&dimensions, raw_score, negative_leaders);
+    let mut sources = vec![SourceLink {
+        label: "FRED · Federal Reserve Bank of St. Louis".to_string(),
+        url: "https://fred.stlouisfed.org/".to_string(),
+        source_type: "primary_aggregator".to_string(),
+    }];
+    sources.extend(
+        // A row the fetch missed rides along as an empty placeholder so the
+        // panel can name it; it must not also be listed as a source we read.
+        market_trend
+            .iter()
+            .filter(|series| !series.points.is_empty())
+            .map(|series| SourceLink {
+                label: format!("FRED · {}", series.id),
+                url: format!("https://fred.stlouisfed.org/series/{}", series.id),
+                source_type: "reference_series".to_string(),
+            }),
+    );
     DailySignalReport {
         kind: "macro".to_string(),
         title: "宏观红绿灯".to_string(),
         report_date: report_date(now),
-        market_date: latest_period.clone(),
-        data_cutoff: latest_period,
+        // Only the daily market and rate rows can answer "which market day is
+        // this"; the monthly and quarterly rows cannot, and folding them in is
+        // what collapsed this field onto `data_cutoff`.
+        market_date: vintages
+            .iter()
+            .filter(|row| row.frequency_label == "日频")
+            .map(|row| row.period.clone())
+            .max(),
+        data_cutoff: vintage.latest.clone(),
+        data_cutoff_oldest: vintage.oldest.clone(),
+        data_cutoff_weighted: vintage.weighted_median.clone(),
+        oldest_dimension: vintage.oldest_dimension.clone(),
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
+        // Placeholder: `refresh_all` overwrites this with `worker_wake_at`
+        // before the report is written. Do not consume `generate_*` directly.
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status,
@@ -415,15 +591,14 @@ async fn generate_macro_report(state: &AppState) -> DailySignalReport {
         dimensions,
         company_scores: vec![],
         hardware_signals: vec![],
+        market_trend,
         alerts,
         evidence,
-        sources: vec![SourceLink {
-            label: "FRED · Federal Reserve Bank of St. Louis".to_string(),
-            url: "https://fred.stlouisfed.org/".to_string(),
-            source_type: "primary_aggregator".to_string(),
-        }],
+        sources,
         full_report: format!(
-            "宏观链条按实际可支配收入/实际工资 → 实际消费 → 制造业生产 → 企业利润/标普确认 → 实际资本开支排序。就业和 GDP 仅作滞后确认。当前判断：{summary}"
+            "宏观链条按实际可支配收入/实际工资 → 实际消费 → 制造业生产 → 企业利润/标普确认 → 实际资本开支排序。就业和 GDP 仅作滞后确认。\
+             各维度频率不同：日频序列到昨日，月频到上月初，季频到上一季度初，因此「数据截止」是一个区间而不是一天，报告顶部同时给出最新、最旧与加权中位口径日。\
+             市场确认图（纳斯达克 100 / 标普 500 指数）只作对照展示，不参与健康分。当前判断：{summary}"
         ),
         stale: false,
         disclaimer: DISCLAIMER.to_string(),
@@ -563,6 +738,268 @@ fn macro_specs() -> Vec<SeriesSpec> {
     ]
 }
 
+/// Fetch descriptors for the market-confirmation chart. **Not part of
+/// `macro_specs()` and never to be merged into it.**
+///
+/// Three separate reasons: `SP500` already holds 0.06 of the macro weight, so a
+/// second US-equity row would double-count the same factor; `score_growth` puts
+/// a high-beta index in its top band for years at a time, which is a near
+/// constant bias rather than a signal; and `macro_specs()` weights are asserted
+/// to sum to exactly 1.0, so a weighted entry here fails the contract test —
+/// re-weighting all sixteen to make room would be a methodology change and a
+/// MODEL_VERSION bump, which blanks every stored snapshot for a day.
+///
+/// FRED carries indices, never ETFs, so `QQQ` and `SPY` do not exist as series.
+/// The labels say "index (what QQQ/SPY tracks)"; they must not be presented as
+/// ETF prices, which differ by an order of magnitude and by fees and dividends.
+fn market_trend_specs() -> Vec<SeriesSpec> {
+    vec![
+        SeriesSpec {
+            id: "NASDAQ100",
+            label: "纳斯达克 100 指数（QQQ 跟踪标的）",
+            unit: "指数",
+            frequency: 252,
+            role: "display_only",
+            weight: 0.0,
+        },
+        SeriesSpec {
+            id: "SP500",
+            label: "标普 500 指数（SPY 跟踪标的）",
+            unit: "指数",
+            frequency: 252,
+            role: "display_only",
+            weight: 0.0,
+        },
+    ]
+}
+
+fn market_trend_tracker(id: &str) -> &'static str {
+    match id {
+        "NASDAQ100" => "QQQ",
+        "SP500" => "SPY",
+        _ => "",
+    }
+}
+
+/// One or two index lines on one shared date axis, rebased by the client.
+///
+/// The dates are intersected first and then sampled once, so the lines that are
+/// drawn land on exactly the same observation dates. That is what makes
+/// rebasing to a common base exact instead of approximate, and it means a
+/// reader comparing two slopes is comparing the same trading days. FRED grants
+/// only a rolling ten years of `SP500` while `NASDAQ100` goes back further, so
+/// the shared base is whichever drawn series starts later — taking each series'
+/// own first point would silently compare two different baselines. With one
+/// line drawn there is no second baseline to get wrong, and the client
+/// withdraws the relative reading instead of the chart.
+///
+/// A series the fetch missed comes back as a named row with no points rather
+/// than taking the chart down with it. Dropping the S&P line because the Nasdaq
+/// request failed removed the whole section, heading included — the same
+/// disappearing-block failure the alerts empty state was written to prevent
+/// (「整段消失会被读成 UI 坏了」), and the component's own empty-state sentence
+/// could never mount to explain it. Nothing fetched at all is still nothing: no
+/// axis, and no row worth naming.
+fn market_trend_series(fetched: &HashMap<String, FredSeries>) -> Vec<MarketTrendSeries> {
+    let specs = market_trend_specs();
+    // Intersected over the series that did arrive, so the lines that are drawn
+    // still share one date axis and one base.
+    let mut common: Option<Vec<String>> = None;
+    for spec in &specs {
+        let Some(source) = fetched.get(spec.id) else {
+            continue;
+        };
+        let have = source
+            .points
+            .iter()
+            .map(|point| point.period.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        common = Some(match common.take() {
+            Some(mut common) => {
+                common.retain(|period| have.contains(period.as_str()));
+                common
+            }
+            None => source
+                .points
+                .iter()
+                .map(|point| point.period.clone())
+                .collect(),
+        });
+    }
+    let Some(mut common) = common else {
+        return vec![];
+    };
+    common.sort();
+    common.dedup();
+    if common.len() < 2 {
+        return vec![];
+    }
+    let indices = sampled_indices(common.len(), MARKET_TREND_MAX_POINTS);
+    let base_period = common.first().cloned();
+    specs
+        .iter()
+        .map(|spec| {
+            let points = fetched
+                .get(spec.id)
+                .map(|source| {
+                    let by_period = source
+                        .points
+                        .iter()
+                        .map(|point| (point.period.as_str(), point.value))
+                        .collect::<HashMap<_, _>>();
+                    indices
+                        .iter()
+                        .filter_map(|index| {
+                            let period = common.get(*index)?;
+                            Some(TrendPoint {
+                                period: period.clone(),
+                                value: *by_period.get(period.as_str())?,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            MarketTrendSeries {
+                id: spec.id.to_string(),
+                label: spec.label.to_string(),
+                tracker: market_trend_tracker(spec.id).to_string(),
+                // The last *drawn* date, not the series' own last observation:
+                // the label has to describe the line the reader is looking at.
+                // All three stay empty on a missing row, so a placeholder can
+                // never be mistaken for a line that happens to be flat.
+                as_of: points.last().map(|point| point.period.clone()),
+                base_period: (!points.is_empty()).then(|| base_period.clone()).flatten(),
+                latest_value: points.last().map(|point| point.value),
+                points,
+            }
+        })
+        .collect()
+}
+
+/// One scored dimension's contribution to the report's data vintage.
+#[derive(Debug, Clone)]
+struct VintageRow {
+    id: String,
+    label: String,
+    frequency_label: &'static str,
+    weight: f64,
+    period: String,
+}
+
+/// How old the data behind one report actually is.
+///
+/// A sixteen-series composite has no single cutoff date. Measured against
+/// 2026-08-28, weight sat at 0 days (0.06), 1 day (0.14), 58 days (0.54) and
+/// 149 days (0.26) — four fifths of the score came from observations more than
+/// a month old and a quarter from five months back. Printing only the newest of
+/// those dates turned a mixed vintage into a claim about yesterday, so the
+/// report carries the whole spread instead.
+#[derive(Debug, Clone, Default)]
+struct VintageSpread {
+    latest: Option<String>,
+    oldest: Option<String>,
+    weighted_median: Option<String>,
+    oldest_dimension: Option<OldestDimension>,
+    /// `(frequency label, newest period in that bucket, share of scoring weight)`,
+    /// newest bucket first.
+    buckets: Vec<(&'static str, String, f64)>,
+}
+
+fn vintage_spread(rows: &[VintageRow]) -> VintageSpread {
+    if rows.is_empty() {
+        return VintageSpread::default();
+    }
+    let oldest_row = rows
+        .iter()
+        .min_by(|a, b| a.period.cmp(&b.period))
+        .expect("checked non-empty");
+    let mut by_period = rows.iter().collect::<Vec<_>>();
+    by_period.sort_by(|a, b| a.period.cmp(&b.period));
+    let total_weight = rows.iter().map(|row| row.weight).sum::<f64>();
+    // The date at which half the scoring weight is at least that new.
+    let mut running = 0.0;
+    let weighted_median = by_period
+        .iter()
+        .find(|row| {
+            running += row.weight;
+            running >= total_weight / 2.0
+        })
+        .map(|row| row.period.clone());
+
+    let mut buckets: Vec<(&'static str, String, f64)> = Vec::new();
+    for row in rows {
+        match buckets
+            .iter_mut()
+            .find(|(label, _, _)| *label == row.frequency_label)
+        {
+            Some((_, period, weight)) => {
+                if row.period > *period {
+                    *period = row.period.clone();
+                }
+                *weight += row.weight;
+            }
+            None => buckets.push((row.frequency_label, row.period.clone(), row.weight)),
+        }
+    }
+    buckets.sort_by(|a, b| b.1.cmp(&a.1));
+    if total_weight > f64::EPSILON {
+        for bucket in &mut buckets {
+            bucket.2 /= total_weight;
+        }
+    }
+
+    VintageSpread {
+        latest: rows.iter().map(|row| row.period.clone()).max(),
+        oldest: Some(oldest_row.period.clone()),
+        weighted_median,
+        oldest_dimension: Some(OldestDimension {
+            id: oldest_row.id.clone(),
+            label: oldest_row.label.clone(),
+            period: oldest_row.period.clone(),
+        }),
+        buckets,
+    }
+}
+
+/// The vintage spread as one sentence, for the summary the panel leads with.
+fn vintage_sentence(spread: &VintageSpread) -> Option<String> {
+    if spread.buckets.is_empty() {
+        return None;
+    }
+    let distribution = spread
+        .buckets
+        .iter()
+        .map(|(label, period, share)| format!("{label} {period}（占 {:.0}%）", share * 100.0))
+        .collect::<Vec<_>>()
+        .join("、");
+    let median = spread
+        .weighted_median
+        .as_deref()
+        .map(|period| format!("；加权中位口径日 {period}"))
+        .unwrap_or_default();
+    Some(format!("口径分布：{distribution}{median}。"))
+}
+
+fn frequency_label(frequency: usize) -> &'static str {
+    match frequency {
+        value if value >= 200 => "日频",
+        value if value >= 40 => "周频",
+        value if value >= 10 => "月频",
+        value if value >= 3 => "季频",
+        _ => "年频",
+    }
+}
+
+/// Whole days between an observation date and the report date. Display only.
+fn observation_lag_days(period: &str, as_of: DateTime<Utc>) -> Option<i64> {
+    let period = NaiveDate::parse_from_str(period, "%Y-%m-%d").ok()?;
+    Some(
+        (hone_core::local_time_at(as_of).date_naive() - period)
+            .num_days()
+            .max(0),
+    )
+}
+
 async fn fetch_fred_batch(
     client: &reqwest::Client,
     specs: &[SeriesSpec],
@@ -670,18 +1107,8 @@ fn fred_series_from_csv(spec: SeriesSpec, body: &str) -> Result<FredSeries, Stri
     }
 }
 
-fn macro_dimension(
-    series: &FredSeries,
-    fetched_at: DateTime<Utc>,
-    latest_period: &mut Option<String>,
-) -> SignalDimension {
+fn macro_dimension(series: &FredSeries, fetched_at: DateTime<Utc>) -> SignalDimension {
     let latest = series.points.last().expect("checked non-empty");
-    if latest_period
-        .as_ref()
-        .is_none_or(|period| latest.period > *period)
-    {
-        *latest_period = Some(latest.period.clone());
-    }
     let lag = series
         .spec
         .frequency
@@ -739,14 +1166,45 @@ fn macro_dimension(
     }
     let score = score.map(round1);
     let signal = signal_for_health(score);
-    let is_financial_risk = matches!(series.spec.id, "DGS10" | "DGS30" | "FEDFUNDS" | "VIXCLS");
-    let trend_label = if is_financial_risk {
+    // VIX is deliberately not in this set. `vix_health_score` reads the level
+    // and nothing else, so the shared wording below — 「近三个月变化 …」 as the
+    // reason and 「且继续上行」 as the threshold — is true of the three rate rows
+    // and false of this one: a +1.0 three-month move inside a single band left
+    // the score untouched while the card printed 风险上升.
+    let is_rate_risk = matches!(series.spec.id, "DGS10" | "DGS30" | "FEDFUNDS");
+    let is_volatility_band = series.spec.id == "VIXCLS";
+    // Core PCE and unemployment already score inverted above — banded on the
+    // inflation level, and 100 minus the growth score. The label did not follow:
+    // it took the generic growth branch, so accelerating inflation read 改善 on
+    // screen next to a falling health score, and rising unemployment did the
+    // same. Nothing here touches a score; this only makes the words agree with
+    // the number that is already correct.
+    let is_inverted_level = matches!(series.spec.id, "PCEPILFE" | "UNRATE");
+    let trend_label = if is_rate_risk {
+        // 0.25 is a policy step on a rate quoted in percent; the same 0.25 on a
+        // VIX quoted in points is noise, which is the other half of why VIX
+        // cannot share this branch.
         if short_change > 0.25 {
             "风险上升"
         } else if short_change < -0.25 {
             "风险缓解"
         } else {
             "持平"
+        }
+    } else if is_volatility_band {
+        // Compare bands, not levels: the score is a step function of the level,
+        // so this label moves exactly when the score moves.
+        match vix_band(latest.value).cmp(&vix_band(short_prior.value)) {
+            std::cmp::Ordering::Greater => "风险上升",
+            std::cmp::Ordering::Less => "风险缓解",
+            std::cmp::Ordering::Equal => "同档持平",
+        }
+    } else if is_inverted_level {
+        match (yoy, previous_yoy) {
+            (Some(current), Some(previous)) if current > previous + 0.15 => "压力上升",
+            (Some(current), Some(previous)) if current < previous - 0.15 => "压力缓解",
+            (Some(_), Some(_)) => "持平",
+            _ => "数据不足",
         }
     } else {
         match (yoy, previous_yoy) {
@@ -759,6 +1217,14 @@ fn macro_dimension(
     let display = yoy
         .map(|value| format!("同比 {value:.1}%"))
         .unwrap_or_else(|| "同比不可得".to_string());
+    let frequency = frequency_label(series.spec.frequency);
+    let lag_days = observation_lag_days(&latest.period, fetched_at);
+    // Every reason opens with the vintage, because a quarterly row and a daily
+    // row read identically once the numbers are on screen.
+    let as_of = match lag_days {
+        Some(days) => format!("口径 {}（{frequency}，滞后 {days} 天）。", latest.period),
+        None => format!("口径 {}（{frequency}）。", latest.period),
+    };
     SignalDimension {
         id: series.spec.id.to_lowercase(),
         label: series.spec.label.to_string(),
@@ -766,19 +1232,41 @@ fn macro_dimension(
         score,
         signal: signal.to_string(),
         trend_label: trend_label.to_string(),
-        reason: if is_financial_risk {
+        period: Some(latest.period.clone()),
+        frequency_label: frequency.to_string(),
+        lag_days,
+        reason: if is_rate_risk {
             format!(
-                "最新值 {:.2}{}；近三个月变化 {:+.2}。利率和波动率上升按金融条件收紧处理，不按增长加速计分。",
+                "{as_of}最新值 {:.2}{}；近三个月变化 {:+.2}。利率上升按金融条件收紧处理，不按增长加速计分。",
                 latest.value, series.spec.unit, short_change
+            )
+        } else if is_volatility_band {
+            format!(
+                "{as_of}最新值 {:.2}；近三个月变化 {:+.2}（仅作展示，不进入计分）。健康分只按波动率水平分档（≤15 偏绿、≤20 偏黄、≤30 偏橙、更高偏红）。数据新旧只作展示，不影响本维度得分。",
+                latest.value, short_change
+            )
+        } else if series.spec.id == "PCEPILFE" {
+            format!(
+                "{as_of}最新值 {:.2}；{display}。健康分按通胀水平分档（≤2.5% 偏绿、≤3.5% 偏黄、≤4.5% 偏橙、更高偏红），通胀走高就是分数走低，不按增长加速计分。数据新旧只作展示，不影响本维度得分。",
+                latest.value
+            )
+        } else if series.spec.id == "UNRATE" {
+            format!(
+                "{as_of}最新值 {:.2}；{display}。健康分对失业率取反：失业率上行是压力上升、分数下降，不按增长加速计分。数据新旧只作展示，不影响本维度得分。",
+                latest.value
             )
         } else {
             format!(
-                "最新值 {:.2}；{display}。健康分只反映增长方向与动量，不把缺失值记为零。",
+                "{as_of}最新值 {:.2}；{display}。健康分只反映增长方向与动量，不把缺失值记为零。数据新旧只作展示，不影响本维度得分。",
                 latest.value
             )
         },
-        threshold: if is_financial_risk {
-            "收益率、政策利率或 VIX 越高且继续上行，金融条件健康分越低；缺失值不参与总分。"
+        threshold: if is_rate_risk {
+            "收益率或政策利率越高且继续上行，金融条件健康分越低；缺失值不参与总分。".to_string()
+        } else if is_volatility_band {
+            "VIX 落进更高的波动率档，市场风险健康分越低；缺失值不参与总分。".to_string()
+        } else if is_inverted_level {
+            "这一维的方向与增长维相反：读数越高、压力越大、健康分越低；缺失值不参与总分。"
                 .to_string()
         } else {
             "同比为正且动量改善偏绿；同比为正但动量转弱偏黄；收缩扩散偏橙/红。".to_string()
@@ -790,6 +1278,15 @@ fn macro_dimension(
             display_value: format!("{:.2}", latest.value),
             unit: series.spec.unit.to_string(),
             period: Some(latest.period.clone()),
+            // Stays `None` on purpose, not as an oversight. `period` is the
+            // month or quarter the observation describes; `released_at` would
+            // be the day the agency published it, and the two differ by weeks.
+            // `fredgraph.csv` carries only (date, value) and sends no
+            // `Last-Modified`; the only endpoint with a publication date is
+            // `api.stlouisfed.org/fred/series`, which requires a FRED api_key
+            // this deployment does not configure. Guessing a release date from
+            // the observation date would be a fabricated provenance claim, so
+            // the field stays empty until a key exists.
             released_at: None,
             fetched_at: fetched_at.to_rfc3339(),
             source: "FRED / 原始发布机构".to_string(),
@@ -807,6 +1304,11 @@ fn unavailable_dimension(spec: &SeriesSpec, fetched_at: DateTime<Utc>) -> Signal
         score: None,
         signal: "unknown".to_string(),
         trend_label: "等待数据".to_string(),
+        period: None,
+        // The publication cadence is known from the spec even when this run
+        // fetched nothing, and it is the one thing worth saying about a blank.
+        frequency_label: frequency_label(spec.frequency).to_string(),
+        lag_days: None,
         reason: "本次抓取未取得有效观测，未以零值代替。".to_string(),
         threshold: "有有效观测后才参与总分。".to_string(),
         trend: vec![],
@@ -816,6 +1318,8 @@ fn unavailable_dimension(spec: &SeriesSpec, fetched_at: DateTime<Utc>) -> Signal
             display_value: "—".to_string(),
             unit: spec.unit.to_string(),
             period: None,
+            // See `macro_dimension`: no publication date is available without a
+            // FRED api_key, and none is invented here.
             released_at: None,
             fetched_at: fetched_at.to_rfc3339(),
             source: "FRED".to_string(),
@@ -867,16 +1371,25 @@ fn policy_rate_health_score(level: f64, three_month_change: f64) -> f64 {
     (base - (three_month_change * 18.0).clamp(-12.0, 12.0)).clamp(0.0, 100.0)
 }
 
-fn vix_health_score(level: f64) -> f64 {
+/// Which volatility band a VIX level sits in, calmest first.
+///
+/// Split out so the card's words and its score cross at the same points: the
+/// score is a step function of the level, and `macro_dimension` compares bands
+/// to decide 风险上升 / 同档持平 / 风险缓解. One table, one set of edges.
+fn vix_band(level: f64) -> usize {
     if level <= 15.0 {
-        88.0
+        0
     } else if level <= 20.0 {
-        72.0
+        1
     } else if level <= 30.0 {
-        46.0
+        2
     } else {
-        22.0
+        3
     }
+}
+
+fn vix_health_score(level: f64) -> f64 {
+    [88.0, 72.0, 46.0, 22.0][vix_band(level)]
 }
 
 fn macro_phase(score: Option<f64>, negative_leaders: usize) -> (&'static str, &'static str) {
@@ -889,26 +1402,88 @@ fn macro_phase(score: Option<f64>, negative_leaders: usize) -> (&'static str, &'
     }
 }
 
-fn macro_summary(score: Option<f64>, phase: &str, negative_leaders: usize, status: &str) -> String {
+fn macro_summary(
+    score: Option<f64>,
+    phase: &str,
+    negative_leaders: usize,
+    status: &str,
+    vintage: &VintageSpread,
+) -> String {
     match score {
-        Some(value) => format!(
-            "宏观健康分 {value:.1}，阶段为“{phase}”；{negative_leaders} 个领先维度处于收缩区，数据状态为 {status}。"
-        ),
+        Some(value) => {
+            let spread = vintage_sentence(vintage).unwrap_or_default();
+            format!(
+                "宏观健康分 {value:.1}，阶段为“{phase}”；{negative_leaders} 个领先维度处于收缩区，数据状态为 {status}。{spread}"
+            )
+        }
         None => "可用宏观序列不足，正式分数保持空缺，等待下一次成功抓取。".to_string(),
     }
 }
 
-fn macro_alerts(dimensions: &[SignalDimension], raw: Option<f64>) -> Vec<String> {
+/// Alerts are decided per dimension, not per role.
+///
+/// The previous rule fired only on `role == "leading"`, which is why the single
+/// red card in production — DGS30 at 23.6, role `financial_conditions` — could
+/// never raise one: the two roles that exist purely to flag risk (`risk`,
+/// `market_risk`) were excluded from the only risk rule. The panel showed "2 个
+/// 领先维度处于收缩区" and a red card with an empty alert area on the same screen.
+///
+/// `negative_leaders` is passed in rather than recounted so the sentence in the
+/// summary and the alert below can never disagree about the same number.
+fn macro_alerts(
+    dimensions: &[SignalDimension],
+    raw: Option<f64>,
+    negative_leaders: usize,
+) -> Vec<String> {
+    let describe = |dimension: &SignalDimension| {
+        let score = dimension
+            .score
+            .map(|value| format!("{value:.1}"))
+            .unwrap_or_else(|| "—".to_string());
+        let period = dimension
+            .period
+            .clone()
+            .unwrap_or_else(|| "待定".to_string());
+        (score, period)
+    };
     let mut alerts = Vec::new();
+    let mut named = Vec::new();
+    // Only `red` — the same thresholds `signal_for_health` already publishes, so
+    // no second scale is introduced. Alerting on every merely weak dimension
+    // would put red text on the panel most days and cost the alerts their point.
+    for dimension in dimensions.iter().filter(|item| item.signal == "red") {
+        let (score, period) = describe(dimension);
+        named.push(dimension.id.clone());
+        alerts.push(format!(
+            "{} 亮红灯：健康分 {score}，口径 {period}（{}）。",
+            dimension.label,
+            if dimension.frequency_label.is_empty() {
+                "频率未知"
+            } else {
+                &dimension.frequency_label
+            }
+        ));
+    }
+    // Core PCE gets one dedicated rule because its score is a step function of
+    // year-over-year inflation in `macro_dimension`: <=2.5 → 82, <=3.5 → 62,
+    // <=4.5 → 42, else 22. So `score <= 42` is exactly "同比高于 3.5%", and the
+    // 42 band is orange — above the red rule above, and previously silent.
+    if let Some(dimension) = dimensions.iter().find(|item| item.id == "pcepilfe")
+        && !named.contains(&dimension.id)
+        && dimension.score.is_some_and(|score| score <= 42.0)
+    {
+        let (score, period) = describe(dimension);
+        alerts.push(format!(
+            "核心 PCE 同比高于 3.5%：健康分 {score}，口径 {period}。"
+        ));
+    }
+    if negative_leaders >= 2 {
+        alerts.push(format!(
+            "{negative_leaders} 个领先维度同步转弱，放缓正在扩散。"
+        ));
+    }
     if raw.is_some_and(|value| value >= 6.0) {
         alerts.push("宏观原始风险分进入 6/10 以上警戒区。".to_string());
-    }
-    let weak = dimensions
-        .iter()
-        .filter(|item| item.role == "leading" && item.score.is_some_and(|score| score < 50.0))
-        .count();
-    if weak >= 3 {
-        alerts.push(format!("{weak} 个领先维度同步转弱，放缓正在扩散。"));
     }
     alerts
 }
@@ -972,19 +1547,28 @@ async fn generate_ai_report(state: &AppState) -> DailySignalReport {
     };
     let dimensions = ai_layers(&company_scores);
     let alerts = ai_alerts(&company_scores);
+    let fact_dates = company_scores
+        .iter()
+        .filter_map(|item| facts.get(&item.symbol).and_then(|fact| fact.date.clone()))
+        .collect::<Vec<_>>();
     let now = Utc::now();
     DailySignalReport {
         kind: "ai".to_string(),
         title: "AI 红绿灯".to_string(),
         report_date: report_date(now),
         market_date: None,
-        data_cutoff: company_scores
-            .iter()
-            .filter_map(|item| facts.get(&item.symbol).and_then(|fact| fact.date.clone()))
-            .max(),
+        data_cutoff: fact_dates.iter().max().cloned(),
+        // Cloud filings land on different quarters, so the AI report has a
+        // vintage spread too — smaller, but reported the same way rather than
+        // collapsed onto the newest filing.
+        data_cutoff_oldest: fact_dates.iter().min().cloned(),
+        data_cutoff_weighted: None,
+        oldest_dimension: None,
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
+        // Placeholder: `refresh_all` overwrites this with `worker_wake_at`
+        // before the report is written. Do not consume `generate_*` directly.
         next_refresh_at: next_refresh(now),
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
@@ -999,6 +1583,7 @@ async fn generate_ai_report(state: &AppState) -> DailySignalReport {
         dimensions,
         company_scores,
         hardware_signals: vec![],
+        market_trend: vec![],
         alerts,
         evidence: vec![],
         sources: ai_sources(&facts, !keys.is_empty()),
@@ -1080,8 +1665,10 @@ async fn fetch_sec_ai_financials(
         .enrichment
         .user_agent
         .trim();
+    // 保留域名（.local）在 SEC 眼里等于联系不到人——他们按 UA 里的邮箱找人，
+    // 找不到就限流。这条兜底与 `default_sec_user_agent()` 用同一个真实邮箱。
     let user_agent = if configured_user_agent.is_empty() {
-        "honeclaw daily-signals ops@honeclaw.local"
+        "honeclaw daily-signals bm@hone-claw.com"
     } else {
         configured_user_agent
     };
@@ -1584,6 +2171,12 @@ fn ai_layers(companies: &[AiCompanyScore]) -> Vec<SignalDimension> {
         } else {
             "等待数据".to_string()
         },
+        // AI layers aggregate four filings on different quarter ends, so no one
+        // observation date belongs to a layer. The report-level cutoff range
+        // carries the vintage instead of a made-up per-layer date.
+        period: None,
+        frequency_label: "季频".to_string(),
+        lag_days: None,
         reason: reason.to_string(),
         threshold: "绿 80–100；黄 60–79；红 0–59；无证据为未知。".to_string(),
         trend: vec![],
@@ -1653,10 +2246,16 @@ fn framework_report(kind: ReportKind) -> DailySignalReport {
         report_date: report_date(now),
         market_date: None,
         data_cutoff: None,
+        data_cutoff_oldest: None,
+        data_cutoff_weighted: None,
+        oldest_dimension: None,
         generated_at: now,
         generated_at_local: local_time(now),
         timezone: hone_core::runtime_timezone_name(),
-        next_refresh_at: next_refresh(now),
+        // Served only when no snapshot exists at all — precisely the state the
+        // worker retries out of, so promising tomorrow 20:00 would be the one
+        // answer that is certainly wrong.
+        next_refresh_at: worker_wake_at(now, true, 0),
         model_version: MODEL_VERSION.to_string(),
         status: "framework_only".to_string(),
         score: None,
@@ -1670,6 +2269,7 @@ fn framework_report(kind: ReportKind) -> DailySignalReport {
         dimensions,
         company_scores: vec![],
         hardware_signals: vec![],
+        market_trend: vec![],
         alerts: vec![],
         evidence: vec![],
         sources: vec![],
@@ -1827,7 +2427,14 @@ fn apply_comparisons(
     history: &[DailySignalReport],
 ) {
     report.comparison_yesterday = delta(report.score, prior.and_then(|item| item.score));
-    report.comparison_week = delta(report.score, history.get(6).and_then(|item| item.score));
+    // 「较一周」counts back through *other* days. A same-day retry has already
+    // written today's history file, so taking the seventh element blind would
+    // slide the baseline to six days back on exactly the days it gets read.
+    let week_ago = history
+        .iter()
+        .filter(|item| item.report_date != report.report_date)
+        .nth(6);
+    report.comparison_week = delta(report.score, week_ago.and_then(|item| item.score));
     if let (Some(current), Some(previous)) = (report.score, prior.and_then(|item| item.score)) {
         let change = round1(current - previous);
         let direction = if change > 0.0 {
@@ -1903,12 +2510,29 @@ fn number(value: &Value, key: &str) -> Option<f64> {
 fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
-fn downsample(points: &[TrendPoint], max: usize) -> Vec<TrendPoint> {
-    if points.len() <= max {
-        return points.to_vec();
+/// Indices to keep when thinning a long series, always including the last one.
+///
+/// `step_by` alone drops up to `step - 1` trailing observations. That is how the
+/// SP500 sparkline ended at 2026-08-10 while the evidence line on the same card
+/// read 2026-08-28 (VIXCLS was 27 days out), under a dot the component labels
+/// as "today". The last point is the one the score was computed from, so it is
+/// never the one to drop.
+fn sampled_indices(len: usize, max: usize) -> Vec<usize> {
+    if len <= max {
+        return (0..len).collect();
     }
-    let step = (points.len() as f64 / max as f64).ceil() as usize;
-    points.iter().step_by(step).cloned().collect()
+    let step = (len as f64 / max as f64).ceil() as usize;
+    let mut indices = (0..len).step_by(step.max(1)).collect::<Vec<_>>();
+    if indices.last() != Some(&(len - 1)) {
+        indices.push(len - 1);
+    }
+    indices
+}
+fn downsample(points: &[TrendPoint], max: usize) -> Vec<TrendPoint> {
+    sampled_indices(points.len(), max)
+        .into_iter()
+        .map(|index| points[index].clone())
+        .collect()
 }
 fn local_time(now: DateTime<Utc>) -> String {
     hone_core::local_time_at(now)
@@ -1923,9 +2547,14 @@ fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
     crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
 }
 
-fn worker_wake_at(now: DateTime<Utc>, incomplete: bool) -> DateTime<Utc> {
+/// When the worker sleeps until, and the same value the panel promises.
+///
+/// `retries_used` is what keeps the second branch from becoming a poll: an
+/// incomplete pass buys a fifteen-minute retry only while the day's budget
+/// lasts, after which a bad day waits for 20:00 like any other.
+fn worker_wake_at(now: DateTime<Utc>, incomplete: bool, retries_used: u32) -> DateTime<Utc> {
     let scheduled = next_refresh(now);
-    if incomplete {
+    if incomplete && retries_used < MAX_INCOMPLETE_RETRIES {
         scheduled.min(now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS))
     } else {
         scheduled
@@ -1941,11 +2570,35 @@ fn latest_path(state: &AppState, kind: ReportKind) -> PathBuf {
 fn history_dir(state: &AppState, kind: ReportKind) -> PathBuf {
     storage_root(state).join(kind.slug()).join("history")
 }
-fn latest_is_date(state: &AppState, kind: ReportKind, date: &str) -> bool {
+/// Whether a report carries a score computed from this run's own fetch.
+///
+/// `live` and `partial` are the two statuses a scoring pass can produce.
+/// `stale` means the numbers were copied off the last good snapshot by
+/// `preserve_success_when_incomplete`, and `framework_only` means nothing
+/// scored at all; those two are the states the retry exists for.
+fn has_fresh_score(report: &DailySignalReport) -> bool {
+    report.score.is_some() && matches!(report.status.as_str(), "live" | "partial")
+}
+
+/// Whether today's stored snapshot is finished, not merely present.
+///
+/// The predicate this replaced was `report_date == date && status !=
+/// "framework_only"`. That excluded only the case where nothing had ever
+/// scored; it did not exclude the `stale` file `preserve_success_when_incomplete`
+/// writes on a day the fetch failed — yesterday's numbers under today's date —
+/// which is what the disk actually holds on the days the retry is for. The
+/// version check is the same question one layer up: `normalize_report_contract`
+/// blanks a snapshot from an older `MODEL_VERSION` when it is served, so a
+/// snapshot the reader is shown as 「等待新版数据重算」 is not finished either.
+fn snapshot_is_complete(report: &DailySignalReport, date: &str) -> bool {
+    report.report_date == date && report.model_version == MODEL_VERSION && has_fresh_score(report)
+}
+
+fn latest_is_complete(state: &AppState, kind: ReportKind, date: &str) -> bool {
     std::fs::read(latest_path(state, kind))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<DailySignalReport>(&bytes).ok())
-        .is_some_and(|report| report.report_date == date && report.status != "framework_only")
+        .is_some_and(|report| snapshot_is_complete(&report, date))
 }
 async fn read_latest(state: &AppState, kind: ReportKind) -> Option<DailySignalReport> {
     let bytes = tokio::fs::read(latest_path(state, kind)).await.ok()?;
@@ -2062,11 +2715,423 @@ mod tests {
         assert!((total_weight - 1.0).abs() < 1e-9);
     }
 
+    fn dimension(id: &str, signal: &str, score: Option<f64>) -> SignalDimension {
+        SignalDimension {
+            id: id.to_string(),
+            label: id.to_uppercase(),
+            role: "financial_conditions".to_string(),
+            score,
+            signal: signal.to_string(),
+            trend_label: "持平".to_string(),
+            period: Some("2026-08-27".to_string()),
+            frequency_label: "日频".to_string(),
+            lag_days: Some(1),
+            reason: String::new(),
+            threshold: String::new(),
+            trend: vec![],
+            evidence: vec![],
+        }
+    }
+
+    #[test]
+    fn the_market_confirmation_chart_can_never_be_scored() {
+        // Weight is asserted to total exactly 1.0 in the test above; the chart's
+        // series must therefore stay outside `macro_specs()`.
+        let scored = macro_specs();
+        for spec in market_trend_specs() {
+            // `SP500` is the one id allowed in both lists: the chart draws a
+            // display-only copy of the series `macro_specs` already scores at
+            // 0.06 under 市场确认. Every other chart id must be absent from the
+            // scored list, or the chart's copy starts feeding the health score
+            // — which is what fails here today if `NASDAQ100` is given weight.
+            assert!(
+                !scored
+                    .iter()
+                    .any(|item| item.id == spec.id && item.weight > 0.0)
+                    || spec.id == "SP500",
+                "{} is display-only and must not carry macro weight",
+                spec.id
+            );
+            assert_eq!(spec.weight, 0.0);
+            assert_eq!(spec.role, "display_only");
+        }
+        assert!(
+            market_trend_specs()
+                .iter()
+                .any(|spec| spec.id == "NASDAQ100")
+        );
+    }
+
+    #[test]
+    fn market_trend_lines_share_one_date_axis_and_one_base() {
+        let build = |id: &'static str, rows: &[(&str, f64)]| FredSeries {
+            spec: SeriesSpec {
+                id,
+                label: id,
+                unit: "指数",
+                frequency: 252,
+                role: "display_only",
+                weight: 0.0,
+            },
+            points: rows
+                .iter()
+                .map(|(period, value)| TrendPoint {
+                    period: (*period).to_string(),
+                    value: *value,
+                })
+                .collect(),
+        };
+        let mut fetched = HashMap::new();
+        // NASDAQ100 starts earlier and SP500 is missing one mid-week day, which
+        // is exactly the shape FRED serves: a rolling ten-year S&P window and a
+        // longer Nasdaq one.
+        fetched.insert(
+            "NASDAQ100".to_string(),
+            build(
+                "NASDAQ100",
+                &[
+                    ("2026-08-24", 100.0),
+                    ("2026-08-25", 110.0),
+                    ("2026-08-26", 120.0),
+                    ("2026-08-27", 130.0),
+                ],
+            ),
+        );
+        fetched.insert(
+            "SP500".to_string(),
+            build("SP500", &[("2026-08-25", 200.0), ("2026-08-27", 210.0)]),
+        );
+        let series = market_trend_series(&fetched);
+        assert_eq!(series.len(), 2);
+        let periods = series
+            .iter()
+            .map(|item| {
+                item.points
+                    .iter()
+                    .map(|p| p.period.clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(periods[0], periods[1], "both lines must share a date axis");
+        assert_eq!(periods[0], vec!["2026-08-25", "2026-08-27"]);
+        for item in &series {
+            assert_eq!(item.base_period.as_deref(), Some("2026-08-25"));
+            assert_eq!(item.as_of.as_deref(), Some("2026-08-27"));
+        }
+        assert_eq!(series[0].tracker, "QQQ");
+        assert_eq!(series[1].tracker, "SPY");
+        // One line alone is still worth drawing. Dropping the S&P row because
+        // the Nasdaq fetch failed took the section — heading included — off the
+        // panel, which reads as a broken UI rather than a missing series. The
+        // missing row survives as a named placeholder with no points, so the
+        // client can say which one is gone.
+        fetched.remove("SP500");
+        let degraded = market_trend_series(&fetched);
+        assert_eq!(degraded.len(), 2);
+        assert_eq!(degraded[0].id, "NASDAQ100");
+        assert_eq!(degraded[0].points.len(), 4);
+        assert!(degraded[1].points.is_empty());
+        assert_eq!(degraded[1].as_of, None);
+        assert_eq!(
+            degraded[1].base_period, None,
+            "an empty row must not borrow the drawn row's base date"
+        );
+        // Nothing fetched at all is still nothing to draw.
+        fetched.remove("NASDAQ100");
+        assert!(market_trend_series(&fetched).is_empty());
+    }
+
+    #[test]
+    fn thinning_a_series_never_drops_the_latest_observation() {
+        let points = (0..100)
+            .map(|day| TrendPoint {
+                period: format!("2026-01-{:02}", day % 28 + 1),
+                value: day as f64,
+            })
+            .collect::<Vec<_>>();
+        let thinned = downsample(&points, 7);
+        assert_eq!(
+            thinned.last().map(|point| point.value),
+            Some(99.0),
+            "the observation the score was computed from must survive sampling"
+        );
+        assert_eq!(sampled_indices(4, 10), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn the_data_cutoff_is_a_spread_and_names_its_oldest_row() {
+        let rows = vec![
+            VintageRow {
+                id: "sp500".into(),
+                label: "标普 500 市场确认".into(),
+                frequency_label: "日频",
+                weight: 0.06,
+                period: "2026-08-28".into(),
+            },
+            VintageRow {
+                id: "dgs10".into(),
+                label: "美国 10 年期国债收益率".into(),
+                frequency_label: "日频",
+                weight: 0.14,
+                period: "2026-08-27".into(),
+            },
+            VintageRow {
+                id: "pcec96".into(),
+                label: "实际个人消费支出".into(),
+                frequency_label: "月频",
+                weight: 0.54,
+                period: "2026-07-01".into(),
+            },
+            VintageRow {
+                id: "les1252881600q".into(),
+                label: "实际周薪".into(),
+                frequency_label: "季频",
+                weight: 0.26,
+                period: "2026-04-01".into(),
+            },
+        ];
+        let spread = vintage_spread(&rows);
+        assert_eq!(spread.latest.as_deref(), Some("2026-08-28"));
+        assert_eq!(spread.oldest.as_deref(), Some("2026-04-01"));
+        // Four fifths of the weight is at least a month old, so the date the
+        // headline speaks for is July, not the 08-28 the header used to print.
+        assert_eq!(spread.weighted_median.as_deref(), Some("2026-07-01"));
+        assert_eq!(
+            spread
+                .oldest_dimension
+                .as_ref()
+                .map(|item| item.label.clone()),
+            Some("实际周薪".to_string())
+        );
+        assert_eq!(spread.buckets.len(), 3);
+        assert_eq!(spread.buckets[0].0, "日频");
+        assert_eq!(spread.buckets[0].1, "2026-08-28");
+        let sentence = vintage_sentence(&spread).expect("buckets present");
+        assert!(sentence.contains("季频 2026-04-01"), "{sentence}");
+        assert!(sentence.contains("加权中位口径日 2026-07-01"), "{sentence}");
+    }
+
+    #[test]
+    fn a_red_card_outside_the_leading_roles_still_raises_an_alert() {
+        // DGS30 at 23.6 was the only red card in production and could not alert:
+        // the rule read `role == "leading"` and its role is financial_conditions.
+        let dimensions = vec![
+            dimension("dgs30", "red", Some(23.6)),
+            dimension("sp500", "green", Some(88.0)),
+        ];
+        let alerts = macro_alerts(&dimensions, Some(3.9), 2);
+        assert!(
+            alerts.iter().any(|alert| alert.contains("DGS30")),
+            "{alerts:?}"
+        );
+        assert!(alerts.iter().any(|alert| alert.contains("23.6")));
+        assert!(alerts.iter().any(|alert| alert.contains("2026-08-27")));
+        // The summary says "2 个领先维度处于收缩区"; the alerts must agree.
+        assert!(alerts.iter().any(|alert| alert.contains("2 个领先维度")));
+    }
+
+    #[test]
+    fn inflation_above_the_band_alerts_without_double_reporting_a_red_card() {
+        // PCEPILFE scores 42 for 3.5% < YoY <= 4.5% — orange, not red.
+        let orange = vec![dimension("pcepilfe", "orange", Some(42.0))];
+        assert!(
+            macro_alerts(&orange, None, 0)
+                .iter()
+                .any(|alert| alert.contains("核心 PCE"))
+        );
+        // 62 is the 2.5–3.5% band and must stay quiet.
+        let calm = vec![dimension("pcepilfe", "yellow", Some(62.0))];
+        assert!(macro_alerts(&calm, None, 0).is_empty());
+        // 22 is already a red card; it must not be announced twice.
+        let red = vec![dimension("pcepilfe", "red", Some(22.0))];
+        assert_eq!(macro_alerts(&red, None, 0).len(), 1);
+    }
+
+    /// Core PCE and unemployment score inverted — banded on the inflation level,
+    /// and 100 minus the growth score — but the label took the generic growth
+    /// branch, so production showed 改善 next to 3.3% core inflation while the
+    /// health score was falling. The words have to agree with the number.
+    #[test]
+    fn inverted_dimensions_do_not_call_rising_pressure_an_improvement() {
+        let rising_inflation = FredSeries {
+            spec: SeriesSpec {
+                id: "PCEPILFE",
+                label: "核心 PCE 价格",
+                unit: "指数 2017=100",
+                frequency: 12,
+                role: "risk",
+                weight: 0.07,
+            },
+            // 13 monthly points so the year-over-year window exists, rising
+            // faster in the last year than the one before it.
+            points: (0..26)
+                .map(|index| TrendPoint {
+                    period: format!("2024-{:02}-01", (index % 12) + 1),
+                    value: 100.0 + (index as f64) * (if index > 12 { 0.30 } else { 0.15 }),
+                })
+                .enumerate()
+                .map(|(index, mut point)| {
+                    point.period = format!("{}-{:02}-01", 2024 + index / 12, (index % 12) + 1);
+                    point
+                })
+                .collect::<Vec<_>>(),
+        };
+        let dimension = macro_dimension(
+            &rising_inflation,
+            Utc.with_ymd_and_hms(2026, 4, 2, 0, 0, 0).unwrap(),
+        );
+        assert_ne!(
+            dimension.trend_label, "改善",
+            "accelerating core inflation must not read as an improvement"
+        );
+        assert!(
+            dimension.reason.contains("通胀走高就是分数走低"),
+            "reason must state this dimension's own polarity: {}",
+            dimension.reason
+        );
+        assert!(
+            !dimension.reason.contains("健康分只反映增长方向与动量"),
+            "the growth wording is false for a level-banded dimension: {}",
+            dimension.reason
+        );
+    }
+
+    #[test]
+    fn dimension_vintage_is_metadata_and_never_moves_a_score() {
+        let spec = SeriesSpec {
+            id: "LES1252881600Q",
+            label: "实际周薪",
+            unit: "1982–84 年美元",
+            frequency: 4,
+            role: "leading",
+            weight: 0.07,
+        };
+        let points = (0..20)
+            .map(|index| TrendPoint {
+                period: format!("20{:02}-01-01", 10 + index),
+                value: 100.0 + index as f64,
+            })
+            .collect::<Vec<_>>();
+        let fresh = macro_dimension(
+            &FredSeries {
+                spec: spec.clone(),
+                points: points.clone(),
+            },
+            Utc.with_ymd_and_hms(2029, 1, 2, 0, 0, 0).unwrap(),
+        );
+        let aged = macro_dimension(
+            &FredSeries { spec, points },
+            Utc.with_ymd_and_hms(2035, 1, 2, 0, 0, 0).unwrap(),
+        );
+        assert_eq!(fresh.frequency_label, "季频");
+        assert_eq!(fresh.period.as_deref(), Some("2029-01-01"));
+        assert!(aged.lag_days.unwrap() > fresh.lag_days.unwrap());
+        assert_eq!(
+            fresh.score, aged.score,
+            "age is display metadata; letting it move the score would turn a \
+             publication calendar into a verdict about the economy"
+        );
+        assert_eq!(fresh.signal, aged.signal);
+    }
+
     #[test]
     fn higher_rates_and_vix_reduce_health() {
         assert!(rate_health_score(3.5, -0.2) > rate_health_score(5.2, 0.4));
         assert!(policy_rate_health_score(2.0, 0.0) > policy_rate_health_score(5.8, 0.3));
         assert!(vix_health_score(14.0) > vix_health_score(35.0));
+    }
+
+    /// VIX scores off the level alone, so the shared rate wording described a
+    /// rule this dimension does not run: a three-month change in the reason,
+    /// 「且继续上行」 in the threshold, and a ±0.25 label that flipped on moves
+    /// the score cannot see.
+    #[test]
+    fn the_vix_card_only_claims_what_its_score_actually_reads() {
+        let spec = SeriesSpec {
+            id: "VIXCLS",
+            label: "VIX 波动率指数",
+            unit: "指数",
+            frequency: 252,
+            role: "market_risk",
+            weight: 0.03,
+        };
+        let build = |latest: f64| FredSeries {
+            spec: spec.clone(),
+            points: (0..300_i64)
+                .map(|index| TrendPoint {
+                    period: (NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()
+                        + chrono::Duration::days(index))
+                    .to_string(),
+                    value: if index < 299 { 18.0 } else { latest },
+                })
+                .collect(),
+        };
+        let fetched_at = Utc.with_ymd_and_hms(2026, 8, 28, 0, 0, 0).unwrap();
+        // 18.0 → 19.0 is a +1.0 three-month change that crosses no band.
+        let inside = macro_dimension(&build(19.0), fetched_at);
+        assert_eq!(
+            inside.score,
+            Some(vix_health_score(18.0)),
+            "the score did not move, so the label must not say it did"
+        );
+        assert_eq!(inside.trend_label, "同档持平");
+        // Crossing into the next band is what the score does react to.
+        let crossed = macro_dimension(&build(22.0), fetched_at);
+        assert_eq!(crossed.trend_label, "风险上升");
+        assert!(crossed.score < inside.score);
+        assert!(
+            !inside.threshold.contains("且继续上行"),
+            "no line of VIX scoring reads a direction: {}",
+            inside.threshold
+        );
+        assert!(inside.reason.contains("仅作展示"), "{}", inside.reason);
+        assert!(!inside.reason.contains("利率上升按金融条件收紧处理"));
+    }
+
+    /// `100.0 - score` for unemployment has never had a test. It is the whole
+    /// reason a rising jobless rate is not read as an improving dimension, and
+    /// it is one edit away from disappearing without a failure.
+    #[test]
+    fn unemployment_is_scored_and_labelled_upside_down() {
+        let series = |id: &'static str, label: &'static str| FredSeries {
+            spec: SeriesSpec {
+                id,
+                label,
+                unit: "%",
+                frequency: 12,
+                role: "lagging",
+                weight: 0.05,
+            },
+            // Forty monthly points, rising throughout and accelerating in the
+            // last year: a growth dimension's best case.
+            points: {
+                let mut value = 4.0;
+                (0..40)
+                    .map(|index| {
+                        let point = TrendPoint {
+                            period: format!("{}-{:02}-01", 2023 + index / 12, index % 12 + 1),
+                            value,
+                        };
+                        value *= if index >= 27 { 1.02 } else { 1.005 };
+                        point
+                    })
+                    .collect()
+            },
+        };
+        let fetched_at = Utc.with_ymd_and_hms(2026, 5, 2, 0, 0, 0).unwrap();
+        let jobs = macro_dimension(&series("PAYEMS", "非农就业"), fetched_at);
+        let unemployment = macro_dimension(&series("UNRATE", "失业率"), fetched_at);
+        // Identical numbers, opposite meaning.
+        assert_eq!(jobs.trend_label, "改善");
+        assert_eq!(unemployment.trend_label, "压力上升");
+        assert_eq!(
+            unemployment.score,
+            jobs.score.map(|score| 100.0 - score),
+            "the unemployment card inverts the growth score; it does not share it"
+        );
+        assert!(unemployment.score.is_some_and(|score| score < 50.0));
+        assert!(unemployment.reason.contains("健康分对失业率取反"));
+        assert!(!unemployment.reason.contains("健康分只反映增长方向与动量"));
     }
 
     #[test]
@@ -2117,13 +3182,86 @@ mod tests {
     fn incomplete_snapshot_retries_before_the_daily_schedule() {
         let now = Utc.with_ymd_and_hms(2026, 8, 10, 10, 0, 0).unwrap();
         assert_eq!(
-            worker_wake_at(now, true),
+            worker_wake_at(now, true, 0),
             now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS)
         );
         assert_eq!(
-            hone_core::local_time_at(worker_wake_at(now, false)).hour(),
+            hone_core::local_time_at(worker_wake_at(now, false, 0)).hour(),
             20
         );
+        // A day upstream is unreachable must not become an all-day poll.
+        assert_eq!(
+            worker_wake_at(now, true, MAX_INCOMPLETE_RETRIES),
+            next_refresh(now)
+        );
+    }
+
+    /// The test above hands `worker_wake_at` a flag by hand, so it stayed green
+    /// while nothing on a running server could set that flag to true. This one
+    /// computes `incomplete` the way the worker does — from the snapshot that
+    /// was actually written.
+    #[test]
+    fn a_stale_snapshot_stamped_with_today_is_still_incomplete() {
+        let today = "2026-08-10";
+        let now = Utc.with_ymd_and_hms(2026, 8, 10, 10, 0, 0).unwrap();
+        let mut prior = framework_report(ReportKind::Macro);
+        prior.score = Some(72.0);
+        prior.status = "live".to_string();
+        let mut fresh = framework_report(ReportKind::Macro);
+        fresh.report_date = today.to_string();
+        let written = preserve_success_when_incomplete(Some(prior), fresh);
+        // This is the file a FRED-is-down day leaves on disk: today's date,
+        // yesterday's numbers.
+        assert_eq!(written.report_date, today);
+        assert_eq!(written.status, "stale");
+        assert!(
+            !snapshot_is_complete(&written, today),
+            "a restamped snapshot must not count as today's work being done"
+        );
+        assert_eq!(
+            worker_wake_at(now, !snapshot_is_complete(&written, today), 0),
+            now + chrono::Duration::seconds(INCOMPLETE_RETRY_SECS),
+            "the retry has to be reachable from a snapshot, not only from a literal"
+        );
+        // A pass that did score is complete even when some series were missing;
+        // otherwise every partial day would refetch every fifteen minutes.
+        let mut partial = framework_report(ReportKind::Macro);
+        partial.report_date = today.to_string();
+        partial.score = Some(61.5);
+        partial.status = "partial".to_string();
+        assert!(snapshot_is_complete(&partial, today));
+        // Yesterday's complete snapshot is not today's, and neither is one the
+        // reader would be served as 「等待新版数据重算」.
+        assert!(!snapshot_is_complete(&partial, "2026-08-11"));
+        let mut old_model = partial.clone();
+        old_model.model_version = "hone-daily-signals-v1".to_string();
+        assert!(!snapshot_is_complete(&old_model, today));
+        // And the no-snapshot-at-all report promises the retry, not 20:00.
+        let framework = framework_report(ReportKind::Macro);
+        assert_eq!(
+            framework.next_refresh_at,
+            worker_wake_at(framework.generated_at, true, 0)
+        );
+    }
+
+    #[test]
+    fn the_week_delta_counts_back_through_other_days_only() {
+        let mut report = framework_report(ReportKind::Macro);
+        report.report_date = "2026-08-10".to_string();
+        report.score = Some(70.0);
+        // Eight files, newest first, with today's own retry snapshot at the
+        // head — the shape the second pass of a degraded day reads.
+        let history = (0..8_i32)
+            .map(|back| {
+                let mut item = framework_report(ReportKind::Macro);
+                item.report_date = format!("2026-08-{:02}", 10 - back);
+                item.score = Some(f64::from(60 + back));
+                item
+            })
+            .collect::<Vec<_>>();
+        apply_comparisons(&mut report, None, &history);
+        // 2026-08-03 is seven days back and scores 67; 2026-08-04 scores 66.
+        assert_eq!(report.comparison_week, Some(3.0));
     }
 
     #[test]

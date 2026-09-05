@@ -129,7 +129,55 @@ fn sanitize_acp_payload_for_log(mut payload: Value) -> Value {
     if payload.get("method").and_then(|value| value.as_str()) == Some("session/new") {
         redact_session_new_mcp_env(&mut payload);
     }
+    redact_session_update_title(&mut payload);
     payload
+}
+
+fn redact_session_update_title(payload: &mut Value) {
+    let Some(update) = payload
+        .get_mut("params")
+        .and_then(|value| value.get_mut("update"))
+    else {
+        return;
+    };
+    let Some(title) = update.get_mut("title") else {
+        return;
+    };
+    let Some(raw_title) = title.as_str() else {
+        return;
+    };
+    let trimmed = raw_title.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if looks_like_internal_session_title(trimmed) {
+        *title = Value::String("内部上下文标题已脱敏".to_string());
+        return;
+    }
+
+    *title = Value::String(truncate_title_for_log(trimmed, 120));
+}
+
+fn looks_like_internal_session_title(title: &str) -> bool {
+    title.contains('\n')
+        || title.contains("Invoked Skill Context")
+        || title.contains("【Session 上下文】")
+        || title.contains("Base directory")
+        || title.contains("/Users/")
+        || title.contains("/private/")
+        || title.contains("current user turn")
+}
+
+fn truncate_title_for_log(title: &str, max_chars: usize) -> String {
+    if title.chars().count() <= max_chars {
+        return title.to_string();
+    }
+    let truncated = title
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    format!("{truncated}…")
 }
 
 fn redact_session_new_mcp_env(payload: &mut Value) {
@@ -820,6 +868,49 @@ mod tests {
         assert!(!content.contains("pg-secret"));
         assert!(!content.contains("oss-secret"));
         assert!(!content.contains("/private/tmp/hone-data"));
+
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
+
+    #[tokio::test]
+    async fn log_acp_payload_redacts_internal_session_update_titles() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "hone_acp_session_title_log_{}_{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let log_context = AcpEventLogContext {
+            runner_label: "codex",
+            log_path: acp_event_log_path(&temp_root.to_string_lossy()),
+            session_id: "session-1".to_string(),
+            identity: "Actor_web__direct__user-1".to_string(),
+            actor_channel: "web".to_string(),
+            actor_user_id: "user-1".to_string(),
+            actor_channel_scope: Some("direct".to_string()),
+        };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "update": {
+                    "sessionUpdate": "session_info_update",
+                    "title": "【Session 上下文】\nInvoked Skill Context\nBase directory: /Users/alice/repo/skills"
+                }
+            }
+        });
+
+        log_acp_payload(Some(&log_context), "recv", &payload).await;
+
+        let content = tokio::fs::read_to_string(&log_context.log_path)
+            .await
+            .expect("read log");
+        let record = serde_json::from_str::<Value>(&content).expect("jsonl record");
+        assert_eq!(
+            record["payload"]["params"]["update"]["title"].as_str(),
+            Some("内部上下文标题已脱敏")
+        );
+        assert!(!content.contains("/Users/alice/repo/skills"));
+        assert!(!content.contains("Invoked Skill Context"));
 
         let _ = tokio::fs::remove_dir_all(&temp_root).await;
     }

@@ -218,6 +218,7 @@ fn build_review_messages(
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".to_string(),
             content: Some(system_prompt.to_string()),
             reasoning_content: None,
@@ -226,6 +227,7 @@ fn build_review_messages(
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(user),
             reasoning_content: None,

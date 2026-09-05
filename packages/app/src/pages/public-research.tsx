@@ -56,16 +56,17 @@ type SectionDef = {
   adminOnly?: boolean;
 };
 
-type GroupKey = "signal" | "admin";
+type GroupKey = "signal" | "industry" | "admin";
 
 /**
- * Only the macro light is released to everyone for now. Everything else is
+ * The macro light and industry explorer are released to everyone. Everything else is
  * still being polished, so it sits behind 管理 where administrators can use
  * and review it without users meeting a half-finished product.
  */
 const GROUPS: { key: GroupKey | "all"; label: string; adminOnly?: boolean }[] = [
   { key: "all", label: "全部" },
   { key: "signal", label: "大盘信号" },
+  { key: "industry", label: "产业研究" },
   { key: "admin", label: "管理", adminOnly: true },
 ];
 
@@ -78,6 +79,24 @@ const SECTIONS: SectionDef[] = [
     blurb: "收入 → 消费 → 生产 → 利润 → 资本开支",
     refreshAt: "每日 20:00",
     panel: (props) => <DailySignalPanel kind="macro" {...props} />,
+  },
+  {
+    key: "data-center",
+    title: "3D 数据中心",
+    kicker: "走进 AI 基础设施",
+    group: "industry",
+    blurb: "芯 · 存 · 光 · 电 · 冷 · AI 软件与云平台",
+    refreshAt: "交互式产业地图",
+    href: "/data-center",
+  },
+  {
+    key: "industry-map",
+    title: "行业分析",
+    kicker: "产业链与关键变量",
+    group: "industry",
+    blurb: "行业树 · 上游信号 · 估值逻辑 · 相关公司",
+    refreshAt: "研究底稿维护",
+    href: "/industry-map",
   },
   {
     key: "daily-signal-ai",
@@ -340,7 +359,10 @@ export default function PublicResearchPage() {
   });
 
   const dailySections = createMemo(() =>
-    allowedSections().filter((section) => section.panel || section.href),
+    allowedSections().filter((section) => section.group !== "industry" && (section.panel || section.href)),
+  );
+  const industrySections = createMemo(() =>
+    visibleSections().filter((section) => section.group === "industry"),
   );
 
   /**
@@ -354,18 +376,18 @@ export default function PublicResearchPage() {
    * prose, and sections still waiting collapse into a single quiet row.
    */
   const verdictSections = createMemo(() =>
-    visibleSections().filter((section) => cards().get(section.key)?.signal),
+    visibleSections().filter((section) => section.group !== "industry" && cards().get(section.key)?.signal),
   );
 
   const findingSections = createMemo(() =>
     visibleSections().filter((section) => {
       const card = cards().get(section.key);
-      return !card?.signal && cardState(card) === "ready";
+      return section.group !== "industry" && !card?.signal && cardState(card) === "ready";
     }),
   );
 
   const pendingSections = createMemo(() =>
-    visibleSections().filter((section) => cardState(cards().get(section.key)) !== "ready"),
+    visibleSections().filter((section) => section.group !== "industry" && cardState(cards().get(section.key)) !== "ready"),
   );
 
   const readyCount = createMemo(
@@ -431,6 +453,20 @@ export default function PublicResearchPage() {
                 fallback={<ResearchState kind="loading" message="正在读取今日研究总览…" />}
               >
                 <div class="public-research-layers">
+                  <Show when={industrySections().length}>
+                    <section class="public-research-findings" aria-label="产业研究入口">
+                      <h2>探索 AI 基础设施</h2>
+                      <For each={industrySections()}>
+                        {(section) => (
+                          <button type="button" onClick={() => openSection(section)}>
+                            <span class="public-research-findings__label">{section.title}</span>
+                            <span class="public-research-findings__text">{section.blurb}</span>
+                            <span class="public-research-findings__metric" aria-hidden="true">↗</span>
+                          </button>
+                        )}
+                      </For>
+                    </section>
+                  </Show>
                   {/* 判断层：红绿灯本身就是结论，不该藏在卡片后面。 */}
                   <Show when={verdictSections().length}>
                     <section class="public-research-verdicts">

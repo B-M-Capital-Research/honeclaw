@@ -7,7 +7,7 @@
 
 ## Bug Type
 
-- Reliability / Silent Failure
+- System Error
 
 ## 严重等级
 
@@ -74,6 +74,29 @@
 
 ## 证据来源
 
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-26 22:01 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
+  - 2026-08-26 18:00-22:01 CST 同窗继续有 3 条 `execution_failed` / `跳过发送`，失败覆盖 `heartbeat 输出不是结构化 JSON` 与 `heartbeat 输出包含未知状态`；代表样本包括 18:00 CST `光模块板块关键事件心跳提醒`、22:00 CST `持仓重大事件心跳提醒`。
+  - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=19`、`JsonUnknownStatus=4`、`PlainTextNoop=2`、`JsonEmptyStatus=2`、`JsonTriggered=1`、`PlainTextSuppressed=1`，仍可见模型非 JSON / `<think>` 先行输出导致的契约退化。
+  - 同窗 heartbeat 仍有 `run_start=58`、`run_finish=58`、`deliver=29`，说明不是 scheduler 全局停摆；未见 live runtime 加载 2026-08-15 contract recovery 修复的确认信号，因此暂不回退代码级 `Fixed`，但继续保留待部署复核。
+
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-26 18:01 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
+  - 2026-08-26 14:02-18:01 CST 同窗继续有 4 条 `execution_failed` / `跳过发送`，失败覆盖 `heartbeat 输出不是结构化 JSON`、`heartbeat 输出不是合法 JSON` 与 `heartbeat 输出包含未知状态`；代表样本包括 15:30 CST `持仓重大事件心跳提醒`、17:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、18:00 CST `光模块板块关键事件心跳提醒`、18:01 CST `AI与科技持仓观察关键事件心跳提醒`。
+  - 同窗 parse 分布为 `PlainTextTriggered=48`、`JsonNoop=24`、`JsonTriggered=5`、`JsonUnknownStatus=4`、`JsonMalformed=2`、`PlainTextSuppressed=1`、`PlainTextNoop=1`，仍可见模型非 JSON / `<think>` 先行输出导致的契约退化。
+  - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 heartbeat contract recovery 修复的日志证据，因此本条仍按“代码级 Fixed / 待部署复核”记录，不回退为活跃 `P1`。
+  - 影响仍集中在部分 heartbeat 轮次跳过发送；同窗还有 `run_start=56`、`run_finish=56`、`deliver=26`，未见全渠道不可用、错对象投递或数据破坏证据。本轮不创建 GitHub Issue。
+  - 2026-08-24 22:02 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
+  - 2026-08-24 18:00-22:01 CST 同窗继续有 3 条 `heartbeat 输出不是结构化 JSON` / `execution_failed` / `跳过发送`，代表样本包括 18:01 CST `web-user-be13e1f84d14`、20:01 CST `web-user-d415e2c11ced`、21:00 CST `web-user-d415e2c11ced` 的 heartbeat 任务。
+  - 同窗 parse 分布为 `PlainTextTriggered=64`、`PlainTextSuppressed=3`、`PlainTextNoop=7`、`JsonNoop=15`、`JsonTriggered=5`、`JsonEmptyStatus=1`，仍可见模型非 JSON / `<think>` 先行输出导致的契约退化。
+  - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 heartbeat contract recovery 修复的日志证据，因此本条仍按“代码级 Fixed / 待部署复核”记录，不回退为活跃 `P1`。
+  - 影响仍集中在部分 heartbeat 轮次跳过发送；同窗还有 `run_start=56`、`run_finish=62`、`deliver=33`，未见全渠道不可用、错对象投递或数据破坏证据。本轮不创建 GitHub Issue。
+- `data/logs/hone-console-page-source.log`
+  - 2026-08-24 10:02 CST 运行态待部署复核，状态维持代码级 `Fixed（待生产窗口复核）`。
+  - 2026-08-24 06:00-10:02 CST 同窗继续有 3 条 `heartbeat 输出不是结构化 JSON` / `execution_failed` / `跳过发送`，代表样本包括 06:00 CST `web-user-879a3b18fce2`、06:30 CST `web-user-499a1c6331c4`、10:01 CST `web-user-be13e1f84d14` 的 heartbeat 任务。
+  - 同窗 parse 分布为 `PlainTextTriggered=72`、`JsonNoop=17`、`PlainTextSuppressed=3`、`PlainTextNoop=1`，仍可见模型非 JSON / `<think>` 先行输出导致的契约退化。
+  - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 heartbeat contract recovery 修复的日志证据，因此本条仍按“代码级 Fixed / 待部署复核”记录，不回退为活跃 `P1`。
+  - 影响仍集中在部分 heartbeat 轮次跳过发送；同窗还有 `run_start=56`、`run_finish=58`、`deliver=36`，未见全渠道不可用、错对象投递或数据破坏证据。本轮不创建 GitHub Issue。
 - 生产库 `cloud_cron_job_runs`（`db_bamang_research`）7 天窗口聚合
 - `detail->>'parse_kind'` 分布与 `raw_preview` 样本
 - `crates/hone-channels/src/scheduler.rs` 的 `run_heartbeat_task` 重试循环

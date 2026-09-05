@@ -862,6 +862,48 @@ body.public-chat-scroll-lock #root {
   margin-right: 7px;
   color: var(--hone-coral-500);
   font-weight: 900;
+  animation: hone-status-pulse 1.4s ease-in-out infinite;
+  display: inline-block;
+}
+.pub-assistant-turn-steps li.is-done {
+  color: var(--hone-ink-500, var(--hone-ink-600));
+}
+.pub-assistant-turn-steps li.is-done::before {
+  content: "✓";
+  color: var(--hone-signal-green);
+  font-weight: 700;
+  animation: none;
+}
+/* 运行期的实时思考摘要：最新一句常驻展示，完整轨迹折叠可查。 */
+.pub-assistant-reasoning {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--hone-line);
+  color: var(--hone-ink-600);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.pub-assistant-reasoning-live {
+  margin: 0;
+  font-style: italic;
+  word-break: break-word;
+}
+.pub-assistant-reasoning-trace {
+  margin-top: 6px;
+}
+.pub-assistant-reasoning-trace summary {
+  cursor: pointer;
+  color: var(--hone-ink-500, var(--hone-ink-600));
+  font-size: 11px;
+  user-select: none;
+}
+.pub-assistant-reasoning-trace p {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .pub-assistant-turn-error {
   margin: 4px 0 0;
@@ -951,6 +993,9 @@ body.public-chat-scroll-lock #root {
   width: min(440px, calc(100vw - 32px));
   max-height: min(720px, calc(100dvh - 40px));
   overflow: auto;
+  /* iOS Safari: without containment, inner scroll chains to the page behind
+     the fixed backdrop and drags the document along with it. */
+  overscroll-behavior: contain;
   padding: 22px;
   border: 1px solid var(--hone-line);
   border-radius: var(--hone-radius-md);

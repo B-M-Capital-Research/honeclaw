@@ -143,6 +143,7 @@ impl LlmNewsClassifier {
         );
         vec![
             Message {
+                images: Vec::new(),
                 role: "system".into(),
                 content: Some(
                     "你是金融新闻重要性判别助手。只回答 yes 或 no。\n\n\
@@ -173,6 +174,7 @@ impl LlmNewsClassifier {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".into(),
                 content: Some(user),
                 reasoning_content: None,

@@ -7,6 +7,315 @@
 
 ## 最新进展
 
+- `2026-08-30 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-29 22:01-2026-08-30 02:01 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 24 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 00:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=48`、`JsonNoop=22`、`PlainTextNoop=5`、`PlainTextSuppressed=4`、`JsonEmptyStatus=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-29 14:01-18:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 24 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 16:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`severity` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=48`、`JsonNoop=18`、`PlainTextNoop=2`、`PlainTextSuppressed=1`、`JsonTriggered=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-29 06:00-10:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 19 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 08:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=37`、`JsonNoop=15`、`PlainTextNoop=1`、`PlainTextSuppressed=2`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 06:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-29 02:00-06:01 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 36 条 heartbeat deliver 中 4 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 02:30 / 03:30 / 04:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，以及 05:00 CST `存储板块关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`timestamp`、`events` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=72`、`JsonNoop=13`、`PlainTextNoop=6`、`PlainTextSuppressed=6`、`JsonTriggered=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-29 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 22:01-2026-08-29 02:01 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 37 条 heartbeat deliver 中 7 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 22:30-00:00 CST `光模块板块关键事件心跳提醒` 与 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=72`、`JsonNoop=12`、`PlainTextNoop=3`、`PlainTextSuppressed=3`、`JsonTriggered=3`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 18:01-22:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 31 条 heartbeat deliver 中继续出现 fenced `json` 与 `status=triggered` 协议体；代表样本为 21:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=62`、`JsonNoop=13`、`PlainTextSuppressed=5`、`PlainTextNoop=3`、`JsonTriggered=3`、`JsonUnknownStatus=2`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 14:01-18:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 34 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 15:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=68`、`JsonNoop=12`、`PlainTextSuppressed=8`、`JsonTriggered=1`、`PlainTextNoop=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 10:00-14:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 28 条 heartbeat deliver 中 2 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 10:30 / 11:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=17`、`PlainTextSuppressed=9`、`PlainTextNoop=3`、`JsonTriggered=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 06:01-10:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 29 条 heartbeat deliver 中 3 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 07:31 / 08:00 / 08:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=18`、`JsonTriggered=2`、`PlainTextSuppressed=1`、`JsonEmptyStatus=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-28 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-28 02:01-06:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 35 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 04:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=70`、`JsonNoop=19`、`PlainTextNoop=3`、`PlainTextSuppressed=1`；协议载荷样本较上一窗减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-27 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-27 18:02-22:02 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 16 条 heartbeat deliver 中 1 条 `deliver_preview` 包含 fenced `json` 与 `status=triggered` 协议体；代表样本为 20:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=32`、`JsonNoop=11`、`JsonTriggered=4`、`JsonEmptyStatus=1`、`PlainTextSuppressed=1`；协议载荷样本较上一窗减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-27 02:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-26 22:00-2026-08-27 02:01 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 38 条 heartbeat deliver 中 5 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体；代表样本包括 23:30 / 00:30 / 01:00 / 01:30 / 02:00 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=76`、`JsonNoop=13`、`PlainTextNoop=6`、`JsonUnknownStatus=2`、`JsonEmptyStatus=2`、`PlainTextSuppressed=2`、`JsonTriggered=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-26 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-26 06:01-10:05 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 31 条 heartbeat deliver 中 7 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体；代表样本包括 06:01 / 06:30 / 07:00 / 07:30 / 08:00 / 08:30 / 10:01 CST 的 `AI与科技持仓观察关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 或 `NVDA 关键事件心跳提醒`。
+    - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=14`、`JsonTriggered=5`、`JsonUnknownStatus=4`、`PlainTextSuppressed=5`、`PlainTextNoop=2`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-26 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-26 02:01-06:01 CST 近窗仍出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 31 条 heartbeat deliver 中 2 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体；parse 分布为 `PlainTextTriggered=60`、`JsonNoop=19`、`PlainTextSuppressed=5`、`PlainTextNoop=3`、`JsonTriggered=2`。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-26 02:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-25 22:01-2026-08-26 02:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 39 条 heartbeat deliver 中 11 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 00:01 CST `AI与科技持仓观察关键事件心跳提醒`、00:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 01:30 / 02:01 CST `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason`、`event` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=78`、`JsonNoop=13`、`PlainTextNoop=4`、`PlainTextSuppressed=3`、`JsonUnknownStatus=2`、`JsonTriggered=1`、`JsonEmptyStatus=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 22:03 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-25 18:00-22:03 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 37 条 heartbeat deliver 中 9 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 18:30-22:01 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason`、`event` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=74`、`JsonNoop=20`、`PlainTextNoop=3`、`PlainTextSuppressed=1`、`JsonTriggered=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-25 14:02-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 34 条 heartbeat deliver 中 4 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 14:31-17:30 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason`、`event` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=68`、`JsonNoop=16`、`PlainTextNoop=3`、`PlainTextSuppressed=2`、`JsonMalformed=2`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-25 10:02-14:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 37 条 heartbeat deliver 中 7 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 11:31-14:01 CST 的 `AI与科技持仓观察关键事件心跳提醒` 与 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason`、`event` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=74`、`JsonNoop=18`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-25 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-25 02:02-06:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 35 条 heartbeat deliver 中 2 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 03:02 / 06:01 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=68`、`JsonNoop=18`、`PlainTextNoop=3`、`JsonTriggered=2`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-24 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-24 18:00-22:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 33 条 heartbeat deliver 中多条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 18:01 / 18:30 / 19:01 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=64`、`PlainTextSuppressed=3`、`PlainTextNoop=7`、`JsonNoop=15`、`JsonTriggered=5`、`JsonEmptyStatus=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-24 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-24 14:00-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 46 条 heartbeat deliver 中 8 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 14:31 / 15:01 / 15:31 / 16:31 / 17:01 / 17:31 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=92`、`JsonNoop=9`、`PlainTextSuppressed=3`、`JsonTriggered=2`、`PlainTextNoop=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-24 14:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-24 10:01-14:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 35 条 heartbeat deliver 中多条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 10:32 / 11:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 11:01 CST `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=70`、`JsonNoop=16`、`PlainTextSuppressed=2`、`PlainTextNoop=1`；协议载荷样本仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-24 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-24 06:00-10:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 36 条 heartbeat deliver 中 2 条 `deliver_preview` 以 fenced `json` 开头并包含 `status=triggered` 协议体，代表样本为 08:32 / 09:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=72`、`JsonNoop=17`、`PlainTextSuppressed=3`、`PlainTextNoop=1`；协议载荷样本较上一轮减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-24 02:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-23 22:01-2026-08-24 02:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 29 条 heartbeat deliver 中 3 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本包括 22:30-01:30 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=58`、`JsonNoop=21`、`PlainTextSuppressed=4`、`PlainTextNoop=2`；协议载荷样本较上一轮减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-23 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-23 14:01-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 38 条 heartbeat deliver 中至少 8 条 `deliver_preview` 包含 fenced `json` 或 `status=triggered` 协议体，代表样本为 14:31 / 15:01 / 16:01 / 16:31 / 17:01 / 17:31 CST 的 `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 与 `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=76`、`JsonNoop=12`、`PlainTextSuppressed=3`、`JsonTriggered=2`、`PlainTextNoop=1`；协议载荷样本较上轮增加，仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-23 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-23 10:02-14:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 57 条 heartbeat deliver 中有 2 条 `deliver_preview` 以 fenced `json` 开头，代表样本为 10:31 / 11:31 CST `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=66`、`JsonNoop=20`、`JsonTriggered=2`、`PlainTextSuppressed=2`；协议载荷样本较上轮减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-23 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-22 22:02-2026-08-23 02:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 31 条 heartbeat deliver 中有 1 条 `deliver_preview` 以 fenced `json` 开头，代表样本为 23:31 CST `AI与科技持仓观察关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`reason` 等协议字段。
+    - 同窗 parse 分布为 `PlainTextTriggered=62`、`JsonNoop=22`、`PlainTextSuppressed=4`；协议载荷样本较上轮减少，但仍未归零。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-22 22:03 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-22 18:00-22:03 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 同窗 32 条 heartbeat deliver 中有 5 条 `deliver_preview` 以 fenced `json` 开头，代表样本包括 18:31 / 19:01 / 20:31 / 21:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗 parse 分布仍有 `JsonTriggered=1` 与大量 `PlainTextTriggered=64` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-22 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-22 14:01-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 同窗 37 条 heartbeat deliver 中有 5 条 `deliver_preview` 以 fenced `json` 开头，代表样本包括 14:02 CST `AI与科技持仓观察关键事件心跳提醒`、14:31 / 15:01 / 17:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布仍有 `JsonTriggered=1` 与大量 `PlainTextTriggered=74` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-22 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-22 02:02-06:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 02:31 / 03:01 / 05:31 / 06:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多次以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段；统计层面 27 条 deliver 中有 4 条命中 fenced JSON。
+    - 同窗 parse 分布仍有 `JsonTriggered=1` 与大量 `PlainTextTriggered=54` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-22 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 22:01-2026-08-22 02:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 22:01 / 22:30 / 23:01 / 01:01 / 02:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多次以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event`、`detail` 等协议字段。
+    - 同窗 parse 分布仍有 `JsonTriggered=3` 与大量 `PlainTextTriggered=60` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 22:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 18:01-22:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 19:01 / 21:01 / 22:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多次以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗 parse 分布仍有 `JsonTriggered=3` 与大量 `PlainTextTriggered=52` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 18:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 14:01-18:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 14:31 / 15:01 / 16:00 / 17:01 / 18:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 多次以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗 parse 分布仍有大量 `PlainTextTriggered=64`，并继续与 `JsonNoop=23`、`PlainTextSuppressed=4`、`PlainTextNoop=2` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 10:02-14:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 10:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段。
+    - 同窗 parse 分布仍有 `JsonTriggered=1` 与大量 `PlainTextTriggered=80` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 10:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 06:01-10:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 06:01 CST `AI与科技持仓观察关键事件心跳提醒` deliver preview 直接以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`reason` 等协议字段；07:01 / 07:31 / 08:00 / 08:31 / 09:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 也多次以 fenced `json` / `status=triggered` 载荷进入用户可见候选。
+    - 同窗 parse 分布仍有 `JsonTriggered=2` 与大量 `PlainTextTriggered=96` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 06:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-21 02:01-06:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 02:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 先输出行情口径，随后拼接 fenced `json` 载荷，外露 `status`、`triggered`、`symbol`、`event` 等协议字段；04:31 CST 同任务再次以 fenced `json` 开头；06:01 CST `AI与科技持仓观察关键事件心跳提醒` 也以 fenced `json` / `status=triggered` 开头进入用户可见候选。
+    - 同窗 parse 分布仍有 `JsonTriggered=1`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered=66` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-21 02:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-20 22:01-2026-08-21 02:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 00:30 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段；01:30 CST 同任务再次以 fenced `json` / `status=triggered` / `triggered` 开头进入用户可见候选。
+    - 02:00 CST 同任务还出现 `deliver_chars=11`、`deliver_preview="```json\n```"` 的空 fenced JSON 壳；同窗 parse 分布仍有 `JsonTriggered=3`、`JsonEmptyStatus=1` 与大量 `PlainTextTriggered=70` 并存。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-20 18:01 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-20 14:01-18:01 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 18:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段；同窗 `duplicate_suppressed` 也继续匹配包含 fenced JSON / `status=triggered` 的历史 preview。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
+- `2026-08-20 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
+  - `data/logs/hone-console-page-source.log`
+    - 2026-08-20 10:02-14:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
+    - 11:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` deliver preview 以 fenced `json` 开头，外露 `status`、`triggered`、`symbol`、`event` 等协议字段；12:01 CST 同任务只输出空 fenced JSON；13:31 CST 同任务再次以 fenced `json` / `status=triggered` / `triggered` 开头进入用户可见候选。
+    - 同窗未见 runtime 重启、revision 切换或确认加载 2026-08-15 `fix: sanitize heartbeat delivery leaks` 的日志证据。
+  - 判断：该样本说明 live source 仍需自然部署复核，但不能证明代码级修复已加载后仍失效；因此不回退 `Fixed`，继续等待部署后的真实窗口确认 fenced JSON / `status=triggered` 不再进入用户可见 deliver preview。为什么不影响功能链路：任务已执行并进入送达候选，用户仍可从字段读取部分事件；受损的是用户可见结构、可读性和内部协议边界，因此仍按质量性 `P3`，非 P1，不创建 GitHub Issue。
+
 - `2026-08-19 14:02 CST` 运行态待部署复核，状态维持代码级 `Fixed`：
   - `data/logs/hone-console-page-source.log`
     - 2026-08-19 10:00-14:02 CST 近窗再次出现 fenced JSON / `status=triggered` 协议载荷相关信号。
@@ -1212,3 +1521,56 @@
 - 本轮判断
   - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
   - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，问题主要是格式退化和协议边界外泄；本窗未见错投、漏投、数据破坏或系统级失败证据。状态维持质量性 `P3 / New`，非 P1。
+
+## 最新运行态复核（2026-08-22 14:01 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-22 10:01-14:01 CST。
+  - 10:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`，`deliver_preview` 直接以 fenced `json` 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"`、`"detail"` 等协议字段。
+  - 同窗 parse 分布仍有 `PlainTextTriggered=70`、`JsonNoop=13`、`PlainTextSuppressed=3` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发信息；问题主要是格式退化和协议边界外泄，本窗未见错投、漏投、数据破坏或系统级失败证据。近窗未见 live runtime 已加载 2026-08-15 修复的确认信号，状态维持代码级 `Fixed / P3`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-23 22:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-23 18:00-22:02 CST。
+  - 20:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`，`deliver_preview` 直接以 fenced `json` 开头，包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"`、`"detail"` 等协议字段。
+  - 同窗 parse 分布仍有 `PlainTextTriggered=48`、`JsonNoop=7`、`PlainTextSuppressed=1` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发信息；问题主要是格式退化和协议边界外泄，本窗未见错投、漏投、数据破坏或系统级失败证据。近窗未见 live runtime 已加载 2026-08-15 修复的确认信号，状态维持代码级 `Fixed / P3`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-25 02:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-24 22:02-2026-08-25 02:02 CST。
+  - 同窗 7 条 heartbeat `deliver_preview` 以 fenced `json` 开头并包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"`、`"reason"` 或 `detail` 等协议字段。
+  - 代表样本包括 23:01 / 23:31 / 00:01 / 01:01 / 02:01 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`，以及 23:31 / 02:01 CST `AI与科技持仓观察关键事件心跳提醒` 进入 `HeartbeatDiag deliver`。
+  - 同窗 parse 分布仍有 `PlainTextTriggered=54`、`JsonTriggered=8`、`JsonNoop=21` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发信息；问题主要是格式退化和协议边界外泄，本窗未见错投、漏投、数据破坏或系统级失败证据。近窗未见 live runtime 已加载 2026-08-15 修复的确认信号，状态维持代码级 `Fixed / P3`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-25 10:02 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-25 06:00-10:02 CST。
+  - 同窗 2 条 heartbeat `deliver_preview` 以 fenced `json` 开头并包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"`、`detail` 等协议字段。
+  - 代表样本包括 06:01 / 06:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`。
+  - 同窗 parse 分布仍有 `PlainTextTriggered=70`、`JsonNoop=20`、`JsonEmptyStatus=1` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发信息；问题主要是格式退化和协议边界外泄，本窗未见错投、漏投、数据破坏或系统级失败证据。近窗未见 live runtime 已加载 2026-08-15 修复的确认信号，状态维持代码级 `Fixed / P3`、待部署复核，非 P1。
+
+## 最新运行态复核（2026-08-28 02:01 CST）
+
+- `data/logs/hone-console-page-source.log`
+  - 巡检窗口：2026-08-27 22:01-2026-08-28 02:01 CST。
+  - 同窗 3 条 heartbeat `deliver_preview` 以 fenced `json` 开头并包含 `"status": "triggered"`、`"triggered"`、`"symbol"`、`"event"` 或 `detail` 等协议字段。
+  - 代表样本包括 22:31 / 23:01 / 00:31 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 进入 `HeartbeatDiag deliver`。
+  - 同窗 parse 分布仍有 `PlainTextTriggered=62`、`JsonNoop=17`、`JsonTriggered=2`、`PlainTextSuppressed=1` 并存，说明结构化协议与用户可见正文边界仍不稳定。
+- 本轮判断
+  - 最新样本仍是既有 heartbeat JSON / 协议字段外露或格式退化质量缺陷，不是新的链路根因。
+  - 为何不影响功能链路，因此定级为 P3：heartbeat 执行和投递路径仍在工作，用户能看到核心触发信息；问题主要是格式退化和协议边界外泄，本窗未见错投、漏投、数据破坏或系统级失败证据。近窗未见 live runtime 已加载 2026-08-15 修复的确认信号，状态维持代码级 `Fixed / P3`、待部署复核，非 P1。

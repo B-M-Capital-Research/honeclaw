@@ -7,6 +7,138 @@
 
 ## 修复进展（2026-04-26）
 
+- **2026-08-29 14:01-18:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-29T06:01:21Z` / 北京时间 `2026-08-29 14:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 18:00 CST `持仓重大事件心跳提醒` 与 `持仓财报与重大新闻心跳提醒` 分别落成 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗 HTTP 529 相关信号 6 条。
+  - 会话质量对照：
+    - 同窗 `run_start=61`、`run_finish=61`、`deliver=24`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是整点高峰附近两个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-28 10:00-14:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-28T02:00:45Z` / 北京时间 `2026-08-28 10:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 本窗未见新的 MiniMax / OpenAI-compatible `HTTP 529` 或 `provider_http_error`；上一窗 09:00 / 10:00 CST 多个 heartbeat 因 HTTP 529 跳过发送的证据仍是最近活跃复发样本。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=59`、`deliver=28`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据没有扩大为全渠道不可用，也没有确认修复；状态保持功能性 `P2 / New`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-28 06:01-10:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-27T22:01:44Z` / 北京时间 `2026-08-28 06:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 09:00 / 10:00 CST 多个 Web heartbeat 落成 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，覆盖 `持仓重大事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒` 等；随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=56`、`deliver=29`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=8`、`poller.fmp.extended_hours ok=4`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是整点高峰附近多个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-27 18:02-22:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-27T10:02:11Z` / 北京时间 `2026-08-27 18:02 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 18:30-19:30 CST 多个 Web heartbeat 成批落成 `provider_transport_error`，覆盖 `光模块板块关键事件心跳提醒`、`存储板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`持仓重大事件心跳提醒`、`NVDA 关键事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒` 等；21:00 CST `持仓财报与重大新闻心跳提醒` 另落成 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=71`、`run_finish=71`、`deliver=16`，后续 20:00-22:00 CST 仍有多条 heartbeat 送达；`poller.fmp.price ok=14`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 传输层或上游失败导致 heartbeat 缺少有效自动降级”的活跃条件；本轮有成批 transport failure，另有单点 HTTP 529。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-27 10:01-14:01 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-27T02:01:10Z` / 北京时间 `2026-08-27 10:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 12:00 CST `持仓财报与重大新闻心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗 HTTP 529 相关信号 3 条。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=57`、`deliver=32`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-26 10:01-14:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-26T02:01:34Z` / 北京时间 `2026-08-26 10:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 12:00 CST `光模块板块关键事件心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗 HTTP 529 相关信号 3 条。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=56`、`deliver=24`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单个 heartbeat 的短时 HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-26 06:01-10:05 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-25T22:01:03Z` / 北京时间 `2026-08-26 06:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 09:00 CST `持仓财报与重大新闻心跳提醒`、09:30 CST `AI与科技持仓观察关键事件心跳提醒`、10:00 CST `存储板块关键事件心跳提醒` 分别落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=58`、`deliver=31`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮为 3 个 heartbeat 的短时 HTTP 529 高峰，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-24 06:00-10:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-23T22:00:52Z` / 北京时间 `2026-08-24 06:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 09:00 CST `光模块板块关键事件心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=58`、`deliver=36`，其它 heartbeat 仍有多条送达；`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单个 heartbeat 的短时 HTTP 529 高峰，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-24 02:01-06:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-23T18:01:21Z` / 北京时间 `2026-08-24 02:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 03:00 CST `持仓财报与重大新闻心跳提醒`、`NVDA 关键事件心跳提醒`、`TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 成批落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 `HTTP 529` 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=58`、`deliver=24`，后续 03:30-06:00 CST 仍有多条 heartbeat deliver 和 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=8`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是 3 个 heartbeat 的短时 HTTP 529 高峰，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-23 18:00-22:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-23T10:00:49Z` / 北京时间 `2026-08-23 18:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 18:30 CST 多个 Web heartbeat 任务成批落成 `provider_transport_error`，覆盖 `光模块板块关键事件心跳提醒`、`持仓财报与重大新闻心跳提醒`、`存储板块关键事件心跳提醒`、`持仓重大事件心跳提醒`、`AI与科技持仓观察关键事件心跳提醒`、`NVDA 关键事件心跳提醒` 等。
+    - 错误体继续为 MiniMax OpenAI-compatible `error sending request for url (https://api.minimaxi.com/v1/chat/completions)`；失败后 Web events 记录跳过发送。
+  - 会话质量对照：
+    - 同窗 `run_start=76`、`run_finish=80`、`deliver=24`，后续 20:30-22:00 CST 仍有多条 heartbeat deliver 和 `poller.fmp.price ok=16`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 传输层成批失败，heartbeat 缺少有效自动降级”的活跃条件。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-21 18:01-22:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-21T10:01:39Z` / 北京时间 `2026-08-21 18:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 20:00 CST `NVDA 关键事件心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 HTTP 529 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`。
+  - 会话质量对照：
+    - 同窗 `run_start=56`、`run_finish=56`、`deliver=27`，其它 heartbeat 仍有多条送达，`poller.fmp.price ok=14`、`poller.fmp.extended_hours ok=8`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单点 heartbeat HTTP 529，不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
+- **2026-08-21 06:01-10:02 CST 继续维持 `New`**：
+  - `data/logs/hone-console-page-source.log`
+    - 本轮按自动化上次运行点 `2026-08-20T22:01:07Z` / 北京时间 `2026-08-21 06:01 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
+    - 09:00 CST `TEM AAOI KRMN RKLB MRVL 关键事件心跳提醒` 落成 `provider_http_error`，错误体为 MiniMax / OpenAI-compatible 上游 HTTP 529 繁忙，随后 Web events 记录 `定时任务执行失败，跳过发送`；同窗另有 09:00 CST Web direct `Actor_web__direct__web-user-ba50cb9401c0` 因同一上游 529 失败，以及普通 scheduler internal failure fallback 被抑制。
+  - 会话质量对照：
+    - 同窗 `run_start=64`、`run_finish=67`、`deliver=48`，其它 heartbeat 仍有多条送达，`poller.fmp.price ok=17`、`poller.fmp.extended_hours ok=9`，说明不是全局 runtime 停摆。
+    - 错误停留在调度 / runtime 日志侧，未见用户可见 assistant final 外露完整 provider 原始错误，也未见错投或数据破坏。
+  - 判断：
+    - 最新证据仍满足“MiniMax / OpenAI-compatible 上游失败导致单轮 heartbeat 缺少有效自动降级”的活跃条件；本轮是单点 heartbeat HTTP 529，并伴随一条 direct 失败和一条普通 scheduler fallback 抑制，但不是全渠道不可用。
+    - 该问题影响 heartbeat 监控覆盖但未造成全渠道不可用；严重等级保持功能性 `P2`，非 P1，不创建 GitHub Issue。
+
 - **2026-08-19 10:00-14:02 CST 继续维持 `New`**：
   - `data/logs/hone-console-page-source.log`
     - 本轮按自动化上次运行点 `2026-08-19T02:00:28Z` / 北京时间 `2026-08-19 10:00 CST` 起算；`data/sessions.sqlite3` 仍未追入真实运行，当前运行态以 source log 为主。
@@ -329,3 +461,8 @@
 - 待补丁提交并进入仓库主线后，继续巡检 `cron_job_runs` 是否还出现 `error sending request for url (...)` 的同类 heartbeat 失败样本。
 - 评估 scheduler 是否仍需要 provider fallback，或在失败时保留更清晰的运维侧告警聚合。
 - 后续巡检继续关注是否还有其它 heartbeat job 在 `cron_job_runs` 中出现相同 `error sending request for url (...)`，若扩散则考虑提升优先级。
+
+## 下一步建议
+
+- 保持本缺陷在活跃队列中，优先补 heartbeat scheduler 对 MiniMax / OpenAI-compatible `HTTP 529` 和传输失败的短重试、退避或 provider fallback。
+- 修复后用真实 heartbeat 窗口复核是否还出现 `provider_http_error` 后直接 `skipped_error`，再评估是否降为 `Fixed`。

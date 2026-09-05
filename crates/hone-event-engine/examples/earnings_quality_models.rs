@@ -253,6 +253,7 @@ fn review_messages(event: &MarketEvent, context: &str) -> Vec<Message> {
     );
     vec![
         Message {
+            images: Vec::new(),
             role: "system".to_string(),
             content: Some(DEFAULT_EARNINGS_QUALITY_SYSTEM_PROMPT.to_string()),
             reasoning_content: None,
@@ -261,6 +262,7 @@ fn review_messages(event: &MarketEvent, context: &str) -> Vec<Message> {
             name: None,
         },
         Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(user),
             reasoning_content: None,

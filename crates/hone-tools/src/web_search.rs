@@ -55,10 +55,18 @@ impl WebSearchTool {
 
     pub fn from_config(config: &hone_core::config::HoneConfig) -> Self {
         let pool = hone_core::ApiKeyPool::new(config.search.api_keys.iter().cloned());
+        let endpoint = config
+            .search
+            .endpoint
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(DEFAULT_TAVILY_SEARCH_ENDPOINT)
+            .to_string();
         Self {
             keys: pool.keys().to_vec(),
             max_results: low_bandwidth_max_results(config.search.max_results),
-            endpoint: DEFAULT_TAVILY_SEARCH_ENDPOINT.to_string(),
+            endpoint,
             http: reqwest::Client::new(),
             disabled_until: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -125,6 +133,7 @@ impl WebSearchTool {
         key: &str,
         query: &str,
         time_range: Option<&str>,
+        topic: Option<&str>,
     ) -> Result<Value, String> {
         let mut body = serde_json::json!({
             "query": query,
@@ -139,6 +148,12 @@ impl WebSearchTool {
         // an actual provider constraint or a stale page can still win.
         if let Some(time_range) = time_range {
             body["time_range"] = Value::String(time_range.to_string());
+        }
+        // Tavily only returns each result's `published_date` for the news
+        // topic. Callers doing event/date attribution opt into that provider
+        // mode instead of treating a date in the query as source metadata.
+        if let Some(topic) = topic {
+            body["topic"] = Value::String(topic.to_string());
         }
 
         let response = self
@@ -303,6 +318,8 @@ fn annotate_basic_search_evidence(mut data: Value, max_results: u32) -> Value {
                 "use_only_explicit_title_or_snippet_claims": true,
                 "cite_same_result_url_inline": true,
                 "search_order_or_score_is_not_real_world_rank": true,
+                "query_date_is_not_publication_date": true,
+                "read_result_published_date_when_present": true,
                 "do_not_infer": [
                     "rank_or_priority",
                     "exclusivity",
@@ -479,7 +496,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "搜索互联网获取最新信息。当需要查找实时新闻、股票消息、公司动态、公司之间的客户/供应商/投资/持股/合同/技术合作关系，或任何需要当前来源的问题时使用。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。"
+        "搜索互联网获取最新信息。当用户明确点名公司或证券且结构化行情工具可用时，先完成实体 search 并优先调用 snapshot（不适用时用 quote/profile，扩展时段用 extended_hours）；本工具不是价格、涨跌幅或报价时间的首选来源，而是用于随后补充实时新闻、公司动态、公告、监管文件，以及客户/供应商/投资/持股/合同/技术合作关系和事件因果。这个顺序只是 Agent 的工具选择提示，不是缺行情即禁止搜索或回答的门禁。当前工具使用 basic search，最多返回 3 条标题、URL 与结果摘要，不返回网页正文；摘要只能按字面有限使用，重要关系结论应继续优先寻找 SEC、公司 IR、公司公告或其它一手来源。宽泛的‘A 与 B 什么关系’不能只做一次泛搜索：由 Agent 依据完整语义自主拆解相关维度，通常至少分别查询商业/客户供应/技术合同，以及投资/持股/beneficial ownership；可在同一轮并行。实体 search/profile 只能证明身份，不能替代关系或事件证据；否定某种关系也需要直接来源，未搜到不等于不存在。\n\n**给用户的来源标注**只写站点域名与发布时间（或行情数据源与报价时间），不要出现 web_search、Tavily、provider、snapshot、market_hours、isMarketOpen 这类工具名、参数名或字段名；市场状态一律写成盘前、盘中、盘后或休市。本轮检索失败时如实说「这部分本轮没检索到」，不要说搜索服务不可用或配额用尽。\n\n**核验类请求**（用户说核实、求证、是否属实、帮我改稿）：每条判定后面都要跟本轮检索返回的来源名与日期；没检索到的条目只能写「本轮未取得证据，无法核验」，不得写「官方从未发布」「不存在」这类否定性存在断言，也不得据未核验条目要求用户删段或改写。"
     }
 
     fn parameters(&self) -> Vec<ToolParameter> {
@@ -507,6 +524,16 @@ impl Tool for WebSearchTool {
                 ]),
                 items: None,
             },
+            ToolParameter {
+                name: "topic".to_string(),
+                param_type: "string".to_string(),
+                description:
+                    "搜索主题。涨跌归因、当日催化与其它新闻事件查询使用 news；该模式会让 Tavily 在可得时为每条结果返回 published_date，必须读取该字段，不能把 query 中的日期当作文章发布日期。普通定义/关系检索可省略。"
+                        .to_string(),
+                required: false,
+                r#enum: Some(vec!["general".into(), "news".into(), "finance".into()]),
+                items: None,
+            },
         ]
     }
 
@@ -517,6 +544,11 @@ impl Tool for WebSearchTool {
             .and_then(|value| value.as_str())
             .map(str::trim)
             .filter(|value| matches!(*value, "day" | "week" | "month" | "year"));
+        let topic = args
+            .get("topic")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| matches!(*value, "general" | "news" | "finance"));
 
         if self.keys.is_empty() {
             tracing::warn!(tool = "web_search", "tavily keys are empty");
@@ -535,7 +567,7 @@ impl Tool for WebSearchTool {
                 skipped_disabled += 1;
                 continue;
             }
-            match self.search_with_key(key, query, time_range).await {
+            match self.search_with_key(key, query, time_range, topic).await {
                 Ok(data) => {
                     if let Some(credits) = data
                         .get("usage")
@@ -613,8 +645,16 @@ mod tests {
     /// definitional or historical question is not stripped of authoritative
     /// older sources.
     #[test]
-    fn time_range_is_an_opt_in_provider_constraint() {
+    fn recency_and_topic_are_opt_in_provider_constraints() {
         let tool = WebSearchTool::new(vec!["k".to_string()], 5);
+        assert!(
+            tool.description()
+                .contains("本工具不是价格、涨跌幅或报价时间的首选来源")
+        );
+        assert!(
+            tool.description()
+                .contains("不是缺行情即禁止搜索或回答的门禁")
+        );
         let schema = tool.to_openai_schema();
         let params = schema["function"]["parameters"]["properties"]
             .as_object()
@@ -631,6 +671,33 @@ mod tests {
             .filter_map(|value| value.as_str())
             .collect::<Vec<_>>();
         assert_eq!(allowed, ["day", "week", "month", "year"]);
+        assert!(params.contains_key("topic"));
+        assert!(!required.iter().any(|value| value == "topic"));
+        let topics = params["topic"]["enum"]
+            .as_array()
+            .expect("topic enum")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(topics, ["general", "news", "finance"]);
+        assert_text_contains_all(
+            params["topic"]["description"]
+                .as_str()
+                .expect("topic description"),
+            &["涨跌归因", "published_date", "文章发布日期"],
+        );
+    }
+
+    #[test]
+    fn from_config_honors_endpoint_override() {
+        let mut config = hone_core::config::HoneConfig::default();
+        config.search.endpoint = Some("http://127.0.0.1:8898/search".to_string());
+        let tool = WebSearchTool::from_config(&config);
+        assert_eq!(tool.endpoint, "http://127.0.0.1:8898/search");
+        // Empty/whitespace overrides fall back to Tavily's own endpoint.
+        config.search.endpoint = Some("   ".to_string());
+        let tool = WebSearchTool::from_config(&config);
+        assert_eq!(tool.endpoint, DEFAULT_TAVILY_SEARCH_ENDPOINT);
     }
 
     #[test]
@@ -689,6 +756,14 @@ mod tests {
         );
         assert_eq!(
             annotated["hone_search_contract"]["claim_policy"]["search_order_or_score_is_not_real_world_rank"],
+            true
+        );
+        assert_eq!(
+            annotated["hone_search_contract"]["claim_policy"]["query_date_is_not_publication_date"],
+            true
+        );
+        assert_eq!(
+            annotated["hone_search_contract"]["claim_policy"]["read_result_published_date_when_present"],
             true
         );
         for result in annotated["results"].as_array().expect("results") {
@@ -964,7 +1039,7 @@ mod tests {
             let n = socket.read(&mut buf).await.unwrap_or(0);
             *captured_for_server.lock().expect("captured request lock") =
                 String::from_utf8_lossy(&buf[..n]).to_string();
-            let body = r#"{"results":[{"title":"ok"}],"usage":{"credits":1}}"#;
+            let body = r#"{"results":[{"title":"ok","published_date":"Fri, 21 Aug 2026 20:48:00 GMT"}],"usage":{"credits":1}}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
                 body.len(),
@@ -986,10 +1061,18 @@ mod tests {
         };
 
         let result = tool
-            .execute(serde_json::json!({"query": "AAPL news"}))
+            .execute(serde_json::json!({
+                "query": "AAPL decline August 21 2026",
+                "time_range": "day",
+                "topic": "news"
+            }))
             .await
             .expect("search should succeed");
         assert_eq!(result["usage"]["credits"], 1);
+        assert_eq!(
+            result["results"][0]["published_date"],
+            "Fri, 21 Aug 2026 20:48:00 GMT"
+        );
 
         let request = captured_request
             .lock()
@@ -1007,6 +1090,8 @@ mod tests {
         assert_eq!(payload["include_raw_content"], false);
         assert_eq!(payload["include_images"], false);
         assert_eq!(payload["include_usage"], true);
+        assert_eq!(payload["time_range"], "day");
+        assert_eq!(payload["topic"], "news");
         assert!(payload.get("api_key").is_none());
     }
 }

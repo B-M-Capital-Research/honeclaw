@@ -3,7 +3,7 @@
 - 发现时间：2026-07-26 15:02 CST
 - Bug Type：System Error
 - 严重等级：P2
-- 状态：New
+- 状态：Fixed
 - GitHub Issue：无，非 P1
 
 ## 证据来源
@@ -64,3 +64,12 @@
 - 为 `agent_owned_finance_persistent_tool_error` 增加共享用户可见错误净化，禁止裸 key 进入 final。
 - 对取消关注 / unwatch / 删除监控等副作用请求增加专用恢复路径：如果 persistent tool 被阻断，应明确告知未完成，不要继续金融搜索或生成投研回答。
 - 增加 Feishu direct 回归：用户在旧会话 compact 后发送 `SIVE\nSIVEF 取消这两只代码`，最终回复不得包含内部错误 key，且必须给出成功确认或安全失败说明。
+
+## 修复记录
+
+- `2026-08-28` 代码级修复：
+  - `crates/hone-channels/src/runtime.rs` 现将 `agent_owned_finance_persistent_tool_error` 与 `persistent_tool_failure:*` 统一映射为用户可操作文案：`这次涉及持仓、关注或提醒的修改未能可靠确认结果。请先查看当前状态，再决定是否重试。`
+  - 该映射同时覆盖 `user_visible_error_message(...)` 与 `user_visible_error_message_or_none(...)`，避免直聊或失败持久化路径把内部错误 key 原样外发。
+  - 新增回归 `user_visible_error_message_maps_persistent_mutation_failures` 与 `user_visible_error_message_or_none_keeps_persistent_mutation_failures_actionable`。
+  - 验证通过：`cargo test -p hone-channels user_visible_error_message_ --lib -- --nocapture`、`cargo check -p hone-channels --tests`。
+  - 本轮修复的是“内部 persistent tool 错误 key 外露”这一用户可见缺陷；是否进一步把 compact 后的取消关注请求更稳定地路由到成功确认，后续可继续单独跟踪。

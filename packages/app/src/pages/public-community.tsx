@@ -1,14 +1,18 @@
 import { Title } from "@solidjs/meta";
 import { CONTENT } from "@/lib/public-content";
+import { mergeCommunityTimeline } from "@/lib/public-community-timeline";
 import {
   cachedCommunityFeed,
   setCachedCommunityFeed,
 } from "@/lib/public-session-cache";
 import {
+  ErrorBoundary,
   For,
   Match,
   Show,
+  Suspense,
   Switch,
+  lazy,
   createMemo,
   createSignal,
   onCleanup,
@@ -40,6 +44,10 @@ import "./public-site.css";
 import "./public-polish.css";
 import "./public-community.css";
 
+const CommunityPdfPreview = lazy(() => import("@/components/community-pdf-preview"));
+// This verified group entry is not a per-post URL; captured topic hashes cannot form one.
+const COMMUNITY_SOURCE_GROUP_URL = "https://wx.zsxq.com/group/51115212285814";
+
 type ViewState = "loading" | "ready" | "login" | "error";
 type CommunityView = "official" | "forum";
 
@@ -66,6 +74,77 @@ function resourceIsStored(resource: PublicCommunityResource) {
   return resource.access_state === "stored";
 }
 
+function unavailableResourceCopy(resource: PublicCommunityResource) {
+  const copy = CONTENT.chat_page.community_page;
+  if (resource.access_state === "metadata_only") {
+    return { title: copy.not_archived, detail: copy.not_archived_detail };
+  }
+  if (resource.access_state === "protected_in_app") {
+    return { title: copy.previously_restricted, detail: copy.previously_restricted_detail };
+  }
+  return { title: copy.resource_unavailable, detail: copy.resource_unavailable_detail };
+}
+
+function CommunityResourceAvailability(props: {
+  resource: PublicCommunityResource;
+  onClose: () => void;
+}) {
+  const copy = CONTENT.chat_page.community_page;
+  const [copyState, setCopyState] = createSignal<"idle" | "copied" | "failed">("idle");
+  const name = () => props.resource.display_name || copy.community_file;
+  const message = () => unavailableResourceCopy(props.resource);
+  const titleId = `community-resource-status-${props.resource.resource_id}`;
+  const detailId = `${titleId}-detail`;
+  let dialog!: HTMLDialogElement;
+  let disposed = false;
+  onMount(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    dialog.showModal();
+    onCleanup(() => {
+      disposed = true;
+      dialog.close();
+      previousFocus?.focus();
+    });
+  });
+  const copyName = async () => {
+    try {
+      await navigator.clipboard.writeText(name());
+      if (!disposed) setCopyState("copied");
+    } catch {
+      if (!disposed) setCopyState("failed");
+    }
+  };
+  return (
+    <Portal>
+      <dialog
+        ref={dialog}
+        class="public-community-resource-dialog"
+        aria-labelledby={titleId}
+        aria-describedby={detailId}
+        onCancel={(event) => { event.preventDefault(); props.onClose(); }}
+      >
+        <header>
+          <h2 id={titleId}>{message().title}</h2>
+          <button type="button" aria-label={copy.close_resource_details} onClick={props.onClose}>×</button>
+        </header>
+        <p id={detailId}>{message().detail}</p>
+        <label>
+          <span>{copy.resource_name}</span>
+          <input readOnly value={name()} onFocus={(event) => event.currentTarget.select()} />
+        </label>
+        <div class="public-community-resource-actions">
+          <button type="button" onClick={() => void copyName()}>{copy.copy_resource_name}</button>
+          <a href={COMMUNITY_SOURCE_GROUP_URL} target="_blank" rel="noopener noreferrer">{copy.open_source_group}</a>
+        </div>
+        <p class="public-community-resource-copy-status" role={copyState() === "failed" ? "alert" : "status"}>
+          {copyState() === "copied" ? copy.resource_name_copied : copyState() === "failed" ? copy.resource_name_copy_failed : ""}
+        </p>
+        <small>{copy.source_group_hint}</small>
+      </dialog>
+    </Portal>
+  );
+}
+
 function resourceIsImage(resource: PublicCommunityResource) {
   const contentType = normalizedContentType(resource);
   return (
@@ -81,8 +160,8 @@ function resourceCanInlinePreview(resource: PublicCommunityResource) {
   );
 }
 
-async function downloadCommunityResource(resource: PublicCommunityResource) {
-  const blob = await getPublicCommunityResourceBlob(
+async function downloadCommunityResource(resource: PublicCommunityResource, preparedBlob?: Blob) {
+  const blob = preparedBlob ?? await getPublicCommunityResourceBlob(
     resource.resource_id,
     resource.version,
     resource.delivery_path,
@@ -107,10 +186,8 @@ function CommunityMediaPreview(props: {
   const [fitSize, setFitSize] = createSignal({ width: 0, height: 0 });
   const [interacting, setInteracting] = createSignal(false);
   const [downloadState, setDownloadState] = createSignal<"idle" | "working" | "error">("idle");
-  const [documentSource, setDocumentSource] = createSignal<string | null>(null);
-  const [documentState, setDocumentState] = createSignal<
-    "loading" | "ready" | "slow" | "error"
-  >("loading");
+  const [documentBlob, setDocumentBlob] = createSignal<Blob | null>(null);
+  const [documentError, setDocumentError] = createSignal(false);
   const source = () =>
     publicCommunityResourceUrl(
       props.resource.resource_id,
@@ -129,8 +206,8 @@ function CommunityMediaPreview(props: {
   let removeGestures: (() => void) | undefined;
   let viewFrame = 0;
   let disposed = false;
-  let documentObjectUrl: string | undefined;
-  let documentSlowTimer: number | undefined;
+  let documentBlobRequest: Promise<Blob> | undefined;
+  const documentRequest = new AbortController();
   let pendingView: { zoom: number; x: number; y: number } | undefined;
 
   const boundedView = (nextZoom: number, x: number, y: number) => {
@@ -324,11 +401,30 @@ function CommunityMediaPreview(props: {
     };
   };
 
+  // Preview and download share the in-flight request, including early clicks.
+  const prepareDocument = () => documentBlobRequest ??= getPublicCommunityResourceBlob(
+    props.resource.resource_id,
+    props.resource.version,
+    props.resource.delivery_path,
+    documentRequest.signal,
+  ).then((blob) => {
+    if (!disposed) {
+      setDocumentError(false);
+      setDocumentBlob(blob);
+    }
+    return blob;
+  }).catch((error) => {
+    documentBlobRequest = undefined;
+    throw error;
+  });
+
   const download = async () => {
     if (downloadState() === "working") return;
     setDownloadState("working");
     try {
-      await downloadCommunityResource(props.resource);
+      const blob = isImage() ? undefined : documentBlob() ?? await prepareDocument();
+      if (disposed) return;
+      await downloadCommunityResource(props.resource, blob);
       setDownloadState("idle");
     } catch {
       setDownloadState("error");
@@ -337,22 +433,9 @@ function CommunityMediaPreview(props: {
 
   onMount(() => {
     if (!isImage()) {
-      documentSlowTimer = window.setTimeout(() => {
-        if (!disposed && documentState() === "loading") setDocumentState("slow");
-      }, 5_000);
-      void getPublicCommunityResourceBlob(
-        props.resource.resource_id,
-        props.resource.version,
-        props.resource.delivery_path,
-      )
-        .then((blob) => {
-          if (disposed) return;
-          documentObjectUrl = URL.createObjectURL(blob);
-          setDocumentSource(documentObjectUrl);
-        })
-        .catch(() => {
-          if (!disposed) setDocumentState("error");
-        });
+      void prepareDocument().catch(() => {
+        if (!disposed) setDocumentError(true);
+      });
     }
 
     const previousFocus = document.activeElement instanceof HTMLElement
@@ -375,7 +458,7 @@ function CommunityMediaPreview(props: {
       if (event.key !== "Tab" || !dialogEl) return;
       const focusable = Array.from(
         dialogEl.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), a[href], iframe, [tabindex]:not([tabindex="-1"])',
+          'button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
         ),
       );
       if (!focusable.length) return;
@@ -403,8 +486,9 @@ function CommunityMediaPreview(props: {
 
   onCleanup(() => {
     disposed = true;
-    if (documentSlowTimer !== undefined) window.clearTimeout(documentSlowTimer);
-    if (documentObjectUrl) URL.revokeObjectURL(documentObjectUrl);
+    documentRequest.abort();
+    documentBlobRequest = undefined;
+    setDocumentBlob(null);
     removeGestures?.();
     resizeObserver?.disconnect();
     if (viewFrame) cancelAnimationFrame(viewFrame);
@@ -437,50 +521,11 @@ function CommunityMediaPreview(props: {
           <Show
             when={isImage()}
             fallback={
-              <div class="public-community-document-preview">
-                <Show
-                  when={documentState() !== "error"}
-                  fallback={
-                    <div class="public-community-document-fallback" role="alert">
-                      <strong>{CONTENT.chat_page.community_page.pdf_unsupported}</strong>
-                      <span>{CONTENT.chat_page.community_page.pdf_fallback}</span>
-                    </div>
-                  }
-                >
-                  <Show
-                    when={documentSource()}
-                    fallback={<div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.pdf_preparing}</div>}
-                  >
-                    <iframe
-                      title={props.resource.display_name || CONTENT.chat_page.community_page.file_preview}
-                      src={documentSource()!}
-                      sandbox="allow-downloads allow-same-origin"
-                      referrerPolicy="no-referrer"
-                      onLoad={() => {
-                        if (documentSlowTimer !== undefined) {
-                          window.clearTimeout(documentSlowTimer);
-                          documentSlowTimer = undefined;
-                        }
-                        setDocumentState("ready");
-                      }}
-                      onError={() => setDocumentState("error")}
-                    />
-                  </Show>
-                </Show>
-                <div
-                  class="public-community-document-status"
-                  classList={{ "is-warning": documentState() === "slow" }}
-                  role="status"
-                >
-                  {documentState() === "slow"
-                    ? CONTENT.chat_page.community_page.pdf_slow
-                    : documentState() === "error"
-                      ? CONTENT.chat_page.community_page.pdf_unavailable
-                    : documentState() === "ready"
-                      ? CONTENT.chat_page.community_page.pdf_loaded
-                      : CONTENT.chat_page.community_page.pdf_verifying}
-                </div>
-              </div>
+              <ErrorBoundary fallback={<div class="public-community-document-fallback" role="alert"><strong>{CONTENT.chat_page.community_page.pdf_unsupported}</strong><span>{CONTENT.chat_page.community_page.pdf_fallback}</span></div>}>
+                <Suspense fallback={<div class="public-community-document-fallback" role="status">{CONTENT.chat_page.community_page.pdf_preparing}</div>}>
+                  <CommunityPdfPreview blob={documentBlob()} loadError={documentError()} />
+                </Suspense>
+              </ErrorBoundary>
             }
           >
             <div
@@ -514,9 +559,7 @@ function CommunityMediaPreview(props: {
           <span>
             {isImage()
               ? CONTENT.chat_page.community_page.zoom_hint
-              : documentState() === "error"
-                ? CONTENT.chat_page.community_page.preview_na_hint
-                : CONTENT.chat_page.community_page.sandboxed}
+              : CONTENT.chat_page.community_page.pdf_controls_hint}
           </span>
           <Show when={isImage()}>
             <div class="public-community-zoom-controls" aria-label={CONTENT.chat_page.community_page.image_zoom}>
@@ -549,13 +592,19 @@ export default function PublicCommunityPage() {
   const [items, setItems] = createSignal<PublicCommunityContent[]>(restored ?? []);
   const [nextBefore, setNextBefore] = createSignal<number | null>(null);
   const [loadingMore, setLoadingMore] = createSignal(false);
+  const [refreshing, setRefreshing] = createSignal(false);
   const [error, setError] = createSignal("");
   const [loadMoreError, setLoadMoreError] = createSignal("");
   const [preview, setPreview] = createSignal<PublicCommunityResource | null>(null);
+  const [unavailableResource, setUnavailableResource] = createSignal<PublicCommunityResource | null>(null);
   const [downloadingResourceId, setDownloadingResourceId] = createSignal<number | null>(null);
   const [downloadError, setDownloadError] = createSignal("");
   const [query, setQuery] = createSignal("");
   const [communityView, setCommunityView] = createSignal<CommunityView>("official");
+  let requestController: AbortController | undefined;
+  let hasLoaded = false;
+  let lastRefreshAt = 0;
+  let lastSeenId: number | undefined;
   const filteredItems = createMemo(() => {
     const normalized = query().trim().toLowerCase();
     if (!normalized) return items();
@@ -565,10 +614,14 @@ export default function PublicCommunityPage() {
   });
 
   const load = async (more = false) => {
+    if (requestController || (more && !nextBefore())) return;
+    const controller = new AbortController();
+    requestController = controller;
     if (more) {
       setLoadingMore(true);
       setLoadMoreError("");
     } else {
+      setRefreshing(true);
       // Only blank the list when there is nothing worth showing yet.
       if (items().length === 0) setState("loading");
       setError("");
@@ -576,15 +629,28 @@ export default function PublicCommunityPage() {
     try {
       const page = await getPublicCommunity({
         before: more ? nextBefore() ?? undefined : undefined,
+        signal: controller.signal,
       });
-      setItems((current) => (more ? [...current, ...page.items] : page.items));
-      if (!more) setCachedCommunityFeed(page.items);
-      setNextBefore(page.next_before ?? null);
+      if (controller.signal.aborted) return;
+      const merged = mergeCommunityTimeline(
+        hasLoaded ? items() : [], nextBefore(), page, more,
+      );
+      setItems(merged.items);
+      setNextBefore(merged.nextBefore);
+      hasLoaded = true;
+      if (!more) {
+        setCachedCommunityFeed(page.items);
+        lastRefreshAt = Date.now();
+      }
       setState("ready");
-      if (!more && page.items[0]) {
-        void markPublicCommunitySeen(page.items[0].content_id);
+      if (!more && page.items[0] && page.items[0].content_id !== lastSeenId) {
+        const latestId = page.items[0].content_id;
+        void markPublicCommunitySeen(latestId)
+          .then(() => { lastSeenId = latestId; })
+          .catch(() => { /* A read receipt must not break the timeline. */ });
       }
     } catch (cause) {
+      if (controller.signal.aborted) return;
       if (isUnauthorizedApiError(cause)) {
         // A signed-out visitor must not keep reading a cached feed.
         setCachedCommunityFeed(null);
@@ -599,7 +665,9 @@ export default function PublicCommunityPage() {
         if (items().length === 0) setState("error");
       }
     } finally {
+      if (requestController === controller) requestController = undefined;
       setLoadingMore(false);
+      setRefreshing(false);
     }
   };
 
@@ -616,7 +684,30 @@ export default function PublicCommunityPage() {
     }
   };
 
-  onMount(() => void load());
+  onMount(() => {
+    void load();
+    const refreshIfVisible = () => {
+      if (
+        document.visibilityState === "hidden" ||
+        communityView() !== "official" ||
+        state() === "login" ||
+        preview() || unavailableResource() ||
+        Date.now() - lastRefreshAt < 30_000
+      ) return;
+      void load();
+    };
+    const timer = window.setInterval(refreshIfVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    window.addEventListener("online", refreshIfVisible);
+    onCleanup(() => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      window.removeEventListener("online", refreshIfVisible);
+      requestController?.abort();
+    });
+  });
 
   return (
     <div class="hone-landing-v4 public-community-page">
@@ -653,6 +744,18 @@ export default function PublicCommunityPage() {
           </nav>
 
           <Show when={communityView() === "official"}>
+          <div class="public-community-refresh">
+            <Show when={error() && items().length > 0}>
+              <span role="alert">{CONTENT.chat_page.community_page.refresh_failed}</span>
+            </Show>
+            <button
+              type="button"
+              disabled={refreshing() || loadingMore()}
+              onClick={() => void load()}
+            >
+              {refreshing() ? CONTENT.chat_page.community_page.refreshing : CONTENT.chat_page.community_page.refresh}
+            </button>
+          </div>
           <Switch>
             <Match when={state() === "loading"}>
               <div class="public-workspace-state" role="status">{CONTENT.chat_page.community_page.loading}</div>
@@ -693,17 +796,19 @@ export default function PublicCommunityPage() {
                                   <button
                                     type="button"
                                     class="public-community-image"
-                                    disabled={!resourceCanInlinePreview(resource)}
-                                    aria-label={CONTENT.chat_page.community_page.preview_label.replace(
+                                    classList={{ "is-unavailable": !resourceIsStored(resource) }}
+                                    aria-label={(resourceCanInlinePreview(resource)
+                                      ? CONTENT.chat_page.community_page.preview_label
+                                      : CONTENT.chat_page.community_page.resource_details_label).replace(
                                       "{name}",
                                       resource.display_name ||
                                         CONTENT.chat_page.community_page.image,
                                     )}
-                                    onClick={() => setPreview(resource)}
+                                    onClick={() => resourceCanInlinePreview(resource) ? setPreview(resource) : setUnavailableResource(resource)}
                                   >
                                     <Show
                                       when={resourceCanInlinePreview(resource)}
-                                      fallback={<span>{CONTENT.chat_page.community_page.image_protected}</span>}
+                                      fallback={<><strong>{resource.display_name || CONTENT.chat_page.community_page.image}</strong><span>{unavailableResourceCopy(resource).title}</span></>}
                                     >
                                       <img
                                         src={publicCommunityResourceUrl(
@@ -740,16 +845,16 @@ export default function PublicCommunityPage() {
                                     <button
                                       type="button"
                                       class="public-community-file"
-                                      classList={{ "is-protected": !stored }}
-                                      disabled={!stored || working()}
-                                      onClick={() => previewable ? setPreview(resource) : void download(resource)}
+                                      classList={{ "is-unavailable": !stored }}
+                                      disabled={working()}
+                                      onClick={() => !stored ? setUnavailableResource(resource) : previewable ? setPreview(resource) : void download(resource)}
                                     >
                                       <span aria-hidden="true">{stored ? "▧" : "⌁"}</span>
                                       <span>
                                         <strong>{resource.display_name || CONTENT.chat_page.community_page.community_file}</strong>
                                         <small>
                                           {!stored
-                                            ? CONTENT.chat_page.community_page.meta_only
+                                            ? unavailableResourceCopy(resource).title
                                             : working()
                                               ? CONTENT.chat_page.community_page.downloading
                                               : previewable
@@ -780,7 +885,7 @@ export default function PublicCommunityPage() {
                     <button
                       type="button"
                       class="public-community-more"
-                      disabled={loadingMore()}
+                      disabled={loadingMore() || refreshing()}
                       onClick={() => void load(true)}
                     >
                       {loadingMore() ? CONTENT.chat_page.community_page.loading_short : loadMoreError() ? CONTENT.chat_page.community_page.retry_older : CONTENT.chat_page.community_page.load_older}
@@ -801,6 +906,9 @@ export default function PublicCommunityPage() {
       </Show>
       <Show when={preview()}>
         <CommunityMediaPreview resource={preview()!} onClose={() => setPreview(null)} />
+      </Show>
+      <Show when={unavailableResource()}>
+        <CommunityResourceAvailability resource={unavailableResource()!} onClose={() => setUnavailableResource(null)} />
       </Show>
     </div>
   );

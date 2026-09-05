@@ -223,3 +223,89 @@ fn report_run_input_includes_required_defaults() {
         })
     );
 }
+
+#[tokio::test]
+async fn web_admin_allowlist_is_honored() {
+    let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
+    config.admins.web_user_ids = vec!["web-user-1234abcd5678".to_string()];
+    let core = HoneBotCore::new(config).await;
+
+    assert!(core.is_admin("web-user-1234abcd5678", "web"));
+    assert!(!core.is_admin("web-user-other", "web"));
+
+    let actor = ActorIdentity::new("web", "web-user-1234abcd5678", None::<String>).expect("actor");
+    assert!(core.is_admin_actor(&actor));
+}
+
+#[tokio::test]
+async fn conversation_profile_builds_dedicated_interactive_llm() {
+    let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
+    let llm_yaml = r#"
+providers:
+  deepseek:
+    kind: openai_compatible
+    base_url: https://api.deepseek.com/v1
+    api_key: test-key
+  grok_build:
+    kind: openai_compatible
+    base_url: http://127.0.0.1:8899/v1
+    api_key: local-proxy
+profiles:
+  main:
+    provider: deepseek
+    model: deepseek-v4-pro
+  conversation:
+    provider: grok_build
+    model: grok-4.6
+default_profile: main
+conversation_profile: conversation
+"#;
+    config.llm = serde_yaml::from_str(llm_yaml).expect("llm config");
+    let core = HoneBotCore::new(config).await;
+    assert!(core.llm.is_some());
+    assert!(core.conversation_llm.is_some());
+
+    // 未配置 conversation_profile 时不建独立 provider,交互对话继续走默认 LLM。
+    let mut plain = HoneConfig::default();
+    plain.timezone = Some("Asia/Shanghai".to_string());
+    let plain_core = HoneBotCore::new(plain).await;
+    assert!(plain_core.conversation_llm.is_none());
+}
+
+#[tokio::test]
+async fn admins_use_native_runner_false_routes_admins_to_strict() {
+    let mut config = HoneConfig::default();
+    // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
+    // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
+    config.timezone = Some("Asia/Shanghai".to_string());
+    config.agent.runner = "codex_acp".to_string();
+    config.agent.admins_use_native_runner = false;
+    config.admins.web_user_ids = vec!["web-user-1234abcd5678".to_string()];
+    let core = HoneBotCore::new(config).await;
+    let admin_actor =
+        ActorIdentity::new("web", "web-user-1234abcd5678", None::<String>).expect("actor");
+
+    // 管理员权益(配额豁免等)仍在,但对话路由与普通用户一致走 strict。
+    assert!(core.is_admin_actor(&admin_actor));
+    assert!(core.actor_uses_strict_runner_fallback(&admin_actor));
+    assert_eq!(
+        core.effective_runner_conversation_strategy(&admin_actor),
+        AgentConversationStrategy::StructuredReplay
+    );
+    assert!(!core.effective_runner_uses_native_codex_turns(&admin_actor));
+
+    // 默认值保持现状:管理员继续用原生 runner。
+    let mut default_config = HoneConfig::default();
+    default_config.timezone = Some("Asia/Shanghai".to_string());
+    default_config.agent.runner = "codex_acp".to_string();
+    default_config.admins.web_user_ids = vec!["web-user-1234abcd5678".to_string()];
+    assert!(default_config.agent.admins_use_native_runner);
+    let default_core = HoneBotCore::new(default_config).await;
+    assert!(!default_core.actor_uses_strict_runner_fallback(&admin_actor));
+}

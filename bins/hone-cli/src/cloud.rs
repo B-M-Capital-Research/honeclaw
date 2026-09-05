@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use clap::{Args, Subcommand, ValueEnum};
 use futures::{StreamExt, stream};
 use hone_core::cloud_runtime::{
-    CloudCommunityPublishLock, CloudCommunityReconcileCandidate,
+    CloudCommunityAppendManifest, CloudCommunityPublishLock, CloudCommunityReconcileCandidate,
     CloudCommunityResourceBackfillOutcome, CloudCommunityResourceBackfillTarget,
     CloudCommunityResourceBackfillUpdate, CloudCompanyProfileFileRecord,
     CloudConversationQuotaImport, CloudCronJobRecord, CloudDocumentIndex,
@@ -36,6 +36,10 @@ pub(crate) enum CloudCommands {
     CommunityAssets(CommunityAssetsArgs),
     /// 对账完整社区时间线，并在单事务中补齐缺失的内容/资源元数据（默认 dry-run）。
     CommunityContents(CommunityContentsArgs),
+    /// 从已核验断点幂等追加连续社区时间线增量（默认 dry-run）。
+    CommunityAppend(CommunityAppendArgs),
+    /// 只读查看社区时间线最新条目，定位增量导入断点。
+    CommunityInspect(CommunityInspectArgs),
     /// 将社区只读时间线发布为 private-R2 edge snapshot（默认 dry-run）。
     CommunityPublish(CommunityPublishArgs),
     /// 读取或修改一个国内 Web 用户的 PostgreSQL 管理员标记（默认 dry-run）。
@@ -157,6 +161,34 @@ pub(crate) struct CommunityContentsArgs {
     /// Insert all missing contents/resources in one PostgreSQL transaction.
     #[arg(long)]
     pub(crate) apply: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CommunityAppendArgs {
+    /// Contiguous newest-first source delta plus the canonical archive anchor.
+    #[arg(long, value_name = "FILE")]
+    pub(crate) manifest: PathBuf,
+    #[arg(long, default_value = "zsxq")]
+    pub(crate) source: String,
+    #[arg(long = "external-id", default_value = "51115212285814")]
+    pub(crate) external_id: String,
+    /// Insert every missing topic/resource in one PostgreSQL transaction.
+    #[arg(long)]
+    pub(crate) apply: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct CommunityInspectArgs {
+    #[arg(long, default_value = "zsxq")]
+    pub(crate) source: String,
+    #[arg(long = "external-id", default_value = "51115212285814")]
+    pub(crate) external_id: String,
+    /// Number of newest timeline entries to return.
+    #[arg(long, default_value_t = 10)]
+    pub(crate) limit: usize,
+    /// Emit the exact append anchor without topic bodies or storage locations.
+    #[arg(long)]
+    pub(crate) anchor_only: bool,
 }
 
 #[derive(Args, Debug)]
@@ -375,6 +407,8 @@ const COMMUNITY_PUBLISH_JSON_CONTENT_TYPE: &str = "application/json; charset=utf
 // them to the edge. Keep this deliberately low: historical resources may be
 // as large as the 128 MiB community backfill ceiling.
 const COMMUNITY_PUBLISH_RESOURCE_CONCURRENCY: usize = 2;
+// HEAD checks and bounded JSON reads do not buffer original attachments.
+const COMMUNITY_PUBLISH_METADATA_CONCURRENCY: usize = 16;
 const COMMUNITY_PUBLISH_MAX_FEED_BYTES: usize = 8 * 1024 * 1024;
 const COMMUNITY_PUBLISH_MAX_DESCRIPTOR_BYTES: usize = 64 * 1024;
 const COMMUNITY_PUBLISH_MAX_ACTIVE_INDEX_BYTES: usize = 1024 * 1024;
@@ -529,6 +563,8 @@ pub(crate) async fn run_cloud_command(
         CloudCommands::ObjectBench(args) => run_object_bench(config_path, args).await,
         CloudCommands::CommunityAssets(args) => run_community_assets(config_path, args).await,
         CloudCommands::CommunityContents(args) => run_community_contents(config_path, args).await,
+        CloudCommands::CommunityAppend(args) => run_community_append(config_path, args).await,
+        CloudCommands::CommunityInspect(args) => run_community_inspect(config_path, args).await,
         CloudCommands::CommunityPublish(args) => run_community_publish(config_path, args).await,
         CloudCommands::WebAdmin(args) => run_web_admin(config_path, args).await,
     }
@@ -1304,6 +1340,84 @@ fn community_publish_object_is_mutable(kind: CommunityPublishObjectKind) -> bool
     )
 }
 
+async fn preflight_community_publish_object(
+    oss: &OssObjectStore,
+    planned: PlannedCommunityPublishObject,
+) -> (
+    PreflightCommunityPublishObject,
+    Option<CommunityPublishConflict>,
+) {
+    let exists = match community_publish_object_exists_with_retry(oss, &planned.key).await {
+        Ok(exists) => exists,
+        Err(_) => {
+            let conflict = CommunityPublishConflict {
+                resource_id: None,
+                object_key: Some(planned.key.clone()),
+                reason: "R2 destination HEAD 预检失败（endpoint 已隐藏）".to_string(),
+            };
+            return (
+                PreflightCommunityPublishObject {
+                    planned,
+                    existed: false,
+                    should_write: false,
+                },
+                Some(conflict),
+            );
+        }
+    };
+    if !exists {
+        return (
+            PreflightCommunityPublishObject {
+                planned,
+                existed: false,
+                should_write: true,
+            },
+            None,
+        );
+    }
+    let existing = match community_publish_get_object_with_retry(
+        oss,
+        &planned.key,
+        community_publish_object_max_bytes(planned.kind),
+    )
+    .await
+    {
+        Ok(existing) => existing,
+        Err(_) => {
+            let conflict = CommunityPublishConflict {
+                resource_id: None,
+                object_key: Some(planned.key.clone()),
+                reason: "R2 destination GET 预检失败（endpoint 已隐藏）".to_string(),
+            };
+            return (
+                PreflightCommunityPublishObject {
+                    planned,
+                    existed: true,
+                    should_write: false,
+                },
+                Some(conflict),
+            );
+        }
+    };
+    let changed = existing.bytes != planned.bytes;
+    let mutable = community_publish_object_is_mutable(planned.kind);
+    let conflict = (changed && !mutable).then(|| CommunityPublishConflict {
+        resource_id: None,
+        object_key: Some(planned.key.clone()),
+        reason:
+            "immutable publication key 已存在但内容不同；请修正 archive 或提升 feed-prefix 版本"
+                .to_string(),
+    });
+    (
+        PreflightCommunityPublishObject {
+            planned,
+            existed: true,
+            should_write: changed && mutable,
+        },
+        conflict,
+    )
+}
+
 async fn preflight_community_publish_objects(
     oss: &OssObjectStore,
     planned: Vec<PlannedCommunityPublishObject>,
@@ -1311,79 +1425,22 @@ async fn preflight_community_publish_objects(
     Vec<PreflightCommunityPublishObject>,
     Vec<CommunityPublishConflict>,
 ) {
-    let mut objects = Vec::with_capacity(planned.len());
+    // buffered preserves descriptor -> active index -> pages -> latest order,
+    // while all work here is read-only. Writes retain their sequential checks.
+    let checked = stream::iter(
+        planned
+            .into_iter()
+            .map(|planned| preflight_community_publish_object(oss, planned)),
+    )
+    .buffered(COMMUNITY_PUBLISH_METADATA_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+    let mut objects = Vec::with_capacity(checked.len());
     let mut conflicts = Vec::new();
-    for planned in planned {
-        let exists = match community_publish_object_exists_with_retry(oss, &planned.key).await {
-            Ok(exists) => exists,
-            Err(_) => {
-                conflicts.push(CommunityPublishConflict {
-                    resource_id: None,
-                    object_key: Some(planned.key.clone()),
-                    reason: "R2 destination HEAD 预检失败（endpoint 已隐藏）".to_string(),
-                });
-                objects.push(PreflightCommunityPublishObject {
-                    planned,
-                    existed: false,
-                    should_write: false,
-                });
-                continue;
-            }
-        };
-        if !exists {
-            objects.push(PreflightCommunityPublishObject {
-                planned,
-                existed: false,
-                should_write: true,
-            });
-            continue;
-        }
-        let existing = match community_publish_get_object_with_retry(
-            oss,
-            &planned.key,
-            community_publish_object_max_bytes(planned.kind),
-        )
-        .await
-        {
-            Ok(existing) => existing,
-            Err(_) => {
-                conflicts.push(CommunityPublishConflict {
-                    resource_id: None,
-                    object_key: Some(planned.key.clone()),
-                    reason: "R2 destination GET 预检失败（endpoint 已隐藏）".to_string(),
-                });
-                objects.push(PreflightCommunityPublishObject {
-                    planned,
-                    existed: true,
-                    should_write: false,
-                });
-                continue;
-            }
-        };
-        if existing.bytes == planned.bytes {
-            objects.push(PreflightCommunityPublishObject {
-                planned,
-                existed: true,
-                should_write: false,
-            });
-        } else if community_publish_object_is_mutable(planned.kind) {
-            objects.push(PreflightCommunityPublishObject {
-                planned,
-                existed: true,
-                should_write: true,
-            });
-        } else {
-            conflicts.push(CommunityPublishConflict {
-                resource_id: None,
-                object_key: Some(planned.key.clone()),
-                reason: "immutable publication key 已存在但内容不同；请修正 archive 或提升 feed-prefix 版本"
-                    .to_string(),
-            });
-            objects.push(PreflightCommunityPublishObject {
-                planned,
-                existed: true,
-                should_write: false,
-            });
+    for (object, conflict) in checked {
+        objects.push(object);
+        if let Some(conflict) = conflict {
+            conflicts.push(conflict);
         }
     }
     (objects, conflicts)
@@ -1640,7 +1697,11 @@ async fn run_community_publish_inner(
                 }
             }),
         )
-        .buffer_unordered(COMMUNITY_PUBLISH_RESOURCE_CONCURRENCY)
+        .buffer_unordered(if apply {
+            COMMUNITY_PUBLISH_RESOURCE_CONCURRENCY
+        } else {
+            COMMUNITY_PUBLISH_METADATA_CONCURRENCY
+        })
         .collect::<Vec<_>>()
         .await;
     checks.sort_by_key(community_edge_resource_check_id);
@@ -1737,6 +1798,107 @@ async fn run_community_publish_inner(
     report.ok = true;
     report.no_op = report.would_write == 0;
     Ok(report)
+}
+
+async fn run_community_append(
+    config_path: Option<&Path>,
+    args: CommunityAppendArgs,
+) -> Result<(), String> {
+    let source = args.source.trim();
+    let external_id = args.external_id.trim();
+    if source.is_empty() || external_id.is_empty() {
+        return Err("--source 和 --external-id 不能为空".to_string());
+    }
+    if sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+    {
+        return Err(
+            "--source 和 --external-id 只能包含 ASCII 字母、数字、点、横线和下划线".to_string(),
+        );
+    }
+    let metadata = std::fs::symlink_metadata(&args.manifest)
+        .map_err(|err| format!("读取 community append manifest 元数据失败: {err}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("community append manifest 必须是普通文件，不能是符号链接".to_string());
+    }
+    if metadata.len() == 0 || metadata.len() > 64 * 1024 * 1024 {
+        return Err("community append manifest 必须在 1B..=64MiB 范围内".to_string());
+    }
+    let manifest_bytes = std::fs::read(&args.manifest)
+        .map_err(|err| format!("读取 community append manifest 失败: {err}"))?;
+    let manifest: CloudCommunityAppendManifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|err| format!("解析 community append manifest 失败: {err}"))?;
+
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "Postgres 未配置，不能追加 community timeline".to_string())?;
+    let report = pg
+        .append_community_contents(
+            source,
+            external_id,
+            &manifest,
+            &hone_core::runtime_timezone_name(),
+            args.apply,
+        )
+        .await
+        .map_err(|err| err.to_string())?;
+    print_json(&report)
+}
+
+async fn run_community_inspect(
+    config_path: Option<&Path>,
+    args: CommunityInspectArgs,
+) -> Result<(), String> {
+    let source = args.source.trim();
+    let external_id = args.external_id.trim();
+    if source.is_empty() || external_id.is_empty() {
+        return Err("--source 和 --external-id 不能为空".to_string());
+    }
+    if sanitize_key_component(source) != source
+        || sanitize_key_component(external_id) != external_id
+    {
+        return Err(
+            "--source 和 --external-id 只能包含 ASCII 字母、数字、点、横线和下划线".to_string(),
+        );
+    }
+    if !(1..=50).contains(&args.limit) {
+        return Err("--limit 必须在 1..=50 范围内".to_string());
+    }
+
+    let (config, _) = load_cli_config(config_path, false).map_err(|err| err.to_string())?;
+    let pg = CloudPgRuntime::from_cloud_config(&config.cloud)
+        .ok_or_else(|| "Postgres 未配置，不能读取 community timeline".to_string())?;
+    let items = pg
+        .list_community_contents(source, external_id, None, args.limit)
+        .await
+        .map_err(|err| err.to_string())?;
+    if args.anchor_only {
+        print_json(&community_inspect_anchor(&items)?)
+    } else {
+        print_json(&items)
+    }
+}
+
+fn community_inspect_anchor(
+    items: &[hone_core::cloud_runtime::CloudCommunityContentRecord],
+) -> Result<hone_core::cloud_runtime::CloudCommunityAppendAnchor, String> {
+    let latest = items
+        .first()
+        .ok_or("community archive 为空，不能生成 append anchor")?;
+    let published_at_raw = latest
+        .published_at_raw
+        .clone()
+        .ok_or("community 最新条目缺少 published_at_raw")?;
+    Ok(hone_core::cloud_runtime::CloudCommunityAppendAnchor {
+        content_id: latest.content_id,
+        published_at_raw,
+        body_sha256: sha256_hex(latest.body_text.as_bytes()),
+        resource_names: latest
+            .resources
+            .iter()
+            .map(|resource| resource.display_name.clone().unwrap_or_default())
+            .collect(),
+    })
 }
 
 async fn run_community_contents(
@@ -4336,6 +4498,23 @@ RETURNING id
     }
 
     #[test]
+    fn community_inspect_anchor_hashes_exact_body_and_omits_body() {
+        let mut item = publish_content(771);
+        item.body_text = "中文正文\n末尾空白 ".into();
+        let anchor = community_inspect_anchor(&[item.clone()]).unwrap();
+        assert_eq!(anchor.content_id, 771);
+        assert_eq!(anchor.body_sha256, sha256_hex(item.body_text.as_bytes()));
+        assert_ne!(
+            anchor.body_sha256,
+            sha256_hex(item.body_text.trim().as_bytes())
+        );
+        let json = serde_json::to_value(anchor).unwrap();
+        assert!(json.get("body_text").is_none());
+        assert!(json.get("resources").is_none());
+        assert!(community_inspect_anchor(&[]).is_err());
+    }
+
+    #[test]
     fn community_publish_keys_and_page_cursor_match_worker_contract() {
         let prefix = "community/zsxq/51115212285814/delivery/v1";
         assert_eq!(
@@ -4539,6 +4718,128 @@ RETURNING id
         assert!(validate_non_empty_community_publish_archive(&[]).is_err());
         assert!(validate_community_publish_page_size(0).is_err());
         assert!(validate_community_publish_page_size(51).is_err());
+    }
+
+    #[tokio::test]
+    async fn community_publish_preflight_is_concurrent_ordered_and_keeps_conflicts() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let server_peak = peak.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let in_flight = in_flight.clone();
+                let peak = server_peak.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    loop {
+                        let mut chunk = [0; 1024];
+                        let n = socket.read(&mut chunk).await.unwrap();
+                        assert!(n > 0);
+                        request.extend_from_slice(&chunk[..n]);
+                        if request.windows(4).any(|part| part == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    let request = String::from_utf8(request).unwrap();
+                    let mut first_line = request.lines().next().unwrap().split_whitespace();
+                    let method = first_line.next().unwrap();
+                    let url = first_line.next().unwrap();
+                    assert!(
+                        matches!(method, "HEAD" | "GET"),
+                        "preflight must never write"
+                    );
+                    let active = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(active, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(15)).await;
+                    let status = if url.ends_with("/new") {
+                        "404 Not Found"
+                    } else {
+                        "200 OK"
+                    };
+                    let body = if method == "HEAD" { "" } else { "old" };
+                    let response = format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+        let oss = OssObjectStore::from_config(&OssConfig {
+            provider: "r2".into(),
+            provider_env: String::new(),
+            access_key_id: "test".into(),
+            access_key_id_env: String::new(),
+            access_key_secret: "test".into(),
+            access_key_secret_env: String::new(),
+            bucket: "test".into(),
+            bucket_env: String::new(),
+            // An explicit local proxy prevents macOS system proxy discovery
+            // from routing this fixture outside the loopback listener.
+            proxy: endpoint.clone(),
+            endpoint,
+            endpoint_env: String::new(),
+            proxy_env: String::new(),
+            region_env: String::new(),
+            ..Default::default()
+        })
+        .unwrap();
+        let mut planned = (0..20)
+            .map(|index| PlannedCommunityPublishObject {
+                kind: CommunityPublishObjectKind::Descriptor,
+                key: format!("descriptor-{index}"),
+                bytes: b"old".to_vec(),
+            })
+            .collect::<Vec<_>>();
+        planned[1].bytes = b"changed".to_vec();
+        planned.push(PlannedCommunityPublishObject {
+            kind: CommunityPublishObjectKind::Page,
+            key: "new".into(),
+            bytes: b"new".to_vec(),
+        });
+        planned.push(PlannedCommunityPublishObject {
+            kind: CommunityPublishObjectKind::Latest,
+            key: "latest".into(),
+            bytes: b"changed".to_vec(),
+        });
+        let expected_order = planned
+            .iter()
+            .map(|object| object.key.clone())
+            .collect::<Vec<_>>();
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            preflight_community_publish_objects(&oss, planned),
+        )
+        .await;
+        server.abort();
+        let (objects, conflicts) = result.expect("bounded local preflight completes");
+        assert!(
+            peak.load(Ordering::SeqCst) > 1,
+            "metadata reads should overlap"
+        );
+        assert!(peak.load(Ordering::SeqCst) <= COMMUNITY_PUBLISH_METADATA_CONCURRENCY);
+        assert_eq!(
+            objects
+                .iter()
+                .map(|object| object.planned.key.clone())
+                .collect::<Vec<_>>(),
+            expected_order
+        );
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].object_key.as_deref(), Some("descriptor-1"));
+        assert!(
+            !objects[1].should_write,
+            "immutable conflicts remain unwritable"
+        );
+        assert!(objects[20].should_write && !objects[20].existed);
+        assert!(objects[21].should_write && objects[21].existed);
+        assert!(objects[2..20].iter().all(|object| !object.should_write));
     }
 
     #[tokio::test]

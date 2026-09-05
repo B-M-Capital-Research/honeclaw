@@ -204,7 +204,7 @@ impl AgentSessionListener for SseSessionListener {
             }) => {
                 let status_text = public_tool_status_text(&status, &tool, self.reply_language);
                 if let Some(active_run) = &self.active_run {
-                    let _ = active_run.update("running", status_text);
+                    let _ = active_run.update("running", &status_text);
                 }
                 let payload = json!({
                     "tool": tool,
@@ -241,22 +241,19 @@ impl AgentSessionListener for SseSessionListener {
                 let _ = self.tx.send(("run_progress".into(), payload)).await;
             }
             AgentSessionEvent::Run(RunEvent::Error { error }) => {
-                let mut i = error.message.len().min(120);
-                while i > 0 && !error.message.is_char_boundary(i) {
+                // The raw runner message names providers, protocols and
+                // internal checks. Rewrite it into product language before it
+                // can become the visible error card text.
+                let safe_message =
+                    hone_channels::runtime::user_visible_error_message(Some(&error.message));
+                let mut i = safe_message.len().min(240);
+                while i > 0 && !safe_message.is_char_boundary(i) {
                     i -= 1;
                 }
-                let snippet = &error.message[..i];
+                let snippet = &safe_message[..i];
                 let _ = self
                     .tx
-                    .send((
-                        "run_error".into(),
-                        json!({
-                            "message": format!(
-                                "{}: {snippet}",
-                                localized(self.reply_language, "抱歉，处理出错", "Sorry, processing failed")
-                            )
-                        }),
-                    ))
+                    .send(("run_error".into(), json!({ "message": snippet })))
                     .await;
             }
             AgentSessionEvent::Done { response } => {
@@ -387,20 +384,40 @@ fn emit_web_progress_heartbeat(
     ));
 }
 
-/// A stage detail is server-authored — a resolved symbol list, a count — but it
-/// still reaches the browser, so only characters that can appear in a ticker or
-/// a company name survive, bounded in length. Anything else is dropped and the
-/// stage falls back to its detail-free wording.
-fn public_progress_detail(detail: Option<&str>) -> Option<String> {
-    let cleaned = detail?
+/// A stage detail is server-authored — a resolved symbol list, a clock fact, a
+/// count — but it still reaches the browser, so only characters that can appear
+/// in a ticker, a company name, or a formatted time survive, bounded in length.
+/// Anything else is dropped and the stage falls back to its detail-free
+/// wording.
+fn public_progress_fragment(detail: &str, max_chars: usize) -> Option<String> {
+    let cleaned = detail
         .chars()
         .filter(|character| {
-            character.is_alphanumeric() || matches!(character, '.' | '-' | '、' | ',' | ' ' | '/')
+            character.is_alphanumeric()
+                || matches!(
+                    character,
+                    '.' | '-'
+                        | '、'
+                        | ','
+                        | ' '
+                        | '/'
+                        | ':'
+                        | '％'
+                        | '%'
+                        | '（'
+                        | '）'
+                        | '，'
+                        | '·'
+                )
         })
-        .take(60)
+        .take(max_chars)
         .collect::<String>();
     let cleaned = cleaned.trim().to_string();
     (!cleaned.is_empty()).then_some(cleaned)
+}
+
+fn public_progress_detail(detail: Option<&str>) -> Option<String> {
+    public_progress_fragment(detail?, 90)
 }
 
 fn public_progress_status(
@@ -410,15 +427,30 @@ fn public_progress_status(
 ) -> (&'static str, String) {
     if let Some(detail) = public_progress_detail(detail) {
         let described = match stage {
+            "session.clock" => Some((
+                "running",
+                format!("已确认当前时间与美股时段：{detail}"),
+                format!("Confirmed the current time and US session: {detail}"),
+            )),
             "preturn.identity" => Some((
                 "running",
-                format!("正在核验 {detail} 的证券身份"),
-                format!("Verifying the security identity of {detail}"),
+                format!("正在核对 {detail} 对应的公司或证券"),
+                format!("Checking which company or security {detail} refers to"),
+            )),
+            "preturn.identity.done" => Some((
+                "running",
+                format!("已核对标的：{detail}"),
+                format!("Confirmed: {detail}"),
             )),
             "preturn.evidence" => Some((
                 "running",
-                format!("正在读取 {detail} 的行情、季度财报与估值口径"),
-                format!("Reading quotes, quarterly statements and valuation basis for {detail}"),
+                format!("正在读取 {detail} 的实时行情、财报与近一周新闻"),
+                format!("Reading live quotes, financials and recent news for {detail}"),
+            )),
+            "preturn.enrichment.done" => Some((
+                "running",
+                format!("已取得 {detail} 组资料，开始撰写分析"),
+                format!("Collected {detail} evidence sets; writing the analysis"),
             )),
             _ => None,
         };
@@ -433,15 +465,25 @@ fn public_progress_status(
         }
     }
     let (phase, chinese, english) = match stage {
+        "session.clock" => (
+            "running",
+            "正在查验当前时间与美股交易时段",
+            "Checking the current time and US market session",
+        ),
         "preturn.identity" => (
             "running",
-            "正在核验当前问题里的证券身份",
-            "Verifying the securities named in this question",
+            "正在核对问题里的公司或证券代码",
+            "Checking the companies or tickers in this question",
+        ),
+        "preturn.identity.done" => (
+            "running",
+            "标的已核对，正在读取数据",
+            "Securities confirmed; retrieving data",
         ),
         "preturn.evidence" => (
             "running",
-            "正在读取行情、季度财报与估值口径",
-            "Reading quotes, quarterly statements and valuation basis",
+            "正在读取实时行情、财报与近一周新闻",
+            "Reading live quotes, financials and recent news",
         ),
         "session.compress" => (
             "thinking",
@@ -455,8 +497,8 @@ fn public_progress_status(
         ),
         "preturn.enrichment.done" => (
             "running",
-            "资料已就绪，正在分析",
-            "Sources are ready; analyzing them",
+            "资料已就绪，开始撰写分析",
+            "Sources are ready; writing the analysis",
         ),
         "entity_resolution.preflight" => (
             "running",
@@ -505,89 +547,123 @@ fn public_progress_status(
     )
 }
 
+/// The subject a runner tool label is acting on, safe for the browser: the
+/// symbol token of a `data_fetch <data_type> <symbol>` label, or the quoted
+/// query of a `web_search query="…"` label. Anything unexpected returns None
+/// and the caller keeps its subject-free wording.
+fn public_tool_status_subject(tool: &str) -> Option<String> {
+    let trimmed = tool.trim();
+    if let Some(rest) = trimmed.strip_prefix("data_fetch ") {
+        let mut parts = rest.split_whitespace();
+        let _data_type = parts.next()?;
+        let symbol = parts.next()?;
+        return public_progress_fragment(symbol, 20);
+    }
+    if trimmed.starts_with("web_search") {
+        let start = trimmed.find('"')?;
+        let end = trimmed.rfind('"')?;
+        if end <= start + 1 {
+            return None;
+        }
+        return public_progress_fragment(&trimmed[start + 1..end], 40);
+    }
+    None
+}
+
 /// User-facing wording for the tool the turn is currently running. The runner
 /// label carries internal names and raw arguments, so it is only read here to
-/// pick a product phrase — nothing from it reaches the browser. Public chat
-/// shows this beside the pending turn, never inside the answer body.
+/// pick a product phrase plus a bounded, character-filtered subject (ticker or
+/// search words) — nothing else from it reaches the browser. Public chat shows
+/// this beside the pending turn, never inside the answer body.
 fn public_tool_status_text(
     status: &str,
     tool: &str,
     reply_language: Option<ReplyLanguage>,
-) -> &'static str {
+) -> String {
     if matches!(
         status.trim().to_ascii_lowercase().as_str(),
         "completed" | "complete" | "success" | "succeeded" | "finished" | "done"
     ) {
         return localized(
             reply_language,
-            "数据核验完成，正在组织回答",
-            "Data verified; organizing the answer",
-        );
+            "数据已取得，正在组织回答",
+            "Data retrieved; organizing the answer",
+        )
+        .to_string();
     }
+    let english = matches!(reply_language, Some(ReplyLanguage::English));
+    let subject = public_tool_status_subject(tool);
     let label = tool.trim().to_ascii_lowercase();
     if label.starts_with("web_search") || label.starts_with("deep_research") {
-        return localized(reply_language, "正在进行搜索引擎查询", "Searching the web");
+        return match subject {
+            Some(query) if !english => format!("正在检索：{query}"),
+            Some(query) => format!("Searching: {query}"),
+            None => {
+                localized(reply_language, "正在进行搜索引擎查询", "Searching the web").to_string()
+            }
+        };
     }
     if label.starts_with("data_fetch") {
         // The label is `data_fetch <data_type> <symbol>`; the data type decides
         // what the user is actually waiting for.
+        let described = |chinese: &str, english_text: &str| -> String {
+            match (&subject, english) {
+                (Some(symbol), false) => format!("正在读取 {symbol} {chinese}"),
+                (Some(symbol), true) => format!("{english_text} for {symbol}"),
+                (None, false) => format!("正在读取{chinese}"),
+                (None, true) => english_text.to_string(),
+            }
+        };
         if label.contains("search") {
-            return localized(
-                reply_language,
-                "正在确认标的实体",
-                "Confirming the security or company",
-            );
+            return match (&subject, english) {
+                (Some(token), false) => format!("正在确认 {token} 对应的公司或证券"),
+                (Some(token), true) => {
+                    format!("Confirming which company or security {token} refers to")
+                }
+                (None, false) => "正在确认标的对应的公司或证券".to_string(),
+                (None, true) => "Confirming the security or company".to_string(),
+            };
         }
         if label.contains("news") {
-            return localized(
-                reply_language,
-                "正在读取相关新闻",
-                "Retrieving relevant news",
-            );
+            return described("相关新闻", "Retrieving relevant news");
         }
         if label.contains("financials") || label.contains("earnings") {
-            return localized(
-                reply_language,
-                "正在读取财务与财报数据",
-                "Retrieving financial and earnings data",
-            );
+            return described("财务与财报数据", "Retrieving financial and earnings data");
         }
         if label.contains("etf_holdings") {
-            return localized(
-                reply_language,
-                "正在读取基金持仓",
-                "Retrieving fund holdings",
-            );
+            return described("基金持仓", "Retrieving fund holdings");
+        }
+        if label.contains("extended_hours") {
+            return described("盘前盘后行情", "Retrieving extended-hours quotes");
         }
         if label.contains("sector_performance") || label.contains("gainers_losers") {
-            return localized(
-                reply_language,
-                "正在读取板块与涨跌数据",
-                "Retrieving sector and market-move data",
-            );
+            return described("板块与涨跌数据", "Retrieving sector and market-move data");
         }
-        return localized(reply_language, "正在读取行情数据", "Retrieving market data");
+        return described("实时行情", "Retrieving live quotes");
     }
     if label.starts_with("portfolio") {
         return localized(
             reply_language,
             "正在读取你的持仓与关注",
             "Retrieving your holdings and watchlist",
-        );
+        )
+        .to_string();
     }
     if label.starts_with("cron_job") || label.starts_with("notification_prefs") {
         return localized(
             reply_language,
             "正在处理你的提醒设置",
             "Processing your alert settings",
-        );
+        )
+        .to_string();
     }
     if label.starts_with("missed_events") {
         return localized(
             reply_language,
             "正在整理你错过的推送",
             "Organizing missed notifications",
-        );
+        )
+        .to_string();
     }
     if label.starts_with("skill_tool")
         || label.starts_with("load_skill")
@@ -597,20 +673,23 @@ fn public_tool_status_text(
             reply_language,
             "正在加载分析方法",
             "Loading the analysis method",
-        );
+        )
+        .to_string();
     }
     if label.starts_with("local_") {
         return localized(
             reply_language,
             "正在读取你的历史研究记录",
             "Retrieving your prior research",
-        );
+        )
+        .to_string();
     }
     localized(
         reply_language,
-        "正在查询并核验所需数据",
-        "Retrieving and verifying the required data",
+        "正在查询所需数据",
+        "Retrieving the required data",
     )
+    .to_string()
 }
 
 pub(crate) fn build_chat_sse(
@@ -618,6 +697,9 @@ pub(crate) fn build_chat_sse(
     actor_result: Result<ActorIdentity, hone_core::HoneError>,
     message: String,
     attachments_count: usize,
+    // Images from this turn's attachments, handed to a vision-capable model
+    // as real image parts alongside the existing text summary.
+    turn_images: Vec<hone_channels::agent_session::TurnImage>,
     prompt_admin_override: Option<bool>,
     execution_override: Option<TrustedChatExecutionOverride>,
     reply_language: Option<hone_channels::prompt::ReplyLanguage>,
@@ -762,6 +844,7 @@ pub(crate) fn build_chat_sse(
             // investment preflight and its timestamp-first answer contract must
             // not compete with that dedicated system contract.
             dedicated_earnings_workflow: execution_override.is_some(),
+            turn_images: turn_images.clone(),
             ..AgentRunOptions::default()
         };
         let heartbeat_tx = tx.clone();
@@ -826,6 +909,7 @@ pub(crate) async fn handle_chat(
         actor_result,
         message,
         attachments_count,
+        Vec::new(),
         None,
         None,
         None,
@@ -873,29 +957,44 @@ mod tests {
 
     /// Public chat must tell the user what the turn is waiting on, in product
     /// language, beside the pending turn rather than inside the answer. The
-    /// runner label carries internal tool names and raw arguments; it is only
-    /// read to pick a phrase, and none of it may reach the browser.
+    /// runner label carries internal tool names and raw arguments; only the
+    /// subject (a filtered ticker or search phrase) may reach the browser —
+    /// never a tool name or raw argument syntax.
     #[test]
     fn public_tool_status_names_the_work_without_leaking_internals() {
         use super::public_tool_status_text;
 
         for (label, expected) in [
-            ("web_search query=\"CoreWeave IPO\"", "正在进行搜索引擎查询"),
-            ("data_fetch search NBIS", "正在确认标的实体"),
-            ("data_fetch quote NBIS", "正在读取行情数据"),
-            ("data_fetch snapshot NBIS", "正在读取行情数据"),
-            ("data_fetch news NBIS", "正在读取相关新闻"),
-            ("data_fetch financials NBIS", "正在读取财务与财报数据"),
+            (
+                "web_search query=\"CoreWeave IPO\"",
+                "正在检索：CoreWeave IPO",
+            ),
+            ("data_fetch search NBIS", "正在确认 NBIS 对应的公司或证券"),
+            ("data_fetch quote NBIS", "正在读取 NBIS 实时行情"),
+            ("data_fetch snapshot NBIS", "正在读取 NBIS 实时行情"),
+            ("data_fetch news NBIS", "正在读取 NBIS 相关新闻"),
+            ("data_fetch financials NBIS", "正在读取 NBIS 财务与财报数据"),
+            (
+                "data_fetch extended_hours NBIS",
+                "正在读取 NBIS 盘前盘后行情",
+            ),
+            ("data_fetch quote", "正在读取实时行情"),
             ("portfolio view", "正在读取你的持仓与关注"),
             ("cron_job list", "正在处理你的提醒设置"),
             ("skill_tool stock_research", "正在加载分析方法"),
-            ("some_unknown_tool", "正在查询并核验所需数据"),
+            ("some_unknown_tool", "正在查询所需数据"),
         ] {
             let text = public_tool_status_text("start", label, None);
             assert_eq!(text, expected, "{label}");
-            // No internal tool name, argument or symbol may survive into the
+            // No internal tool name or argument syntax may survive into the
             // user-visible string.
-            for leaked in ["web_search", "data_fetch", "portfolio", "cron_job", "NBIS"] {
+            for leaked in [
+                "web_search",
+                "data_fetch",
+                "portfolio",
+                "cron_job",
+                "query=",
+            ] {
                 assert!(!text.contains(leaked), "{label} leaked {leaked}: {text}");
             }
         }
@@ -903,7 +1002,7 @@ mod tests {
         // Completion wording does not depend on which tool ran.
         assert_eq!(
             public_tool_status_text("done", "web_search query=\"x\"", None),
-            "数据核验完成，正在组织回答"
+            "数据已取得，正在组织回答"
         );
         assert_eq!(
             public_tool_status_text(
@@ -911,7 +1010,7 @@ mod tests {
                 "data_fetch financials NVDA",
                 Some(hone_channels::prompt::ReplyLanguage::English),
             ),
-            "Retrieving financial and earnings data"
+            "Retrieving financial and earnings data for NVDA"
         );
     }
 
@@ -928,7 +1027,39 @@ mod tests {
         assert!(text.contains("行情"), "{text}");
         let (done_phase, done_text) = public_progress_status("preturn.enrichment.done", None, None);
         assert_eq!(done_phase, "running");
-        assert!(done_text.contains("正在分析"), "{done_text}");
+        assert!(done_text.contains("撰写分析"), "{done_text}");
+        // With the call count the completed step reports how much came back.
+        let (_, counted) = public_progress_status("preturn.enrichment.done", None, Some("12"));
+        assert!(counted.contains("12 组资料"), "{counted}");
+    }
+
+    /// The trail opens with completed facts the server already knows: which
+    /// session the clock maps to, and which company each raw token turned out
+    /// to be. Both read as "已确认/已核对" lines, not as more spinners.
+    #[test]
+    fn completed_progress_facts_read_as_confirmations() {
+        use super::public_progress_status;
+
+        let (phase, text) = public_progress_status(
+            "session.clock",
+            None,
+            Some("北京时间 2026-08-20 21:05，纽约 08-20 09:05，美股盘前"),
+        );
+        assert_eq!(phase, "running");
+        assert!(text.contains("已确认当前时间与美股时段"), "{text}");
+        assert!(text.contains("美股盘前"), "{text}");
+        assert!(text.contains("21:05"), "{text}");
+
+        let (_, verified) =
+            public_progress_status("preturn.identity.done", None, Some("Tempus AI（TEM）"));
+        assert!(verified.contains("已核对标的"), "{verified}");
+        assert!(verified.contains("Tempus AI（TEM）"), "{verified}");
+
+        // Detail-free fallbacks still read as movement.
+        let (_, fallback) = public_progress_status("session.clock", None, None);
+        assert!(fallback.contains("时间"), "{fallback}");
+        let (_, fallback) = public_progress_status("preturn.identity.done", None, None);
+        assert!(fallback.contains("已核对"), "{fallback}");
     }
 
     /// Around twenty provider calls run before the first token. Two static
@@ -944,7 +1075,8 @@ mod tests {
 
         let (_, text) = public_progress_status("preturn.evidence", None, Some("NBIS"));
         assert!(text.contains("NBIS"), "{text}");
-        assert!(text.contains("季度财报"), "{text}");
+        assert!(text.contains("财报"), "{text}");
+        assert!(text.contains("新闻"), "{text}");
 
         // Without a detail the stage still reads as work in progress.
         let (_, text) = public_progress_status("preturn.evidence", None, None);
@@ -958,7 +1090,7 @@ mod tests {
             Some("NBIS"),
         );
         assert!(english.contains("NBIS"), "{english}");
-        assert!(english.contains("quarterly"), "{english}");
+        assert!(english.contains("financials"), "{english}");
     }
 
     /// The detail is server-authored, but it still reaches the browser.
@@ -986,11 +1118,18 @@ mod tests {
         );
         assert_eq!(public_progress_detail(Some("   ")), None);
         assert_eq!(public_progress_detail(None), None);
+        // Clock facts keep their time separators and full-width punctuation.
+        assert_eq!(
+            public_progress_detail(Some(
+                "北京时间 2026-08-20 21:05，美股盘前（距盘中 25 分钟）"
+            )),
+            Some("北京时间 2026-08-20 21:05，美股盘前（距盘中 25 分钟）".to_string())
+        );
         // Length is bounded so a long list cannot flood the status line.
         let long = "A".repeat(200);
         assert_eq!(
             public_progress_detail(Some(&long)).map(|value| value.chars().count()),
-            Some(60)
+            Some(90)
         );
     }
 
@@ -1388,7 +1527,7 @@ mod tests {
             .expect("public status text");
         // Named in product language now, but still derived only from the tool
         // kind: no raw provider detail, internal reasoning or tool name.
-        assert_eq!(public_status, "正在读取行情数据");
+        assert_eq!(public_status, "正在读取实时行情");
         for leaked in ["raw provider detail", "internal reasoning", "data_fetch"] {
             assert!(!public_status.contains(leaked), "{public_status}");
         }

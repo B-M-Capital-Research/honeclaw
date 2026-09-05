@@ -7,7 +7,7 @@ use hone_core::agent::AgentContext;
 use serde_json::Value;
 
 use crate::HoneBotCore;
-use crate::agent_session::GeminiStreamOptions;
+use crate::agent_session::{AgentTurnOrigin, GeminiStreamOptions};
 use crate::core::runtime_config_path;
 use crate::mcp_bridge::EMPTY_MCP_TOOL_ALLOWLIST_SENTINEL;
 use crate::prompt_audit::{PromptAuditMetadata, write_prompt_audit};
@@ -63,6 +63,8 @@ pub(crate) struct ExecutionRequest {
     pub gemini_stream: GeminiStreamOptions,
     pub session_metadata: HashMap<String, Value>,
     pub model_override: Option<String>,
+    pub turn_images: Vec<crate::agent_session::TurnImage>,
+    pub turn_origin: AgentTurnOrigin,
     pub runner_selection: ExecutionRunnerSelection,
     pub allowed_tools: Option<Vec<String>>,
     pub max_tool_calls: Option<u32>,
@@ -141,18 +143,37 @@ impl ExecutionService {
         );
         let native_codex_tools =
             native_codex_mcp_tools(&tool_registry, request.allowed_tools.as_deref());
-        let use_strict_fallback = request.runner_selection == ExecutionRunnerSelection::Configured
-            && self.core.actor_uses_strict_runner_fallback(&request.actor);
+        let use_strict_fallback = match request.runner_selection {
+            ExecutionRunnerSelection::Configured => {
+                self.core.actor_uses_strict_runner_fallback(&request.actor)
+            }
+            // Server-verified administrators keep the native runner unless
+            // `agent.admins_use_native_runner = false` opts them out; then
+            // admin turns run the same strict function-calling route as
+            // ordinary users (and pick up `llm.conversation_profile`).
+            ExecutionRunnerSelection::ConfiguredTrustedAdministrator => {
+                !self.core.config.agent.admins_use_native_runner
+                    && self.core.configured_runner_requires_trusted_host_access()
+            }
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator => false,
+        };
         let runner: Box<dyn AgentRunner> = match request.runner_selection {
-            ExecutionRunnerSelection::Configured if use_strict_fallback => {
+            ExecutionRunnerSelection::Configured
+            | ExecutionRunnerSelection::ConfiguredTrustedAdministrator
+                if use_strict_fallback =>
+            {
                 tracing::warn!(
                     channel = %request.actor.channel,
                     user_id = %request.actor.user_id,
                     configured_runner = %self.core.config.agent.runner,
                     "untrusted actor routed to strict function-calling runner"
                 );
-                self.core
-                    .create_strict_actor_runner(&request.system_prompt, tool_registry)?
+                self.core.create_strict_actor_runner(
+                    &request.system_prompt,
+                    tool_registry,
+                    request.turn_origin == AgentTurnOrigin::Interactive
+                        && request.model_override.is_none(),
+                )?
             }
             ExecutionRunnerSelection::Configured
             | ExecutionRunnerSelection::ConfiguredTrustedAdministrator => {
@@ -249,6 +270,7 @@ impl ExecutionService {
                 preloaded_evidence_calls: 0,
                 service_owned_initial_prefix: None,
                 terminal_stream_policy: TerminalStreamPolicy::Disabled,
+                turn_images: request.turn_images,
             },
         })
     }
@@ -354,7 +376,7 @@ fn sanitize_function_calling_context(context: &mut AgentContext) -> usize {
 mod tests {
     use super::{ExecutionMode, ExecutionRequest, ExecutionRunnerSelection, ExecutionService};
     use crate::HoneBotCore;
-    use crate::agent_session::GeminiStreamOptions;
+    use crate::agent_session::{AgentTurnOrigin, GeminiStreamOptions};
     use crate::runners::TerminalStreamPolicy;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
@@ -436,6 +458,7 @@ mod tests {
         runner_selection: ExecutionRunnerSelection,
     ) -> ExecutionRequest {
         ExecutionRequest {
+            turn_images: Vec::new(),
             mode,
             session_id: "session-1".to_string(),
             actor,
@@ -449,6 +472,7 @@ mod tests {
             gemini_stream: GeminiStreamOptions::default(),
             session_metadata: HashMap::new(),
             model_override: None,
+            turn_origin: AgentTurnOrigin::Interactive,
             runner_selection,
             allowed_tools: None,
             max_tool_calls: None,

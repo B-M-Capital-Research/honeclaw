@@ -20,6 +20,54 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Media the user attached to this turn. Kept out of `content` so every
+    /// existing text-only construction site stays valid; providers that
+    /// support vision fold it into the OpenAI multimodal content array at
+    /// request time, and text-only providers simply ignore it.
+    #[serde(skip)]
+    pub images: Vec<MessageImage>,
+}
+
+/// One inline image or document handed to a vision-capable model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageImage {
+    /// IANA type, e.g. `image/png` or `application/pdf`.
+    pub mime_type: String,
+    /// Standard base64 of the raw bytes (no data: prefix).
+    pub base64: String,
+}
+
+impl MessageImage {
+    pub fn data_uri(&self) -> String {
+        format!("data:{};base64,{}", self.mime_type, self.base64)
+    }
+}
+
+/// Serialize messages for an OpenAI-compatible wire, promoting `content` to a
+/// multimodal parts array on the turns that carry media.
+pub fn messages_to_wire_value(messages: &[Message]) -> hone_core::HoneResult<Value> {
+    let mut out = Vec::with_capacity(messages.len());
+    for message in messages {
+        let mut value = serde_json::to_value(message)
+            .map_err(|e| hone_core::HoneError::Llm(e.to_string()))?;
+        if !message.images.is_empty()
+            && let Some(object) = value.as_object_mut()
+        {
+            let mut parts = Vec::new();
+            if let Some(text) = message.content.as_deref().filter(|t| !t.is_empty()) {
+                parts.push(serde_json::json!({ "type": "text", "text": text }));
+            }
+            for image in &message.images {
+                parts.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": { "url": image.data_uri() },
+                }));
+            }
+            object.insert("content".to_string(), Value::Array(parts));
+        }
+        out.push(value);
+    }
+    Ok(Value::Array(out))
 }
 
 /// 工具调用
@@ -705,6 +753,52 @@ mod tests {
                 ChatStreamEvent::Finish(ChatStreamFinishReason::ToolCalls),
                 ChatStreamEvent::Done,
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod multimodal_tests {
+    use super::*;
+
+    fn user(text: &str, images: Vec<MessageImage>) -> Message {
+        Message {
+            role: "user".to_string(),
+            content: Some(text.to_string()),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+            images,
+        }
+    }
+
+    #[test]
+    fn text_only_messages_keep_the_plain_string_content() {
+        let wire = messages_to_wire_value(&[user("看一下这张图", Vec::new())]).expect("wire");
+        assert_eq!(wire[0]["content"], serde_json::json!("看一下这张图"));
+    }
+
+    /// A turn that carries an attachment must reach the provider as real image
+    /// parts. Flattening it to text is what let the model answer from a
+    /// filename and invent a ticker it had never seen.
+    #[test]
+    fn attached_images_become_openai_multimodal_parts() {
+        let wire = messages_to_wire_value(&[user(
+            "怎么解读这个",
+            vec![MessageImage {
+                mime_type: "image/png".to_string(),
+                base64: "QUJD".to_string(),
+            }],
+        )])
+        .expect("wire");
+        let parts = wire[0]["content"].as_array().expect("parts array");
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[1]["type"], "image_url");
+        assert_eq!(
+            parts[1]["image_url"]["url"],
+            serde_json::json!("data:image/png;base64,QUJD")
         );
     }
 }

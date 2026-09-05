@@ -1,0 +1,915 @@
+/* 行业分析：左树右详情。树是一层结构（根 + 平铺的行业），所以不做递归缩进，
+   而是把根做成标题、行业做成它下面的一列——层级靠版式表达，不靠缩进线。 */
+
+.industry-map-loading,
+.industry-map-empty {
+  padding: 2rem;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-sm);
+}
+
+.industry-map {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem 2.5rem;
+}
+
+.industry-map-head h1 {
+  margin: 0 0 0.35rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-2xl);
+  color: var(--hone-ink-950);
+}
+
+.industry-map-head p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-600);
+}
+
+.industry-map-meta {
+  margin-top: 0.5rem !important;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-400);
+}
+
+.industry-map-warn {
+  /* 和前面那句「研究底稿更新」是两件事，靠间距分开而不是靠一个全角空格。 */
+  margin-left: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--hone-line);
+  color: var(--hone-signal-orange-ink);
+}
+
+.industry-map-body {
+  display: grid;
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* 树 */
+
+.industry-tree {
+  position: sticky;
+  top: 1rem;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  padding: 0.75rem;
+}
+
+.industry-tree-root {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  padding: 0 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--hone-line);
+  margin-bottom: 0.5rem;
+}
+
+.industry-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.industry-tree-node {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: var(--hone-radius-sm);
+  background: transparent;
+  color: var(--hone-ink-800);
+  font-size: var(--hone-text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--hone-ease);
+}
+
+.industry-tree-node:hover {
+  background: var(--hone-paper-100);
+}
+
+.industry-tree-node:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-tree-node.is-active {
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-950);
+  font-weight: 600;
+}
+
+.industry-tree-count {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 详情 */
+
+.industry-detail {
+  min-width: 0;
+}
+
+.industry-detail h2 {
+  margin: 0 0 0.35rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-xl);
+  color: var(--hone-ink-950);
+}
+
+.industry-detail h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-detail-lead {
+  margin: 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-600);
+}
+
+.industry-detail-note {
+  margin: 0 0 0.5rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-400);
+}
+
+/* 宽表在自己的容器里横向滚动，页面本身不横向滚动。 */
+.industry-members,
+.industry-variables {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--hone-text-sm);
+  display: block;
+  overflow-x: auto;
+}
+
+.industry-members th,
+.industry-members td,
+.industry-variables th,
+.industry-variables td {
+  border-bottom: 1px solid var(--hone-line);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.industry-members th,
+.industry-variables th {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-symbol {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.industry-role,
+.industry-where {
+  color: var(--hone-ink-600);
+  line-height: 1.55;
+}
+
+.industry-change {
+  margin-left: 0.35rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-success-600);
+}
+
+.industry-change.is-down {
+  color: var(--hone-error-600);
+}
+
+.industry-chain {
+  margin: 0 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+  font-size: var(--hone-text-sm);
+  line-height: 1.7;
+  color: var(--hone-ink-800);
+}
+
+.industry-anchor {
+  margin: 0.9rem 0 0;
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: 0.4rem 1rem;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-anchor dt {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-anchor dd {
+  margin: 0;
+  color: var(--hone-ink-800);
+  line-height: 1.6;
+}
+
+.industry-watch,
+.industry-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.industry-watch li,
+.industry-sources li {
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: var(--hone-surface-raised);
+}
+
+.industry-watch strong,
+.industry-sources a {
+  font-size: var(--hone-text-sm);
+  color: var(--hone-ink-950);
+}
+
+.industry-sources a {
+  color: var(--hone-link);
+}
+
+.industry-watch p,
+.industry-sources p {
+  margin: 0.3rem 0 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-600);
+}
+
+.industry-cadence,
+.industry-source-date {
+  margin-left: 0.5rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+}
+
+@media (max-width: 760px) {
+  .industry-map {
+    padding: 1rem 0.9rem 2rem;
+  }
+
+  .industry-map-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .industry-tree {
+    position: static;
+  }
+
+  .industry-tree ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .industry-tree-node {
+    width: auto;
+  }
+}
+
+/* 最近改动：行业树的内容可以被管理员在对话里直接改，这张卡是「改了什么」的唯一入口。
+   放在树上面而不是折叠进详情，是因为读者需要先知道自己看到的内容动过，再去看内容。 */
+
+.industry-edits {
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+  padding: 0.85rem 1rem;
+}
+
+.industry-edits h2 {
+  margin: 0 0 0.2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-edits-count {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.industry-edits-note {
+  margin: 0 0 0.6rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-500);
+}
+
+.industry-edits ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.industry-edits li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-edits-jump {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--hone-link);
+  font-size: var(--hone-text-sm);
+  cursor: pointer;
+}
+
+.industry-edits-jump:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-edits-summary {
+  color: var(--hone-ink-800);
+}
+
+.industry-edits-meta {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.6rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.industry-edits-by {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industry-edits-why {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.55;
+  color: var(--hone-ink-600);
+}
+
+/* 树上那一点：告诉读者这一行的内容动过，不用点进去才知道。 */
+.industry-tree-dot {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--hone-coral-500);
+}
+
+.industry-detail-edited {
+  margin-left: 0.6rem;
+  font-size: var(--hone-text-2xs);
+  font-family: var(--hone-font-label);
+  color: var(--hone-ink-400);
+}
+
+/* 市值口径标注：这一行的市值是按官方封面股本重算的，后面并列提供方原样的数字。
+   两个口径必须同时看得见——只给一个，页面上的市值会和任何外部站点都对不上。 */
+.industry-basis {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+/* ── 上游信号 ──────────────────────────────────────────────────────────────
+   这一行的收入最终由谁的最近行为决定。放在传导链之前：先知道钱从哪来，再看它怎么传。
+   卡片与关注点同一副骨架，左侧多一道珊瑚边，标出它是本体里那条「边」而不是一段说明。 */
+
+.industry-signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.industry-signals > li {
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-sm);
+  padding: 0.6rem 0.75rem;
+  background: var(--hone-surface-raised);
+}
+
+.industry-signal-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+}
+
+.industry-signal-head strong {
+  font-size: var(--hone-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-950);
+}
+
+.industry-signal-name {
+  font-size: var(--hone-text-sm);
+  color: var(--hone-ink-600);
+}
+
+.industry-relation {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-600);
+}
+
+.industry-signals > li > p {
+  margin: 0.3rem 0 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-600);
+}
+
+.industry-signal-pull {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+/* ── 编辑本体 ──────────────────────────────────────────────────────────────
+   管理员在页面上直接改行业本体。开关只在 is_admin 时渲染；开启后详情面板的每一块就地
+   变成表单，改动说明是所有保存共用的一个输入框——没有说明就没有保存按钮可按。
+   表单控件全部用令牌写在这里，不借研究文库的类：两页的对比度与圆角并不一致。 */
+
+.industry-map-adminbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+}
+
+.industry-map-adminbar p {
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.5;
+  color: var(--hone-ink-500);
+}
+
+.industry-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.4rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-family: inherit;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms var(--hone-ease),
+    border-color 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-edit-toggle.is-on {
+  border-color: var(--hone-coral-600);
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-ink-950);
+}
+
+.industry-edit-toggle-track {
+  position: relative;
+  width: 1.9rem;
+  height: 1.1rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-line-strong);
+  transition: background 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: var(--hone-control-surface);
+  transition: transform 120ms var(--hone-ease);
+}
+
+.industry-edit-toggle.is-on .industry-edit-toggle-track {
+  background: var(--hone-action-bg);
+}
+
+.industry-edit-toggle.is-on .industry-edit-toggle-track::after {
+  transform: translateX(0.8rem);
+}
+
+/* 面板顶部：共用的改动说明 + 最近一次保存的回执。 */
+
+.industry-editbar {
+  margin: 0.75rem 0 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-paper-100);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.industry-editbar > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-editbar-hint {
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.5;
+  color: var(--hone-ink-500);
+}
+
+.industry-flash {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--hone-radius-sm);
+  font-size: var(--hone-text-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.industry-flash.is-ok {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green-ink);
+}
+
+.industry-flash.is-error {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red-ink);
+}
+
+/* 控件 */
+
+.industry-input,
+.industry-textarea,
+.industry-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  font: inherit;
+  font-size: var(--hone-text-sm);
+  line-height: 1.5;
+}
+
+.industry-textarea {
+  min-height: 4.25rem;
+  resize: vertical;
+}
+
+.industry-input:focus-visible,
+.industry-textarea:focus-visible,
+.industry-select:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 1px;
+}
+
+.industry-input:disabled,
+.industry-textarea:disabled,
+.industry-select:disabled {
+  opacity: 0.6;
+}
+
+.industry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-xs);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-body);
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 120ms var(--hone-ease),
+    opacity 120ms var(--hone-ease);
+}
+
+.industry-btn:hover:not(:disabled) {
+  background: var(--hone-paper-100);
+}
+
+.industry-btn:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-btn.is-primary {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+}
+
+.industry-btn.is-primary:hover:not(:disabled) {
+  background: var(--hone-action-bg);
+  opacity: 0.88;
+}
+
+.industry-btn.is-danger {
+  border-color: var(--hone-error-600);
+  background: transparent;
+  color: var(--hone-error-600);
+}
+
+.industry-btn.is-danger:hover:not(:disabled) {
+  background: var(--hone-signal-red-soft);
+}
+
+.industry-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 一段文本的就地编辑：textarea + 保存。 */
+
+.industry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.9rem;
+}
+
+.industry-field-label {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-field-actions,
+.industry-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.industry-field-dirty,
+.industry-form-hint {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-signal-orange-ink);
+}
+
+/* 表尾的新增表单：虚线框，和已定稿的内容分开。 */
+
+.industry-form {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--hone-line-strong);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.industry-form-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  color: var(--hone-ink-950);
+}
+
+.industry-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-form > label.is-wide,
+.industry-form > .industry-form-actions {
+  grid-column: 1 / -1;
+}
+
+/* 列表项右上角的「移除」：浮在卡片角上，不打乱标题的基线。 */
+.industry-item-remove {
+  float: right;
+  margin: 0 0 0.4rem 0.6rem;
+}
+
+.industry-signal-head .industry-btn {
+  margin-left: auto;
+}
+
+/* 公司表：编辑列与表尾的加入行。表本身仍在自己的容器里横向滚动。 */
+
+.industry-members .industry-field {
+  min-width: 16rem;
+  margin: 0;
+}
+
+.industry-members tfoot td {
+  border-bottom: 0;
+  border-top: 1px dashed var(--hone-line-strong);
+  background: var(--hone-paper-100);
+}
+
+.industry-members tfoot .industry-input {
+  min-width: 7rem;
+}
+
+.industry-members-add-hint {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-400);
+  white-space: nowrap;
+}
+
+.industry-members-error {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-error-600);
+  white-space: nowrap;
+}
+
+/* 树顶部的新增行业；标题旁的移除。 */
+
+.industry-tree-add {
+  margin-bottom: 0.6rem;
+}
+
+.industry-tree-add .industry-form {
+  margin-top: 0.5rem;
+  padding: 0.6rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.industry-detail-remove {
+  margin-left: 0.75rem;
+  vertical-align: middle;
+}
+
+@media (max-width: 760px) {
+  .industry-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .industry-map-adminbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .industry-detail-remove {
+    display: inline-flex;
+    margin: 0.4rem 0 0;
+  }
+}
+
+/* ── 最近动作 ──────────────────────────────────────────────────────────────
+   上游信号卡片里最重要的一行：它最近一次有日期的动作，模型先引用的就是它。
+   放在「为什么看它」之前，用和传导链同一道珊瑚左边把它从说明文字里提出来；
+   截至日期是一枚小号灰标，读者一眼知道这句话新到什么时候。 */
+
+.industry-signal-latest {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+}
+
+.industry-signal-latest-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+
+.industry-signal-latest-label {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hone-coral-600);
+}
+
+.industry-signal-asof {
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
+  font-size: var(--hone-text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-signal-latest-text {
+  margin: 0.25rem 0 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-950);
+  overflow-wrap: anywhere;
+}
+
+/* 编辑模式下同一位置换成表单：一段动作 + 截至日期，两个字段一起存成一个改动。
+   截至那格只要放得下一个日期，不跟着 textarea 撑满整行。 */
+
+.industry-signal-latest-editor {
+  margin: 0.5rem 0 0;
+}
+
+.industry-signal-latest-asof {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 14rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-signal-latest-asof .industry-input {
+  flex: 1 1 auto;
+}

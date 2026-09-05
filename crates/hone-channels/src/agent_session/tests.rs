@@ -157,6 +157,23 @@ async fn failed_assistant_persisted_message_keeps_generic_failure_for_nonrecover
 }
 
 #[tokio::test]
+async fn failed_assistant_persisted_message_hides_internal_only_output_error() {
+    let response = AgentResponse {
+        content: String::new(),
+        tool_calls_made: Vec::new(),
+        iterations: 1,
+        success: false,
+        error: Some("agent returned internal-only output".to_string()),
+    };
+
+    assert!(recover_failed_read_only_user_visible_output(&response).is_none());
+    assert_eq!(
+        failed_assistant_persisted_message(&response),
+        "抱歉，这次处理失败了。请稍后再试。"
+    );
+}
+
+#[tokio::test]
 async fn context_overflow_recovery_keeps_one_session_answer_time_anchor() {
     let offset = chrono::FixedOffset::east_opt(8 * 60 * 60).expect("Local offset");
     let original = offset
@@ -225,6 +242,7 @@ impl AgentRunner for MockLlmRunner {
         _emitter: Arc<dyn AgentRunnerEmitter>,
     ) -> AgentRunnerResult {
         let messages = vec![Message {
+            images: Vec::new(),
             role: "user".to_string(),
             content: Some(request.conversation.current_user_turn().to_string()),
             reasoning_content: None,
@@ -524,7 +542,9 @@ struct MockLlmState {
 }
 
 const MOCK_SERVICE_OWNED_PREFIX_TOKEN: &str = "{{service_owned_initial_prefix}}";
-const SERVICE_OWNED_PREFIX_START: &str = "数据时间：运行时时区 ";
+fn service_owned_prefix_start() -> String {
+    crate::investment_response_guard::data_time_prefix()
+}
 const SERVICE_OWNED_PREFIX_BASIS_SUFFIX: &str =
     "；行情口径：本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露";
 
@@ -533,7 +553,8 @@ fn service_owned_prefix_from_messages(messages: &[Message]) -> Option<String> {
         let content = message.content.as_deref()?;
         if let Some(suffix_start) = content.rfind(SERVICE_OWNED_PREFIX_BASIS_SUFFIX) {
             let suffix_end = suffix_start + SERVICE_OWNED_PREFIX_BASIS_SUFFIX.len();
-            let prefix_start = content[..suffix_start].rfind(SERVICE_OWNED_PREFIX_START)?;
+            let prefix_start =
+                content[..suffix_start].rfind(service_owned_prefix_start().as_str())?;
             return Some(content[prefix_start..suffix_end].to_string());
         }
 
@@ -542,12 +563,13 @@ fn service_owned_prefix_from_messages(messages: &[Message]) -> Option<String> {
         // anchor but not the already-ACKed fixed basis text. Reconstruct the
         // exact typed prefix from that real anchor and the same fixed service
         // contract used by the request fixture.
-        let prefix_start = content.rfind(SERVICE_OWNED_PREFIX_START)?;
-        let timestamp_start = prefix_start + SERVICE_OWNED_PREFIX_START.len();
+        let prefix_start = content.rfind(service_owned_prefix_start().as_str())?;
+        let timestamp_start = prefix_start + service_owned_prefix_start().len();
         let separator = content[timestamp_start..].find("；行情口径：")?;
         let timestamp = &content[timestamp_start..timestamp_start + separator];
         Some(format!(
-            "{SERVICE_OWNED_PREFIX_START}{timestamp}{SERVICE_OWNED_PREFIX_BASIS_SUFFIX}"
+            "{}{timestamp}{SERVICE_OWNED_PREFIX_BASIS_SUFFIX}",
+            service_owned_prefix_start()
         ))
     })
 }
@@ -1459,6 +1481,7 @@ async fn empty_success_with_tool_calls_uses_fallback_after_retries() {
         },
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "empty-success-session".to_string(),
         actor_label: "discord:empty-success".to_string(),
         actor: session.actor.clone(),
@@ -1547,6 +1570,7 @@ async fn transient_runner_failure_retries_once_before_returning_success() {
         ]))),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "transient-retry-session".to_string(),
         actor_label: "discord:transient-retry".to_string(),
         actor: session.actor.clone(),
@@ -1621,6 +1645,7 @@ async fn native_persistent_failure_never_resends_the_current_turn_automatically(
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "native-no-retry-session".to_string(),
         actor_label: "discord:native-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -1673,7 +1698,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "committed-no-retry", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         AgentRunnerResult {
             response: AgentResponse {
@@ -1708,6 +1733,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "committed-no-retry-session".to_string(),
         actor_label: "web:committed-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -1753,7 +1779,7 @@ async fn committed_terminal_prefix_makes_runner_attempt_irreversible_and_suppres
 
 #[tokio::test]
 async fn post_run_normalizers_preserve_a_committed_prefix_and_block_fallback_rewrite() {
-    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let mut persistent_failure = AgentRunnerResult {
         response: AgentResponse {
             content: String::new(),
@@ -1977,6 +2003,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "persistent-no-retry-session".to_string(),
         actor_label: "discord:persistent-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -2024,7 +2051,7 @@ async fn observed_persistent_tool_trace_suppresses_transient_retry() {
 async fn persistent_trace_failure_closes_with_the_exact_committed_prefix() {
     let root = make_temp_dir("hone_channels_persistent_trace_committed_prefix");
     std::fs::create_dir_all(&root).expect("create root");
-    let committed = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
+    let committed = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n";
     let runs = Arc::new(Mutex::new(VecDeque::from([MockStreamingRun {
         events: vec![AgentRunnerEvent::CommittedStreamDelta {
             content: committed.to_string(),
@@ -2215,7 +2242,7 @@ async fn service_prefix_and_final_tail_are_visible_and_persisted_byte_identicall
 
 #[tokio::test]
 async fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
-    let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut aligned = AgentResponse {
         content: format!("\n\u{3000}\t{prefix}\n\n候选结论"),
         tool_calls_made: Vec::new(),
@@ -2240,7 +2267,7 @@ async fn committed_prefix_alignment_strips_only_provider_leading_whitespace() {
 
 #[tokio::test]
 async fn committed_prefix_recovery_prepends_a_missing_prefix_only_for_tail_only_content() {
-    let prefix = "数据时间：运行时时区 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
+    let prefix = "数据时间：北京时间 2026-07-22 03:41；行情口径：本轮仅使用可核验资料";
     let mut tail_only = AgentResponse {
         content: "\n\n候选结论".to_string(),
         tool_calls_made: Vec::new(),
@@ -2348,7 +2375,7 @@ async fn service_prefix_conflicting_time_header_is_recovered_without_generic_fai
     let root = make_temp_dir("hone_channels_service_prefix_conflicting_header");
     std::fs::create_dir_all(&root).expect("create root");
     let recovered = concat!(
-        "数据时间：运行时时区 2026-07-25 02:59；行情口径：另一条首行\n\n",
+        "数据时间：北京时间 2026-07-25 02:59；行情口径：另一条首行\n\n",
         "已按本轮可核验证据完成数据中心候选筛选。"
     );
     let seen_prefixes = Arc::new(Mutex::new(Vec::new()));
@@ -2555,6 +2582,7 @@ async fn unknown_tool_trace_suppresses_transient_retry() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "unknown-tool-no-retry-session".to_string(),
         actor_label: "web:unknown-tool-no-retry".to_string(),
         actor: session.actor.clone(),
@@ -2639,6 +2667,7 @@ async fn execute_once_intent_suppresses_empty_success_retry_even_without_trace()
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "execute-once-empty-session".to_string(),
         actor_label: "discord:execute-once-empty".to_string(),
         actor: session.actor.clone(),
@@ -2732,6 +2761,7 @@ async fn portfolio_mutation_then_analysis_disconnect_does_not_retry_without_trac
     let policy = prepared_turn_reexecution_policy(input);
     assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "portfolio-mutation-disconnect-session".to_string(),
         actor_label: "web:portfolio-mutation-disconnect".to_string(),
         actor: session.actor.clone(),
@@ -2825,6 +2855,7 @@ async fn deep_research_start_disconnect_does_not_launch_a_second_task_without_tr
     let policy = prepared_turn_reexecution_policy(input);
     assert_eq!(policy, PreparedTurnReexecutionPolicy::ExecuteOnce);
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "deep-research-disconnect-session".to_string(),
         actor_label: "web:deep-research-disconnect".to_string(),
         actor: session.actor.clone(),
@@ -2903,6 +2934,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "post-quote-failure-session".to_string(),
         actor_label: "web:post-quote-failure".to_string(),
         actor: session.actor.clone(),
@@ -2973,7 +3005,10 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
 
     assert!(!result.response.success);
     assert!(
-        result.response.content.starts_with("数据时间：运行时时区 "),
+        result
+            .response
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix()),
         "content={} calls={:?}",
         result.response.content,
         result.response.tool_calls_made
@@ -3035,7 +3070,7 @@ async fn post_quote_runner_failure_stays_failed_but_incomplete_success_uses_fall
         fallback
             .response
             .content
-            .starts_with("数据时间：运行时时区 ")
+            .starts_with(&crate::investment_response_guard::data_time_prefix())
     );
     assert!(
         fallback
@@ -3109,6 +3144,7 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         runtime_inputs: runtime_inputs.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "investment-contract-session".to_string(),
         actor_label: "web:investment-contract".to_string(),
         actor: session.actor.clone(),
@@ -3182,7 +3218,12 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
         "deterministic fallback failed: {:?}",
         result.response.error
     );
-    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
+    assert!(
+        result
+            .response
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix())
+    );
     assert!(
         result
             .response
@@ -3201,7 +3242,14 @@ async fn investment_contract_uses_verified_fallback_for_incomplete_nbis_draft() 
     assert_eq!(runtime_inputs.len(), 1);
     assert!(!runtime_inputs[0].contains("<investment_draft>"));
     let events = downstream.events.lock().await;
-    assert_eq!(events.len(), 1);
+    // The deferred emitter now forwards the runner's live reasoning track, so
+    // the guard fallback's internal thought reaches downstream alongside the
+    // progress event instead of being swallowed.
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert!(
+        matches!(&events[1], AgentRunnerEvent::StreamThought { .. }),
+        "{events:?}"
+    );
     assert!(matches!(
         &events[0],
         AgentRunnerEvent::Progress {
@@ -3252,6 +3300,7 @@ async fn investment_fallback_fails_closed_for_unknown_tool_trace() {
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "investment-unknown-tool-session".to_string(),
         actor_label: "web:investment-unknown-tool".to_string(),
         actor: session.actor.clone(),
@@ -3376,6 +3425,7 @@ fn repair_trace_request(
     session_id: &str,
 ) -> AgentRunnerRequest {
     AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: session_id.to_string(),
         actor_label: format!("web:{session_id}"),
         actor: session.actor.clone(),
@@ -3420,7 +3470,7 @@ async fn interactive_contract_cannot_authorize_repair_fallback_or_replay() {
     let actor = ActorIdentity::new("web", "interactive-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let original_answer =
-        "数据时间：运行时时区 2026-07-18 21:08；行情口径：本轮工具结果\n\n这是 Agent 的原始回答。";
+        "数据时间：北京时间 2026-07-18 21:08；行情口径：本轮工具结果\n\n这是 Agent 的原始回答。";
     let forbidden_repair = "这次回答未通过投研完整性检查，已停止发送不完整或未经充分核验的结论。";
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
         AgentRunnerResult {
@@ -3667,7 +3717,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "fund-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let complete = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let complete = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\n1. 结论：本轮同代码现价 30.495 美元，先观察。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let forbidden_call = ToolCallMade {
         name: "data_fetch".into(),
         arguments: serde_json::json!({"data_type":"financials","ticker":"INTL"}),
@@ -3701,6 +3751,7 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "fund-contract-session".to_string(),
         actor_label: "web:fund-contract".to_string(),
         actor: session.actor.clone(),
@@ -3771,7 +3822,12 @@ async fn fund_contract_discards_forbidden_financial_call_and_uses_safe_fallback(
 
     assert!(result.response.success);
     assert!(result.response.error.is_none());
-    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
+    assert!(
+        result
+            .response
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix())
+    );
     for section in 1..=9 {
         assert!(result.response.content.contains(&format!("## {section}.")));
     }
@@ -3790,7 +3846,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
     let core = make_test_core(&root, MockLlmProvider::with_chat_responses(Vec::new())).await;
     let actor = ActorIdentity::new("web", "visible-contract", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
-    let visible = "数据时间：运行时时区 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
+    let visible = "数据时间：北京时间 2026-07-16。已核验事实与情景假设分开。\nINTL 当前价 30.495 美元。\n1. 结论：本轮判断以观察为主。\n2. 基金目标、基金策略与跟踪对象：跟踪国际市场暴露是核心目标。\n3. 持仓、集中度与主要暴露：持仓与集中度按本轮数据核验。\n4. 地域、行业与货币风险：地域与汇率风险需同时管理。\n5. 流动性、基金规模与交易特征：基金规模本轮未核验；流动性与成交特征决定交易成本。\n6. 费用、跟踪误差与底层资产估值：费率与跟踪误差本轮未核验；底层估值是关键变量。\n7. Bull / Bear / Base Case：Bull 看风险偏好，Bear 看汇率，Base 看基准收益。\n8. 催化剂、风险点、证伪条件：催化是宽松，风险是波动，证伪是暴露失效。\n9. 动作建议：观察；若费率、流动性与暴露均符合条件则再评估。";
     let raw =
         format!("<think>\n1. 先规划输出\n2. 这里是内部推理，不是基金目标章节\n</think>\n{visible}");
     let results = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
@@ -3813,6 +3869,7 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         results: results.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "visible-contract-session".to_string(),
         actor_label: "web:visible-contract".to_string(),
         actor: session.actor.clone(),
@@ -3882,7 +3939,12 @@ async fn investment_contract_sanitizes_and_server_normalizes_the_visible_text() 
         .await;
 
     assert!(result.response.success);
-    assert!(result.response.content.starts_with("数据时间：运行时时区 "));
+    assert!(
+        result
+            .response
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix())
+    );
     assert!(
         result
             .response
@@ -5011,6 +5073,76 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Web interactive finance turns opt back into committed terminal streaming,
+/// in the narrow shape that avoids the 75ca1957 hazard: nothing commits before
+/// the model's own final answer reproduces the canonical header
+/// (commit_before_model stays false), so the user watches the answer stream
+/// instead of a silent buffer until Done.
+#[tokio::test]
+async fn web_interactive_finance_turn_opts_into_committed_terminal_streaming() {
+    let root = make_temp_dir("hone_channels_web_terminal_stream_policy");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    })
+    .await;
+    let actor = ActorIdentity::new("web", "streaming-user", None::<String>).expect("actor");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct");
+
+    let (execution, _) = session
+        .prepare_execution_for_turn(
+            &actor.session_id(),
+            "AAPL 现在怎么样",
+            "AAPL 现在怎么样",
+            &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("web strict turn: {error}"));
+    assert_eq!(execution.runner_name, "function_calling");
+    assert!(execution.runner_request.agent_owned_finance_loop);
+    assert_eq!(
+        execution.runner_request.terminal_stream_policy,
+        crate::runners::TerminalStreamPolicy::CanonicalInvestmentHeader
+    );
+    let prefix = execution
+        .runner_request
+        .service_owned_initial_prefix
+        .as_ref()
+        .expect("web finance turns carry the server-owned header prefix");
+    assert!(
+        !prefix.commit_before_model,
+        "nothing may become irreversible before the model's own final answer"
+    );
+    let _ = std::fs::remove_dir_all(&execution.runner_request.working_directory);
+
+    // Non-web channels keep the buffered default: no listener there supports
+    // committed delivery, so an enabled policy would only produce rejected
+    // commit attempts.
+    let cli_actor = ActorIdentity::new("cli", "streaming-user", None::<String>).expect("actor");
+    let cli_session = AgentSession::new(core, cli_actor.clone(), "direct");
+    let (cli_execution, _) = cli_session
+        .prepare_execution_for_turn(
+            &cli_actor.session_id(),
+            "AAPL 现在怎么样",
+            "AAPL 现在怎么样",
+            &AgentRunOptions::default(),
+            &crate::runners::DeliveredPushContextBatch::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_or_else(|(_, error)| panic!("cli turn: {error}"));
+    assert_eq!(
+        cli_execution.runner_request.terminal_stream_policy,
+        crate::runners::TerminalStreamPolicy::Disabled
+    );
+    let _ = std::fs::remove_dir_all(&cli_execution.runner_request.working_directory);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[tokio::test]
 async fn unverified_actor_cannot_set_trusted_earnings_runner_override() {
     let root = make_temp_dir("hone_channels_unverified_earnings_runner_override");
@@ -5350,7 +5482,7 @@ async fn response_leaks_system_prompt_detects_prefixed_echo() {
         "\n### System Instructions ###\nsecret"
     ));
     assert!(response_leaks_system_prompt(
-        "数据时间：运行时时区 2026-07-22 10:00；行情口径：最新可得\n\n### System Prompt ###\nsecret"
+        "数据时间：北京时间 2026-07-22 10:00；行情口径：最新可得\n\n### System Prompt ###\nsecret"
     ));
     assert!(response_leaks_system_prompt(
         "正常开头\n【Invoked Skill Context】\nsecret"
@@ -6937,11 +7069,11 @@ async fn run_persists_failed_assistant_turn_when_strict_fallback_llm_is_missing(
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
     assert_eq!(messages[1].role, "assistant");
+    // Runner wiring errors are internal detail; the persisted turn carries the
+    // product-language rewrite while logs keep the raw diagnostic.
     assert_eq!(
         messages[1].content[0].text.as_deref(),
-        Some(
-            "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
-        )
+        Some("抱歉，这次处理失败了。请稍后再试。")
     );
     assert_eq!(
         messages[1]
@@ -7403,7 +7535,10 @@ async fn incomplete_named_scope_enters_main_agent_tool_loop_without_auxiliary_ga
         .collect::<Vec<_>>();
     assert_eq!(
         visible_chunks,
-        [expected_answer.as_str()],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7524,6 +7659,8 @@ async fn agent_owned_no_coverage_clarification_is_not_replaced_and_is_emitted_on
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
+    // A zero-coverage clarification never satisfies the evidence floor, so the
+    // final is not early-eligible and still publishes as one whole chunk.
     assert_eq!(visible_chunks, [expected_answer.as_str()]);
     let _ = std::fs::remove_dir_all(root);
 }
@@ -7663,7 +7800,15 @@ async fn agent_owned_equal_candidate_clarification_is_not_replaced_and_is_emitte
         })
         .collect::<Vec<_>>();
     assert_eq!(visible_chunks.concat(), expected_answer);
-    assert_eq!(visible_chunks, [expected_answer.as_str()]);
+    // The committed canonical header streams first; the body follows as
+    // one deferred tail once the answer is finalized.
+    assert_eq!(
+        visible_chunks,
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -7813,7 +7958,10 @@ async fn agent_owned_direct_final_preserves_completed_interactive_answer() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [expected_answer.as_str()],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -7861,7 +8009,7 @@ async fn incomplete_natural_direct_final_recovers_before_whole_answer_publicatio
         ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
-        "数据时间：运行时时区 2026-07-18 21:05；行情口径：",
+        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
         "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n这段终稿在传输结束前中断。");
@@ -8016,12 +8164,12 @@ async fn double_incomplete_natural_final_emits_no_canned_business_partial() {
         ("/v3/quote/CRWV".to_string(), serde_json::json!([])),
     ]);
     let committed_header = concat!(
-        "数据时间：运行时时区 2026-07-18 21:05；行情口径：",
+        "数据时间：北京时间 2026-07-18 21:05；行情口径：",
         "本轮行情查询未获得可用报价\n"
     );
     let interrupted_answer = format!("{committed_header}\n未完成正文");
     let mismatched_recovery = concat!(
-        "数据时间：运行时时区 2026-07-18 21:06；行情口径：不同前缀\n",
+        "数据时间：北京时间 2026-07-18 21:06；行情口径：不同前缀\n",
         "恢复正文"
     );
     let llm = MockLlmProvider::with_tool_responses(vec![
@@ -8157,7 +8305,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         ActorIdentity::new("web", "crwv-nvidia-observational", None::<String>).expect("actor");
     let session = AgentSession::new(core, actor, "direct");
     let timestamp = chrono::Utc::now().timestamp() - 60;
-    let answer = "数据时间：运行时时区 2026-07-18 21:05；行情口径：最新可得、非逐笔\n\nCRWV 与英伟达的关系是算力云客户/供应链关系。CRWV 本轮同代码现价 73.21 USD；在情景估值里可把当前价约 73 USD 作为近似锚点。后续估值结论由 Agent 按本轮工具上下文展开。";
+    let answer = "数据时间：北京时间 2026-07-18 21:05；行情口径：最新可得、非逐笔\n\nCRWV 与英伟达的关系是算力云客户/供应链关系。CRWV 本轮同代码现价 73.21 USD；在情景估值里可把当前价约 73 USD 作为近似锚点。后续估值结论由 Agent 按本轮工具上下文展开。";
     let tool_call = |id: &str, arguments: Value, result: Value| ToolCallMade {
         name: "data_fetch".to_string(),
         arguments,
@@ -8248,6 +8396,7 @@ async fn interactive_observed_crwv_nvidia_answer_is_never_repaired_or_rewritten(
         runtime_inputs: runtime_inputs.clone(),
     };
     let request = AgentRunnerRequest {
+        turn_images: Vec::new(),
         session_id: "crwv-nvidia-observational-session".to_string(),
         actor_label: "web:crwv-nvidia-observational".to_string(),
         actor: session.actor.clone(),
@@ -9047,13 +9196,19 @@ async fn interactive_tickers_enter_the_main_agent_loop_without_preflight_blockin
                 && runtime_input.contains("工具结果原样留在当前上下文中")
                 && runtime_input.contains("完整 Stop + Done 自然终稿一次发送并原样持久化")
                 && runtime_input.contains("第一可见字符必须是“数”")
-                && runtime_input.contains("数据时间：运行时时区 2026-07-19 09:31；行情口径：")
+                && runtime_input.contains(&format!(
+                    "{}2026-07-19 09:31；行情口径：",
+                    crate::investment_response_guard::data_time_prefix()
+                ))
                 && runtime_input.contains("禁止在该行之前输出 `---`、Markdown 标题")
                 && runtime_input.contains("终稿在事实旁内联来源标题与原始 URL")
                 && runtime_input.contains("以‘推断：’开头")
                 && runtime_input.contains("禁止据此写‘纽交所’或‘收盘价’")
                 && runtime_input.contains("克制的是断言强度而不是覆盖面")
-                && runtime_input.ends_with("真正缺失的口径按缺口如实披露。"),
+                && runtime_input.contains("真正缺失的口径按缺口如实披露。")
+                && runtime_input.contains("【最终正文的语言边界：面向普通投资者的成品】")
+                && runtime_input
+                    .ends_with("才说明这次暂时查不到，并给出已确认的事实与建议的下一步。"),
             "{input}: {runtime_input}"
         );
     }
@@ -9108,7 +9263,7 @@ async fn macro_production_prompts_do_not_enter_security_resolution_or_error() {
 }
 
 #[tokio::test]
-async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_whole_answer() {
+async fn interactive_finance_loop_is_channel_independent_and_web_streams_the_committed_header() {
     let input = "大A有没有类似CRWV、Nebius这样的数据中心的标的";
     for channel in ["web", "discord", "telegram", "feishu"] {
         let root = make_temp_dir(&format!("hone_channels_natural_loop_{channel}"));
@@ -9140,7 +9295,13 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
         );
         assert_eq!(
             execution.runner_request.terminal_stream_policy,
-            TerminalStreamPolicy::Disabled,
+            // Only Web has a listener that supports committed delivery; other
+            // channels keep whole-answer buffering.
+            if channel == "web" {
+                TerminalStreamPolicy::CanonicalInvestmentHeader
+            } else {
+                TerminalStreamPolicy::Disabled
+            },
             "{channel}"
         );
         assert_eq!(
@@ -9164,12 +9325,12 @@ async fn interactive_finance_loop_is_channel_independent_and_web_buffers_the_who
                 .expect("eligible Web finance prefix");
             assert!(!configured.commit_before_model);
             let prefix = configured.content.as_str();
-            assert!(prefix.starts_with("数据时间：运行时时区 "), "{prefix}");
             assert!(
-                prefix.ends_with(&format!(
-                    "；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
-                    hone_core::runtime_timezone_name()
-                )),
+                prefix.starts_with(&crate::investment_response_guard::data_time_prefix()),
+                "{prefix}"
+            );
+            assert!(
+                prefix.ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX),
                 "{prefix}"
             );
         } else {
@@ -9208,9 +9369,11 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
         .unwrap_or_else(|(_, error)| panic!("ordinary Web turn: {error}"));
 
     assert!(execution.runner_request.agent_owned_finance_loop);
+    // Streaming is on, but only the model's own final answer may trigger a
+    // commit: nothing is authorized to publish the prefix before it.
     assert_eq!(
         execution.runner_request.terminal_stream_policy,
-        TerminalStreamPolicy::Disabled
+        TerminalStreamPolicy::CanonicalInvestmentHeader
     );
     let configured = execution
         .runner_request
@@ -9227,7 +9390,7 @@ async fn ordinary_interactive_web_turn_never_precommits_a_finance_prefix() {
 }
 
 #[tokio::test]
-async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering() {
+async fn web_image_finance_turn_preserves_the_header_format_with_deferred_prefix_commit() {
     let root = make_temp_dir("hone_channels_image_finance_deferred_prefix");
     std::fs::create_dir_all(&root).expect("create root");
     let llm = MockLlmProvider::with_chat_and_tool_responses(vec![], vec![]);
@@ -9253,7 +9416,7 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
     assert_eq!(execution.runner_request.max_tool_calls, Some(24));
     assert_eq!(
         execution.runner_request.terminal_stream_policy,
-        TerminalStreamPolicy::Disabled
+        TerminalStreamPolicy::CanonicalInvestmentHeader
     );
     let configured = execution
         .runner_request
@@ -9265,15 +9428,16 @@ async fn web_image_finance_turn_preserves_the_header_format_with_whole_answer_bu
         "an image-dependent turn must consume attachment evidence before any irreversible header"
     );
     assert!(
-        configured.content.starts_with("数据时间：运行时时区 "),
+        configured
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix()),
         "{}",
         configured.content
     );
     assert!(
-        configured.content.ends_with(&format!(
-            "；行情口径：运行时时区={}；本轮仅使用可核验资料，具体报价时间与数据缺口在正文逐项披露",
-            hone_core::runtime_timezone_name()
-        )),
+        configured
+            .content
+            .ends_with(SERVICE_OWNED_PREFIX_BASIS_SUFFIX),
         "{}",
         configured.content
     );
@@ -9732,7 +9896,10 @@ async fn crwv_nbis_agent_loop_batches_the_first_datafetch_and_emits_one_answer()
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [expected_answer.as_str()],
+        [
+            service_prefix.as_str(),
+            &expected_answer[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -9873,7 +10040,10 @@ async fn omitted_explicit_seed_is_observational_and_does_not_rerun() {
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [result.response.content.as_str()],
+        [
+            service_prefix.as_str(),
+            &result.response.content[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -10076,7 +10246,10 @@ async fn single_agent_loop_accepts_later_exact_searches_after_empty_enriched_sea
             .iter()
             .map(|chunk| chunk.as_str())
             .collect::<Vec<_>>(),
-        [result.response.content.as_str()],
+        [
+            service_prefix.as_str(),
+            &result.response.content[service_prefix.len()..]
+        ],
         "{visible_chunks:?}"
     );
     assert_eq!(
@@ -10224,7 +10397,7 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
                 usage: None,
             }),
             Ok(ChatResponse {
-                content: "数据时间：运行时时区 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
+                content: "数据时间：北京时间 2026-07-18 21:05；行情口径：报价源最新可得、非逐笔\n\nNVDA 当前价 180.25 USD。".to_string(),
                 reasoning_content: None,
                 tool_calls: None,
                 usage: None,
@@ -10259,7 +10432,10 @@ async fn named_entity_scope_is_delegated_to_the_main_agent_instead_of_preflight_
         result.response.tool_calls_made
     );
     assert!(
-        result.response.content.starts_with("数据时间：运行时时区 "),
+        result
+            .response
+            .content
+            .starts_with(&crate::investment_response_guard::data_time_prefix()),
         "content={} calls={:?}",
         result.response.content,
         result.response.tool_calls_made

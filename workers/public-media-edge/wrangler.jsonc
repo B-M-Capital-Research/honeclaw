@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hone-public-media-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "workers_dev": false,
+  "preview_urls": false,
+  "keep_vars": true,
+  "route": {
+    "pattern": "hone-claw.com/_media/v1/*",
+    "zone_name": "hone-claw.com"
+  },
+  "r2_buckets": [
+    {
+      // Same private bucket the backend's HONE_OSS_BUCKET already points at.
+      // Do not create a public duplicate and do not hand the browser a bucket URL.
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "honeclaw"
+    }
+  ],
+  "vars": {
+    // MEDIA_EDGE_DISABLED is deliberately absent: absence disables the Worker.
+    // Set it to the string "false" only during activation; keep_vars preserves
+    // that runtime switch across deploys.
+    //
+    // MEDIA_EDGE_HMAC_SECRET is a Worker *secret*, never a var. It must match
+    // the backend's HONE_MEDIA_EDGE_HMAC_SECRET byte for byte.
+    "MEDIA_UPLOAD_PREFIX": "public-uploads"
+  }
+}

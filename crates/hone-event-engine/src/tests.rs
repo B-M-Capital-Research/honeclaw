@@ -588,6 +588,7 @@ async fn live_portfolio_backtest_push() {
 
         let msgs = vec![
             Message {
+                images: Vec::new(),
                 role: "system".into(),
                 content: Some(
                     "你是持仓助理。根据输入 JSON 写「今日要点」，规则：\n\
@@ -604,6 +605,7 @@ async fn live_portfolio_backtest_push() {
                 name: None,
             },
             Message {
+                images: Vec::new(),
                 role: "user".into(),
                 content: Some(payload.to_string()),
                 reasoning_content: None,

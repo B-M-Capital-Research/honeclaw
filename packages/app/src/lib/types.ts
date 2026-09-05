@@ -1045,6 +1045,207 @@ export type CompanyDailyValuation = {
   sources: string[];
 };
 
+/** AI 数据中心行业树：一行的底层估值逻辑、核心关注点、成员与研报来源。 */
+export type IndustryKeyVariable = {
+  name: string;
+  why: string;
+  where: string;
+};
+
+export type IndustryAiValuationLogic = {
+  driver_chain: string;
+  key_variables: IndustryKeyVariable[];
+  multiple_anchor: string;
+  anti_pattern: string;
+  /** 每轮注入模型的压缩版（各 110 字以内）；读者看长版，页面只在编辑时露出短版。 */
+  multiple_anchor_short: string;
+  anti_pattern_short: string;
+};
+
+export type IndustryCoreWatch = {
+  what: string;
+  why: string;
+  cadence: string;
+};
+
+export type IndustrySource = {
+  house: string;
+  title: string;
+  date: string;
+  url: string;
+  takeaway: string;
+};
+
+/** 上游信号里的关系：它买本行的东西 / 它的资本开支是需求源头 / 本行供给受它卡口 / 同业龙头最早的景气读数。 */
+export type IndustryUpstreamRelation =
+  | "demand_source"
+  | "capex_source"
+  | "supply_gate"
+  | "peer_signal";
+
+/**
+ * 这一行的收入最终由哪家上市公司的最近行为决定，以及写这一行的公司之前该先去取它的哪几个读数。
+ * 它是行业树从「一段说明」变成「本体」的那条边。
+ */
+export type IndustryUpstreamSignal = {
+  symbol: string;
+  name: string;
+  relation: IndustryUpstreamRelation | string;
+  why: string;
+  /** 去取它的哪几个读数，一条一个。 */
+  pull: string[];
+  cadence: string;
+  /**
+   * 它最近一次有日期的动作，一段话：哪一期、何时发布、关键数字与下季指引。
+   * 卡片上最重要的一行，模型先引用的就是它；没写时为空串。
+   */
+  latest: string;
+  /** latest 截至的日期或月份，如 "2026-08-26" 或 "2026-06"；没写时为空串。 */
+  latest_as_of: string;
+};
+
+/** 一家成员的官方股本（监管申报封面口径）与它的两层新鲜度。 */
+export type IndustryMemberShares = {
+  /** false 表示这一家拿不到官方封面股数（多类别股发行人长期如此），此时看 absent_reason。 */
+  available: boolean;
+  official_shares_outstanding?: number;
+  /** 申报封面上「截至该日已发行股数」的那个日期。 */
+  cover_date?: string;
+  filed?: string;
+  /** 10-K / 10-Q / 20-F。20-F 报的是本土普通股，不是 ADR 股数。 */
+  form?: string;
+  cover_age_days?: number;
+  /** 能不能直接乘股价算美股市值；读取时现算，不是入库时的结论。 */
+  usable_for_market_cap: boolean;
+  /** 有官方股数却没用它重算市值时的原因。 */
+  recompute_blocked_reason?:
+    | "cover_stale"
+    | "basis_not_us_domestic_periodic"
+    | "basis_mismatch_suspected";
+  /** 官方相对提供方的偏差百分比（正 = 提供方落后）。 */
+  provider_difference_pct?: number;
+  absent_reason?: string;
+  absent_note?: string;
+  facts_refreshed_at?: string;
+  /** fresh / cover_stale（公司很久没申报）/ pipeline_stale（我们很久没刷）/ unavailable。 */
+  freshness: "fresh" | "cover_stale" | "pipeline_stale" | "unavailable";
+};
+
+/** 成员按市值降序；本轮没取到行情的排在最后。树里只收美股（含 ADR）。 */
+export type IndustryMember = {
+  symbol: string;
+  name: string;
+  role: string;
+  /** 排序用的市值；口径见 market_cap_basis。 */
+  market_cap?: number;
+  /**
+   * `price_x_official_shares` = 现价 × 监管申报封面上的官方股本；`provider` = 提供方原样。
+   * 提供方的股本会整整落后一份申报，所以两个口径并列给出而不是互相覆盖。
+   */
+  market_cap_basis?: "price_x_official_shares" | "provider";
+  /** 提供方原样的市值，只在本行按官方股本重算过（两个数字确实不同）时出现。 */
+  provider_market_cap?: number;
+  price?: number;
+  change_percent?: number;
+  shares_outstanding?: IndustryMemberShares;
+};
+
+/** 管理员在对话里改行业树时记下的一条：谁、何时、改了什么、为什么。 */
+export type IndustryEdit = {
+  at: string;
+  by: string;
+  industry: string;
+  industry_name: string;
+  summary: string;
+  note: string;
+};
+
+export type Industry = {
+  id: string;
+  name: string;
+  parent: string;
+  one_liner: string;
+  /** 这一行最近一次被改动的时间；从未改过时缺省。 */
+  last_edited_at?: string;
+  ai_valuation_logic: IndustryAiValuationLogic;
+  core_watch: IndustryCoreWatch[];
+  members: IndustryMember[];
+  sources: IndustrySource[];
+  /** 这一行的需求源头与卡口；渲染时按空列表兜底，后端先后上线也不至于整页报错。 */
+  upstream_signals: IndustryUpstreamSignal[];
+};
+
+export type IndustryMapSnapshot = {
+  available: boolean;
+  schema_version: number;
+  generated_at: string;
+  /** false 表示本次没取到行情，成员仍然全部返回，只是失去市值排序。 */
+  market_data_available: boolean;
+  /** false 表示本次一家都没有官方股本（worker 还没跑过），全部行退回提供方市值。 */
+  official_shares_available?: boolean;
+  /** 给读者与模型的一段口径说明：两个市值分别是什么、排序用哪个。 */
+  shares_policy?: string;
+  root: { id: string; name: string; summary: string };
+  industries: Industry[];
+  /** 最近若干条改动，倒序。 */
+  recent_edits: IndustryEdit[];
+  edit_count: number;
+  /** true 时页面露出「编辑本体」开关；写入仍由后端按会话再核一次。 */
+  is_admin: boolean;
+};
+
+/** 管理员可就地改的文本字段；短版是每轮注入模型的压缩版。 */
+export type IndustryEditField =
+  | "one_liner"
+  | "driver_chain"
+  | "multiple_anchor"
+  | "anti_pattern"
+  | "multiple_anchor_short"
+  | "anti_pattern_short";
+
+export type IndustryNewMember = Pick<IndustryMember, "symbol" | "name" | "role">;
+
+/** 在线新增一个行业时提交的骨架；其余字段留空，之后用别的改动填。 */
+export type IndustryNewIndustry = {
+  id: string;
+  name: string;
+  one_liner: string;
+  aliases: string[];
+};
+
+/** 与后端 EditOp 同形（kind 作 tag）：一次改动只做一件事，被拒时整条不写日志。 */
+export type IndustryEditOp =
+  | { kind: "set_field"; field: IndustryEditField; value: string }
+  | { kind: "add_member"; member: IndustryNewMember }
+  | { kind: "remove_member"; symbol: string }
+  | { kind: "set_member_role"; symbol: string; role: string }
+  | { kind: "add_source"; source: IndustrySource }
+  | { kind: "remove_source"; url: string }
+  | { kind: "add_watch"; watch: IndustryCoreWatch }
+  | { kind: "remove_watch"; what: string }
+  | { kind: "add_upstream_signal"; signal: IndustryUpstreamSignal }
+  | { kind: "remove_upstream_signal"; symbol: string }
+  /** 只改一条上游信号的「最近动作」与它的截至日期，按 symbol 找到那条。 */
+  | { kind: "set_upstream_latest"; symbol: string; latest: string; as_of: string }
+  /** 此时请求体的 industry 就是新行业的 id。 */
+  | { kind: "add_industry"; industry: IndustryNewIndustry }
+  | { kind: "remove_industry" };
+
+export type IndustryEditRequest = {
+  industry: string;
+  /** 为什么改，必填；和改动并排展示给其它管理员。 */
+  note: string;
+  op: IndustryEditOp;
+};
+
+export type IndustryEditResult = {
+  ok: true;
+  /** 一行摘要，面板顶部当即回显。 */
+  applied: string;
+  /** 与 GET 同形的完整快照，页面用它整体替换本地状态。 */
+  snapshot: IndustryMapSnapshot;
+};
+
 export type CompanyRating = {
   name: string;
   symbol: string;
@@ -1594,10 +1795,33 @@ export type DailySignalDimension = {
   score?: number | null;
   signal: DailySignalLight;
   trend_label: string;
+  /** Observation date behind the score. Absent on snapshots written before it existed. */
+  period?: string | null;
+  /** 日频 / 月频 / 季频. Empty string on older snapshots. */
+  frequency_label?: string;
+  /** Days from `period` to the report date. Display metadata — never a penalty. */
+  lag_days?: number | null;
   reason: string;
   threshold: string;
   trend: DailySignalTrendPoint[];
   evidence: DailySignalEvidence[];
+};
+
+/**
+ * One index line on the market-confirmation chart.
+ *
+ * FRED carries indices, not ETFs, so this is the index QQQ or SPY tracks and
+ * never the ETF's own price — `tracker` names the fund, `label` says so, and
+ * neither may be rendered as a quote.
+ */
+export type DailySignalMarketTrend = {
+  id: string;
+  label: string;
+  tracker: string;
+  as_of?: string | null;
+  base_period?: string | null;
+  latest_value?: number | null;
+  points: DailySignalTrendPoint[];
 };
 
 export type DailySignalMetric = {
@@ -1636,7 +1860,13 @@ export type DailySignalReport = {
   title: string;
   report_date: string;
   market_date?: string | null;
+  /** Newest observation behind the score. */
   data_cutoff?: string | null;
+  /** Oldest observation behind the score; with `data_cutoff` this is the real range. */
+  data_cutoff_oldest?: string | null;
+  /** The date at which half the scoring weight is at least that new. */
+  data_cutoff_weighted?: string | null;
+  oldest_dimension?: { id: string; label: string; period: string } | null;
   generated_at: string;
   generated_at_local: string;
   timezone: string;
@@ -1654,6 +1884,8 @@ export type DailySignalReport = {
   dimensions: DailySignalDimension[];
   company_scores: DailySignalCompanyScore[];
   hardware_signals: DailyHardwareSignal[];
+  /** Display-only index lines. Absent on snapshots written before this field. */
+  market_trend?: DailySignalMarketTrend[];
   alerts: string[];
   evidence: DailySignalEvidence[];
   sources: { label: string; url: string; source_type: string }[];

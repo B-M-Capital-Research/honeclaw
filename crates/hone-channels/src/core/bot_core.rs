@@ -25,7 +25,8 @@ use hone_event_engine::EventStore;
 use hone_llm::{LlmProvider, LlmResolver};
 use hone_memory::{
     CompanyProfileStorage, ConversationQuotaStorage, CronJobStorage, LlmAuditStorage,
-    SessionStorage, configure_cloud_company_profile_storage, configure_cloud_portfolio_storage,
+    SessionStorage, configure_cloud_company_facts_storage, configure_cloud_company_profile_storage,
+    configure_cloud_portfolio_storage,
 };
 use hone_scheduler::{HoneScheduler, SchedulerEvent};
 use hone_tools::{
@@ -81,6 +82,9 @@ pub struct HoneBotCore {
     pub(crate) cloud_pg_runtime: CloudPgRuntime,
     pub llm: Option<Arc<dyn LlmProvider>>,
     pub auxiliary_llm: Option<Arc<dyn LlmProvider>>,
+    /// 仅用于交互式用户对话的 LLM（`llm.conversation_profile`）；
+    /// 未配置时交互对话与定时任务一样走 `llm`。
+    pub conversation_llm: Option<Arc<dyn LlmProvider>>,
     pub llm_audit: Option<Arc<dyn LlmAuditSink>>,
     pub session_storage: SessionStorage,
     pub conversation_quota_storage: ConversationQuotaStorage,
@@ -161,6 +165,10 @@ impl HoneBotCore {
             configure_cloud_portfolio_storage(Some(cloud_pg_runtime.clone()));
             hone_memory::configure_cloud_survey_storage(Some(cloud_pg_runtime.clone()));
             configure_cloud_company_profile_storage(Some(cloud_pg_runtime.clone()));
+            // 公司事实库是**共享**的（不按 actor 分片）：channels 进程的 data_fetch
+            // 与 web 进程的刷新 worker 必须看到同一份，否则对话里报的股本会和研究台
+            // 页面上的对不上。
+            configure_cloud_company_facts_storage(Some(cloud_pg_runtime.clone()));
         }
         #[cfg(test)]
         {
@@ -169,10 +177,12 @@ impl HoneBotCore {
             configure_cloud_portfolio_storage(None);
             hone_memory::configure_cloud_survey_storage(None);
             configure_cloud_company_profile_storage(None);
+            configure_cloud_company_facts_storage(None);
         }
         let company_profile_storage = CompanyProfileStorage::new(sandbox_base_dir());
         let llm = Self::create_llm_provider(&config);
         let auxiliary_llm = Self::create_auxiliary_llm_provider(&config);
+        let conversation_llm = Self::create_conversation_llm_provider(&config);
         let llm_audit = Self::create_llm_audit_sink(&config, cloud_pg_runtime.clone()).await;
         let workflow_runner_http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -187,6 +197,7 @@ impl HoneBotCore {
             cloud_pg_runtime,
             llm,
             auxiliary_llm,
+            conversation_llm,
             llm_audit,
             session_storage,
             conversation_quota_storage,
@@ -228,6 +239,24 @@ impl HoneBotCore {
             Ok(created) => Some(created.provider),
             Err(e) => {
                 tracing::warn!("Failed to create OpenRouter provider: {}", e);
+                None
+            }
+        }
+    }
+
+    /// `llm.conversation_profile` 解析失败时回退 None（交互对话继续用默认 LLM），
+    /// 只告警不阻断启动，避免一个可选档位把整个服务拦下。
+    fn create_conversation_llm_provider(config: &HoneConfig) -> Option<Arc<dyn LlmProvider>> {
+        let profile = config.llm.conversation_profile.trim();
+        if profile.is_empty() {
+            return None;
+        }
+        match LlmResolver::new(config).provider_for_profile(profile, None) {
+            Ok(created) => Some(created.provider),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to create conversation LLM profile provider ({profile}); interactive conversations fall back to the default LLM: {e}"
+                );
                 None
             }
         }
@@ -301,6 +330,7 @@ impl HoneBotCore {
     /// - channel 传 "telegram" 时与 admins.telegram_user_ids 匹配
     /// - channel 传 "feishu"   时与 admins.feishu_emails / feishu_mobiles / feishu_open_ids 匹配
     /// - channel 传 "discord"  时与 admins.discord_user_ids  匹配
+    /// - channel 传 "web"      时与 admins.web_user_ids      匹配
     pub fn is_admin(&self, user_id: &str, channel: &str) -> bool {
         if user_id.is_empty() {
             return false;
@@ -331,6 +361,10 @@ impl HoneBotCore {
             }
             "discord" => admin_cfg
                 .discord_user_ids
+                .iter()
+                .any(|id| !id.is_empty() && id == user_id),
+            "web" => admin_cfg
+                .web_user_ids
                 .iter()
                 .any(|id| !id.is_empty() && id == user_id),
             "cli" => true,
@@ -522,8 +556,14 @@ impl HoneBotCore {
             let project_root =
                 std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             registry.register(Box::new(hone_tools::RestartHoneTool::new(project_root)));
+            // 行业树的研究底稿编译在二进制里，改一句话本来要重新构建再发一次版。
+            // 这个工具把改动写进数据目录的追加式日志，研究台与每轮注入下一次读取即生效。
+            registry.register(Box::new(hone_tools::IndustryMapEditTool::new(
+                self.config.storage.data_root(),
+                actor.user_id.clone(),
+            )));
             tracing::info!(
-                "[HoneBotCore] 管理员 {} 已注册专属工具 (restart_hone)",
+                "[HoneBotCore] 管理员 {} 已注册专属工具 (restart_hone, industry_map_edit)",
                 actor.user_id
             );
         }
@@ -784,8 +824,13 @@ impl HoneBotCore {
     /// Whether a configured host-capable runner is replaced by the actor-safe
     /// function-calling runner for this request.  Context ownership must use
     /// this effective route rather than the static configured runner name.
+    ///
+    /// `agent.admins_use_native_runner = false` 时管理员也走 strict 链路：
+    /// 保留配额豁免等管理员权益，但对话统一由 function-calling +
+    /// `llm.conversation_profile` 服务，不再拉起宿主机 CLI/ACP。
     pub(crate) fn actor_uses_strict_runner_fallback(&self, actor: &ActorIdentity) -> bool {
-        !self.is_admin_actor(actor) && self.configured_runner_requires_trusted_host_access()
+        self.configured_runner_requires_trusted_host_access()
+            && (!self.config.agent.admins_use_native_runner || !self.is_admin_actor(actor))
     }
 
     pub(crate) fn effective_runner_conversation_strategy(
@@ -820,11 +865,20 @@ impl HoneBotCore {
         &self,
         system_prompt: &str,
         tool_registry: ToolRegistry,
+        for_interactive_conversation: bool,
     ) -> Result<Box<dyn AgentRunner>, String> {
-        let llm = self.llm.clone().ok_or_else(|| {
+        // 交互式用户对话可由 `llm.conversation_profile` 单独指定模型；
+        // 定时任务/心跳（带 model_override 或非 Interactive turn）不受影响。
+        let llm = if for_interactive_conversation {
+            self.conversation_llm.clone().or_else(|| self.llm.clone())
+        } else {
+            self.llm.clone()
+        }
+        .ok_or_else(|| {
             "安全执行器不可用：普通用户不能使用具备宿主机访问能力的 CLI/ACP，且严格 function-calling LLM 未配置。"
                 .to_string()
         })?;
+        let finance_research = self.config.agent.finance_research;
         Ok(Box::new(FunctionCallingReasoningRunner::new(
             llm,
             Arc::new(tool_registry),
@@ -834,6 +888,13 @@ impl HoneBotCore {
             RunnerTimeouts {
                 step: self.config.agent.step_timeout(),
                 overall: self.config.agent.overall_timeout(),
+            },
+            hone_agent::FinanceResearchBudget {
+                tool_rounds: finance_research.tool_rounds,
+                tool_calls: finance_research.tool_calls,
+                data_fetch_calls: finance_research.data_fetch_calls,
+                web_search_calls: finance_research.web_search_calls,
+                gap_closure_rounds: finance_research.gap_closure_rounds,
             },
         )))
     }

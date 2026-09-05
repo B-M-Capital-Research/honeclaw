@@ -56,14 +56,14 @@ describe("a refresh mid-run keeps the trail", () => {
   it("drops blank and repeated stages and keeps the trail bounded", () => {
     const recovered = recover(
       run({
-        steps: ["  ", "读取行情", "读取行情", "", ...Array.from({ length: 8 }, (_, i) => `阶段 ${i}`)],
+        steps: ["  ", "读取行情", "读取行情", "", ...Array.from({ length: 10 }, (_, i) => `阶段 ${i}`)],
       }),
     );
 
     const steps = recovered.message?.steps ?? [];
-    expect(steps.length).toBeLessThanOrEqual(6);
+    expect(steps.length).toBeLessThanOrEqual(8);
     expect(steps).not.toContain("");
-    expect(steps.at(-1)).toBe("阶段 7");
+    expect(steps.at(-1)).toBe("阶段 9");
     // A repeated stage is the same stage, not a new one.
     expect(steps.filter((step) => step === "读取行情").length).toBeLessThanOrEqual(1);
   });
