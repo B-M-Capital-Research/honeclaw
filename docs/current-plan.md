@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-08-23
+最后更新：2026-09-05
 状态：有 15 个活跃任务
 
 ## 说明
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **3D 数据中心与行业分析导航上线**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/3d-data-center-explorer.md`
-  - 摘要：用户已授权上线；正在验证门禁、形成独立提交并协调 Pages/GHCR 精确版本切换与线上验收
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`

@@ -1,7 +1,7 @@
 # Plan
 
 - title: 3D 数据中心与行业分析导航
-- status: in_progress
+- status: archived
 - created_at: 2026-09-05
 - updated_at: 2026-09-05
 - owner: Codex
@@ -48,7 +48,9 @@
 
 - [x] 隔离本任务变更并核对当前生产基线，与并行 community 上线协调切换顺序。
 - [x] 完成仓库 push 门禁：Rust check/test、格式、Web/Worker 单测、CI-safe 回归，记录已有基线失败。
-- [ ] 提交本任务、推送 main，等精确 revision 的 Pages 与 GHCR 构建。
-- [ ] 验证 runtime/env/磁盘/两次零活跃会话，保留回滚版本后原子切换。
-- [ ] 验证线上静态资源、3D入口/浮窗/链接、普通用户阅读、管理员编辑隔离与既有服务健康。
-- [ ] 在 docs/handoffs/2026-09-05-3d-data-center-explorer.md 追加生产证据，更新 docs/archive/index.md 并重新归档计划。
+- [x] 提交本任务、推送 main，等精确 revision 的 Pages 与 GHCR 构建（505cf737；Pages 与镜像均成功）。
+- [x] 验证 runtime/env/磁盘/两次零活跃会话，保留回滚版本后原子切换；与 community 合并为一次 a2d76ea4 → 505cf737 重启。
+- [x] 验证线上静态资源、3D 入口/浮窗/链接和服务健康；真实管理员线上读取，普通/未付费读权限与写隔离由 PostgreSQL handler 回归证明。
+- [x] 在 docs/handoffs/2026-09-05-3d-data-center-explorer.md 追加生产证据，更新 docs/archive/index.md 并重新归档计划。
+
+2026-09-05 10:58 CST 完成生产部署：Pages 与 backend 505cf737；实际服务和 origin fallback 验收通过，旧 binary/Web 回滚组合保留。后续 community PDF 前端独立发布见对应 handoff。
