@@ -2738,3 +2738,15 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related runbooks / regressions: DataFetch 57/57 plus financial bundle guidance 1/1; WebSearch 19/19; registry 5/5; function-calling Agent 153/153; pure channel priority and financial guidance tests; workspace compile; GitHub frontend/Edge and Secret Scan; Runtime Image `32548881694`; production exact-meta/cloud/public soak
 - Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate. Production runs exact revision `36785584…` from immutable digest `sha256:fc6029b4…`; PostgreSQL/OSS/cloud authority and public API acceptance are healthy, with `e08bb460…` retained for immediate rollback.
 - Next entry point: with action-time confirmation to create user-visible messages, run named-company, relationship, AAOI-style move and fresh-report financial-metric canaries; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
+
+### Atlas Cloud Optional Image Provider
+
+- Status: done locally; external PR pending at archive time
+- Date: 2026-08-20
+- Plan: `docs/archive/plans/atlascloud-image-provider-2026-08-20.md`
+- Handoff: `docs/handoffs/2026-08-20-atlascloud-image-provider.md`
+- Decision / ADR: none; this extends the existing image adapter without changing the default
+- Related PRs / commits: external PR pending at archive time
+- Related regressions: `hone-integrations` local HTTP contract tests; `hone-core` config tests
+- Current conclusion: `nano_banana` keeps OpenRouter as its default and can optionally select Atlas Cloud credentials, submit one paid generation request, and perform bounded GET-only prediction polling while preserving the existing output/download contract.
+- Next entry point: `crates/hone-integrations/src/nano_banana.rs`; verify the live model schema before adding any model-specific request fields.

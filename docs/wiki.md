@@ -293,7 +293,8 @@ Important config areas:
 - `event_engine.*`: market/news event monitoring and delivery.
 - `logging.*`: runtime log level and local UDP sink port. `udp_port: null` uses the default `18118` UDP sink, with no config-level disable switch today; `console` and `file` remain parsed compatibility fields until file/console sinks are wired.
 - `security.*`: actor isolation and tool-guard policy.
-- `nano_banana.*`: OpenRouter-backed image generation defaults.
+- `nano_banana.*`: optional OpenRouter or Atlas Cloud image generation. Atlas Cloud uses
+  `llm.providers.atlascloud` credentials and an asynchronous submit/poll flow.
 - `search.*`, `fmp.*`: external data/search providers.
 - `language`: UI / CLI display language (`zh` or `en`).
 
