@@ -572,7 +572,7 @@ pub(crate) async fn build_prompt_bundle_at(
 
     match options.reply_language {
         Some(ReplyLanguage::Chinese) => static_system
-            .push_str("\n【语言要求】必须全程以中文回复，禁止中英文混排或应答其他语言。"),
+            .push_str("\n【语言要求】必须全程以中文回复，不得应答其他语言；但证券代码（NVDA、0700.HK）、财务与估值缩写（P/E、EV/EBITDA、Capex、TTM、GAAP / Non-GAAP、ARR、FCF）、技术与产业术语（GPU、HBM、CoWoS、ASIC）、阿拉伯数字与货币单位（$89.0B、1,553.40 美元、+117%）一律保持原样，不音译、不用汉字数字、不把缩写改写成中文全称。中文正文里夹这些原样实体不算混排。"),
         Some(ReplyLanguage::English) => static_system.push_str(
             "\n【语言要求】The user is reading this product in English. Reply entirely in English, including section headings and disclosures. Keep tickers, exchange codes and provider field names in their original form.",
         ),
@@ -1522,6 +1522,8 @@ mod tests {
         assert!(system.contains(DEFAULT_GROUP_PRIVACY_GUARD));
         assert!(system.contains("【基础模型】gpt-5.4。"));
         assert!(system.contains("【语言要求】必须全程以中文回复"));
+        assert!(system.contains("阿拉伯数字与货币单位"));
+        assert!(!system.contains("禁止中英文混排"));
         assert!(system.contains("【附加规则】先给结论再展开。"));
         assert!(system.contains("【输出格式-Discord】"));
 

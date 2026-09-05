@@ -4276,10 +4276,18 @@ fn original_market_move_request(runtime_input: &str) -> &str {
     .min()
     .map(|end| runtime_input[..end].trim())
     .unwrap_or_else(|| runtime_input.trim());
-    current_turn_and_context
-        .rfind("【本轮用户输入】")
-        .map(|start| current_turn_and_context[start + "【本轮用户输入】".len()..].trim())
-        .unwrap_or(current_turn_and_context)
+    let Some(start) = current_turn_and_context.rfind("【本轮用户输入】") else {
+        return current_turn_and_context;
+    };
+    let request = &current_turn_and_context[start + "【本轮用户输入】".len()..];
+    // Anything after the next section marker is server-injected context
+    // (pre-turn evidence, conversation memory), and a week of production
+    // showed news snippets in there tripping the move-cause gate on
+    // questions that never asked about a move.
+    request
+        .find("\n\n【")
+        .map_or(request, |end| &request[..end])
+        .trim()
 }
 
 fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
@@ -4289,24 +4297,35 @@ fn is_market_move_final_check_enabled(runtime_input: &str) -> bool {
         return false;
     }
     let normalized = original_market_move_request(runtime_input).to_ascii_lowercase();
-    [
-        "大跌",
-        "暴跌",
-        "大涨",
-        "暴涨",
-        "下跌原因",
-        "上涨原因",
-        "跌的原因",
-        "涨的原因",
-        "为什么跌",
-        "为什么涨",
-        "why did",
-        "why is",
-        "selloff",
-        "rally",
+    // The mechanical final check exists to stop a fabricated *cause* for a
+    // move. A question that mentions a move on the way to a valuation,
+    // position or macro ask ("暴跌到 165 美元，现在值得买入吗", "非农数据不好，
+    // 市场跳水了，加息预期是不是又大了") is not asking for a cause, and a
+    // week of production showed those turns ending as the gap stub instead of
+    // an answer. Both a move word and a cause cue are required.
+    let mentions_move = [
+        "大跌", "暴跌", "大涨", "暴涨", "跳水", "拉升", "下跌", "上涨", "跌", "涨", "selloff",
+        "sell-off", "rally", "plunge", "surge", "slump", "crash", "down", "up",
     ]
     .iter()
-    .any(|marker| normalized.contains(marker))
+    .any(|marker| normalized.contains(marker));
+    let asks_for_cause = [
+        "为什么",
+        "为何",
+        "原因",
+        "怎么回事",
+        "什么情况",
+        "发生了什么",
+        "因为",
+        "缘故",
+        "why",
+        "what happened",
+        "because",
+        "reason",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker));
+    mentions_move && asks_for_cause
 }
 
 fn market_move_starts_investment_research(
@@ -4672,64 +4691,6 @@ fn current_turn_source_urls_for_date(
         .into_iter()
         .filter_map(|(url, evidence)| content_contains_date(&evidence, date).then_some(url))
         .collect()
-}
-
-fn paragraph_has_definitive_market_cause(paragraph: &str) -> bool {
-    let normalized = paragraph.to_ascii_lowercase();
-    if [
-        "原因本轮未完全核验",
-        "原因尚未核验",
-        "无法确认",
-        "未能确认",
-        "不能确认",
-        "证据不足",
-        "候选原因",
-        "如果",
-        "可能",
-        "或许",
-        "预计",
-        "假设",
-        "情景",
-        "bull",
-        "bear",
-        "base case",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-        || normalized.contains("推断：")
-    {
-        return false;
-    }
-    [
-        "已核验原因",
-        "原因（已核验",
-        "原因(已核验",
-        "主要原因",
-        "直接原因",
-        "下跌原因",
-        "上涨原因",
-        "已核验新闻",
-        "原因是",
-        "原因包括",
-        "核心驱动",
-        "主要驱动",
-        "最强驱动",
-        "公开新闻指向",
-        "公开归因",
-        "导致",
-        "直接导致",
-        "直接压制",
-        "拖累",
-        "打压",
-        "归因于",
-        "源于",
-        "触发",
-        "引发",
-        "催化剂",
-        "共振",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
 }
 
 fn append_market_move_quote_fact_violations(
@@ -5320,40 +5281,12 @@ fn market_move_final_violations(
         );
     }
 
-    let current_urls = current_turn_tool_result_urls(context, turn_message_start);
-    for paragraph in content.split("\n\n") {
-        if !paragraph_has_definitive_market_cause(paragraph) {
-            continue;
-        }
-        let matching_sources = current_urls
-            .iter()
-            .filter(|(url, _)| paragraph.contains(url.as_str()))
-            .collect::<Vec<_>>();
-        let has_current_url = !matching_sources.is_empty();
-        let has_target_date =
-            target_date.is_some_and(|date| content_contains_date(paragraph, date));
-        let source_record_has_target_date = target_date.is_some_and(|date| {
-            matching_sources
-                .iter()
-                .any(|(_, evidence)| content_contains_date(evidence, date))
-        });
-        if !has_current_url || !has_target_date || !source_record_has_target_date {
-            let mut missing = Vec::new();
-            if !has_target_date {
-                missing.push("同段没有写出目标绝对日期");
-            }
-            if !has_current_url {
-                missing.push("同段没有引用本轮工具实际返回的原始 URL");
-            } else if !source_record_has_target_date {
-                missing.push("引用的 URL 本轮结果记录里没有该目标日期");
-            }
-            violations.push(format!(
-                "每个确定性原因段落都必须在同一段内给出目标日期和本轮工具实际返回的原始 URL，且该 URL 的本轮结果记录本身也须覆盖目标日期；否则降级为“原因本轮未完全核验”（这一段缺的是：{}；段落开头是「{}」）",
-                missing.join("、"),
-                violation_excerpt(paragraph, 32)
-            ));
-        }
-    }
+    // The per-paragraph "cause must carry a same-turn URL and the target
+    // date" rule was a content gate, not a fact check: in one production week
+    // it turned 11 of 134 real answers into the gap stub, three of them after
+    // the user asked again. Sourcing discipline stays in the prompt; what is
+    // still enforced here is objective — dates, weekdays, quote figures and
+    // the scope the user actually asked about.
 
     violations.sort();
     violations.dedup();
@@ -6736,10 +6669,6 @@ impl Agent for FunctionCallingAgent {
                                             date,
                                         )
                                     });
-                                let cause_evidence_missing = violations.iter().any(|violation| {
-                                    violation
-                                        .contains("每个确定性原因段落都必须在同一段内给出目标日期")
-                                }) && eligible_source_urls.is_empty();
                                 tracing::warn!(
                                     session_id = %context.session_id,
                                     iteration = iterations,
@@ -6747,12 +6676,10 @@ impl Agent for FunctionCallingAgent {
                                     market_move_final_corrections,
                                     target_date = ?target_date,
                                     eligible_source_count = eligible_source_urls.len(),
-                                    cause_evidence_missing,
                                     "agent-owned market-move final failed mechanical pre-publication checks"
                                 );
                                 if market_move_final_corrections < MAX_MARKET_MOVE_FINAL_CORRECTIONS
                                     && iterations < self.max_iterations
-                                    && !cause_evidence_missing
                                 {
                                     if precommitted_service_prefix.is_none()
                                         && let Some(prefix) = self
@@ -16297,9 +16224,10 @@ mod tests {
                 .any(|violation| violation.contains("星期应为周五"))
         );
         assert!(
-            violations
+            !violations
                 .iter()
-                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL"))
+                .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
+            "cause sourcing is prompt guidance, not a publication gate: {violations:?}"
         );
 
         let valid = "数据时间：北京时间 2026-07-26 16:00；行情口径：可核验\n\n\
@@ -16755,10 +16683,12 @@ mod tests {
             "a result dated to another day is not evidence for the target day"
         );
         assert!(
-            market_move_final_violations(runtime_input, &content, &off_target, 0)
+            !market_move_final_violations(runtime_input, &content, &off_target, 0)
                 .iter()
                 .any(|violation| violation.contains("目标日期和本轮工具实际返回的原始 URL")),
-            "citing a URL whose own record reports another day must still be rejected"
+            "cause sourcing is prompt guidance, not a publication gate: a source dated to \
+             another day narrows the eligible-source list for the correction prompt but no \
+             longer rejects the answer"
         );
     }
 
@@ -16769,18 +16699,19 @@ mod tests {
     /// URL's own result record must cover the target date" is the check that
     /// still has to hold.
     #[tokio::test]
-    async fn undated_market_cause_source_uses_verified_quote_gap_without_another_generation() {
+    async fn undated_market_cause_source_no_longer_forces_the_quote_gap_stub() {
         let prefix = "数据时间：北京时间 2026-07-26 17:56；行情口径：";
-        let invalid = format!(
+        // Quote figures follow the server change basis and no session claim is
+        // made, so nothing objective is wrong with this draft; its only "flaw"
+        // is a cause source whose record carries no date — which a production
+        // week showed turning real answers into the gap stub.
+        let draft = format!(
             "{prefix}本轮仅使用可核验资料\n\n\
-             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化。\n\n\
-             | 标的 | 收盘价 | 涨跌幅 |\n\
-             | SPY | $738.93 | +0.75% |\n\
-             | QQQ | $684.23 | -1.12% |\n\n\
-             DataFetch SPY/QQQ quote 的 timestamp 对应纽交所 2026-07-24 16:00。\n\n\
-             **2026-07-24 下跌原因的已核验新闻来源**：地缘风险与油价冲击。\
+             目标时段：2026-07-24（周五）。SPY 与 QQQ 走势分化：SPY +0.10%、QQQ -1.12%。\n\n\
+             **2026-07-24 下跌原因**：地缘风险与油价冲击。\
              https://example.test/market-down-snippet"
         );
+        let invalid = draft.clone();
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
                 ChatStreamEvent::ToolCallDelta {
@@ -16829,17 +16760,13 @@ mod tests {
         assert_eq!(
             calls.lock().expect("seen calls").len(),
             2,
-            "missing original-source cause evidence must select the deterministic quote gap instead of asking the model to rewrite"
+            "an undated cause source is neither a rewrite trigger nor a stub trigger"
         );
-        assert!(response.content.starts_with(prefix));
-        assert!(response.content.contains("2026-07-24（周五"));
-        assert!(response.content.contains("SPY +0.10%"));
-        assert!(response.content.contains("QQQ -1.12%"));
-        assert!(response.content.contains("原因本轮未完全核验"));
-        assert!(!response.content.contains("+0.75%"));
-        assert!(!response.content.contains("收盘价"));
-        assert!(!response.content.contains("纽交所"));
-        assert!(!response.content.contains("market-down-snippet"));
+        assert_eq!(
+            response.content, draft,
+            "the draft is published as written; sourcing discipline lives in the prompt"
+        );
+        assert!(!response.content.contains("原因本轮未完全核验"));
     }
 
     #[tokio::test]

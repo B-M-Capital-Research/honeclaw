@@ -2964,6 +2964,12 @@ const PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE: std::time::Duration =
 /// nothing downstream can be attempted without a confirmed symbol, and a slow
 /// registry should fail fast rather than eat the whole pass.
 const PRETURN_IDENTITY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(6);
+/// The user-worded web search gates nothing (identity comes from the registry)
+/// and is the slowest call in the pass: 7–9 s median on production, above the
+/// identity budget. It runs beside the identity phase under its own ceiling so
+/// a slow search degrades to "no web result" instead of discarding the whole
+/// pass. Must stay below the outer deadline.
+const PRETURN_WEB_SEARCH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 /// Each evidence branch is bounded on its own. One slow provider call used to
 /// discard the entire pass — including the identity searches and quotes that
 /// had already returned — because a single timeout wrapped all of them.
@@ -3340,214 +3346,249 @@ async fn run_pre_turn_enrichment(
     // provider call used to discard the identity searches and quotes that had
     // already returned, leaving the turn with no preloaded evidence at all.
     let staged = tokio::time::timeout(PRETURN_ENRICHMENT_DEADLINE, async {
-        let Ok((web, identities, mut speculative)) = tokio::time::timeout(
-            PRETURN_IDENTITY_DEADLINE,
-            futures::future::join3(
-                registry.execute_tool(
-                    "web_search",
-                    match web_topic {
-                        Some(topic) => json!({
-                            "query": web_query,
-                            "time_range": web_time_range,
-                            "topic": topic
-                        }),
-                        None => json!({"query": web_query, "time_range": web_time_range}),
-                    },
-                ),
-                futures::future::join_all(identity_lookups),
-                futures::future::OptionFuture::from(speculative_snapshot),
+        // A week of production logs showed every discarded pass died here:
+        // the web search took 7–9 s while the identity join allowed 6 s, so
+        // the registry hits and the speculative quote that had already
+        // returned were thrown away with it. The search now runs beside the
+        // identity phase under its own deadline and never gates it.
+        let web_search_call = tokio::time::timeout(
+            PRETURN_WEB_SEARCH_DEADLINE,
+            registry.execute_tool(
+                "web_search",
+                match web_topic {
+                    Some(topic) => json!({
+                        "query": web_query,
+                        "time_range": web_time_range,
+                        "topic": topic
+                    }),
+                    None => json!({"query": web_query, "time_range": web_time_range}),
+                },
             ),
-        )
-        .await
-        else {
-            // Nothing downstream can run without a confirmed identity.
-            return None;
-        };
+        );
+        let evidence = async {
+            let Ok((identities, mut speculative)) = tokio::time::timeout(
+                PRETURN_IDENTITY_DEADLINE,
+                futures::future::join(
+                    futures::future::join_all(identity_lookups),
+                    futures::future::OptionFuture::from(speculative_snapshot),
+                ),
+            )
+            .await
+            else {
+                // Nothing downstream can run without a confirmed identity.
+                return None;
+            };
 
-        // Only an unambiguous registry hit earns a market-data call. The
-        // service does not decide that a token is a security; the registry
-        // does. A multi-row result still counts when exactly one row carries
-        // the requested symbol itself — "TEM" returning Tempus AI plus
-        // cross-market lines is an identity confirmation, not an ambiguity.
-        let resolved = candidates
-            .iter()
-            .zip(identities.iter())
-            .filter_map(|(candidate, identity)| {
-                let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
-                let row = unambiguous_identity_row(value, candidate)?;
-                let symbol = row.get("symbol")?.as_str()?;
-                Some((candidate.clone(), symbol.to_string()))
-            })
-            .collect::<Vec<_>>();
-        // The confirmed identities become a completed progress step: the user
-        // watching the trail sees which company each raw token turned out to
-        // be before any market data returns.
-        {
-            let labels = candidates
+            // Only an unambiguous registry hit earns a market-data call. The
+            // service does not decide that a token is a security; the registry
+            // does. A multi-row result still counts when exactly one row carries
+            // the requested symbol itself — "TEM" returning Tempus AI plus
+            // cross-market lines is an identity confirmation, not an ambiguity.
+            let resolved = candidates
                 .iter()
                 .zip(identities.iter())
                 .filter_map(|(candidate, identity)| {
                     let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
                     let row = unambiguous_identity_row(value, candidate)?;
                     let symbol = row.get("symbol")?.as_str()?;
-                    let name = row
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .trim();
-                    Some(if name.is_empty() || name.eq_ignore_ascii_case(symbol) {
-                        symbol.to_string()
-                    } else {
-                        format!("{name}（{symbol}）")
-                    })
+                    Some((candidate.clone(), symbol.to_string()))
                 })
                 .collect::<Vec<_>>();
+            // The confirmed identities become a completed progress step: the user
+            // watching the trail sees which company each raw token turned out to
+            // be before any market data returns.
+            {
+                let labels = candidates
+                    .iter()
+                    .zip(identities.iter())
+                    .filter_map(|(candidate, identity)| {
+                        let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
+                        let row = unambiguous_identity_row(value, candidate)?;
+                        let symbol = row.get("symbol")?.as_str()?;
+                        let name = row
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .trim();
+                        Some(if name.is_empty() || name.eq_ignore_ascii_case(symbol) {
+                            symbol.to_string()
+                        } else {
+                            format!("{name}（{symbol}）")
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                report_preturn_progress(
+                    progress,
+                    "preturn.identity.done",
+                    (!labels.is_empty()).then(|| labels.join("、")),
+                );
+            }
+
+            // The first search runs before the registry has resolved anything, so
+            // it can only use the user's own words — which for a Chinese question
+            // about a US listing reaches Chinese-language coverage and misses the
+            // English reporting that moved the stock. Once the identity is known,
+            // search again anchored on the verified symbol and the registry's own
+            // company name. A single-angle search is how a same-day article about
+            // a secondary story becomes "the core reason".
+            let identity_queries = candidates
+                .iter()
+                .zip(identities.iter())
+                .filter_map(|(candidate, identity)| {
+                    let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
+                    let row = unambiguous_identity_row(value, candidate)?;
+                    let symbol = row.get("symbol")?.as_str()?;
+                    let name = row.get("name").and_then(Value::as_str).unwrap_or(candidate);
+                    Some(identity_anchored_web_query(
+                        symbol,
+                        name,
+                        answer_time_new_york,
+                    ))
+                })
+                .take(PRETURN_IDENTITY_SEARCH_MAX_QUERIES)
+                .collect::<Vec<_>>();
+
+            // Reuse the speculative result only when the registry resolved that
+            // exact candidate to itself; a different symbol must never be answered
+            // with market data fetched for the user's raw token.
+            let mut snapshots = Vec::with_capacity(resolved.len());
+            let mut pending = Vec::new();
+            for (index, (candidate, symbol)) in resolved.iter().enumerate() {
+                let speculation_hit = speculative_symbol.as_deref().is_some_and(|speculated| {
+                    speculated == candidate.as_str()
+                        && hone_core::provider_symbols_equivalent(speculated, symbol)
+                });
+                // At most one candidate can match the single speculation, so the
+                // result is moved out rather than shared.
+                if speculation_hit && speculative.is_some() {
+                    snapshots.push((index, speculative.take()));
+                } else {
+                    pending.push((index, symbol.clone()));
+                }
+            }
             report_preturn_progress(
                 progress,
-                "preturn.identity.done",
-                (!labels.is_empty()).then(|| labels.join("、")),
+                "preturn.evidence",
+                (!resolved.is_empty()).then(|| {
+                    resolved
+                        .iter()
+                        .map(|(_, symbol)| symbol.as_str())
+                        .collect::<Vec<_>>()
+                        .join("、")
+                }),
             );
-        }
-
-        // The first search runs before the registry has resolved anything, so
-        // it can only use the user's own words — which for a Chinese question
-        // about a US listing reaches Chinese-language coverage and misses the
-        // English reporting that moved the stock. Once the identity is known,
-        // search again anchored on the verified symbol and the registry's own
-        // company name. A single-angle search is how a same-day article about
-        // a secondary story becomes "the core reason".
-        let identity_queries = candidates
-            .iter()
-            .zip(identities.iter())
-            .filter_map(|(candidate, identity)| {
-                let value = identity.as_ref().ok().filter(|v| !value_has_error(v))?;
-                let row = unambiguous_identity_row(value, candidate)?;
-                let symbol = row.get("symbol")?.as_str()?;
-                let name = row.get("name").and_then(Value::as_str).unwrap_or(candidate);
-                Some(identity_anchored_web_query(
-                    symbol,
-                    name,
-                    answer_time_new_york,
-                ))
-            })
-            .take(PRETURN_IDENTITY_SEARCH_MAX_QUERIES)
-            .collect::<Vec<_>>();
-
-        // Reuse the speculative result only when the registry resolved that
-        // exact candidate to itself; a different symbol must never be answered
-        // with market data fetched for the user's raw token.
-        let mut snapshots = Vec::with_capacity(resolved.len());
-        let mut pending = Vec::new();
-        for (index, (candidate, symbol)) in resolved.iter().enumerate() {
-            let speculation_hit = speculative_symbol.as_deref().is_some_and(|speculated| {
-                speculated == candidate.as_str()
-                    && hone_core::provider_symbols_equivalent(speculated, symbol)
-            });
-            // At most one candidate can match the single speculation, so the
-            // result is moved out rather than shared.
-            if speculation_hit && speculative.is_some() {
-                snapshots.push((index, speculative.take()));
-            } else {
-                pending.push((index, symbol.clone()));
-            }
-        }
-        report_preturn_progress(
-            progress,
-            "preturn.evidence",
-            (!resolved.is_empty()).then(|| {
-                resolved
-                    .iter()
-                    .map(|(_, symbol)| symbol.as_str())
-                    .collect::<Vec<_>>()
-                    .join("、")
-            }),
-        );
-        // Snapshot, extended-hours and fundamentals do not depend on each
-        // other, so they share one stage instead of three sequential ones.
-        // A quote alone cannot answer why a business moved: without the
-        // quarterly trend, margins and cash flow the turn either spends a
-        // research round fetching them or — more often — answers without them.
-        let (fetched, extended, fundamentals, valuation, identity_web) = futures::future::join5(
-            bounded_branch(futures::future::join_all(pending.iter().map(
-                |(_, symbol)| {
-                    registry.execute_tool(
-                        "data_fetch",
-                        json!({"data_type": "snapshot", "ticker": symbol}),
-                    )
-                },
-            ))),
-            // A regular-session quote reports the previous close while pre/post
-            // market is running, so the extended bar has to come with it or the
-            // turn reads a moving stock as an unopened one.
-            bounded_branch(futures::future::join_all(
-                resolved
-                    .iter()
-                    .filter(|_| now_session != "regular")
-                    .map(|(_, symbol)| {
-                        registry.execute_tool(
-                            "data_fetch",
-                            json!({"data_type": "extended_hours", "ticker": symbol}),
-                        )
-                    }),
-            )),
-            // Four statements are the slowest call in this stage. It gets its
-            // own deadline so a slow fundamentals fetch degrades to "no
-            // fundamentals" instead of timing out the whole pass and taking
-            // the quote and the session summaries down with it.
-            async {
-                tokio::time::timeout(
-                    PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
-                    futures::future::join_all(resolved.iter().map(|(_, symbol)| {
-                        registry.execute_tool(
-                            "data_fetch",
-                            json!({"data_type": "financials", "ticker": symbol}),
-                        )
-                    })),
-                )
-                .await
-                .unwrap_or_default()
-            },
-            // Official trailing ratios, enterprise value and the published
-            // health scores. Recomputing a subset of these by hand was how the
-            // turn ended up publishing a multiple against the wrong period.
-            async {
-                tokio::time::timeout(
-                    PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
-                    futures::future::join_all(resolved.iter().map(|(_, symbol)| {
-                        registry.execute_tool(
-                            "data_fetch",
-                            json!({"data_type": "valuation", "ticker": symbol}),
-                        )
-                    })),
-                )
-                .await
-                .unwrap_or_default()
-            },
-            bounded_branch(futures::future::join_all(identity_queries.iter().map(
-                |query| {
-                    registry.execute_tool(
-                        "web_search",
-                        match web_topic {
-                            Some(topic) => json!({
-                                "query": query,
-                                "time_range": web_time_range,
-                                "topic": topic
-                            }),
-                            None => json!({"query": query, "time_range": web_time_range}),
+            // Snapshot, extended-hours and fundamentals do not depend on each
+            // other, so they share one stage instead of three sequential ones.
+            // A quote alone cannot answer why a business moved: without the
+            // quarterly trend, margins and cash flow the turn either spends a
+            // research round fetching them or — more often — answers without them.
+            let (fetched, extended, fundamentals, valuation, identity_web) =
+                futures::future::join5(
+                    bounded_branch(futures::future::join_all(pending.iter().map(
+                        |(_, symbol)| {
+                            registry.execute_tool(
+                                "data_fetch",
+                                json!({"data_type": "snapshot", "ticker": symbol}),
+                            )
                         },
-                    )
-                },
-            ))),
-        )
-        .await;
-        for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
-            snapshots.push((index, Some(value)));
-        }
-        snapshots.sort_by_key(|(index, _)| *index);
-        let snapshots = snapshots
-            .into_iter()
-            .map(|(_, value)| value)
-            .collect::<Vec<_>>();
+                    ))),
+                    // A regular-session quote reports the previous close while pre/post
+                    // market is running, so the extended bar has to come with it or the
+                    // turn reads a moving stock as an unopened one.
+                    bounded_branch(futures::future::join_all(
+                        resolved
+                            .iter()
+                            .filter(|_| now_session != "regular")
+                            .map(|(_, symbol)| {
+                                registry.execute_tool(
+                                    "data_fetch",
+                                    json!({"data_type": "extended_hours", "ticker": symbol}),
+                                )
+                            }),
+                    )),
+                    // Four statements are the slowest call in this stage. It gets its
+                    // own deadline so a slow fundamentals fetch degrades to "no
+                    // fundamentals" instead of timing out the whole pass and taking
+                    // the quote and the session summaries down with it.
+                    async {
+                        tokio::time::timeout(
+                            PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
+                            futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+                                registry.execute_tool(
+                                    "data_fetch",
+                                    json!({"data_type": "financials", "ticker": symbol}),
+                                )
+                            })),
+                        )
+                        .await
+                        .unwrap_or_default()
+                    },
+                    // Official trailing ratios, enterprise value and the published
+                    // health scores. Recomputing a subset of these by hand was how the
+                    // turn ended up publishing a multiple against the wrong period.
+                    async {
+                        tokio::time::timeout(
+                            PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
+                            futures::future::join_all(resolved.iter().map(|(_, symbol)| {
+                                registry.execute_tool(
+                                    "data_fetch",
+                                    json!({"data_type": "valuation", "ticker": symbol}),
+                                )
+                            })),
+                        )
+                        .await
+                        .unwrap_or_default()
+                    },
+                    bounded_branch(futures::future::join_all(identity_queries.iter().map(
+                        |query| {
+                            registry.execute_tool(
+                                "web_search",
+                                match web_topic {
+                                    Some(topic) => json!({
+                                        "query": query,
+                                        "time_range": web_time_range,
+                                        "topic": topic
+                                    }),
+                                    None => json!({"query": query, "time_range": web_time_range}),
+                                },
+                            )
+                        },
+                    ))),
+                )
+                .await;
+            for ((index, _), value) in pending.into_iter().zip(fetched.into_iter()) {
+                snapshots.push((index, Some(value)));
+            }
+            snapshots.sort_by_key(|(index, _)| *index);
+            let snapshots = snapshots
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect::<Vec<_>>();
+            Some((
+                identities,
+                resolved,
+                snapshots,
+                extended,
+                fundamentals,
+                valuation,
+                identity_queries,
+                identity_web,
+            ))
+        };
+        let (web, evidence) = futures::future::join(web_search_call, evidence).await;
+        // A timed-out search is "no web result"; the evidence stage is what
+        // decides whether the pass produced anything.
+        let web = web.ok();
+        let (
+            identities,
+            resolved,
+            snapshots,
+            extended,
+            fundamentals,
+            valuation,
+            identity_queries,
+            identity_web,
+        ) = evidence?;
         Some((
             web,
             identities,
@@ -3577,7 +3618,7 @@ async fn run_pre_turn_enrichment(
         tracing::warn!(
             channel = %actor.channel,
             user_id = %actor.user_id,
-            "pre-turn enrichment exceeded its deadline; continuing without preloaded evidence"
+            "pre-turn identity phase did not finish within its budget (or the whole pass exceeded its deadline); continuing without preloaded evidence"
         );
         return PreTurnEnrichment {
             calls: 0,
@@ -3590,7 +3631,11 @@ async fn run_pre_turn_enrichment(
     let web_topic_label = web_topic
         .map(|topic| format!(", topic={topic:?}"))
         .unwrap_or_default();
-    if let Some(value) = web.as_ref().ok().filter(|v| !value_has_error(v)) {
+    if let Some(value) = web
+        .as_ref()
+        .and_then(|web| web.as_ref().ok())
+        .filter(|v| !value_has_error(v))
+    {
         calls += 1;
         sections.push(format!(
             "- `web_search(query={web_query:?}, time_range={web_time_range:?}{web_topic_label})` →\n{}",
@@ -3749,6 +3794,15 @@ async fn run_pre_turn_enrichment(
                 }
             }
         }
+    );
+    // The success side was silent, which is how a week of "exceeded its
+    // deadline" warnings could not be put against a denominator.
+    tracing::info!(
+        channel = %actor.channel,
+        user_id = %actor.user_id,
+        calls,
+        web = web.is_some(),
+        "pre-turn enrichment loaded"
     );
     PreTurnEnrichment { calls, block }
 }
@@ -17993,6 +18047,11 @@ mod tests {
                 > super::PRETURN_IDENTITY_DEADLINE
                     + super::PRETURN_ENRICHMENT_FUNDAMENTALS_DEADLINE,
             "the outer timeout must not discard completed evidence while fundamentals time out"
+        );
+        assert!(
+            super::PRETURN_WEB_SEARCH_DEADLINE > super::PRETURN_IDENTITY_DEADLINE
+                && super::PRETURN_ENRICHMENT_DEADLINE > super::PRETURN_WEB_SEARCH_DEADLINE,
+            "the web search runs beside identity with more room than identity, and never past the outer deadline"
         );
     }
 
