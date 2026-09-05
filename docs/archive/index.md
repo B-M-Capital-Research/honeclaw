@@ -1,6 +1,20 @@
 # Archive Index
 
-Last updated: 2026-08-23
+Last updated: 2026-09-05
+
+## 2026-09-05
+
+### 3D 数据中心与行业分析导航
+
+- Status: local implementation done; production deployment in_progress by user request
+- Date: 2026-09-05
+- Plan: `docs/current-plans/3d-data-center-explorer.md`
+- Handoff: `docs/handoffs/2026-09-05-3d-data-center-explorer.md`
+- Decision: `docs/decisions.md#d-2026-09-05-01-ai-infrastructure-explorer-and-authenticated-industry-reading`
+- Regressions: `packages/app/e2e/public-data-center.spec.ts`; `packages/app/src/lib/data-center-{model,geometry}.test.ts`; `packages/app/src/lib/industry-map-navigation.test.ts`; `industry_map::tests`
+- Current conclusion: chat shortcut now opens a responsive six-zone 3D scene linked to eight canonical industries. All logged-in users may read the industry map; edits and internal edit identities/notes remain administrator-only. Typecheck, public build, 564 Web tests, 11 backend route tests and 8 browser tests passed.
+- Next entry point: local `/data-center` preview; coordinated frontend/backend delivery and Safari/iPhone acceptance remain release-time work.
+
 
 ## 2026-08-23
 

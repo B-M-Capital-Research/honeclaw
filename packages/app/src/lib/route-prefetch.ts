@@ -8,6 +8,7 @@
  * chunk from memory, so hovering repeatedly costs nothing.
  */
 const loaders = {
+  "data-center": () => import("@/pages/public-data-center"),
   me: () => import("@/pages/public-me"),
   community: () => import("@/pages/public-community"),
   pushes: () => import("@/pages/public-pushes"),

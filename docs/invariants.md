@@ -130,6 +130,8 @@ Last updated: 2026-08-22
 
 ## Security and Environment Constraints
 
+- Industry-map reading requires a valid public session but no paid entitlement. Industry edits and internal edit history (administrator identities and notes) remain administrator-only; UI hiding never replaces server enforcement. The 3D explorer is an explanatory projection onto canonical industry IDs, not an independent industry ontology or a current-market-data source.
+
 - Do not hardcode secrets in docs, scripts, or tests
 - Do not add flows that depend on external account credentials to the default CI gate
 - Before a release tag is created, every open dependency-security alert must be triaged against the exact locked version, feature graph, target graph, and shipped artifacts. Reachable alerts must be patched and retested; an alert may be dismissed as not used only with recorded evidence that the vulnerable API/features or target are absent from every shipped path.

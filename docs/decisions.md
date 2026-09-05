@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-08-15
+Last updated: 2026-09-05
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -1750,3 +1750,19 @@ implementation work.
 - Public API consequence: `EventStore`, notification preference providers, unified/global collectors, report rendering, scheduled-delivery recording, `HoneBotCore` initialization and channel/Web bootstrap paths expose their real async boundary rather than hiding it behind blocked worker threads.
 - Synchronous boundaries: two test-only PostgreSQL cleanup destructors use a temporary runtime because Rust `Drop` cannot await; the memory lease cleanup also holds its namespace lock until deletion completes to prevent a known reuse race. A one-time synchronous channel bootstrap wrapper remains solely for `bins/hone-imessage`, which this task explicitly prohibited editing; all async-capable channel binaries use the async bootstrap.
 - Verification: full workspace all-target tests passed; 93 ignored PostgreSQL memory tests passed; CI-safe regressions and 486 Web tests passed; the cross-connection delivered-push claim regression passed; real `events.jsonl` replay result lines matched the pre-refactor baseline exactly; all four former bridge symbol families have zero Rust occurrences.
+
+
+## D-2026-09-05-01 AI Infrastructure Explorer And Authenticated Industry Reading
+
+- title: 3D 数据中心复用行业本体，行业分析对登录用户只读开放
+- status: accepted
+- created_at: 2026-09-05
+- updated_at: 2026-09-05
+- owner: Codex / user-approved product scope
+- related_files: `packages/app/src/pages/public-data-center.tsx`; `packages/app/src/lib/data-center-model.ts`; `packages/app/src/pages/public-industry-map.tsx`; `crates/hone-web-api/src/routes/industry_map.rs`
+- related_docs: `docs/handoffs/2026-09-05-3d-data-center-explorer.md`; `docs/invariants.md`
+- Context: HONE 的主要研究方向是 AI 基础设施；原聊天「持仓分析」快捷入口需要改为能从机房空间进入行业研究的入口。用户明确同意所有登录用户阅读、仍仅管理员编辑。
+- Decision: 用本地三维坐标、正交投影与 SVG 构建可转向/缩放场景，原生按钮与 dialog 承担访问性与移动端浮窗，不引入 WebGL 引擎或外部模型下载。六区复用现有八个行业，冷却归电力、软件层关联云平台/新云，完整行业页以 `?industry=` 为选中真相源。
+- Access consequence: GET 使用 session-only authentication，未付费登录用户也可阅读；POST 管理员校验保持。编辑日志中的身份与内部备注只向管理员返回，普通用户只读公开行业文字与更新时间。
+- Verification: 行业映射与相机/地板遮挡回归、真实 PostgreSQL handler 权限测试、Web 类型检查/单测/构建与响应式浏览器测试；见 handoff。
+- Risks: 模型是结构示意，非物理尺寸或实时经营数据；转向有界（18–66°），完整行业内容仍由既有本体与服务端维护。Apple WebKit 真机尚未验证。

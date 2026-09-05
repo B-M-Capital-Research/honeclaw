@@ -15,7 +15,7 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { Portal } from "solid-js/web";
-import { useNavigate, useSearchParams } from "@solidjs/router";
+import { A, useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
@@ -1311,209 +1311,15 @@ function useModalScrollLock(open: () => boolean) {
   });
 }
 
-function ProactiveModeTips(props: { openRequest?: number }) {
-  const [open, setOpen] = createSignal(false);
-  useModalScrollLock(open);
-  const [copiedExample, setCopiedExample] = createSignal<number | null>(null);
-  let copiedTimer: number | undefined;
-  let handledOpenRequest = props.openRequest ?? 0;
-
-  createEffect(() => {
-    const request = props.openRequest ?? 0;
-    if (request <= handledOpenRequest) return;
-    handledOpenRequest = request;
-    setOpen(true);
-  });
-
-  const copyText = async (text: string) => {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
-  };
-
-  const copyExample = async (text: string, index: number) => {
-    await copyText(text);
-    setCopiedExample(index);
-    if (copiedTimer) window.clearTimeout(copiedTimer);
-    copiedTimer = window.setTimeout(() => setCopiedExample(null), 1200);
-  };
-
-  createEffect(() => {
-    if (!open()) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    onCleanup(() => document.removeEventListener("keydown", onKey));
-  });
-
-  onCleanup(() => {
-    if (copiedTimer) window.clearTimeout(copiedTimer);
-  });
-
+function DataCenterQuickAction() {
   return (
-    <>
-      <button
-        type="button"
-        class="public-chat-proactive-tip"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          class="public-chat-proactive-tip-icon"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M9 6V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1" />
-          <path d="M5 6h14a2 2 0 0 1 2 2v10.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
-          <path d="M3 12h18" />
-          <path d="M12 10.5v3" />
-        </svg>
-        <span>{CONTENT.chat_page.composer.proactive_tip}</span>
-      </button>
-      <Show when={open()}>
-        <div
-          class="public-chat-proactive-modal-backdrop"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            class="public-chat-proactive-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="public-chat-proactive-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              class="public-chat-proactive-close"
-              aria-label={CONTENT.chat_page.composer.proactive_close_aria}
-              onClick={() => setOpen(false)}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-            <h2 id="public-chat-proactive-title">
-              {CONTENT.chat_page.composer.proactive_title}
-            </h2>
-            <p class="public-chat-proactive-intro">
-              {CONTENT.chat_page.composer.proactive_intro}
-            </p>
-            <div class="public-chat-proactive-list">
-              <For each={CONTENT.chat_page.composer.proactive_items}>
-                {(item) => (
-                  <div class="public-chat-proactive-item">
-                    <span class="public-chat-proactive-item-mark" />
-                    <span>
-                      <strong>{item.title}</strong>
-                      <small>{item.body}</small>
-                    </span>
-                  </div>
-                )}
-              </For>
-            </div>
-            <div class="public-chat-proactive-examples">
-              <div>{CONTENT.chat_page.composer.proactive_examples_title}</div>
-              <For each={CONTENT.chat_page.composer.proactive_examples}>
-                {(example, index) => (
-                  <span class="public-chat-proactive-example-row">
-                    <button
-                      type="button"
-                      class="public-chat-proactive-copy"
-                      aria-label={CONTENT.chat_page.actions.copy_aria}
-                      title={
-                        copiedExample() === index()
-                          ? CONTENT.chat_page.actions.copied
-                          : CONTENT.chat_page.actions.copy_aria
-                      }
-                      onClick={() => void copyExample(example, index())}
-                    >
-                      <Show
-                        when={copiedExample() === index()}
-                        fallback={
-                          <svg
-                            width="13"
-                            height="13"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <rect
-                              x="9"
-                              y="9"
-                              width="13"
-                              height="13"
-                              rx="2"
-                              ry="2"
-                            />
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        }
-                      >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                      </Show>
-                    </button>
-                    <span>{example}</span>
-                  </span>
-                )}
-              </For>
-            </div>
-            <button
-              type="button"
-              class="public-chat-proactive-primary"
-              onClick={() => setOpen(false)}
-            >
-              {CONTENT.chat_page.composer.proactive_got_it}
-            </button>
-          </div>
-        </div>
-      </Show>
-    </>
+    <A href="/data-center" class="public-chat-proactive-tip" {...routePrefetchHandlers("data-center")}>
+      <svg class="public-chat-proactive-tip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+        <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
+        <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+      </svg>
+      <span>3D 数据中心</span>
+    </A>
   );
 }
 
@@ -2470,7 +2276,6 @@ function Composer(props: {
   isSending: boolean;
   remaining: number | undefined;
   dailyLimit: number | undefined;
-  trackingOpenRequest: number;
   calendarOpenRequest: number;
   isAdmin: boolean;
   onOpenPanel: (panel: string) => void;
@@ -2546,7 +2351,7 @@ function Composer(props: {
     >
       <div class="public-chat-proactive-tip-wrap">
         <ChatToolsMenu isAdmin={props.isAdmin} onOpenPanel={props.onOpenPanel} />
-        <ProactiveModeTips openRequest={props.trackingOpenRequest} />
+        <DataCenterQuickAction />
         <Show when={props.isAdmin}>
           <EarningsResearchQuickAction
             kind="preview"
@@ -2804,7 +2609,6 @@ export default function PublicChatPage() {
   >([]);
   const [workspaceCalendar, setWorkspaceCalendar] =
     createSignal<FinanceCalendarPayload>();
-  const [trackingOpenRequest, setTrackingOpenRequest] = createSignal(0);
   const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
   const [conversationStartIndex, setConversationStartIndex] = createSignal<number | null>(null);
   // True when the user has scrolled up far enough to lose track of the latest
@@ -4240,7 +4044,6 @@ export default function PublicChatPage() {
                           isSending={isSendingOrStreaming()}
                           remaining={sessionInfo()?.remainingToday}
                           dailyLimit={sessionInfo()?.dailyLimit}
-                          trackingOpenRequest={trackingOpenRequest()}
                           calendarOpenRequest={calendarOpenRequest()}
                           isAdmin={currentUser()?.is_admin === true}
                           onOpenPanel={openChatPanel}

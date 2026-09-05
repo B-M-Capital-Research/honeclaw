@@ -35,6 +35,7 @@ const PublicCommunityPage = lazy(() => import("@/pages/public-community"))
 const PublicResearchPage = lazy(() => import("@/pages/public-research"))
 const PublicResearchLibraryPage = lazy(() => import("@/pages/public-research-library"))
 const PublicValuationLabPage = lazy(() => import("@/pages/public-valuation-lab"))
+const PublicDataCenterPage = lazy(() => import("@/pages/public-data-center"))
 const PublicIndustryMapPage = lazy(() => import("@/pages/public-industry-map"))
 const SharePreviewPage = lazy(() => import("@/pages/__share-preview"))
 const DashboardPage = lazy(() => import("@/pages/dashboard"))
@@ -141,6 +142,7 @@ function PublicSurface() {
             <Route path="/research" component={PublicResearchPage} />
             <Route path="/research-library" component={PublicResearchLibraryPage} />
             <Route path="/valuation-lab" component={PublicValuationLabPage} />
+            <Route path="/data-center" component={PublicDataCenterPage} />
             <Route path="/industry-map" component={PublicIndustryMapPage} />
             <Route path="/terms" component={PublicSiteTermsPage} />
             <Route path="/privacy" component={PublicSitePrivacyPage} />

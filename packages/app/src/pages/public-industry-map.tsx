@@ -1,4 +1,5 @@
 import { Title } from "@solidjs/meta";
+import { useSearchParams } from "@solidjs/router";
 import {
   For,
   Show,
@@ -19,6 +20,7 @@ import {
   getPublicIndustryMap,
   postPublicIndustryMapEdit,
 } from "@/lib/api";
+import { resolveIndustryMapSelection } from "@/lib/industry-map-navigation";
 import { cachedPublicUser, setCachedPublicUser } from "@/lib/public-session-cache";
 import type {
   Industry,
@@ -716,12 +718,27 @@ function IndustryForm(props: { editor: Editor }) {
 }
 
 export default function PublicIndustryMapPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
-  const [view, setView] = createSignal<ViewState>(
-    cachedPublicUser()?.is_admin ? "loading" : cachedPublicUser() ? "forbidden" : "loading",
-  );
+  const [view, setView] = createSignal<ViewState>("loading");
   const [snapshot, setSnapshot] = createSignal<IndustryMapSnapshot>();
-  const [selected, setSelected] = createSignal<string>();
+  // The URL owns selection so incoming 3D links, refresh and browser history agree.
+  const selected = createMemo(() =>
+    resolveIndustryMapSelection(snapshot()?.industries ?? [], searchParams.industry),
+  );
+  const selectIndustry = (id: string | undefined, replace = false) => {
+    const next = resolveIndustryMapSelection(snapshot()?.industries ?? [], id);
+    if (searchParams.industry === next) return;
+    setSearchParams({ industry: next }, { replace, scroll: false });
+  };
+  // Normalize stale links only after an authorized snapshot is available. Missing
+  // parameters keep the existing default view without adding a history entry.
+  createEffect(() => {
+    if (!snapshot() || searchParams.industry === undefined) return;
+    if (searchParams.industry !== selected()) {
+      setSearchParams({ industry: selected() }, { replace: true, scroll: false });
+    }
+  });
   const [error, setError] = createSignal("");
   // 编辑本体：开关、所有保存共用的改动说明、保存中、最近一次保存的回执。
   const [editing, setEditing] = createSignal(false);
@@ -735,10 +752,6 @@ export default function PublicIndustryMapPage() {
       const me = await getPublicAuthMe();
       setUser(me);
       setCachedPublicUser(me);
-      if (!me.is_admin) {
-        setView("forbidden");
-        return;
-      }
     } catch (cause) {
       if (cause instanceof Error && cause.name === "AbortError") return;
       setUser(null);
@@ -750,8 +763,8 @@ export default function PublicIndustryMapPage() {
   };
 
   const load = async () => {
-    if (user()?.is_admin !== true) {
-      setView("forbidden");
+    if (!user()) {
+      setView("login");
       return;
     }
     controller?.abort();
@@ -760,7 +773,6 @@ export default function PublicIndustryMapPage() {
     try {
       const data = await getPublicIndustryMap(controller.signal);
       setSnapshot(data);
-      setSelected((current) => current ?? data.industries[0]?.id);
       setView("ready");
     } catch (cause) {
       if (cause instanceof Error && cause.name === "AbortError") return;
@@ -789,7 +801,7 @@ export default function PublicIndustryMapPage() {
     noteMissing: () => note().trim() === "",
     submit: async (industry, op) => {
       const why = note().trim();
-      if (!why || busy()) return false;
+      if (!editMode() || !why || busy()) return false;
       setBusy(true);
       setFlash(undefined);
       try {
@@ -799,8 +811,8 @@ export default function PublicIndustryMapPage() {
         // 中间那一刻选中项指向已不存在的行业，整个详情面板会先卸载再重建。
         batch(() => {
           setSnapshot({ ...result.snapshot, is_admin: result.snapshot.is_admin ?? true });
-          if (op.kind === "add_industry") setSelected(op.industry.id);
-          else if (op.kind === "remove_industry") setSelected(result.snapshot.industries[0]?.id);
+          if (op.kind === "add_industry") selectIndustry(op.industry.id);
+          else if (op.kind === "remove_industry") selectIndustry(result.snapshot.industries[0]?.id, true);
           setFlash({ kind: "ok", text: result.applied });
         });
         return true;
@@ -852,7 +864,7 @@ export default function PublicIndustryMapPage() {
           <PublicWorkspaceShell active="research" topbarLabel="行业分析">
             <Show
               when={view() !== "forbidden"}
-              fallback={<p class="industry-map-empty">行业分析目前仅对管理员开放。</p>}
+              fallback={<p class="industry-map-empty">暂时无法查看行业分析，请确认账户权限后重试。</p>}
             >
               <Show
                 when={view() !== "error"}
@@ -895,7 +907,7 @@ export default function PublicIndustryMapPage() {
                         </div>
                       </Show>
 
-                      <Show when={data().recent_edits.length > 0}>
+                      <Show when={data().is_admin === true && data().recent_edits.length > 0}>
                         <section class="industry-edits" aria-label="最近改动">
                           <h2>
                             最近改动
@@ -913,7 +925,7 @@ export default function PublicIndustryMapPage() {
                                   <button
                                     type="button"
                                     class="industry-edits-jump"
-                                    onClick={() => setSelected(edit.industry)}
+                                    onClick={() => selectIndustry(edit.industry)}
                                   >
                                     {edit.industry_name}
                                   </button>
@@ -947,7 +959,7 @@ export default function PublicIndustryMapPage() {
                                     class="industry-tree-node"
                                     classList={{ "is-active": industry.id === selected() }}
                                     aria-current={industry.id === selected() ? "true" : undefined}
-                                    onClick={() => setSelected(industry.id)}
+                                    onClick={() => selectIndustry(industry.id)}
                                   >
                                     <span class="industry-tree-name">
                                       {industry.name}
@@ -970,7 +982,7 @@ export default function PublicIndustryMapPage() {
                           fallback={<p class="industry-map-empty">选择左侧的一个行业。</p>}
                         >
                           {(industry) => (
-                            <section class="industry-detail">
+                            <section class="industry-detail" id="industry-detail">
                               <h2>
                                 {industry().name}
                                 <Show when={industry().last_edited_at}>

@@ -266,12 +266,12 @@ fn cache() -> &'static Mutex<Option<(Instant, HashMap<String, MarketFact>)>> {
     CACHE.get_or_init(|| Mutex::new(None))
 }
 
-/// GET /api/public/industry-map
+/// GET /api/public/industry-map — 所有有效登录用户可读，编辑权限单独由 POST 校验。
 pub(crate) async fn handle_get_industry_map(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Response {
-    let user = match crate::routes::public::require_public_user(&state, &headers).await {
+    let user = match crate::routes::public::require_public_session_user(&state, &headers).await {
         Ok(user) => user,
         Err(response) => return response,
     };
@@ -307,25 +307,29 @@ pub(crate) async fn handle_get_industry_map(
         })
         .collect::<Vec<_>>();
 
-    // 面板上的「最近改动」卡片：只要尾部几条，且只带摘要不带正文。
-    let recent = edits
-        .iter()
-        .rev()
-        .take(RECENT_EDIT_LIMIT)
-        .map(|edit| {
-            json!({
-                "at": edit.at,
-                "by": edit.by,
-                "industry": edit.industry,
-                "industry_name": map
-                    .industry(&edit.industry)
-                    .map(|item| item.name.clone())
-                    .unwrap_or_else(|| edit.industry.clone()),
-                "summary": edit.op.summary(),
-                "note": edit.note,
+    // 「最近改动」含管理员身份和内部备注，只在管理员快照中返回。
+    let recent = if is_admin {
+        edits
+            .iter()
+            .rev()
+            .take(RECENT_EDIT_LIMIT)
+            .map(|edit| {
+                json!({
+                    "at": edit.at,
+                    "by": edit.by,
+                    "industry": edit.industry,
+                    "industry_name": map
+                        .industry(&edit.industry)
+                        .map(|item| item.name.clone())
+                        .unwrap_or_else(|| edit.industry.clone()),
+                    "summary": edit.op.summary(),
+                    "note": edit.note,
+                })
             })
-        })
-        .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
 
     Json(json!({
         "available": true,
@@ -648,7 +652,180 @@ fn quote_base_url(base_url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Bytes;
+    use axum::http::{StatusCode, header};
     use hone_core::industry_map::base_map;
+
+    async fn access_test_state() -> Arc<AppState> {
+        let root =
+            std::env::temp_dir().join(format!("hone_industry_map_access_{}", uuid::Uuid::new_v4()));
+        let storage_path = root.join("postgres-scope");
+        let mut config = hone_core::HoneConfig::default();
+        config.timezone = Some("Asia/Shanghai".to_string());
+        config.storage.apply_data_root(&root);
+        let (push_tx, _) = tokio::sync::broadcast::channel(8);
+        Arc::new(AppState {
+            core: Arc::new(hone_channels::HoneBotCore::new(config).await),
+            web_auth: Arc::new(
+                hone_memory::WebAuthStorage::new(&storage_path)
+                    .await
+                    .expect("isolated web auth"),
+            ),
+            billing: Arc::new(
+                hone_memory::BillingStorage::new(&storage_path)
+                    .await
+                    .expect("isolated billing"),
+            ),
+            email_verification_sender: Arc::new(
+                crate::email_verification::UnconfiguredEmailVerificationSender,
+            ),
+            push_tx,
+            http_client: reqwest::Client::new(),
+            log_buffer: crate::logging::LogBuffer::new(),
+            deployment_mode: "remote".to_string(),
+            auth: crate::state::AuthState {
+                bearer_token: None,
+                sse_tickets: Mutex::new(HashMap::new()),
+            },
+            heartbeat_registry: Default::default(),
+            active_chat_runs: Default::default(),
+            public_auth_limiter: Default::default(),
+        })
+    }
+
+    async fn session_headers(state: &AppState, user_id: &str) -> HeaderMap {
+        let session = state
+            .web_auth
+            .create_session_for_user(user_id, 1)
+            .await
+            .expect("create session")
+            .expect("active user");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            format!("hone_web_session={}", session.session_token)
+                .parse()
+                .expect("session cookie"),
+        );
+        headers
+    }
+
+    async fn response_json(response: Response) -> Value {
+        let bytes = axum::body::to_bytes(response.into_body(), 2 * 1024 * 1024)
+            .await
+            .expect("response body");
+        serde_json::from_slice(&bytes).expect("JSON response")
+    }
+
+    #[tokio::test]
+    async fn industry_map_read_is_session_only_and_edits_remain_admin_only() {
+        let state = access_test_state().await;
+        let anonymous = handle_get_industry_map(State(state.clone()), HeaderMap::new()).await;
+        assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+        let anonymous_edit = handle_post_industry_edit(
+            State(state.clone()),
+            HeaderMap::new(),
+            Bytes::from_static(b"not JSON"),
+        )
+        .await;
+        assert_eq!(anonymous_edit.status(), StatusCode::UNAUTHORIZED);
+
+        // An email account without an entitlement is still a logged-in reader.
+        let unpaid_user = state
+            .web_auth
+            .ensure_international_email_user("industry-reader@example.com")
+            .await
+            .expect("email reader");
+        assert!(
+            !crate::routes::billing::user_has_product_access(&state, &unpaid_user)
+                .await
+                .expect("unpaid access status")
+        );
+        let unpaid_headers = session_headers(&state, &unpaid_user.user_id).await;
+        let read = handle_get_industry_map(State(state.clone()), unpaid_headers.clone()).await;
+        assert_eq!(read.status(), StatusCode::OK);
+        let snapshot = response_json(read).await;
+        assert_eq!(snapshot["available"], true);
+        assert_eq!(snapshot["is_admin"], false);
+        assert!(!snapshot["industries"].as_array().unwrap().is_empty());
+
+        // An ordinary user with product access must fail before body parsing.
+        let user = state
+            .web_auth
+            .create_invite_user("13800001234")
+            .await
+            .expect("invited reader");
+        let headers = session_headers(&state, &user.user_id).await;
+        let edit = handle_post_industry_edit(
+            State(state.clone()),
+            headers.clone(),
+            Bytes::from_static(b"not JSON"),
+        )
+        .await;
+        assert_eq!(edit.status(), StatusCode::FORBIDDEN);
+        assert!(
+            hone_core::industry_map::load(&state.core.config.storage.data_root())
+                .1
+                .is_empty()
+        );
+
+        state
+            .web_auth
+            .set_web_admin_by_phone(&user.phone_number, true)
+            .await
+            .expect("grant test administrator")
+            .expect("administrator exists");
+        let edit = handle_post_industry_edit(
+            State(state.clone()),
+            headers.clone(),
+            Bytes::from_static(
+                br#"{"industry":"storage","note":"private-admin-review-note-3d-access","op":{"kind":"set_field","field":"one_liner","value":"Administrator updated storage overview"}}"#,
+            ),
+        )
+        .await;
+        assert_eq!(edit.status(), StatusCode::OK);
+        let edited = response_json(edit).await;
+        assert_eq!(edited["ok"], true);
+        assert_eq!(edited["snapshot"]["is_admin"], true);
+        let storage = edited["snapshot"]["industries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|industry| industry["id"] == "storage")
+            .expect("storage industry");
+        assert_eq!(
+            storage["one_liner"],
+            "Administrator updated storage overview"
+        );
+
+        let public_read = handle_get_industry_map(State(state.clone()), unpaid_headers).await;
+        assert_eq!(public_read.status(), StatusCode::OK);
+        let public_snapshot = response_json(public_read).await;
+        assert_eq!(public_snapshot["recent_edits"], json!([]));
+        let public_json = public_snapshot.to_string();
+        assert!(!public_json.contains(&user.user_id));
+        assert!(!public_json.contains("private-admin-review-note-3d-access"));
+        let public_storage = public_snapshot["industries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|industry| industry["id"] == "storage")
+            .expect("public storage industry");
+        assert_eq!(public_storage["one_liner"], storage["one_liner"]);
+        assert!(public_storage["last_edited_at"].is_string());
+
+        let admin_read = handle_get_industry_map(State(state.clone()), headers).await;
+        assert_eq!(admin_read.status(), StatusCode::OK);
+        let admin_snapshot = response_json(admin_read).await;
+        assert_eq!(admin_snapshot["recent_edits"][0]["by"], user.user_id);
+        assert_eq!(
+            admin_snapshot["recent_edits"][0]["note"],
+            "private-admin-review-note-3d-access"
+        );
+        let root = state.core.config.storage.data_root();
+        drop(state);
+        std::fs::remove_dir_all(root).expect("remove test industry edit log");
+    }
 
     #[test]
     fn every_member_is_a_plain_us_ticker() {
