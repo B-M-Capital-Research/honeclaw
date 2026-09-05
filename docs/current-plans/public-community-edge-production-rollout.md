@@ -1,7 +1,7 @@
 # Public Community Edge Production Rollout
 
 - title: Public Community Edge Production Rollout
-- status: `in_progress`
+- status: `blocked`
 - created_at: `2026-07-19`
 - updated_at: `2026-09-05`
 - owner: `Codex / operator`
@@ -26,13 +26,22 @@ Restore the production community timeline to the latest authorized source conten
 - [x] Pull the clean main checkout with `git pull --ff-only` (baseline `fdb533d4`).
 - [x] Compare the authorized Knowledge Planet group `51115212285814` latest posts with canonical PostgreSQL and the production feed; identify the ongoing synchronization owner and missing interval.
 - [x] Repair the append/sync workflow in `bins/hone-cli/src/cloud.rs` / `crates/hone-core/src/cloud_runtime.rs` as needed; recover source content without reusing positional bootstrap reconciliation for incremental updates.
-- [ ] Audit resource state and source availability; repair accessible originals through the verified immutable-object backfill, then test actual image/PDF/download delivery.
-- [ ] Measure GCP runtime, Cloudflare routes/cache, backend feed/resource requests and client request ordering; fix the observed latency causes in `public_community.rs`, `workers/public-community-edge/` and the public frontend.
+- [x] Audit resource state and source availability; repair accessible originals through verified immutable-object backfill. Repaired 76 resources, verified image decoding and exact PDF download, and rendered the real eight-page PDF in an independent Chromium test.
+- [ ] Recover the remaining 273 protected/unavailable attachments after the source download block is resolved; 119 are new file references. Normal source downloads still report `ERR_BLOCKED_BY_CLIENT`; no bytes may be invented or controls bypassed.
+- [x] Measure GCP runtime, Cloudflare routes/cache, backend feed/resource requests and client request ordering; fix the observed latency causes in `public_community.rs`, `workers/public-community-edge/` and the public frontend.
 - [x] Reduce recurring publish latency with a reviewed `scripts/community_production.py --remote` mode for inspect/publish on the same managed runtime; preserve authority checks and full object SHA verification, validate rejection boundaries, and synchronize the daily runbook/saved automation. Real production final dry-run completed in 32.282 seconds with no-op and no conflicts.
 - [x] Replace blocked native PDF iframe preview with lazy application-side PDF rendering; retain authenticated/cached Blob downloads and cancellation, verify real rendered page pixels/navigation in Chromium, and synchronize community preview docs. Four production-build E2E scenarios and 567 frontend tests passed; exact Web rollout is tracked below.
-- [ ] Run meaningful targeted regressions plus required workspace/Web/Worker gates for the final changes; deploy an exact revision through managed runtime/Pages workflows and verify source freshness, resource access, authentication, latency and rollback on production.
-- [ ] Update `docs/runbooks/backend-deployment.md`, `docs/repo-map.md` and applicable long-term decisions/invariants; write `docs/handoffs/2026-09-05-community-freshness-assets-latency.md` with before/after evidence and remaining limitations.
-- [ ] On completion remove the active index entry, archive this plan into `docs/archive/plans/`, and add the handoff/plan/commit to `docs/archive/index.md`. If externally blocked, retain explicit status and the exact next action.
+- [x] Run meaningful targeted regressions plus required workspace/Web/Worker gates for the final changes; deploy an exact revision through managed runtime/Pages workflows and verify source freshness, resource access, authentication, latency and rollback on production.
+- [x] Update `docs/runbooks/backend-deployment.md`, `docs/repo-map.md` and applicable long-term decisions/invariants; write `docs/handoffs/2026-09-05-community-freshness-assets-latency.md` with before/after evidence and remaining limitations.
+- [x] On completion remove the active index entry, archive this plan into `docs/archive/plans/`, and add the handoff/plan/commit to `docs/archive/index.md`. If externally blocked, retain explicit status and the exact next action.
+
+## Current acceptance and remaining blockers
+
+- Backend `505cf737` and Web `719b38c5` are deployed. One joint managed backend restart passed health checks; the final public-Web symlink update preserved PID/starttime and changed no runtime environment.
+- Canonical PG and the edge projection agree on 869 topics / latest `976` (`2026-09-04 00:51`). The 845 published resources passed apply-time full-byte SHA checks; the final remote dry-run is a conflict-free no-op.
+- Every requested implementation, deployment and independent regression step has completed. Required broad gates were run; the unchanged workspace/finance baseline failures are recorded in the handoff, not represented as passing.
+- [ ] Complete foreground Chrome PDF acceptance after the user unlocks this Mac. Actual production bytes download correctly and the browser recognizes eight pages, but the locked-session display canvas remains pending. The same exact file/build renders in 201 ms in independent Chromium. A test-only rAF pause reproduces the symptom and resumes when frames return; the OS/browser cause is still an inference until normal unlock is observed. Do not change display rendering semantics merely to evade OS scheduling.
+- Retain this plan in the active index as `blocked`, and link the deployed phase in `docs/archive/index.md`. There is no completed-plan archive yet because attachment recovery and the user-browser acceptance above remain open. The reviewed two-hour automation remains active and requires the local app/browser/GCP session to be available.
 
 The July sections below are retained as history and do not describe the current deployed state; the September 5 handoff is the current operational entry point.
 

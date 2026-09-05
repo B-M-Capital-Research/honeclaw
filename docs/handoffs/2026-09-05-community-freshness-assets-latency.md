@@ -1,7 +1,7 @@
 # Community freshness, assets and latency recovery
 
 - title: Community freshness, assets and latency recovery
-- status: `in_progress`
+- status: `blocked`
 - created_at: `2026-09-05`
 - updated_at: `2026-09-05`
 - owner: `Codex`
@@ -20,7 +20,7 @@
   - `../runbooks/community-insights-daily-sync.md`
   - `../runbooks/backend-deployment.md`
   - `2026-08-22-community-insights-refresh.md`
-- related_prs: recovery commit `e0278ed1c07d689d7f89d7472d319e4489bbe415`
+- related_prs: recovery commits `e0278ed1c07d689d7f89d7472d319e4489bbe415`, `719b38c5a187ca980afe78289606c729c7d3b082`; deployed backend descendant `505cf737170e8a80715d41c75fc05d794ce5c7c8`
 
 ## Summary
 
@@ -51,13 +51,13 @@ A contiguous source recovery manifest added 151 topics and 194 resource metadata
 
 - Normal source PDF download is blocked in Chrome at `files.zsxq.com` with `ERR_BLOCKED_BY_CLIENT`. The user has been asked to resolve the browser block. Protected/inaccessible files remain metadata-only; do not claim they are repaired or substitute invented content.
 - Historical recovered images are rendered variants; newly captured originals are recorded separately with exact size and SHA before backfill. Production resource IDs must come from the production append report, never the old local database.
-- The core/runtime rollout, managed environment repair, publication and image browser acceptance are complete. Application-side PDF rendering and its separate public-Web rollout are the remaining implementation work in this phase record.
+- The core/runtime rollout, managed environment repair, publication, image browser acceptance and PDF Web rollout are complete. Only inaccessible source attachments and foreground user-Chrome PDF acceptance remain open; no further implementation defect is currently reproduced.
 - Automatic sync was updated through the app on September 5 and read back: existing task `bamang-community-daily`, now named `巴芒科技洞察同步`, every two hours, ACTIVE; model `gpt-5.5` / medium and existing project target preserved. The prompt is exactly the reviewed production-wrapper workflow and stays quiet without a meaningful change. Local app/browser/GCP availability remains required; a saved schedule is not proof of its first future run.
 - Existing unrelated data-center/frontend edits in the shared checkout belong to another task and must remain outside the community recovery commit.
 
 ## Next Entry Point
 
-Finish the PDF canvas acceptance and deploy its exact public-Web revision, retaining the running `505cf737` backend. Confirm the remote publisher's final no-op and update the active plan. The remaining source files require normal authorized source download to become available; do not interpret metadata-only topics as repaired attachments.
+Resume after normal authorized source downloads become available and the user unlocks the Mac for foreground Chrome PDF acceptance. Reuse the existing production wrapper and resource mapping; do not repeat append/apply when its replay and publisher are already no-op. The deployed binary/Web pair is `505cf737` / `719b38c5`. Do not interpret metadata-only topics as repaired attachments.
 
 ## September 5 deployment progress
 
@@ -89,3 +89,12 @@ Finish the PDF canvas acceptance and deploy its exact public-Web revision, retai
 - Final frontend typecheck and 567 tests passed. Four community Chromium E2E scenarios passed against the discovery-enabled public production build, including actual two-page Chinese pixels/text, changed second-page color/content, zoom, mobile layout, one shared GET, worker teardown, malformed-PDF download fallback and cancellation/reopen without page errors. Desktop/mobile screenshots were visually reviewed; this supersedes the earlier iframe-presence test.
 - The static-assets plugin has regression coverage for MIME types, including JavaScript codec fallbacks, and exact same-origin versioned paths. PDF.js is pinned to the official [6.3.289 release](https://github.com/mozilla/pdf.js/releases/tag/v6.3.289), containing [GHSA-hq66-cqwq-w95j's fix](https://github.com/mozilla/pdf.js/security/advisories/GHSA-hq66-cqwq-w95j); display code never instantiates the separate scripting manager or XFA.
 - Screenshots/build/E2E logs are retained in the ignored task evidence directory at final delivery. Exact-revision production deployment and real-user PDF acceptance are recorded in the subsequent phase below.
+
+## Final deployed Web and remaining browser acceptance
+
+- Public Web `719b38c5a187ca980afe78289606c729c7d3b082` built from a clean detached checkout with discovery enabled: 671 files, exact production-bundle E2E 4/4. Pages deployment `757935e8-ee21-42e1-8057-baef20662409` succeeded. The real Chrome page loads `/assets/index-Boc1MGk1.js`; its reviewed build SHA is `c61a10ba8fb5246e7c60e2c6ca803363d4382585b03a8f440770515b32b6c5c9`.
+- Public fallback independently verified the full manifest and every file, staged immutably, checked the previous link was `505cf737`, then atomically activated `719b38c5`. Live loopback `/chat` and entry JS bytes matched exact hashes; managed PID/starttime remained unchanged. No environment edit, binary switch or restart occurred. Archive SHA `c788db2d7c2b6ee966741fbd7bfa9415c0129c977df4e0435a75084867251919`; manifest SHA `eea69201606945f2bfb00c0454b1064764d10ee418c084b36577d08215b6ea2e`. Report/manifest/summary: ignored `public-fallback-719b38c5-*`. For a frontend-only rollback, retain backend `505cf737` and restore the fully verified prior `505cf737` public release through the same expected-current procedure.
+- A separate unauthenticated Python probe from this workstation received Cloudflare `403 / 1010` for public asset requests. It is not a successful public-byte hash check; no WAF setting, user agent or authentication was changed to bypass it. Native Pages deployment status, clean artifact provenance, managed fallback HTTP hashes and the actual logged-in Chrome entry are the available deployment evidence.
+- The new real Chrome PDF flow downloaded the exact 4,272,631-byte Google PDF again with SHA `b507349ac48cf60c5f4f0a0fb2138ed61c3d6eb3ff081e8ec1f7bd9af3771987`, recognized all eight pages and displayed the new controls. The screen-locked user browser still did not complete its display canvas; foreground pixel/turn-page acceptance is explicitly unverified and the user has been asked to unlock. Browser visibility reported `visible`, and captured warnings/errors were empty.
+- Independent Chromium using that exact file and the exact production build rendered the first page in 201 ms (local mocked transfer, not network latency), with 79,055 nonblank pixels, eight pages, one resize event and no console/page errors. PDF.js display rendering schedules its continuation through `window.requestAnimationFrame`; a temporary test-only pause of rAF reproduces the same pending-canvas symptom while `document.visibilityState` stays visible, and restoring frames completes rendering. This supports the lock/scheduling explanation but does not prove the actual cause until the real browser is unlocked. No production change to print intent, browser security, or OS settings was made.
+- Remaining attachment total is 273 protected/unavailable references, including 119 from the recovered new interval. Source PDF download remained `ERR_BLOCKED_BY_CLIENT`. The task remains `blocked` for these external conditions, with deployed work retained in the archive index and the active plan kept for continuation.
