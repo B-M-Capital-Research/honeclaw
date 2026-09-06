@@ -25,7 +25,7 @@ allowed-tools:
   - web_search
 ---
 
-## AI 数据中心行业树
+## 行业本体（AI 数据中心八行 + 商业太空 + AI 应用与数据服务，共十行）
 
 `references/industry-map.json` 是这棵树：根节点是 AI 数据中心，下面平铺 AI 芯片、存储、光通信、
 电力、新云、半导体设备、AI 服务器与整机、云厂与 AI 平台。每一行有四块内容：
@@ -38,10 +38,13 @@ allowed-tools:
 | `ai_valuation_logic.anti_pattern` | 这一行最常见的估值错法 | 与公司卡的「不要…」同等对待：在真正选倍数或分母的那一句里点名对照 |
 | `core_watch` | 这一行最该盯的先行指标与它的出现频率 | 触发条件与跟踪清单从这里取，不要写「持续关注行业动态」 |
 | `upstream_signals` | **本体的边**：这一行的收入由哪几家上市公司的最近行为决定，以及写这一行之前该先取它们的哪几个读数 | 命中成员公司时，**先取上游再写公司**：`data_fetch(earnings_outlook, ticker=<上游>)` 拿最新一季收入/指引/毛利率，`analyst_actions` 拿评级与目标价变动，`transcript`/`press_releases` 拿管理层关于本行的原话。需求侧第一段写「上游最近做了什么 → 沿传导链到这家」，不是「关注英伟达财报」 |
+| `valuation.upstream_summary` / `transmission` | **上游信号**（需求怎么从终端任务传到本行）与**变量传导与证伪**（先后顺序与下修条件，阈值按公司历史与合同定，不套全行业统一百分比）。 |
+| `valuation.observables[]` | **可观测变量**：每条绑定定义与口径、取数、更新节奏、财务传导；未公开值标缺失，不能用行业代理量冒充本公司实测。 |
 | `valuation.logic` | **底层估值逻辑（HOne V3）**：`summary` 一句从哪里出发、`paragraphs` 原文、`formulas` 量化关系、`forward_focus` 未来 1–3 年先看什么、`state_note` 这一行典型的 State。 |
 | `valuation.anchor` | **倍数锚（HOne V3）**：`paragraphs` 原文、`upper_range_drivers` 倍数上沿由什么决定、`revision_optionality` 盈利上修期权、`forbidden` 禁止清单。 |
 | `valuation.subtypes[]` | **子类型**：同一行里价值链位置不同的公司各自的 `primary` / `secondary` / `when` / `note`，`members` 是所属公司；注入时只带命中公司那一条。`inferred_members` 标记底稿按最近子类型推断归类、尚未人工确认的公司。 |
-| 根 `methodology` | 七段需求链、通用执行规则（Forward denominator / Capacity Unlock Gate / Earnings Revision Optionality / Multiple selection / Market-implied check / DCF / Hard checks）、强制输出字段、最终原则。 |
+| 根 `methodology.technical_conventions` / `acceptance_cases` / `references` | V5.3 全局技术口径（有效任务与系统数、KV 缓存、HBM 晶圆强度、互连端口、功率电量、EV/Sales = EV/EBIT × 利润率、PE 与 EV 价格贡献计算）、20 条估值引擎验收算例、方法与核验来源。 |
+| 根 `methodology` | V5.3 全局字段（21 节：页面总述、核心原则、事实与关系、前瞻期间与产能释放、经营预测与合同、方法选择与倍数校准、多方法定价与时间口径、利润与普通股资本桥、现金回报与资本风险、情景与反向估值、完整性与结论输出、异动与比较问题、来源与当前事实展示、远期收入的证据等级、共识与市场起点、倍数校准记录、估值贡献拆解、双重上修与不重估检验、收入倍数的资本检查、情景资本结构的闭合、结论与红绿灯边界）与 12 个估值回答执行字段。 |
 | `brief` | **行业简报**（可选）：`question` 现在值得研究的问题、`body` 为什么是现在、`next[]` 接下来要确认什么、`as_of` 这份判断截至哪天。研究台页面每个行业打开先看到它；没写时页面用最新动作与第一条关注点自动归纳。管理员用 `industry_map_edit(action="set_brief" / "clear_brief")` 维护。本轮不注入模型。 |
 | `core_watch[].as_of` / `key_variables[].as_of` | 那条 `why` 里的数字截至哪一天（或哪个月）；页面据此显示「数字截至」并在超过一个季度时标「可能已过期」。关注点用 `set_watch` 整条更新（连数字一起改，不单改日期）；变量表只随底稿发版更新。行级 `content_as_of`（API 派生）是这些日期与 `latest_as_of`、`sources[].date` 的最大值，`generated_at` 只是底稿版本日期。 |
 | `upstream_signals[].latest` / `latest_as_of` | 那家上游**最近一季实际做了什么**（带数字、带日期的一段）与截至日期。注入时排在传导链之前，需求侧第一段就从它写起；管理员每季财报后用页面或 `industry_map_edit(action="set_upstream_latest")` 更新，过期就按截至日期注明。 |

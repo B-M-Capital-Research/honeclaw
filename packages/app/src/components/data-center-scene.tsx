@@ -23,6 +23,8 @@ const ANCHORS: Record<
   power: { point: [-213, 70, 8], offset: [-105, -27] },
   cooling: { point: [226, 51, 80], offset: [115, 48] },
   software: { point: [-73, 174, -104], offset: [-60, -58] },
+  // Above the far corner of the roof: nothing is drawn there on purpose.
+  orbit: { point: [262, 214, -172], offset: [54, -42] },
 };
 
 function makeScene(): SceneFace[] {

@@ -142,6 +142,16 @@ pub struct Methodology {
     pub hindsight_error: String,
     #[serde(default)]
     pub output_fields: Vec<MethodRule>,
+    /// V5.3 全局技术口径：有效任务与系统数、KV 缓存、HBM 晶圆强度、互连端口、功率电量、倍数恒等式、
+    /// PE / EV 价格贡献计算等，行业共用的计算边界。
+    #[serde(default)]
+    pub technical_conventions: Vec<MethodRule>,
+    /// V5.3 估值引擎验收规则：固定合成算例（输入与场景 → 预期行为），用于核对计算与回答边界。
+    #[serde(default)]
+    pub acceptance_cases: Vec<MethodRule>,
+    /// V5.3 方法与核验来源。
+    #[serde(default)]
+    pub references: Vec<MethodRule>,
 }
 
 /// 「规则名 → 执行要求」或「输出字段 → 输出要求」，两张表同一形状。
@@ -160,6 +170,21 @@ pub struct Formula {
     pub formula: String,
     #[serde(default)]
     pub note: String,
+}
+
+/// V5.3 可观测变量：每条绑定定义与口径、取数、更新节奏、财务传导。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct Observable {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub definition: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub cadence: String,
+    #[serde(default)]
+    pub transmission: String,
 }
 
 /// 底层估值逻辑：未来 1–3 年收入、利润、现金流为什么会变。
@@ -197,6 +222,9 @@ pub struct Subtype {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    /// V5.3「成员与范围」原文（含"相关分部""相关业务"这类范围限定）。
+    #[serde(default)]
+    pub scope_note: String,
     #[serde(default)]
     pub members: Vec<String>,
     #[serde(default)]
@@ -219,6 +247,21 @@ pub struct IndustryValuation {
     pub anchor: ValuationAnchor,
     #[serde(default)]
     pub subtypes: Vec<Subtype>,
+    /// V5.3 上游信号（这一行的需求怎么从终端任务传到本行，散文）。
+    #[serde(default)]
+    pub upstream_summary: String,
+    /// V5.3 变量传导与证伪：先后顺序与下修条件。
+    #[serde(default)]
+    pub transmission: String,
+    /// V5.3 可观测变量表。
+    #[serde(default)]
+    pub observables: Vec<Observable>,
+    /// V5.3 子类型执行卡的总述（各卡共用的前瞻年度与分母规则）。
+    #[serde(default)]
+    pub subtype_intro: String,
+    /// V5.3 研报与数据来源的口径说明。
+    #[serde(default)]
+    pub sources_note: String,
 }
 
 impl IndustryValuation {
@@ -236,6 +279,10 @@ pub const VALUATION_TEXT_FIELDS: &[&str] = &[
     "logic.state_note",
     "anchor.upper_range_drivers",
     "anchor.revision_optionality",
+    "upstream_summary",
+    "transmission",
+    "subtype_intro",
+    "sources_note",
 ];
 /// `SetValuationList` 能改的列表字段（整表替换）。
 pub const VALUATION_LIST_FIELDS: &[&str] = &[
@@ -740,6 +787,10 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
                 "logic.state_note" => v.logic.state_note = value,
                 "anchor.upper_range_drivers" => v.anchor.upper_range_drivers = value,
                 "anchor.revision_optionality" => v.anchor.revision_optionality = value,
+                "upstream_summary" => v.upstream_summary = value,
+                "transmission" => v.transmission = value,
+                "subtype_intro" => v.subtype_intro = value,
+                "sources_note" => v.sources_note = value,
                 other => return Err(ApplyError::UnknownField(other.to_string())),
             }
         }
@@ -971,7 +1022,7 @@ mod tests {
     #[test]
     fn shipped_base_map_parses_and_carries_short_injection_fields() {
         let map = base_map();
-        assert_eq!(map.schema_version, 3);
+        assert_eq!(map.schema_version, 4);
         assert!(!map.industries.is_empty());
         for industry in &map.industries {
             assert_eq!(industry.parent, map.root.id);
@@ -1902,6 +1953,7 @@ mod tests {
                     subtype: Subtype {
                         id: "test-sub".into(),
                         name: "测试子类型".into(),
+                        scope_note: String::new(),
                         members: vec!["sndk".into()],
                         primary: "FY+2 Forward PE".into(),
                         ..Default::default()

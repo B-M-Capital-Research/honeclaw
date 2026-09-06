@@ -1,5 +1,5 @@
 export type DataCenterZoneId =
-  "chip" | "storage" | "optical" | "power" | "cooling" | "software";
+  "chip" | "storage" | "optical" | "power" | "cooling" | "software" | "orbit";
 
 export interface DataCenterZone {
   id: DataCenterZoneId;
@@ -59,7 +59,7 @@ export const DATA_CENTER_ZONES: readonly DataCenterZone[] = [
     color: "#55bba8",
     components: ["交换机与光模块", "光器件与 DSP", "AEC 有源电缆 / CPO"],
     focus: ["交换端口与带宽升级", "光器件产能", "互联拓扑与光化进展"],
-    industries: [{ id: "optical", name: "光通信" }],
+    industries: [{ id: "optical", name: "光通信与 AI 互连" }],
   },
   {
     id: "power",
@@ -72,7 +72,7 @@ export const DATA_CENTER_ZONES: readonly DataCenterZone[] = [
     color: "#d4ad64",
     components: ["电网与发电", "变压器与开关设备", "机柜供配电"],
     focus: ["并网与上电进度", "电力设备交期", "机柜功率与设施能耗"],
-    industries: [{ id: "power", name: "电力" }],
+    industries: [{ id: "power", name: "电力与供电" }],
   },
   {
     id: "cooling",
@@ -85,7 +85,7 @@ export const DATA_CENTER_ZONES: readonly DataCenterZone[] = [
     color: "#68adc4",
     components: ["机柜液冷", "冷却循环", "室外散热设备"],
     focus: ["机柜功率密度", "冷却系统交付", "PUE 与能耗效率"],
-    industries: [{ id: "power", name: "电力" }],
+    industries: [{ id: "power", name: "电力与供电" }],
   },
   {
     id: "software",
@@ -93,7 +93,7 @@ export const DATA_CENTER_ZONES: readonly DataCenterZone[] = [
     title: "AI 软件与云平台",
     subtitle: "把基础设施变成可用的 AI 服务",
     description:
-      "软件在整座数据中心之上组织算力，承接训练、推理与云服务。这是跨越机柜的服务层；相关行业研究从云厂与 AI 平台、新云展开。",
+      "软件在整座数据中心之上组织算力，承接训练、推理与云服务，再由应用把算力变成客户愿意付费的任务结果。这是跨越机柜的服务层；相关行业研究从云厂与 AI 平台、新云、AI 应用与数据服务展开。",
     location: "软件服务层 · 覆盖整个数据中心",
     color: "#8aa9cf",
     components: ["算力调度", "模型训练与推理", "AI 云与平台服务"],
@@ -101,7 +101,24 @@ export const DATA_CENTER_ZONES: readonly DataCenterZone[] = [
     industries: [
       { id: "hyperscaler", name: "云厂与 AI 平台" },
       { id: "neocloud", name: "新云" },
+      { id: "ai-apps", name: "AI 应用与数据服务" },
     ],
+  },
+  {
+    // Commercial space is not inside the facility, but it shares the same demand
+    // chain: launch and satellite systems carry connectivity and compute off the
+    // ground, and ground stations bring it back to the campus network.
+    id: "orbit",
+    shortLabel: "空",
+    title: "太空与轨道连接",
+    subtitle: "把连接与算力送出地面",
+    description:
+      "商业太空不在机房里，却接着同一条需求链：发射与卫星系统把连接、遥感与在轨计算送上轨道，地面站与骨干网再把它接回园区。相关行业研究从商业太空展开。",
+    location: "园区之外 · 地面站与轨道",
+    color: "#7d8fb3",
+    components: ["发射与火箭", "卫星系统与星座", "地面站与连接服务"],
+    focus: ["发射节奏与成功率", "星座部署与在轨容量", "连接服务收入与合同"],
+    industries: [{ id: "space", name: "商业太空" }],
   },
 ];
 

@@ -63,7 +63,7 @@ impl Tool for IndustryMapEditTool {
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
         **行业简报 brief** 是研究台页面第一块「当前重点」：用 `set_brief` 的 `question` 写现在值得研究的问题、`body` 写为什么是现在、`next` 写下一次验证；每季财报或口径变化后先改它，`clear_brief` 可清空。用 `set_watch` 把关注点里的数字更新到最新一季并带 `as_of`，省略的字段沿用原值，改名用 `new_what`。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
-        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。**前瞻估值执行版（V3）**：`set_valuation_field` / `set_valuation_list` 改这一行的底层估值逻辑与倍数锚字段，`upsert_subtype` / `remove_subtype` / `set_member_subtype` 维护子类型（哪些公司用哪个前瞻财年、哪一族倍数、什么权重）——注入给模型的估值执行卡就来自命中公司所属的子类型。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
+        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。**HOne Industry Map（V5.3）**：`set_valuation_field` 改这一行的文本字段（field 取 logic.summary / logic.state_note / anchor.upper_range_drivers / anchor.revision_optionality，以及 V5.3 的行级散文 upstream_summary（上游信号怎么传到本行）/ transmission（变量传导与证伪）/ subtype_intro（子类型怎么分）/ sources_note（研报与数据来源说明）），`set_valuation_list` 整表替换列表字段（logic.paragraphs / logic.forward_focus / anchor.paragraphs / anchor.forbidden），`upsert_subtype` / `remove_subtype` / `set_member_subtype` 维护子类型（哪些公司用哪个主锚、次锚与检查、适用阶段、角色边界；scope_note 写收哪些公司、不收哪些）——注入给模型的估值执行卡就来自命中公司所属的子类型。可观测变量表与全局技术口径、验收算例只在底稿里改。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
         行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
         每次改动都要写 `note` 说明依据，例如引用的研报或财报口径变化；它会和改动一起展示给其它管理员。"
     }
@@ -442,6 +442,7 @@ impl Tool for IndustryMapEditTool {
                     subtype: Subtype {
                         id: id.trim().to_ascii_lowercase(),
                         name,
+                        scope_note: text(&args, "scope_note").unwrap_or_default(),
                         members: text(&args, "members")
                             .map(|v| {
                                 split_list(&v)

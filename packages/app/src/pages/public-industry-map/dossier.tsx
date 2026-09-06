@@ -9,6 +9,7 @@ import type {
   IndustryMember,
   IndustryMethodRule,
   IndustryMethodology,
+  IndustryObservable,
   IndustrySubtype,
   IndustryValuation,
   IndustryValuationListField,
@@ -63,6 +64,41 @@ export function VariablesTable(props: {
         </For>
       </tbody>
     </table>
+  );
+}
+
+/** V5.3 可观测变量：定义与口径、去哪取、多久更新、怎么传到财务。数值不在这里——带日期的量在上面那张旧版变量表。 */
+export function ObservablesTable(props: { observables: IndustryObservable[] }) {
+  return (
+    <div class="industry-table-scroll">
+      <table class="industry-variables industry-observables">
+        <thead>
+          <tr>
+            <th>变量</th>
+            <th>定义与口径</th>
+            <th>去哪取 · 多久更新</th>
+            <th>怎么传到财务</th>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.observables}>
+            {(item) => (
+              <tr>
+                <td>{item.name}</td>
+                <td>{item.definition}</td>
+                <td class="industry-where">
+                  {item.source}
+                  <Show when={item.cadence}>
+                    <span class="industry-observable-cadence">{item.cadence}</span>
+                  </Show>
+                </td>
+                <td>{item.transmission}</td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -250,6 +286,24 @@ export function MethodologyStrip(props: { methodology: IndustryMethodology }) {
             <RuleTable head={["字段", "要求"]} rows={method().output_fields} />
           </details>
         </Show>
+        <Show when={(method().technical_conventions ?? []).length > 0}>
+          <details class="industry-details">
+            <summary>全局技术口径</summary>
+            <RuleTable head={["口径", "怎么算"]} rows={method().technical_conventions ?? []} />
+          </details>
+        </Show>
+        <Show when={(method().acceptance_cases ?? []).length > 0}>
+          <details class="industry-details">
+            <summary>估值引擎验收算例</summary>
+            <RuleTable head={["算例", "期望结果"]} rows={method().acceptance_cases ?? []} />
+          </details>
+        </Show>
+        <Show when={(method().references ?? []).length > 0}>
+          <details class="industry-details">
+            <summary>方法与核验来源</summary>
+            <RuleTable head={["来源", "用在哪"]} rows={method().references ?? []} />
+          </details>
+        </Show>
         <Show when={method().hindsight_error}>
           <p class="industry-callout is-warn">
             <span class="industry-callout-label">最常见的后视镜错误</span>
@@ -334,6 +388,22 @@ export function ValuationCard(props: {
   );
   return (
     <div class="industry-valuation-card">
+      <Show
+        when={props.editMode}
+        fallback={
+          <Show when={props.valuation.subtype_intro}>
+            <p class="industry-subtype-intro">{props.valuation.subtype_intro}</p>
+          </Show>
+        }
+      >
+        <FieldEditor
+          label="子类型怎么分（一段话）"
+          value={props.valuation.subtype_intro ?? ""}
+          rows={3}
+          editor={props.editor}
+          onSave={(value) => setText("subtype_intro", value)}
+        />
+      </Show>
       <Show when={subtypes().length === 0}>
         <p class="industry-detail-note">这一行尚未拆子类型，按下面的行级锚执行。</p>
       </Show>
@@ -401,6 +471,10 @@ export function ValuationCard(props: {
               <dd>{subtype().when || "—"}</dd>
               <dt>提醒</dt>
               <dd>{subtype().note || "—"}</dd>
+              <Show when={subtype().scope_note}>
+                <dt>范围</dt>
+                <dd>{subtype().scope_note}</dd>
+              </Show>
             </dl>
             <Show when={memberCount(subtype()) > 0}>
               <div class="industry-subtype-members" aria-label="成员">
@@ -547,6 +621,27 @@ export function ValuationLogicBlock(props: {
           editor={props.editor}
           onSave={(items) => setList("logic.forward_focus", items)}
         />
+      </Show>
+      <Show
+        when={props.editMode}
+        fallback={
+          <Show when={props.valuation.transmission}>
+            <h4 class="industry-subhead">变量传导与证伪</h4>
+            <p class="industry-paragraph industry-transmission">{props.valuation.transmission}</p>
+          </Show>
+        }
+      >
+        <FieldEditor
+          label="变量传导与证伪（先后顺序与下修条件）"
+          value={props.valuation.transmission ?? ""}
+          rows={4}
+          editor={props.editor}
+          onSave={(value) => setText("transmission", value)}
+        />
+      </Show>
+      <Show when={(props.valuation.observables ?? []).length > 0}>
+        <h4 class="industry-subhead">可观测变量</h4>
+        <ObservablesTable observables={props.valuation.observables ?? []} />
       </Show>
       <details class="industry-details">
         <summary>原文</summary>

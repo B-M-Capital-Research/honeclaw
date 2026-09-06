@@ -1958,3 +1958,30 @@
     padding: 0.75rem 0.85rem;
   }
 }
+
+/* V5.3 行级散文：上游信号、子类型怎么分、传导与证伪、来源说明——都是正文段落，只在字号与留白上区分于备注。 */
+.industry-upstream-summary,
+.industry-subtype-intro,
+.industry-sources-note {
+  margin: 0 0 12px;
+  color: var(--hone-ink-800);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.industry-transmission {
+  margin-top: 4px;
+}
+
+/* 可观测变量表：四列，第三列的更新节奏另起一行小字。 */
+.industry-observables th:nth-child(2),
+.industry-observables td:nth-child(2) {
+  min-width: 14rem;
+}
+
+.industry-observable-cadence {
+  display: block;
+  margin-top: 2px;
+  color: var(--hone-ink-400);
+  font-size: 0.82em;
+}

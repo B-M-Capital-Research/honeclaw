@@ -435,6 +435,30 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
                 clip(&valuation.logic.state_note, 200)
             ));
         }
+        if !valuation.upstream_summary.trim().is_empty() {
+            lines.push(format!(
+                "  上游信号（需求怎么传到本行）：{}",
+                clip(&valuation.upstream_summary, 220)
+            ));
+        }
+        if !valuation.transmission.trim().is_empty() {
+            lines.push(format!(
+                "  变量传导与证伪：{}",
+                clip(&valuation.transmission, 200)
+            ));
+        }
+        let observables = valuation
+            .observables
+            .iter()
+            .take(5)
+            .map(|item| clip(&item.name, 16))
+            .collect::<Vec<_>>();
+        if !observables.is_empty() {
+            lines.push(format!(
+                "  可观测变量（每条绑定公司、期间、单位、出处，未公开的标缺失，不拿行业代理量冒充本公司实测）：{}",
+                observables.join("、")
+            ));
+        }
         if !logic.driver_chain.trim().is_empty() {
             lines.push(format!(
                 "  需求传导链（带日期的量）：{}",
@@ -472,11 +496,12 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         .filter(|rule| {
             matches!(
                 rule.rule.as_str(),
-                "Forward denominator"
-                    | "Capacity Unlock Gate"
-                    | "Market-implied check"
-                    | "DCF"
-                    | "Hard checks"
+                "远期收入的证据等级"
+                    | "共识与市场起点"
+                    | "利润与普通股资本桥"
+                    | "估值贡献拆解"
+                    | "双重上修与不重估检验"
+                    | "结论与红绿灯边界"
             )
         })
         .map(|rule| format!("{}：{}", rule.rule, clip(&rule.requirement, 170)))
@@ -484,13 +509,16 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
     let rules_block = if rules.is_empty() {
         String::new()
     } else {
-        format!("\n通用执行规则：{}。", rules.join("；"))
+        format!(
+            "\n全局规则（压缩版，全文在 `industry-map` skill）：{}。",
+            rules.join("；")
+        )
     };
     let fields_block = if map.methodology.output_fields.is_empty() {
         String::new()
     } else {
         format!(
-            "\n估值类终稿按 HOne 强制输出字段落笔（就落在对账表、三问、三情景的现有位置里，不另起一套）：{}。",
+            "\n估值类终稿按 V5.3 的十二个执行字段落笔（就落在对账表、三问、三情景、反向估值、结论的现有位置里，不另起一套；缺的写「未取得 / 未完成」，不填虚构数字）：{}。",
             map.methodology
                 .output_fields
                 .iter()
@@ -500,12 +528,12 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
         )
     };
     Some(format!(
-        "【本轮相关行业 · HOne 前瞻估值执行版】\n以下来自 `industry-map` 的 AI 数据中心行业本体，是这一行的**结构与先验**，不是当前事实。\
+        "【本轮相关行业 · HOne Industry Map V5.3】\n以下来自 `industry-map` 的行业本体（AI 数据中心八行 + 商业太空 + AI 应用与数据服务），是这一行的**结构与先验**，不是当前事实。\
 需求侧照底层估值逻辑与传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
 不得把行业增速直接当成公司增速。\
 带「上游最近动作」的行，那一行是本文的起点事实，要落进终稿已有的位置而不是另起一段：公司研究稿落在「行业位置与关键对手」一节的第一句，估值稿落在对账表的「上游最近动作」行、一问的增长来源第一句和基准情景的第一项经营输入——每处都就从那条最近动作写起（日期和数字都带上），再写它沿传导链怎么到这家公司，最后用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。\
-估值执行卡决定分母与倍数：先判 State（Capacity Unlock / Structural Re-rating / Mature Growth / Cyclical High），再按 Capacity Unlock Gate 决定财年（Demand、Qualification、Capacity、Economics、Funding 五项至少四项才从 NTM/FY+1 前移到 FY+2/FY+3，写明为什么），主锚次锚与权重照子类型给，倍数区间只由 Growth、Scarcity、Duration、Value Capture、Incremental ROIC 决定，不因「AI 标签」机械上调；公司卡指定了估值框架时以公司卡为准，子类型锚做交叉检查。\
-最常见的后视镜错误不是倍数太低而是分母太低：用当前受限产能的收入、未成熟的利润率或过早回归旧周期均值，会把即将发生的产能释放和盈利上修抹掉。{rules_block}{fields_block}\n\n{}",
+估值执行卡决定分母与倍数：先按这一行的典型经营状态判断这家处在哪个阶段；远期收入按项目 / 批次 / 客户群逐项评 A / B / C 级（A 按履约曲线进基准，B 部分进附条件基准，C 只进条件期权或乐观情景），FY+2 / FY+3 进基准要分别核需求、资格、供应链、建设验收、单位经济性、融资、许可，不因价格更低就换到更远财年；主锚次锚照子类型卡给，不强制 PE 优先，也不因利润暂低自动抬 Sales 倍数，EV/Sales 必须旁列同年度隐含 EV/EBIT；当前共识倍数与当前模型倍数分别标注，缺共识就把相对共识的上修标「未知」；盈利上修与倍数扩张分别举证并写交互项（总价差 = e + r + e×r），保留倍数不变结果；资本桥不闭合就只给条件 EV 与融资敏感性，不发正式每股目标价；DCF 定价权重为零但时间换算与资本回报检查照做。公司卡指定了估值框架时以公司卡为准，子类型卡做交叉检查。\
+永久规则不存放最新一季数字：下面带日期的量与上游最近动作是已核验的事实层，规则是方法层，两者不混，也不把行业代理量当成本公司的实测。{rules_block}{fields_block}\n\n{}",
         sections.join("\n\n")
     ))
 }
@@ -956,11 +984,14 @@ mod tests {
 
     #[tokio::test]
     async fn industry_baseline_stays_silent_until_a_driver_chain_is_written() {
-        // 传导链是这块内容存在的理由。只有成员名单的行业注入进去，等于用 token 换一句
-        // 「这家公司属于存储」——模型本来就知道。
+        // 传导链或估值逻辑是这块内容存在的理由。只有成员名单的行业注入进去，等于用 token 换一句
+        // 「这家公司属于存储」——模型本来就知道。V5.3 新加的行（商业太空、AI 应用）还没有带日期的
+        // 传导链，但有估值逻辑，所以照样注入；这里只盯两样都没有的行。
         let corpus = hone_core::industry_map::base_map();
         for industry in &corpus.industries {
-            if !industry.ai_valuation_logic.driver_chain.trim().is_empty() {
+            if !industry.ai_valuation_logic.driver_chain.trim().is_empty()
+                || !industry.valuation.logic.summary.trim().is_empty()
+            {
                 continue;
             }
             for member in &industry.members {
@@ -1011,11 +1042,12 @@ mod tests {
         assert!(text.contains("估值执行卡 · 子类型「"), "{text}");
         assert!(text.contains("Forward PE"), "{text}");
         assert!(text.contains("这一行禁止的估值动作"), "{text}");
-        assert!(text.contains("Capacity Unlock Gate"), "{text}");
-        assert!(text.contains("HOne 强制输出字段"), "{text}");
+        assert!(text.contains("A / B / C 级"), "{text}");
+        assert!(text.contains("十二个执行字段"), "{text}");
+        assert!(text.contains("变量传导与证伪"), "{text}");
         // 单行命中的注入体量守在 4,600 字以内（约 2,300 token）：头部规则约 1,400 字，行内约 3,000 字。
         assert!(
-            text.chars().count() < 4600,
+            text.chars().count() < 5600,
             "注入过长：{} 字",
             text.chars().count()
         );

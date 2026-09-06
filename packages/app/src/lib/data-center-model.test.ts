@@ -20,7 +20,8 @@ describe("data center industry navigation", () => {
     const industryIds = (zoneId: string) =>
       DATA_CENTER_ZONES.find((zone) => zone.id === zoneId)?.industries.map((industry) => industry.id);
     expect(industryIds("cooling")).toEqual(["power"]);
-    expect(industryIds("software")).toEqual(["hyperscaler", "neocloud"]);
+    expect(industryIds("software")).toEqual(["hyperscaler", "neocloud", "ai-apps"]);
+    expect(industryIds("orbit")).toEqual(["space"]);
     expect(industryIds("chip")).toEqual(["ai-chip", "server-oem", "equipment"]);
   });
 

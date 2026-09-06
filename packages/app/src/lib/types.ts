@@ -1210,12 +1210,29 @@ export type IndustrySubtype = {
   secondary: string;
   when: string;
   note: string;
+  /** V5.3：这个子类型收哪些公司、不收哪些（含没有代码的私有公司）；旧后端没有，读端按空串兜底。 */
+  scope_note?: string;
+};
+
+/** V5.3 可观测变量：定义与口径、去哪取、多久更新、怎么传到财务；数值本身不放这里（带日期的量在旧版变量表）。 */
+export type IndustryObservable = {
+  name: string;
+  definition: string;
+  source: string;
+  cadence: string;
+  transmission: string;
 };
 
 export type IndustryValuation = {
   logic: IndustryValuationLogic;
   anchor: IndustryValuationAnchor;
   subtypes: IndustrySubtype[];
+  /** V5.3 新增的行级散文与变量表；后端与前端分开上线，旧后端没带时按空值渲染。 */
+  upstream_summary?: string;
+  transmission?: string;
+  observables?: IndustryObservable[];
+  subtype_intro?: string;
+  sources_note?: string;
 };
 
 /** 「规则名 → 执行要求」或「输出字段 → 输出要求」，两张表同一形状。 */
@@ -1231,6 +1248,10 @@ export type IndustryMethodology = {
   execution_rules: IndustryMethodRule[];
   hindsight_error: string;
   output_fields: IndustryMethodRule[];
+  /** V5.3：全局技术口径、估值引擎验收算例、方法与核验来源；旧后端没带时为空。 */
+  technical_conventions?: IndustryMethodRule[];
+  acceptance_cases?: IndustryMethodRule[];
+  references?: IndustryMethodRule[];
 };
 
 export type Industry = {
@@ -1297,7 +1318,11 @@ export type IndustryValuationTextField =
   | "logic.summary"
   | "logic.state_note"
   | "anchor.upper_range_drivers"
-  | "anchor.revision_optionality";
+  | "anchor.revision_optionality"
+  | "upstream_summary"
+  | "transmission"
+  | "subtype_intro"
+  | "sources_note";
 
 /** `set_valuation_list` 能整表替换的列表字段。 */
 export type IndustryValuationListField =

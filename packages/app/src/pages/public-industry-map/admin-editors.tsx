@@ -508,6 +508,7 @@ export function SubtypeForm(props: {
   const [secondary, setSecondary] = createSignal(props.seed?.secondary ?? "");
   const [when, setWhen] = createSignal(props.seed?.when ?? "");
   const [note, setNote] = createSignal(props.seed?.note ?? "");
+  const [scopeNote, setScopeNote] = createSignal(props.seed?.scope_note ?? "");
   const [error, setError] = createSignal("");
   // 「编辑」换了一张卡时整张表单跟着换种子，不留上一张的草稿。
   createEffect(
@@ -521,6 +522,7 @@ export function SubtypeForm(props: {
         setSecondary(seed?.secondary ?? "");
         setWhen(seed?.when ?? "");
         setNote(seed?.note ?? "");
+        setScopeNote(seed?.scope_note ?? "");
         setError("");
       },
       { defer: true },
@@ -554,6 +556,7 @@ export function SubtypeForm(props: {
         secondary: secondary().trim(),
         when: when().trim(),
         note: note().trim(),
+        scope_note: scopeNote().trim(),
       },
     });
     if (ok) props.onSaved(code);
@@ -631,6 +634,17 @@ export function SubtypeForm(props: {
           value={when()}
           disabled={props.editor.busy()}
           onInput={(event) => setWhen(event.currentTarget.value)}
+        />
+      </label>
+      <label class="is-wide">
+        范围（收哪些公司、不收哪些）
+        <textarea
+          class="industry-textarea"
+          rows={2}
+          placeholder="如：只收以 NAND 为主的上市公司；SpaceX 未上市不收"
+          value={scopeNote()}
+          disabled={props.editor.busy()}
+          onInput={(event) => setScopeNote(event.currentTarget.value)}
         />
       </label>
       <label class="is-wide">

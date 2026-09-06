@@ -1,11 +1,11 @@
 import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 
 import { rankByMention, sourceText, watchText } from "@/lib/industry-lens";
-import { askHoneHref, askWatchPrompt } from "@/lib/industry-valuation";
+import { askHoneHref, askWatchPrompt, valuationOf } from "@/lib/industry-valuation";
 import type { Industry, IndustryCoreWatch } from "@/lib/types";
 
 import { SourceForm, WatchForm } from "./admin-editors";
-import { AsOfTag, RelatedTag, type Editor, type Lens } from "./shared";
+import { AsOfTag, FieldEditor, RelatedTag, type Editor, type Lens } from "./shared";
 
 /**
  * 「接下来重点看什么」：关注点按公司视角前置，每条带数字截至日与一个「问 HONE」；
@@ -198,6 +198,28 @@ export function SourcesList(props: {
   return (
     <section class="industry-sources-section" id="sources" aria-labelledby="industry-sources-title">
       <h3 id="industry-sources-title">研报与数据来源</h3>
+      <Show
+        when={props.editMode}
+        fallback={
+          <Show when={valuationOf(props.industry).sources_note}>
+            <p class="industry-sources-note">{valuationOf(props.industry).sources_note}</p>
+          </Show>
+        }
+      >
+        <FieldEditor
+          label="来源说明（这一行看哪些研报与数据、怎么核）"
+          value={valuationOf(props.industry).sources_note ?? ""}
+          rows={3}
+          editor={props.editor}
+          onSave={(value) =>
+            props.editor.submit(props.industry.id, {
+              kind: "set_valuation_field",
+              field: "sources_note",
+              value,
+            })
+          }
+        />
+      </Show>
       <Show when={ranked().length > 0} fallback={<p class="industry-detail-note">尚未定稿。</p>}>
         <ul class="industry-sources">
           <For each={ranked()}>

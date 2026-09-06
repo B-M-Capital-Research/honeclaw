@@ -7,12 +7,14 @@ import {
   askSignalPrompt,
   askSourcePrompt,
   relationLabel,
+  valuationOf,
 } from "@/lib/industry-valuation";
 import type { Industry } from "@/lib/types";
 
 import { SignalForm } from "./admin-editors";
 import {
   AsOfTag,
+  FieldEditor,
   LatestEditor,
   RelatedTag,
   upstreamSignals,
@@ -62,6 +64,9 @@ export function RecentChanges(props: {
         when={!props.editMode}
         fallback={<SignalsEditor industry={props.industry} editor={props.editor} />}
       >
+        <Show when={valuationOf(props.industry).upstream_summary}>
+          <p class="industry-upstream-summary">{valuationOf(props.industry).upstream_summary}</p>
+        </Show>
         <Show
           when={ranked().length > 0}
           fallback={<p class="industry-detail-note">底稿里还没有带日期的上游动作或来源。</p>}
@@ -169,6 +174,19 @@ function SignalsEditor(props: { industry: Industry; editor: Editor }) {
       <p class="industry-detail-note">
         编辑态按上游信号逐条改：每季财报后更新「最近动作」与截至日期；读者看到的「最近变化」由这里和来源按日期自动排出。
       </p>
+      <FieldEditor
+        label="上游信号（需求怎么从终端任务传到本行；不放最新一季数字）"
+        value={valuationOf(props.industry).upstream_summary ?? ""}
+        rows={4}
+        editor={props.editor}
+        onSave={(value) =>
+          props.editor.submit(props.industry.id, {
+            kind: "set_valuation_field",
+            field: "upstream_summary",
+            value,
+          })
+        }
+      />
       <Show
         when={upstreamSignals(props.industry).length > 0}
         fallback={<p class="industry-detail-note">尚未定稿。</p>}
