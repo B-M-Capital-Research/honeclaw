@@ -42,6 +42,8 @@ allowed-tools:
 | `valuation.anchor` | **倍数锚（HOne V3）**：`paragraphs` 原文、`upper_range_drivers` 倍数上沿由什么决定、`revision_optionality` 盈利上修期权、`forbidden` 禁止清单。 |
 | `valuation.subtypes[]` | **子类型**：同一行里价值链位置不同的公司各自的 `primary` / `secondary` / `when` / `note`，`members` 是所属公司；注入时只带命中公司那一条。`inferred_members` 标记底稿按最近子类型推断归类、尚未人工确认的公司。 |
 | 根 `methodology` | 七段需求链、通用执行规则（Forward denominator / Capacity Unlock Gate / Earnings Revision Optionality / Multiple selection / Market-implied check / DCF / Hard checks）、强制输出字段、最终原则。 |
+| `brief` | **行业简报**（可选）：`question` 现在值得研究的问题、`body` 为什么是现在、`next[]` 接下来要确认什么、`as_of` 这份判断截至哪天。研究台页面每个行业打开先看到它；没写时页面用最新动作与第一条关注点自动归纳。管理员用 `industry_map_edit(action="set_brief" / "clear_brief")` 维护。本轮不注入模型。 |
+| `core_watch[].as_of` / `key_variables[].as_of` | 那条 `why` 里的数字截至哪一天（或哪个月）；页面据此显示「数字截至」并在超过一个季度时标「可能已过期」。关注点用 `set_watch` 整条更新（连数字一起改，不单改日期）；变量表只随底稿发版更新。行级 `content_as_of`（API 派生）是这些日期与 `latest_as_of`、`sources[].date` 的最大值，`generated_at` 只是底稿版本日期。 |
 | `upstream_signals[].latest` / `latest_as_of` | 那家上游**最近一季实际做了什么**（带数字、带日期的一段）与截至日期。注入时排在传导链之前，需求侧第一段就从它写起；管理员每季财报后用页面或 `industry_map_edit(action="set_upstream_latest")` 更新，过期就按截至日期注明。 |
 
 ## 怎么把行业接进个股分析
@@ -72,6 +74,8 @@ allowed-tools:
 - **不要凭记忆复述这棵树的内容**，每次都以本轮注入的【本轮相关行业】或本 skill 读到的 JSON 为准。
 - 用户问「这一行为什么这么写」时，改动日志里有谁在什么时候改的与当时给的理由；
   研究台「行业分析」顶部的「最近改动」卡片展示同一份记录。
+- 同一行里不同块的日期可能不一致（关注点的 `as_of`、上游的 `latest_as_of`、来源的 `date`）：
+  引用时以最新的那个为准并注明截至日，不要把行级 `content_as_of` 当成每一条都刷新过。
 
 ## 边界
 

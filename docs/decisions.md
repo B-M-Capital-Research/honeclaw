@@ -1766,3 +1766,17 @@ implementation work.
 - Access consequence: GET 使用 session-only authentication，未付费登录用户也可阅读；POST 管理员校验保持。编辑日志中的身份与内部备注只向管理员返回，普通用户只读公开行业文字与更新时间。
 - Verification: 行业映射与相机/地板遮挡回归、真实 PostgreSQL handler 权限测试、Web 类型检查/单测/构建与响应式浏览器测试；见 handoff。
 - Risks: 模型是结构示意，非物理尺寸或实时经营数据；转向有界（18–66°），完整行业内容仍由既有本体与服务端维护。Apple WebKit 真机尚未验证。
+
+## D-2026-09-06-01 Date Every Piece Of Industry-Tree Content
+
+- title: 行业树内容逐条带截至日，`generated_at` 不再表示新鲜度；线上改动折回底稿后重放幂等
+- status: accepted
+- created_at: 2026-09-06
+- updated_at: 2026-09-06
+- owner: Claude / user-approved product scope
+- related_files: `crates/hone-core/src/industry_map.rs`; `crates/hone-web-api/src/routes/industry_map.rs`; `skills/industry-map/references/industry-map.json`; `packages/app/src/pages/public-industry-map.tsx`; `packages/app/src/lib/industry-brief.ts`
+- related_docs: `docs/handoffs/2026-09-06-industry-map-reading-order.md`
+- Context: 页头「研究底稿更新」来自底稿顶层静态 `generated_at`，管理员在线小改动不会推进它；关注点与传导链变量里嵌着带季度的数字却没有日期，AVGO 的公司介绍已到 FY26Q3 而关注点仍写 FY26Q2。线上改动日志里的 4 条内容与底稿不一致。
+- Decision: 新鲜度来自逐条 `as_of`（`core_watch[].as_of`、`key_variables[].as_of`、`brief.as_of`，与既有 `latest_as_of` / `sources[].date` 同口径），行级 `content_as_of` 由后端派生、前端缺失时自算；`generated_at` 只表示底稿版本。每个行业可带管理员写的 `brief`（问题 / 为什么是现在 / 下一次确认什么 / 截至日），页面首屏用它，没有则派生并标明。线上改动内容逐字折回底稿；`AddSource` 按 url 幂等、`AddWatch` 拒重复，日志保留原样不迁移。
+- Consequence: 底稿里 AVGO / DELL 的 `role` 必须与线上日志逐字一致（`SetMemberRole` 重放覆盖底稿），改这两段走 op 不改底稿；`SetWatch` 是关注点唯一的就地修改口径，只改日期不改数字被刻意排除。
+- Deferred: `previous_latest`（base 重新发版即归零，改用来源与每日快照）；brief 注入模型 prompt（需复测）；`SetUpstreamLatest` 的日期回溯校验。
