@@ -60,6 +60,26 @@ pub struct CoreWatch {
     pub why: String,
     #[serde(default)]
     pub cadence: String,
+    /// `why` 里那些数字截至哪一天（或哪个月，"2026-06"）；空串 = 未标注。
+    #[serde(default)]
+    pub as_of: String,
+}
+
+/// 行业简报：页面第一块「当前重点」。管理员每季财报或口径变化后先改它。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct IndustryBrief {
+    /// 现在值得研究的问题，一句。
+    #[serde(default)]
+    pub question: String,
+    /// 为什么是现在，一段。
+    #[serde(default)]
+    pub body: String,
+    /// 接下来要确认什么，一条一件事，建议以日期或事件开头。
+    #[serde(default)]
+    pub next: Vec<String>,
+    /// 这份简报截至哪一天；SetBrief 要求非空且可解析。
+    #[serde(default)]
+    pub as_of: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -265,6 +285,36 @@ pub struct Industry {
     /// HOne 前瞻估值执行版：底层估值逻辑、倍数锚、子类型。
     #[serde(default)]
     pub valuation: IndustryValuation,
+    #[serde(default)]
+    pub brief: Option<IndustryBrief>,
+}
+
+impl Industry {
+    /// 这一行内容里最新的那个日期，原样返回写法（"2026-06" 就还是 "2026-06"）。
+    /// 候选：brief.as_of、upstream_signals[].latest_as_of、core_watch[].as_of、sources[].date、
+    /// ai_valuation_logic.key_variables[] 的可选字符串 as_of。解析不了的忽略；
+    /// 同一天时日精度优先于月精度。不看 last_edited（那是编辑时钟，不是事实截至日）。
+    pub fn content_as_of(&self) -> Option<String> {
+        newest_as_of(
+            self.brief
+                .iter()
+                .map(|brief| brief.as_of.as_str())
+                .chain(
+                    self.upstream_signals
+                        .iter()
+                        .map(|signal| signal.latest_as_of.as_str()),
+                )
+                .chain(self.core_watch.iter().map(|watch| watch.as_of.as_str()))
+                .chain(self.sources.iter().map(|source| source.date.as_str()))
+                .chain(
+                    self.ai_valuation_logic
+                        .key_variables
+                        .iter()
+                        .filter_map(|variable| variable.get("as_of").and_then(Value::as_str)),
+                ),
+        )
+        .map(str::to_string)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -279,6 +329,11 @@ pub struct IndustryMap {
 }
 
 impl IndustryMap {
+    /// 各行 content_as_of 的最大值，同一天时也保留日精度。
+    pub fn content_as_of(&self) -> Option<String> {
+        newest_as_of(self.industries.iter().filter_map(Industry::content_as_of))
+    }
+
     pub fn industry(&self, id: &str) -> Option<&Industry> {
         self.industries.iter().find(|item| item.id == id)
     }
@@ -331,9 +386,19 @@ pub enum EditOp {
     AddWatch {
         watch: CoreWatch,
     },
+    /// 整条替换关注点，按现有 what 定位（可顺带改名）；不单独改日期，避免数字与日期脱节。
+    SetWatch {
+        what: String,
+        watch: CoreWatch,
+    },
     RemoveWatch {
         what: String,
     },
+    /// 写入或整体替换行业简报。
+    SetBrief {
+        brief: IndustryBrief,
+    },
+    ClearBrief,
     AddUpstreamSignal {
         signal: UpstreamSignal,
     },
@@ -390,7 +455,12 @@ impl EditOp {
             EditOp::AddSource { source } => format!("新增来源 {}", source.house),
             EditOp::RemoveSource { .. } => "移除一条来源".to_string(),
             EditOp::AddWatch { watch } => format!("新增关注点「{}」", truncate(&watch.what, 18)),
+            EditOp::SetWatch { watch, .. } => {
+                format!("改写关注点「{}」", truncate(&watch.what, 18))
+            }
             EditOp::RemoveWatch { what } => format!("移除关注点「{}」", truncate(what, 18)),
+            EditOp::SetBrief { brief } => format!("写入行业简报（截至 {}）", brief.as_of),
+            EditOp::ClearBrief => "清空行业简报".to_string(),
             EditOp::AddUpstreamSignal { signal } => format!("新增上游信号 {}", signal.symbol),
             EditOp::RemoveUpstreamSignal { symbol } => format!("移除上游信号 {symbol}"),
             EditOp::SetUpstreamLatest { symbol, as_of, .. } => {
@@ -493,6 +563,10 @@ pub enum ApplyError {
     InvalidRelation(String),
     UnknownSubtype(String),
     InvalidSubtypeId(String),
+    UnknownWatch(String),
+    DuplicateWatch(String),
+    EmptyBrief,
+    InvalidDate(String),
 }
 
 impl std::fmt::Display for ApplyError {
@@ -525,8 +599,54 @@ impl std::fmt::Display for ApplyError {
             ApplyError::InvalidSubtypeId(id) => {
                 write!(formatter, "子类型 id 只能用小写字母、数字和连字符：{id}")
             }
+            ApplyError::UnknownWatch(what) => write!(formatter, "这一行的关注点里没有「{what}」"),
+            ApplyError::DuplicateWatch(what) => write!(formatter, "关注点「{what}」已经存在"),
+            ApplyError::EmptyBrief => write!(formatter, "简报的 question 不能为空"),
+            ApplyError::InvalidDate(text) => {
+                write!(
+                    formatter,
+                    "日期写法不对：{text}（要 2026-08-26 或 2026-06）"
+                )
+            }
         }
     }
+}
+
+/// 接受 YYYY-MM-DD 或 YYYY-MM 两种截至日期；月精度按月初比较，空白与坏日期均忽略。
+pub fn parse_as_of(text: &str) -> Option<chrono::NaiveDate> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d") {
+        return Some(date);
+    }
+    if text.len() == 7
+        && text.bytes().enumerate().all(|(index, byte)| {
+            if index == 4 {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+    {
+        return chrono::NaiveDate::parse_from_str(&format!("{text}-01"), "%Y-%m-%d").ok();
+    }
+    None
+}
+
+fn newest_as_of<T: AsRef<str>>(dates: impl IntoIterator<Item = T>) -> Option<T> {
+    dates
+        .into_iter()
+        .filter_map(|text| {
+            parse_as_of(text.as_ref()).map(|date| {
+                // 月份折到月初只为排序，同日时仍应展示更精确的原始日日期。
+                let day_precision = text.as_ref().bytes().filter(|byte| *byte == b'-').count() > 1;
+                ((date, day_precision), text)
+            })
+        })
+        .max_by_key(|(key, _)| *key)
+        .map(|(_, text)| text)
 }
 
 pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyError> {
@@ -556,6 +676,7 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
                 sources: Vec::new(),
                 upstream_signals: Vec::new(),
                 valuation: IndustryValuation::default(),
+                brief: None,
             });
             return Ok(());
         }
@@ -734,10 +855,68 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
                 .ok_or_else(|| ApplyError::UnknownMember(symbol.clone()))?;
             member.role = role.clone();
         }
-        EditOp::AddSource { source } => industry.sources.push(source.clone()),
+        EditOp::AddSource { source } => {
+            // 线上改动折回底稿后仍会重放，同一 URL 不应因此重复出现。
+            if !source.url.is_empty() && industry.sources.iter().any(|item| item.url == source.url)
+            {
+                return Ok(());
+            }
+            industry.sources.push(source.clone());
+        }
         EditOp::RemoveSource { url } => industry.sources.retain(|item| &item.url != url),
-        EditOp::AddWatch { watch } => industry.core_watch.push(watch.clone()),
+        EditOp::AddWatch { watch } => {
+            if industry
+                .core_watch
+                .iter()
+                .any(|item| item.what.trim() == watch.what.trim())
+            {
+                return Err(ApplyError::DuplicateWatch(watch.what.clone()));
+            }
+            if !watch.as_of.is_empty() && parse_as_of(&watch.as_of).is_none() {
+                return Err(ApplyError::InvalidDate(watch.as_of.clone()));
+            }
+            industry.core_watch.push(watch.clone());
+        }
+        EditOp::SetWatch { what, watch } => {
+            let position = industry
+                .core_watch
+                .iter()
+                .position(|item| item.what.trim() == what.trim())
+                .ok_or_else(|| ApplyError::UnknownWatch(what.clone()))?;
+            if industry
+                .core_watch
+                .iter()
+                .enumerate()
+                .any(|(index, item)| index != position && item.what.trim() == watch.what.trim())
+            {
+                return Err(ApplyError::DuplicateWatch(watch.what.clone()));
+            }
+            if !watch.as_of.is_empty() && parse_as_of(&watch.as_of).is_none() {
+                return Err(ApplyError::InvalidDate(watch.as_of.clone()));
+            }
+            industry.core_watch[position] = watch.clone();
+        }
         EditOp::RemoveWatch { what } => industry.core_watch.retain(|item| &item.what != what),
+        EditOp::SetBrief { brief } => {
+            if brief.question.trim().is_empty() {
+                return Err(ApplyError::EmptyBrief);
+            }
+            if parse_as_of(&brief.as_of).is_none() {
+                return Err(ApplyError::InvalidDate(brief.as_of.clone()));
+            }
+            industry.brief = Some(IndustryBrief {
+                question: brief.question.trim().to_string(),
+                body: brief.body.trim().to_string(),
+                next: brief
+                    .next
+                    .iter()
+                    .map(|item| item.trim().to_string())
+                    .filter(|item| !item.is_empty())
+                    .collect(),
+                as_of: brief.as_of.trim().to_string(),
+            });
+        }
+        EditOp::ClearBrief => industry.brief = None,
     }
     Ok(())
 }
@@ -808,7 +987,499 @@ mod tests {
                 "{} 缺短版反模式",
                 industry.id
             );
+            for date in industry
+                .core_watch
+                .iter()
+                .map(|item| &item.as_of)
+                .chain(
+                    industry
+                        .upstream_signals
+                        .iter()
+                        .map(|item| &item.latest_as_of),
+                )
+                .chain(industry.sources.iter().map(|item| &item.date))
+                .filter(|date| !date.is_empty())
+            {
+                assert!(
+                    parse_as_of(date).is_some(),
+                    "{} 的日期不可解析：{date}",
+                    industry.id
+                );
+            }
+            let mut urls = std::collections::HashSet::new();
+            for source in industry
+                .sources
+                .iter()
+                .filter(|source| !source.url.is_empty())
+            {
+                assert!(
+                    urls.insert(&source.url),
+                    "{} 的来源 URL 重复：{}",
+                    industry.id,
+                    source.url
+                );
+            }
         }
+    }
+
+    #[test]
+    fn old_add_watch_payload_without_as_of_still_replays() {
+        let op: EditOp = serde_json::from_str(
+            r#"{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c"}}"#,
+        )
+        .expect("旧日志可读");
+        let mut map = base_map();
+        apply(&mut map, &edit("storage", op)).expect("旧日志可重放");
+        let watch = map.industry("storage").unwrap().core_watch.last().unwrap();
+        assert_eq!(watch.what, "w");
+        assert_eq!(watch.as_of, "");
+    }
+
+    #[test]
+    fn set_watch_replaces_by_what_and_rejects_unknown_or_duplicate() {
+        let mut map = base_map();
+        let original = CoreWatch {
+            what: " 测试关注点 ".into(),
+            why: "上一季读数".into(),
+            cadence: "季度".into(),
+            as_of: "2026-08-26".into(),
+        };
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::AddWatch {
+                    watch: original.clone(),
+                },
+            ),
+        )
+        .expect("新增关注点");
+        let updated = CoreWatch {
+            what: "测试关注点新版".into(),
+            why: "新一季读数".into(),
+            cadence: "月度".into(),
+            as_of: "2026-09".into(),
+        };
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetWatch {
+                    what: "测试关注点".into(),
+                    watch: updated.clone(),
+                },
+            ),
+        )
+        .expect("按去空白后的标题定位并整条替换");
+        assert_eq!(
+            map.industry("storage").unwrap().core_watch.last(),
+            Some(&updated)
+        );
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetWatch {
+                    what: " 测试关注点新版 ".into(),
+                    watch: updated.clone(),
+                },
+            ),
+        )
+        .expect("保留自己的标题不算重名");
+        let before = map.clone();
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetWatch {
+                        what: "不存在的关注点".into(),
+                        watch: updated.clone(),
+                    }
+                )
+            ),
+            Err(ApplyError::UnknownWatch("不存在的关注点".into()))
+        );
+        let duplicate = CoreWatch {
+            what: " 测试关注点新版 ".into(),
+            ..updated.clone()
+        };
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::AddWatch {
+                        watch: duplicate.clone()
+                    }
+                )
+            ),
+            Err(ApplyError::DuplicateWatch(duplicate.what))
+        );
+        let invalid = CoreWatch {
+            as_of: "not-a-date".into(),
+            ..original.clone()
+        };
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::AddWatch {
+                        watch: invalid.clone()
+                    }
+                )
+            ),
+            Err(ApplyError::InvalidDate("not-a-date".into()))
+        );
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetWatch {
+                        what: updated.what.clone(),
+                        watch: invalid,
+                    }
+                )
+            ),
+            Err(ApplyError::InvalidDate("not-a-date".into()))
+        );
+        assert_eq!(map, before, "拒绝的操作不能改动已有内容");
+
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::AddWatch {
+                    watch: original.clone(),
+                },
+            ),
+        )
+        .expect("另一条不同标题的关注点");
+        let before = map.clone();
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetWatch {
+                        what: original.what,
+                        watch: updated.clone(),
+                    }
+                )
+            ),
+            Err(ApplyError::DuplicateWatch(updated.what))
+        );
+        assert_eq!(map, before);
+    }
+
+    #[test]
+    fn brief_is_absent_in_base_and_round_trips_through_set_and_clear() {
+        let mut map = base_map();
+        assert!(
+            map.industries
+                .iter()
+                .all(|industry| industry.brief.is_none())
+        );
+        assert_eq!(
+            serde_json::from_str::<IndustryBrief>("{}").unwrap(),
+            IndustryBrief::default()
+        );
+        let brief = IndustryBrief {
+            question: " 现在研究什么？ ".into(),
+            body: " 新一季带来了变化。 ".into(),
+            next: vec![
+                " 下季财报验证 ".into(),
+                "  ".into(),
+                "".into(),
+                " 月度出货确认 ".into(),
+            ],
+            as_of: " 2026-08-26 ".into(),
+        };
+        let before = map.clone();
+        assert_eq!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetBrief {
+                        brief: IndustryBrief {
+                            question: " \t ".into(),
+                            ..brief.clone()
+                        },
+                    }
+                )
+            ),
+            Err(ApplyError::EmptyBrief)
+        );
+        for date in ["", " ", "not-a-date"] {
+            assert_eq!(
+                apply(
+                    &mut map,
+                    &edit(
+                        "storage",
+                        EditOp::SetBrief {
+                            brief: IndustryBrief {
+                                as_of: date.into(),
+                                ..brief.clone()
+                            },
+                        }
+                    )
+                ),
+                Err(ApplyError::InvalidDate(date.into()))
+            );
+        }
+        assert_eq!(map, before);
+        apply(&mut map, &edit("storage", EditOp::SetBrief { brief })).expect("写入简报");
+        assert_eq!(
+            map.industry("storage").unwrap().brief,
+            Some(IndustryBrief {
+                question: "现在研究什么？".into(),
+                body: "新一季带来了变化。".into(),
+                next: vec!["下季财报验证".into(), "月度出货确认".into()],
+                as_of: "2026-08-26".into(),
+            })
+        );
+        let replacement = IndustryBrief {
+            question: "下一个问题？".into(),
+            as_of: "2026-09".into(),
+            ..Default::default()
+        };
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetBrief {
+                    brief: replacement.clone(),
+                },
+            ),
+        )
+        .expect("整体替换简报");
+        assert_eq!(map.industry("storage").unwrap().brief, Some(replacement));
+        for _ in 0..2 {
+            apply(&mut map, &edit("storage", EditOp::ClearBrief)).expect("清空可重复");
+            let industry = map.industry("storage").unwrap();
+            assert!(industry.brief.is_none());
+            assert_eq!(
+                serde_json::to_value(industry).unwrap().get("brief"),
+                Some(&Value::Null)
+            );
+        }
+    }
+
+    #[test]
+    fn content_as_of_takes_the_newest_parsable_date_across_dated_fields() {
+        let mut industry: Industry = serde_json::from_value(serde_json::json!({
+            "id": "dated", "name": "测试", "parent": "root",
+            "upstream_signals": [{"symbol": "TEST", "latest_as_of": "2026-06"}],
+            "core_watch": [{"what": "关注点", "as_of": "2026-08-26"}],
+            "sources": [{"house": "机构", "title": "材料", "date": "garbage"}],
+            "ai_valuation_logic": {"key_variables": [
+                {"as_of": ""}, {"as_of": 20260901}, {}, null
+            ]},
+            "brief": {"as_of": ""}
+        }))
+        .unwrap();
+        assert_eq!(industry.content_as_of().as_deref(), Some("2026-08-26"));
+        industry.core_watch[0].as_of.clear();
+        assert_eq!(industry.content_as_of().as_deref(), Some("2026-06"));
+        industry.upstream_signals[0].latest_as_of.clear();
+        assert_eq!(industry.content_as_of(), None);
+        for candidate in 0..5 {
+            let mut dated = industry.clone();
+            let field = match candidate {
+                0 => &mut dated.brief.as_mut().unwrap().as_of,
+                1 => &mut dated.upstream_signals[0].latest_as_of,
+                2 => &mut dated.core_watch[0].as_of,
+                3 => &mut dated.sources[0].date,
+                _ => {
+                    dated.ai_valuation_logic.key_variables[0]["as_of"] =
+                        Value::String("2026-08-26".into());
+                    assert_eq!(dated.content_as_of().as_deref(), Some("2026-08-26"));
+                    continue;
+                }
+            };
+            *field = "2026-08-26".into();
+            assert_eq!(dated.content_as_of().as_deref(), Some("2026-08-26"));
+        }
+        let mut map = base_map();
+        map.industries = vec![industry.clone()];
+        map.generated_at = "2099-12-31".into();
+        apply(
+            &mut map,
+            &edit(
+                "dated",
+                EditOp::SetField {
+                    field: "one_liner".into(),
+                    value: "文字更新".into(),
+                },
+            ),
+        )
+        .unwrap();
+        assert_eq!(map.content_as_of(), None, "底稿和编辑时钟都不是事实截至日");
+
+        industry.core_watch[0].as_of = "2026-08".into();
+        industry.upstream_signals[0].latest_as_of = "2026-08-01".into();
+        assert_eq!(industry.content_as_of().as_deref(), Some("2026-08-01"));
+        std::mem::swap(
+            &mut industry.core_watch[0].as_of,
+            &mut industry.upstream_signals[0].latest_as_of,
+        );
+        assert_eq!(industry.content_as_of().as_deref(), Some("2026-08-01"));
+        let mut month = industry.clone();
+        month.core_watch[0].as_of.clear();
+        map.industries = vec![industry, month];
+        assert_eq!(map.content_as_of().as_deref(), Some("2026-08-01"));
+        map.industries.reverse();
+        assert_eq!(map.content_as_of().as_deref(), Some("2026-08-01"));
+        map.industries[0].brief.as_mut().unwrap().as_of = "2026-09".into();
+        assert_eq!(map.content_as_of().as_deref(), Some("2026-09"));
+        map.industries.clear();
+        assert_eq!(map.content_as_of(), None);
+    }
+
+    #[test]
+    fn parse_as_of_accepts_day_and_month_only() {
+        assert_eq!(
+            parse_as_of("2026-08-26"),
+            chrono::NaiveDate::from_ymd_opt(2026, 8, 26)
+        );
+        assert_eq!(
+            parse_as_of(" 2026-06 "),
+            chrono::NaiveDate::from_ymd_opt(2026, 6, 1)
+        );
+        assert_eq!(
+            parse_as_of("2024-02-29"),
+            chrono::NaiveDate::from_ymd_opt(2024, 2, 29)
+        );
+        for invalid in [
+            "2026/08/26",
+            "2026-13",
+            "",
+            " ",
+            "2026-02-29",
+            "2026-6",
+            "2026",
+            "2026-08-26T00:00:00Z",
+        ] {
+            assert_eq!(parse_as_of(invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn add_source_is_idempotent_by_url() {
+        let mut map = base_map();
+        map.industry_mut("storage").unwrap().sources.clear();
+        let source = IndustrySource {
+            house: "测试机构".into(),
+            title: "原始材料".into(),
+            date: "2026-08".into(),
+            url: "https://example.com/industry-source".into(),
+            takeaway: "读数".into(),
+        };
+        let add = edit(
+            "storage",
+            EditOp::AddSource {
+                source: source.clone(),
+            },
+        );
+        apply(&mut map, &add).expect("首次新增");
+        apply(&mut map, &add).expect("重复重放仍成功");
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::AddSource {
+                    source: IndustrySource {
+                        title: "同 URL 的不同标题".into(),
+                        ..source.clone()
+                    },
+                },
+            ),
+        )
+        .expect("按 URL 去重，不覆盖底稿");
+        assert_eq!(
+            map.industry("storage").unwrap().sources,
+            vec![source.clone()]
+        );
+        for _ in 0..2 {
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::AddSource {
+                        source: IndustrySource {
+                            url: String::new(),
+                            ..source.clone()
+                        },
+                    },
+                ),
+            )
+            .expect("空 URL 不去重");
+        }
+        assert_eq!(map.industry("storage").unwrap().sources.len(), 3);
+        let dir = tempfile::tempdir().unwrap();
+        append(dir.path(), add.clone()).expect("首次写入日志");
+        append(dir.path(), add).expect("重复也写入日志");
+        let (map, applied) = load(dir.path());
+        assert_eq!(applied.len(), 2, "幂等重放不应被视作失败而跳过");
+        assert_eq!(
+            map.industry("storage")
+                .unwrap()
+                .sources
+                .iter()
+                .filter(|item| item.url == source.url)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn new_ops_round_trip_through_the_edit_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = base_map();
+        let industry = base
+            .industries
+            .iter()
+            .find(|industry| !industry.core_watch.is_empty())
+            .unwrap();
+        let mut watch = industry.core_watch[0].clone();
+        let what = watch.what.clone();
+        watch.why = "新季度的读数".into();
+        watch.as_of = "2026-08-26".into();
+        let ops = [
+            EditOp::SetBrief {
+                brief: IndustryBrief {
+                    question: "本季要验证什么？".into(),
+                    as_of: "2026-08".into(),
+                    ..Default::default()
+                },
+            },
+            EditOp::SetWatch {
+                what,
+                watch: watch.clone(),
+            },
+            EditOp::ClearBrief,
+        ];
+        for op in &ops {
+            append(dir.path(), edit(&industry.id, op.clone())).expect("新操作写入日志");
+        }
+        let (map, applied) = load(dir.path());
+        assert_eq!(
+            applied.iter().map(|edit| &edit.op).collect::<Vec<_>>(),
+            ops.iter().collect::<Vec<_>>()
+        );
+        assert_eq!(map.industry(&industry.id).unwrap().core_watch[0], watch);
+        assert!(map.industry(&industry.id).unwrap().brief.is_none());
+        let log = serde_json::to_value(load_log(dir.path())).unwrap();
+        let kinds = log["edits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|edit| edit["op"]["kind"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(kinds, ["set_brief", "set_watch", "clear_brief"]);
     }
 
     #[test]
@@ -1264,10 +1935,33 @@ mod tests {
                 what: long.to_string(),
                 why: String::new(),
                 cadence: String::new(),
+                as_of: String::new(),
             },
         }
         .summary();
         assert!(summary.chars().count() <= 30, "{summary}");
         assert!(summary.ends_with("…」"));
+        let summary = EditOp::SetWatch {
+            what: "旧关注点".into(),
+            watch: CoreWatch {
+                what: long.into(),
+                why: String::new(),
+                cadence: String::new(),
+                as_of: "2026-08-26".into(),
+            },
+        }
+        .summary();
+        assert_eq!(summary, format!("改写关注点「{}」", truncate(long, 18)));
+        assert!(summary.chars().count() <= 30, "{summary}");
+        let summary = EditOp::SetBrief {
+            brief: IndustryBrief {
+                as_of: "2026-08-26".into(),
+                ..Default::default()
+            },
+        }
+        .summary();
+        assert_eq!(summary, "写入行业简报（截至 2026-08-26）");
+        assert!(summary.chars().count() <= 30, "{summary}");
+        assert_eq!(EditOp::ClearBrief.summary(), "清空行业简报");
     }
 }
