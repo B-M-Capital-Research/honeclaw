@@ -143,9 +143,19 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     page.on("pageerror", (error) => errors.push(error.message));
 
     await page.goto("/chat");
-    const entry = page.getByRole("link", { name: "3D 数据中心", exact: true });
-    await expect(entry).toBeVisible();
-    await entry.click();
+    // Since 9b7b7466 the chat page has no plain link to the scene: the composer keeps one
+    // action list, rendered as a chip button on desktops and folded into the 「+」 sheet
+    // on phones (PHONE_LAYOUT_QUERY is max-width 820px).
+    if (viewport.width <= 820) {
+      await page.getByRole("button", { name: "添加与工具", exact: true }).click();
+      const entry = page.getByRole("menuitem", { name: /^3D 数据中心/ });
+      await expect(entry).toBeVisible();
+      await entry.click();
+    } else {
+      const entry = page.getByRole("button", { name: "3D 数据中心", exact: true });
+      await expect(entry).toBeVisible();
+      await entry.click();
+    }
     await expect(page).toHaveURL(/\/data-center$/);
     await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
     await expect(page.locator(".dc-scene-svg polygon").first()).toBeVisible();
