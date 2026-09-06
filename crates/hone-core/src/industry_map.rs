@@ -1022,6 +1022,90 @@ mod tests {
         }
     }
 
+    /// 线上 `data/industry_map/edits.json` 里的 4 条改动（AVGO / DELL 的 role 与来源）已折回底稿。
+    /// 重放时 `SetMemberRole` 会用日志文本覆盖底稿，所以底稿里这两段必须逐字等于日志——否则底稿改了也白改；
+    /// `AddSource` 按 url 幂等，所以来源只会出现一次。
+    #[test]
+    fn live_edits_are_folded_into_the_base_verbatim() {
+        let map = base_map();
+        let ai_chip = map.industry("ai-chip").expect("ai-chip");
+        let avgo = ai_chip
+            .members
+            .iter()
+            .find(|member| member.symbol == "AVGO")
+            .expect("AVGO");
+        assert_eq!(
+            avgo.role,
+            "自研 ASIC 路线上最大的设计与交付方，同时卖以太网交换/路由芯片（Tomahawk、Jericho），是唯一一家在同一份 AI 收入里同时吃「定制 XPU」和「AI 网络」两条子线的公司；与 Marvell 的差别在于它锁定的是超大规模客户的多代路线图而非单个项目（Counterpoint 估其 2027 年 ASIC 设计伙伴份额约 60%）。最新财务基线（2026-09-02 发布，FY26Q3 截至 2026-08-02）：总收入 295.91 亿美元，AI 半导体收入 167 亿美元；经营现金流 141.97 亿美元，资本开支 5.32 亿美元，自由现金流 136.65 亿美元、约占收入 46%。FY26Q4 指引总收入约 348 亿美元、AI 半导体收入约 217 亿美元。上述 Q3 为已实现数据、Q4 为管理层指引；原 FY26Q2 数据及 Q3 旧指引仅作历史对照。"
+        );
+        let avgo_source_url = "https://www.sec.gov/Archives/edgar/data/1730168/000173016826000076/avgo-08022026x8kxex99.htm";
+        assert_eq!(
+            ai_chip
+                .sources
+                .iter()
+                .filter(|source| source.url == avgo_source_url)
+                .count(),
+            1
+        );
+        let watch = ai_chip
+            .core_watch
+            .iter()
+            .find(|watch| watch.what.starts_with("Broadcom 每季的 AI 半导体收入"))
+            .expect("Broadcom 关注点");
+        assert_eq!(watch.as_of, "2026-09-02");
+        assert!(watch.why.contains("295.91") && !watch.why.contains("108 亿"));
+        let variable = ai_chip
+            .ai_valuation_logic
+            .key_variables
+            .iter()
+            .find(|variable| {
+                variable["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("Broadcom 单季 AI 半导体收入"))
+            })
+            .expect("Broadcom 变量");
+        assert_eq!(variable["as_of"], "2026-09-02");
+        assert!(ai_chip.content_as_of().as_deref() == Some("2026-09-02"));
+
+        let server_oem = map.industry("server-oem").expect("server-oem");
+        let dell = server_oem
+            .members
+            .iter()
+            .find(|member| member.symbol == "DELL")
+            .expect("DELL");
+        assert_eq!(
+            dell.role,
+            "品牌 OEM 里 AI 服务器规模最大的一家，靠企业与主权客户加上存储、服务的组合来补 AI 服务器的薄利。最新财务基线（2026-09-01 发布，FY27Q2 截至 2026-07-31）：ISG 营收 317.82 亿美元，营业利润 47.81 亿美元、营益率 15.0%；其中 AI 优化服务器收入 164.01 亿美元、传统服务器与网络 105.31 亿美元、存储 48.50 亿美元。FY27 全年 AI 服务器收入指引由 600 亿美元上修至 740 亿美元（管理层指引，不是已实现收入）。原 FY27Q1 数字及全年旧指引仅作历史对照。ISG 内部混着三块利润率完全不同的生意，是这一行里最需要做分部估值的标的。"
+        );
+        assert_eq!(
+            server_oem
+                .sources
+                .iter()
+                .filter(|source| source
+                    .url
+                    .contains("dell-technologies-delivers-second-quarter-fiscal-2027"))
+                .count(),
+            1
+        );
+        // 重放线上那条 add_source 不会产生第二条同 url 的来源。
+        let mut replayed = map.clone();
+        let source = ai_chip
+            .sources
+            .iter()
+            .find(|source| source.url == avgo_source_url)
+            .cloned()
+            .unwrap();
+        apply(
+            &mut replayed,
+            &edit("ai-chip", EditOp::AddSource { source }),
+        )
+        .unwrap();
+        assert_eq!(
+            replayed.industry("ai-chip").unwrap().sources.len(),
+            ai_chip.sources.len()
+        );
+    }
+
     #[test]
     fn old_add_watch_payload_without_as_of_still_replays() {
         let op: EditOp = serde_json::from_str(
