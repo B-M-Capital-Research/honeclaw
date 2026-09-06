@@ -12,10 +12,11 @@ import {
   onMount,
   Show,
   Switch,
+  type JSX,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { Portal } from "solid-js/web";
-import { A, useNavigate, useSearchParams } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
@@ -62,6 +63,7 @@ import "./public-foundation.css";
 import "./public-site.css";
 import "./public-polish.css";
 import "./public-chat.css";
+import "./public-chat-modals.css";
 import "./public-agent-workspace.css";
 import "./public-chat-accessibility.css";
 import {
@@ -141,7 +143,10 @@ import {
   daySeparatorLabel,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
-import { buildChatStarterPrompts } from "@/lib/chat-empty-prompts";
+import {
+  buildChatStarterPrompts,
+  type ChatStarterPrompt,
+} from "@/lib/chat-empty-prompts";
 import { buildPublicChatDemo } from "@/lib/public-chat-demo";
 import { useLocale } from "@/lib/i18n";
 import type {
@@ -1154,33 +1159,18 @@ function useModalScrollLock(open: () => boolean) {
   });
 }
 
-function DataCenterQuickAction() {
-  return (
-    <A
-      href="/data-center"
-      class="hc-tool"
-      title={CONTENT.chat_page.workspace.data_center_tip}
-      {...routePrefetchHandlers("data-center")}
-    >
-      <svg class="hc-tool__icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-        <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
-        <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
-      </svg>
-      <span class="hc-tool__label">{CONTENT.chat_page.workspace.data_center_tip}</span>
-    </A>
-  );
-}
-
 type EarningsWorkflowStart = {
   kind: PublicEarningsWorkflowKind;
   company: string;
   files: File[];
 };
 
-function EarningsResearchQuickAction(props: {
+function EarningsResearchDialog(props: {
   kind: PublicEarningsWorkflowKind;
   disabled: boolean;
   onStart: (input: EarningsWorkflowStart) => Promise<void>;
+  /** Bumped by whichever control opens this dialog. */
+  openRequest: number;
 }) {
   const [open, setOpen] = createSignal(false);
   const [company, setCompany] = createSignal("");
@@ -1190,6 +1180,13 @@ function EarningsResearchQuickAction(props: {
   let fileInputRef: HTMLInputElement | undefined;
   let companyInputRef: HTMLInputElement | undefined;
   useModalScrollLock(open);
+  let handledOpenRequest = props.openRequest;
+  createEffect(() => {
+    const request = props.openRequest;
+    if (request <= handledOpenRequest) return;
+    handledOpenRequest = request;
+    if (!props.disabled) setOpen(true);
+  });
 
   // Focusing at open pops the mobile keyboard while the sheet is still
   // animating in; on iOS Safari that scroll-jumps the page behind the fixed
@@ -1248,33 +1245,6 @@ function EarningsResearchQuickAction(props: {
 
   return (
     <>
-      <button
-        type="button"
-        class="hc-tool"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        aria-label={label()}
-        title={label()}
-        disabled={props.disabled}
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          class="hc-tool__icon"
-          width="17"
-          height="17"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.1"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
-          <path d={isPreview() ? "m4 6 5-3 5 4 6-4" : "m3 8 5 4 5-6 7 3"} />
-        </svg>
-        <span class="hc-tool__label">{label()}</span>
-      </button>
       <Portal>
         <Show when={open()}>
           <div
@@ -1376,8 +1346,9 @@ function EarningsResearchQuickAction(props: {
   );
 }
 
-function FinanceCalendarQuickAction(props: {
+function FinanceCalendarDialog(props: {
   onSent: () => void;
+  /** Bumped by whichever control opens this dialog. */
   openRequest?: number;
 }) {
   const [open, setOpen] = createSignal(false);
@@ -1581,36 +1552,6 @@ function FinanceCalendarQuickAction(props: {
 
   return (
     <>
-      <button
-        type="button"
-        class="hc-tool"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        aria-label={CONTENT.chat_page.composer.finance_calendar_tip}
-        title={CONTENT.chat_page.composer.finance_calendar_tip}
-        disabled={busy()}
-        onClick={openCalendar}
-      >
-        <svg
-          class="hc-tool__icon"
-          width="17"
-          height="17"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M8 2v4" />
-          <path d="M16 2v4" />
-          <rect x="3" y="4" width="18" height="18" rx="3" />
-          <path d="M3 10h18" />
-          <path d="m9 16 2 2 4-5" />
-        </svg>
-        <span class="hc-tool__label">{CONTENT.chat_page.composer.finance_calendar_tip}</span>
-      </button>
       <Show when={open()}>
         <Portal>
           <div
@@ -1936,13 +1877,126 @@ function FinanceCalendarQuickAction(props: {
  * on phones the menu was being laid out correctly and then cut away entirely,
  * so tapping 工具 looked like nothing happened.
  */
-function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) => void }) {
+/** One shortcut the composer offers: a chip on a desktop, a labelled row in
+ *  the phone sheet, and for administrators an entry in the tools menu. */
+type ComposerAction = {
+  id: string;
+  label: string;
+  hint: string;
+  icon: () => JSX.Element;
+  run: () => void;
+  adminOnly?: boolean;
+  dot?: boolean;
+};
+
+const PHONE_LAYOUT_QUERY = "(max-width: 820px)";
+
+/** True on the phone layout; tracks the viewport so a rotated tablet swaps. */
+function usePhoneLayout() {
+  const query = () =>
+    typeof window !== "undefined" ? window.matchMedia(PHONE_LAYOUT_QUERY) : undefined;
+  const [phone, setPhone] = createSignal(query()?.matches ?? false);
+  onMount(() => {
+    const media = query();
+    if (!media) return;
+    const sync = () => setPhone(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    onCleanup(() => media.removeEventListener("change", sync));
+  });
+  return phone;
+}
+
+function ToolIcon(props: {
+  name:
+    | "data-center"
+    | "calendar"
+    | "earnings-preview"
+    | "earnings-analysis"
+    | "community"
+    | "image"
+    | "file"
+    | "plus";
+}) {
+  return (
+    <svg
+      class="hc-tool__icon"
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <Switch>
+        <Match when={props.name === "data-center"}>
+          <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
+          <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+        </Match>
+        <Match when={props.name === "calendar"}>
+          <path d="M8 2v4M16 2v4" />
+          <rect x="3" y="4" width="18" height="18" rx="3" />
+          <path d="M3 10h18M9 16l2 2 4-5" />
+        </Match>
+        <Match when={props.name === "earnings-preview"}>
+          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          <path d="m4 6 5-3 5 4 6-4" />
+        </Match>
+        <Match when={props.name === "earnings-analysis"}>
+          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          <path d="m3 8 5 4 5-6 7 3" />
+        </Match>
+        <Match when={props.name === "community"}>
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-9-8.4 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4Z" />
+          <path d="M8 11h8M8 15h5" />
+        </Match>
+        <Match when={props.name === "image"}>
+          <rect x="3" y="5" width="18" height="14" rx="2.5" />
+          <circle cx="8.5" cy="10" r="1.5" />
+          <path d="M21 15l-5-5-8 9" />
+        </Match>
+        <Match when={props.name === "file"}>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5M9 13h6M9 17h4" />
+        </Match>
+        <Match when={props.name === "plus"}>
+          <path d="M12 5v14M5 12h14" />
+        </Match>
+      </Switch>
+    </svg>
+  );
+}
+
+/**
+ * The composer's menu. Two guises over one list:
+ * - `tools` is the desktop 工具 popover: the daily research products, plus
+ *   the administrators' earnings workflows.
+ * - `plus` is the phone's single sheet behind the 「+」: attachments, the
+ *   research products, every shortcut with a label and a line of explanation,
+ *   and the suggested questions — so nothing on a phone is an unlabelled icon.
+ */
+function ChatToolsMenu(props: {
+  isAdmin: boolean;
+  onOpenPanel: (panel: string) => void;
+  variant: "tools" | "plus";
+  actions: ComposerAction[];
+  actionsDisabled?: boolean;
+  onPickImage?: () => void;
+  onPickFile?: () => void;
+  suggestions?: ChatStarterPrompt[];
+  onSuggestion?: (question: string) => void;
+}) {
   const navigate = useNavigate();
   const [open, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<DOMRect>();
   let triggerRef: HTMLButtonElement | undefined;
 
-  const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
+  const isPhone = () => window.matchMedia(PHONE_LAYOUT_QUERY).matches;
+  const isSheet = () => props.variant === "plus" || isPhone();
+  const isPlus = () => props.variant === "plus";
 
   createEffect(() => {
     if (!open()) return;
@@ -1969,17 +2023,16 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
     setOpen(true);
   };
 
-  const go = (href: string) => {
+  const run = (action: () => void) => {
     setOpen(false);
-    navigate(href);
+    action();
   };
+
+  const go = (href: string) => run(() => navigate(href));
 
   // A research product opens where the reader already is. Navigating to the
   // desk for it would drop the conversation they were in the middle of.
-  const openHere = (panel: string) => {
-    setOpen(false);
-    props.onOpenPanel(panel);
-  };
+  const openHere = (panel: string) => run(() => props.onOpenPanel(panel));
 
   const activate = (item: { href: string; panel?: string }) =>
     item.panel ? openHere(item.panel) : go(item.href);
@@ -2019,33 +2072,60 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
       : []),
   ];
 
+  /** The desktop menu carries only the admin workflows; the phone sheet
+      lists every shortcut, since it is the only place a phone shows them. */
+  const shortcutActions = () =>
+    isPlus() ? props.actions : props.actions.filter((action) => action.adminOnly);
+  const shortcutsLabel = () =>
+    isPlus() ? CONTENT.chat_page.composer.actions_group : copy().tools_group_workflows;
+
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        class="chat-tools__trigger hc-tool hc-tool--filled"
-        aria-haspopup="menu"
-        aria-expanded={open()}
-        {...routePrefetchHandlers("research")}
-        onClick={toggle}
+      <Show
+        when={isPlus()}
+        fallback={
+          <button
+            ref={triggerRef}
+            type="button"
+            class="chat-tools__trigger hc-tool hc-tool--filled"
+            aria-haspopup="menu"
+            aria-expanded={open()}
+            {...routePrefetchHandlers("research")}
+            onClick={toggle}
+          >
+            <AgentWorkspaceIcon name="research" size={16} />
+            <span class="hc-tool__label">{copy().tools_label}</span>
+          </button>
+        }
       >
-        <AgentWorkspaceIcon name="research" size={16} />
-        <span class="hc-tool__label">{CONTENT.chat_page.workspace.tools_label}</span>
-      </button>
+        <button
+          ref={triggerRef}
+          data-testid="composer-attach-button"
+          type="button"
+          class="hc-tool hc-tool--icon"
+          data-open={open() ? "true" : undefined}
+          aria-haspopup="menu"
+          aria-expanded={open()}
+          aria-label={CONTENT.chat_page.composer.sheet_title}
+          title={CONTENT.chat_page.composer.sheet_title}
+          onClick={toggle}
+        >
+          <ToolIcon name="plus" />
+        </button>
+      </Show>
       <Show when={open()}>
         <Portal>
           <div
             class="chat-tools__backdrop"
-            classList={{ "is-sheet-backdrop": isPhone() }}
+            classList={{ "is-sheet-backdrop": isSheet() }}
             onClick={() => setOpen(false)}
           >
             <div
               class="chat-tools__menu"
-              classList={{ "is-sheet": isPhone() }}
+              classList={{ "is-sheet": isSheet() }}
               role="menu"
               style={
-                isPhone()
+                isSheet()
                   ? undefined
                   : {
                       left: `${Math.round(anchor()?.left ?? 16)}px`,
@@ -2054,13 +2134,67 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
               }
               onClick={(event) => event.stopPropagation()}
             >
-              <Show when={isPhone()}>
+              <Show when={isSheet()}>
                 <div class="chat-tools__sheet-head">
-                  <strong>{CONTENT.chat_page.workspace.tools_group_research}</strong>
+                  <strong>
+                    {isPlus()
+                      ? CONTENT.chat_page.composer.sheet_title
+                      : copy().tools_group_research}
+                  </strong>
                   <button type="button" onClick={() => setOpen(false)}>
-                    {CONTENT.chat_page.workspace.tools_close}
+                    {copy().tools_close}
                   </button>
                 </div>
+              </Show>
+              <Show when={isPlus()}>
+                <p class="chat-tools__group">{CONTENT.chat_page.composer.attach_group}</p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chat-tools__item"
+                  onClick={() => run(() => props.onPickImage?.())}
+                >
+                  <span class="chat-tools__item-icon"><ToolIcon name="image" /></span>
+                  <span>
+                    <b>{CONTENT.chat_page.attachments.image_title}</b>
+                    <small>{CONTENT.chat_page.attachments.image_subtitle}</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chat-tools__item"
+                  onClick={() => run(() => props.onPickFile?.())}
+                >
+                  <span class="chat-tools__item-icon"><ToolIcon name="file" /></span>
+                  <span>
+                    <b>{CONTENT.chat_page.attachments.file_title}</b>
+                    <small>{CONTENT.chat_page.attachments.file_subtitle}</small>
+                  </span>
+                </button>
+              </Show>
+              <Show when={shortcutActions().length > 0}>
+                <p class="chat-tools__group">{shortcutsLabel()}</p>
+                <For each={shortcutActions()}>
+                  {(action) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="chat-tools__item"
+                      disabled={action.adminOnly && props.actionsDisabled}
+                      onClick={() => run(action.run)}
+                    >
+                      <span class="chat-tools__item-icon">{action.icon()}</span>
+                      <span>
+                        <b>
+                          {action.label}
+                          <Show when={action.dot}><i class="chat-tools__dot" aria-hidden="true" /></Show>
+                        </b>
+                        <small>{action.hint}</small>
+                      </span>
+                    </button>
+                  )}
+                </For>
               </Show>
               <For each={groups()}>
                 {(group) => (
@@ -2068,15 +2202,36 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
                     <p class="chat-tools__group">{group.label}</p>
                     <For each={group.items}>
                       {(item) => (
-                        <button type="button" role="menuitem" onClick={() => activate(item)}>
-                          <b>{item.title}</b>
-                          <small>{item.desc}</small>
+                        <button type="button" role="menuitem" class="chat-tools__item" onClick={() => activate(item)}>
+                          <span class="chat-tools__item-icon"><AgentWorkspaceIcon name="research" size={16} /></span>
+                          <span>
+                            <b>{item.title}</b>
+                            <small>{item.desc}</small>
+                          </span>
                         </button>
                       )}
                     </For>
                   </>
                 )}
               </For>
+              <Show when={isPlus() && (props.suggestions?.length ?? 0) > 0}>
+                <p class="chat-tools__group">{CONTENT.chat_page.composer.suggest_title}</p>
+                <For each={props.suggestions}>
+                  {(prompt) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="chat-tools__item chat-tools__item--suggest"
+                      onClick={() => run(() => props.onSuggestion?.(prompt.question))}
+                    >
+                      <span>
+                        <small>{prompt.eyebrow}</small>
+                        <b>{prompt.title}</b>
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </Show>
             </div>
           </div>
         </Portal>
@@ -2085,37 +2240,7 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
   );
 }
 
-function CommunityQuickAction(props: { unread: boolean; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      class="hc-tool"
-      onClick={props.onOpen}
-      title={CONTENT.chat_page.workspace.community_action}
-      aria-label={props.unread ? CONTENT.chat_page.community.open_aria_unread : CONTENT.chat_page.community.open_aria}
-    >
-      <svg
-        class="hc-tool__icon"
-        width="17"
-        height="17"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-9-8.4 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4Z" />
-        <path d="M8 11h8M8 15h5" />
-      </svg>
-      <span class="hc-tool__label">{CONTENT.chat_page.workspace.community_action}</span>
-      <Show when={props.unread}>
-        <i class="hc-tool__dot" aria-hidden="true" />
-      </Show>
-    </button>
-  );
-}
+const SUGGEST_HIDDEN_KEY = "hone.public.suggest.hidden";
 
 function Composer(props: {
   draft: string;
@@ -2137,9 +2262,19 @@ function Composer(props: {
   isAdmin: boolean;
   onOpenPanel: (panel: string) => void;
   onStartEarnings: (input: EarningsWorkflowStart) => Promise<void>;
+  /** Personalised starter questions; shown as a strip once a conversation
+      has content, and inside the phone sheet. */
+  suggestions: ChatStarterPrompt[];
+  onSuggestion: (question: string) => void;
+  showSuggestions: boolean;
 }) {
+  const navigate = useNavigate();
+  const isPhone = usePhoneLayout();
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
+  const [calendarSeq, setCalendarSeq] = createSignal(0);
+  const [previewSeq, setPreviewSeq] = createSignal(0);
+  const [analysisSeq, setAnalysisSeq] = createSignal(0);
   let taRef: HTMLTextAreaElement | undefined;
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
@@ -2167,12 +2302,9 @@ function Composer(props: {
           String(Math.max(0, props.remaining)),
         )
       : undefined;
-  const isMobileViewport = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 820px)").matches;
   const syncTextareaHeight = () => {
     if (!taRef) return;
-    const maxHeight = isMobileViewport() ? 132 : 180;
+    const maxHeight = isPhone() ? 132 : 180;
     taRef.style.height = "auto";
     const nextHeight = Math.min(taRef.scrollHeight, maxHeight);
     taRef.style.height = `${nextHeight}px`;
@@ -2196,11 +2328,179 @@ function Composer(props: {
   });
 
   createEffect(() => {
-    if (!props.isSending && taRef && !isMobileViewport()) {
+    if (!props.isSending && taRef && !isPhone()) {
       taRef.focus();
       syncTextareaHeight();
     }
   });
+
+  // The suggestion strip can be put away for the day; it comes back with a
+  // new day, or in the phone sheet, where it costs no height.
+  const today = () => new Date().toISOString().slice(0, 10);
+  const readSuggestHidden = () => {
+    try {
+      return localStorage.getItem(SUGGEST_HIDDEN_KEY) === today();
+    } catch {
+      return false;
+    }
+  };
+  const [suggestHidden, setSuggestHidden] = createSignal(readSuggestHidden());
+  const hideSuggestions = () => {
+    setSuggestHidden(true);
+    try {
+      localStorage.setItem(SUGGEST_HIDDEN_KEY, today());
+    } catch {
+      // Storage may be unavailable; the strip still hides for this view.
+    }
+  };
+  const showSuggestStrip = () =>
+    props.showSuggestions &&
+    props.suggestions.length > 0 &&
+    !suggestHidden() &&
+    !props.draft.trim() &&
+    !props.isSending;
+
+  const workflowsDisabled = () => props.isSending || props.uploading;
+  const actions = createMemo<ComposerAction[]>(() => [
+    {
+      id: "data-center",
+      label: CONTENT.chat_page.workspace.data_center_tip,
+      hint: CONTENT.chat_page.composer.data_center_hint,
+      icon: () => <ToolIcon name="data-center" />,
+      run: () => navigate("/data-center"),
+    },
+    {
+      id: "calendar",
+      label: CONTENT.chat_page.composer.finance_calendar_tip,
+      hint: CONTENT.chat_page.composer.finance_calendar_hint,
+      icon: () => <ToolIcon name="calendar" />,
+      run: () => setCalendarSeq((seq) => seq + 1),
+    },
+    {
+      id: "community",
+      label: CONTENT.chat_page.workspace.community_action,
+      hint: CONTENT.chat_page.composer.community_hint,
+      icon: () => <ToolIcon name="community" />,
+      run: props.onOpenCommunity,
+      dot: props.communityUnread,
+    },
+    ...(props.isAdmin
+      ? [
+          {
+            id: "earnings-preview",
+            label: CONTENT.chat_page.earnings.preview_label,
+            hint: CONTENT.chat_page.earnings.preview_short,
+            icon: () => <ToolIcon name="earnings-preview" />,
+            run: () => setPreviewSeq((seq) => seq + 1),
+            adminOnly: true,
+          },
+          {
+            id: "earnings-analysis",
+            label: CONTENT.chat_page.earnings.analysis_label,
+            hint: CONTENT.chat_page.earnings.analysis_short,
+            icon: () => <ToolIcon name="earnings-analysis" />,
+            run: () => setAnalysisSeq((seq) => seq + 1),
+            adminOnly: true,
+          },
+        ]
+      : []),
+  ]);
+  /** Desktop chips: the everyday shortcuts. Admin workflows sit in 工具. */
+  const chipActions = () => actions().filter((action) => !action.adminOnly);
+
+  const renderTextarea = () => (
+    <textarea
+      ref={taRef}
+      class="public-chat-composer-input"
+      rows={1}
+      placeholder={
+        quotaExhausted()
+          ? CONTENT.chat_page.composer.quota_exhausted
+          : CONTENT.chat_page.composer.placeholder
+      }
+      value={props.draft}
+      disabled={props.isSending}
+      onInput={(e) => {
+        props.onDraftChange(e.currentTarget.value);
+        requestAnimationFrame(syncTextareaHeight);
+      }}
+      onCompositionStart={() => {
+        compositionActive = true;
+      }}
+      onCompositionEnd={() => {
+        compositionActive = false;
+        // Safari can report isComposing=false on the Enter keydown that
+        // commits a Chinese candidate. Ignore that same keystroke.
+        suppressEnterUntil = Date.now() + 120;
+      }}
+      onKeyDown={(e) => {
+        const shouldSubmit = shouldSubmitPublicChatEnter({
+          key: e.key,
+          shiftKey: e.shiftKey,
+          eventIsComposing: e.isComposing,
+          compositionActive,
+          keyCode: e.keyCode,
+          now: Date.now(),
+          suppressEnterUntil,
+        });
+        if (shouldSubmit) {
+          e.preventDefault();
+          if (canSend()) props.onSend();
+        } else if (
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          !e.isComposing &&
+          !compositionActive &&
+          e.keyCode !== 229 &&
+          Date.now() < suppressEnterUntil
+        ) {
+          e.preventDefault();
+        }
+      }}
+      onPaste={handlePaste}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    />
+  );
+
+  const renderSend = () => (
+    <Show
+      when={props.isSending && props.onStop}
+      fallback={
+        <button
+          data-testid="composer-send-button"
+          type="button"
+          class="public-chat-send-button"
+          aria-label={CONTENT.chat_page.composer.send_aria}
+          title={CONTENT.chat_page.composer.send_aria}
+          onClick={() => canSend() && props.onSend()}
+          disabled={!canSend()}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      }
+    >
+      <button
+        type="button"
+        class="public-chat-send-button is-stop"
+        aria-label={CONTENT.chat_page.composer.stop_aria}
+        title={CONTENT.chat_page.composer.stop_aria}
+        onClick={() => props.onStop?.()}
+      >
+        <i aria-hidden="true" />
+      </button>
+    </Show>
+  );
 
   return (
     <div class="public-chat-composer">
@@ -2233,166 +2533,147 @@ function Composer(props: {
         }}
       />
 
+      <Show when={showSuggestStrip()}>
+        <div class="hc-suggest" role="group" aria-label={CONTENT.chat_page.composer.suggest_title}>
+          <div class="hc-suggest__scroller">
+            <For each={props.suggestions}>
+              {(prompt) => (
+                <button
+                  type="button"
+                  class="hc-suggest__chip"
+                  title={prompt.title}
+                  onClick={() => props.onSuggestion(prompt.question)}
+                >
+                  <small>{prompt.eyebrow}</small>
+                  <span>{prompt.title}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <button
+            type="button"
+            class="hc-suggest__hide"
+            aria-label={CONTENT.chat_page.composer.suggest_hide}
+            title={CONTENT.chat_page.composer.suggest_hide}
+            onClick={hideSuggestions}
+          >
+            ×
+          </button>
+        </div>
+      </Show>
+
       <div class="public-chat-composer-frame">
-        <AttachMenu
-          open={menuOpen()}
-          onClose={() => setMenuOpen(false)}
-          onPickImage={() => imgInputRef?.click()}
-          onPickFile={() => fileInputRef?.click()}
-        />
+        <Show when={!isPhone()}>
+          <AttachMenu
+            open={menuOpen()}
+            onClose={() => setMenuOpen(false)}
+            onPickImage={() => imgInputRef?.click()}
+            onPickFile={() => fileInputRef?.click()}
+          />
+        </Show>
 
         <div
           class="public-chat-composer-box"
-          classList={{ "is-focused": focused() }}
+          classList={{ "is-focused": focused(), "is-phone": isPhone() }}
         >
           <AttachPreview
             items={props.attachments}
             onRemove={props.onRemoveAttachment}
           />
-          <textarea
-            ref={taRef}
-            class="public-chat-composer-input"
-            rows={1}
-            placeholder={
-              quotaExhausted()
-                ? CONTENT.chat_page.composer.quota_exhausted
-                : CONTENT.chat_page.composer.placeholder
-            }
-            value={props.draft}
-            disabled={props.isSending}
-            onInput={(e) => {
-              props.onDraftChange(e.currentTarget.value);
-              requestAnimationFrame(syncTextareaHeight);
-            }}
-            onCompositionStart={() => {
-              compositionActive = true;
-            }}
-            onCompositionEnd={() => {
-              compositionActive = false;
-              // Safari can report isComposing=false on the Enter keydown that
-              // commits a Chinese candidate. Ignore that same keystroke.
-              suppressEnterUntil = Date.now() + 120;
-            }}
-            onKeyDown={(e) => {
-              const shouldSubmit = shouldSubmitPublicChatEnter({
-                key: e.key,
-                shiftKey: e.shiftKey,
-                eventIsComposing: e.isComposing,
-                compositionActive,
-                keyCode: e.keyCode,
-                now: Date.now(),
-                suppressEnterUntil,
-              });
-              if (shouldSubmit) {
-                e.preventDefault();
-                if (canSend()) props.onSend();
-              } else if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.isComposing &&
-                !compositionActive &&
-                e.keyCode !== 229 &&
-                Date.now() < suppressEnterUntil
-              ) {
-                e.preventDefault();
-              }
-            }}
-            onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-          />
-          <div class="hc-toolbar">
-            <div class="hc-toolbar__tools">
-              <button
-                data-testid="composer-attach-button"
-                type="button"
-                class="hc-tool hc-tool--icon"
-                data-open={menuOpen() ? "true" : undefined}
-                aria-label={CONTENT.chat_page.recovery.attach_aria}
-                title={CONTENT.chat_page.recovery.attach_aria}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen()}
-                onClick={() => setMenuOpen(!menuOpen())}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              <ChatToolsMenu isAdmin={props.isAdmin} onOpenPanel={props.onOpenPanel} />
-              <DataCenterQuickAction />
-              <Show when={props.isAdmin}>
-                <EarningsResearchQuickAction
-                  kind="preview"
-                  disabled={props.isSending || props.uploading}
-                  onStart={props.onStartEarnings}
-                />
-                <EarningsResearchQuickAction
-                  kind="analysis"
-                  disabled={props.isSending || props.uploading}
-                  onStart={props.onStartEarnings}
-                />
-              </Show>
-              <FinanceCalendarQuickAction
-                onSent={props.onCalendarSent}
-                openRequest={props.calendarOpenRequest}
-              />
-              <CommunityQuickAction
-                unread={props.communityUnread}
-                onOpen={props.onOpenCommunity}
-              />
-            </div>
-            <div class="hc-toolbar__end">
-              <Show when={quotaLabel()}>
-                {(label) => <span class="hc-quota">{label()}</span>}
-              </Show>
-              <Show
-                when={props.isSending && props.onStop}
-                fallback={
-                  <button
-                    data-testid="composer-send-button"
-                    type="button"
-                    class="public-chat-send-button"
-                    aria-label={CONTENT.chat_page.composer.send_aria}
-                    title={CONTENT.chat_page.composer.send_aria}
-                    onClick={() => canSend() && props.onSend()}
-                    disabled={!canSend()}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
+          <Show
+            when={isPhone()}
+            fallback={
+              <>
+                {renderTextarea()}
+                <div class="hc-toolbar">
+                  <div class="hc-toolbar__tools">
+                    <button
+                      data-testid="composer-attach-button"
+                      type="button"
+                      class="hc-tool hc-tool--icon"
+                      data-open={menuOpen() ? "true" : undefined}
+                      aria-label={CONTENT.chat_page.recovery.attach_aria}
+                      title={CONTENT.chat_page.recovery.attach_aria}
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen()}
+                      onClick={() => setMenuOpen(!menuOpen())}
                     >
-                      <path d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
-                  </button>
-                }
-              >
-                <button
-                  type="button"
-                  class="public-chat-send-button is-stop"
-                  aria-label={CONTENT.chat_page.composer.stop_aria}
-                  title={CONTENT.chat_page.composer.stop_aria}
-                  onClick={() => props.onStop?.()}
-                >
-                  <i aria-hidden="true" />
-                </button>
-              </Show>
+                      <ToolIcon name="plus" />
+                    </button>
+                    <ChatToolsMenu
+                      variant="tools"
+                      isAdmin={props.isAdmin}
+                      onOpenPanel={props.onOpenPanel}
+                      actions={actions()}
+                      actionsDisabled={workflowsDisabled()}
+                    />
+                    <For each={chipActions()}>
+                      {(action) => (
+                        <button
+                          type="button"
+                          class="hc-tool"
+                          title={action.hint}
+                          aria-label={action.label}
+                          onClick={action.run}
+                        >
+                          {action.icon()}
+                          <span class="hc-tool__label">{action.label}</span>
+                          <Show when={action.dot}>
+                            <i class="hc-tool__dot" aria-hidden="true" />
+                          </Show>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <div class="hc-toolbar__end">
+                    <Show when={quotaLabel()}>
+                      {(label) => <span class="hc-quota">{label()}</span>}
+                    </Show>
+                    {renderSend()}
+                  </div>
+                </div>
+              </>
+            }
+          >
+            {/* One row on a phone: the 「+」 sheet holds attachments, tools,
+                shortcuts and suggestions with labels; nothing is an icon alone. */}
+            <div class="hc-composer-row">
+              <ChatToolsMenu
+                variant="plus"
+                isAdmin={props.isAdmin}
+                onOpenPanel={props.onOpenPanel}
+                actions={actions()}
+                actionsDisabled={workflowsDisabled()}
+                onPickImage={() => imgInputRef?.click()}
+                onPickFile={() => fileInputRef?.click()}
+                suggestions={props.suggestions}
+                onSuggestion={props.onSuggestion}
+              />
+              {renderTextarea()}
+              {renderSend()}
             </div>
-          </div>
+          </Show>
         </div>
       </div>
+
+      <Show when={props.isAdmin}>
+        <EarningsResearchDialog
+          kind="preview"
+          disabled={workflowsDisabled()}
+          onStart={props.onStartEarnings}
+          openRequest={previewSeq()}
+        />
+        <EarningsResearchDialog
+          kind="analysis"
+          disabled={workflowsDisabled()}
+          onStart={props.onStartEarnings}
+          openRequest={analysisSeq()}
+        />
+      </Show>
+      <FinanceCalendarDialog
+        onSent={props.onCalendarSent}
+        openRequest={props.calendarOpenRequest + calendarSeq()}
+      />
     </div>
   );
 }
@@ -3837,7 +4118,7 @@ export default function PublicChatPage() {
 
   return (
     <div
-      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()} ${authState() !== "logged_out" ? "public-chat-page--ready" : ""}`}
+      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()} ${authState() !== "logged_out" ? "public-chat-page--ready" : ""} ${visibleMessages().length === 0 ? "is-empty" : ""}`}
     >
       <AnimatedBackground />
       <Show when={authState() === "logged_out"}>
@@ -4057,6 +4338,9 @@ export default function PublicChatPage() {
                       isAdmin={currentUser()?.is_admin === true}
                       onOpenPanel={openChatPanel}
                       onStartEarnings={startEarningsWorkflow}
+                      suggestions={starterPrompts()}
+                      onSuggestion={(question) => setPendingAutoSend(question)}
+                      showSuggestions={visibleMessages().length > 0}
                     />
                     <p class="public-chat-disclaimer">{CONTENT.chat_page.misc.disclaimer}</p>
                   </div>

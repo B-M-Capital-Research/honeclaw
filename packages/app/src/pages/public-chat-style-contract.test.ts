@@ -151,31 +151,65 @@ describe("public chat visual contract", () => {
     expect(css).toContain("--hc-answer-size: 16px");
   });
 
-  it("puts every tool in the composer toolbar and lets the composer stop a stream", () => {
+  it("loads every conversation stylesheet, dialogs included", () => {
+    // The dialogs' stylesheet was split into its own file and its import was
+    // lost in a merge: the earnings and calendar dialogs still opened, but
+    // unstyled and below the viewport, so clicking them looked like nothing.
+    for (const sheet of [
+      "./public-chat.css",
+      "./public-chat-modals.css",
+      "./public-agent-workspace.css",
+      "./public-chat-accessibility.css",
+    ]) {
+      expect(chat).toContain(`import "${sheet}";`);
+    }
+  });
+
+  it("keeps one shortcut list behind the desktop toolbar and the phone sheet", () => {
+    // The desktop composer is a text area over a toolbar: attach, 工具, the
+    // everyday shortcuts as labelled chips, quota and send. The admin
+    // earnings workflows live inside 工具 so the row never overflows.
     expect(chat).toContain('class="hc-toolbar"');
     const toolbar = chat.slice(chat.indexOf('class="hc-toolbar__tools"'), chat.indexOf('class="hc-toolbar__end"'));
-    for (const tool of [
-      "<ChatToolsMenu isAdmin=",
-      "<DataCenterQuickAction",
-      "<FinanceCalendarQuickAction",
-      "<CommunityQuickAction",
-    ]) {
-      expect(toolbar).toContain(tool);
-    }
-    // Every entry is one chip class, so the row reads as one control strip
-    // rather than the old mix of pills at different weights.
+    expect(toolbar).toContain('variant="tools"');
+    expect(toolbar).toContain("<For each={chipActions()}>");
+    expect(chat).toContain("actions().filter((action) => !action.adminOnly)");
+    expect(block(css, ".hc-toolbar__tools")).toContain("flex-wrap: wrap");
+    // A phone gets one row — 「+」, input, send — and the 「+」 opens a sheet
+    // where every attachment, tool, shortcut and suggestion carries a label.
+    expect(chat).toContain('class="hc-composer-row"');
+    const row = chat.slice(chat.indexOf('class="hc-composer-row"'), chat.indexOf("{renderTextarea()}", chat.indexOf('class="hc-composer-row"')));
+    expect(row).toContain('variant="plus"');
+    expect(row).toContain("suggestions={props.suggestions}");
+    expect(chat.split('data-testid="composer-attach-button"').length - 1).toBe(2);
+    expect(accessibilityCss).toContain(".chat-tools__item-icon");
+    expect(accessibilityCss).toContain(".chat-tools__item--suggest");
+    // The dialogs are headless: a request counter opens them from any control.
+    expect(chat).toContain("function EarningsResearchDialog");
+    expect(chat).toContain("function FinanceCalendarDialog");
+    expect(chat).toContain("openRequest={props.calendarOpenRequest + calendarSeq()}");
     expect(chat).not.toContain("public-chat-proactive-tip");
     expect(chat).toContain('class="public-chat-send-button is-stop"');
     expect(chat).toContain("onStop={canStop() ? () => activeController?.abort() : undefined}");
     expect(chat).toContain("CONTENT.chat_page.composer.quota_remaining");
-    // On phones the chips scroll and drop their labels; the send control
-    // stays put outside the scroller.
-    expect(block(css, ".hc-toolbar__tools")).toContain("overflow-x: auto");
     const phone = css.slice(css.indexOf("@media (max-width: 820px)"));
-    expect(phone).toContain(".hc-tool .hc-tool__label {\n    display: none;");
     expect(phone).toContain("--hc-input-size: 16px");
     expect(chat).toContain('data-testid="composer-send-button"');
-    expect(chat).toContain('data-testid="composer-attach-button"');
+  });
+
+  it("keeps the suggested questions reachable after the first answer", () => {
+    // The starter cards only exist in a blank conversation, so a returning
+    // reader never saw them. Once there is content they become a strip above
+    // the composer (dismissable for the day) and a section of the phone sheet.
+    expect(chat).toContain('class="hc-suggest"');
+    expect(chat).toContain("showSuggestions={visibleMessages().length > 0}");
+    expect(chat).toContain("suggestions={starterPrompts()}");
+    expect(chat).toContain('const SUGGEST_HIDDEN_KEY = "hone.public.suggest.hidden"');
+    expect(css).toContain(".hc-suggest__chip");
+    // The phone hides the legal line once there is a conversation to read.
+    const phone = css.slice(css.indexOf("@media (max-width: 820px)"));
+    expect(phone).toContain(".public-chat-page--ready:not(.is-empty) .public-chat-disclaimer");
+    expect(chat).toContain('${visibleMessages().length === 0 ? "is-empty" : ""}');
   });
 
   it("uses the workspace header on phones and the flat marketing header when signed out", () => {
@@ -257,7 +291,7 @@ describe("public chat visual contract", () => {
   });
 
   it("keeps the desktop calendar dialog above the chat shell and inside the viewport", () => {
-    const calendar = chat.slice(chat.indexOf("function FinanceCalendarQuickAction"));
+    const calendar = chat.slice(chat.indexOf("function FinanceCalendarDialog"));
     expect(calendar).toContain("<Portal>");
     expect(modalsCss).toContain("height: min(780px, calc(100dvh - 32px))");
     expect(modalsCss).toContain("grid-template-rows: auto minmax(0, 1fr)");
@@ -298,7 +332,7 @@ describe("public chat visual contract", () => {
     ]) {
       expect(chat).not.toContain(legacyMount);
     }
-    expect(chat).toContain("<ChatToolsMenu isAdmin=");
+    expect(chat).toContain("<ChatToolsMenu");
     // A tool picked from the composer opens where the reader already is —
     // navigating to the desk would drop the conversation they were in. The
     // panels stay lazy so the chat bundle does not carry seven dashboards.

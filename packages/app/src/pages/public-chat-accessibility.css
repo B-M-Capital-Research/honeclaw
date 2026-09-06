@@ -1,6 +1,8 @@
-/* Conversation-page tool menu and reading aids. The menu is portalled out of
-   the composer toolbar so the scrolling chip row cannot clip it: a popover
-   anchored to the trigger on a pointer, a bottom sheet on phones. */
+/* The composer's menu. On a desktop it is the 工具 popover anchored to its
+   trigger; on a phone it is the one bottom sheet behind the 「+」, holding
+   attachments, research tools, every shortcut and the suggested questions —
+   each row labelled and explained, so no phone control is an icon alone. It
+   is portalled so the composer cannot clip it. */
 
 .chat-tools {
   position: relative;
@@ -21,8 +23,8 @@
   position: fixed;
   display: grid;
   gap: 1px;
-  width: min(292px, calc(100vw - 32px));
-  max-height: min(60vh, 520px);
+  width: min(300px, calc(100vw - 32px));
+  max-height: min(64vh, 560px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px;
@@ -37,7 +39,7 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  max-height: 58dvh;
+  max-height: 72dvh;
   padding: 0 10px calc(12px + env(safe-area-inset-bottom, 0px));
   border: 0;
   border-radius: 16px 16px 0 0;
@@ -74,7 +76,7 @@
 }
 
 .chat-tools__group {
-  margin: 8px 8px 3px;
+  margin: 10px 8px 3px;
   color: var(--hone-ink-500);
   font-family: var(--hone-font-label);
   font-size: 11px;
@@ -86,31 +88,90 @@
   margin-top: 2px;
 }
 
-.chat-tools__menu button[role="menuitem"] {
+.chat-tools__item {
   display: grid;
-  gap: 1px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
   padding: 7px 9px;
   border: 0;
   border-radius: 8px;
   background: transparent;
+  color: var(--hone-ink-950);
   text-align: left;
   cursor: pointer;
 }
 
-.chat-tools__menu button[role="menuitem"]:hover {
+.chat-tools__item:hover,
+.chat-tools__item:active {
   background: color-mix(in srgb, var(--hone-ink-950) 6%, var(--hone-paper-50));
 }
 
-.chat-tools__menu b {
+.chat-tools__item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chat-tools__item-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--hone-ink-950) 6%, var(--hone-paper-50));
+  color: var(--hone-ink-800);
+}
+
+.chat-tools__item-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.chat-tools__item > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.chat-tools__item b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--hone-ink-950);
   font-size: 13.5px;
   font-weight: 550;
 }
 
-.chat-tools__menu small {
+.chat-tools__item small {
   color: var(--hone-ink-600);
   font-size: 11.5px;
   line-height: 1.45;
+}
+
+.chat-tools__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hone-coral-500);
+}
+
+/* Suggested questions have no icon; the eyebrow says what kind they are. */
+.chat-tools__item--suggest {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chat-tools__item--suggest small {
+  color: var(--hone-coral-600);
+  font-family: var(--hone-font-label);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.chat-tools__item--suggest b {
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 /* Reading preferences are the --hc-answer-size / --hc-user-size /

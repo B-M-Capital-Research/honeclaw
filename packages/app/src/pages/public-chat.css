@@ -982,18 +982,11 @@ body.public-chat-scroll-lock #root {
 }
 .hc-toolbar__tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   min-width: 0;
   flex: 1 1 auto;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-.hc-toolbar__tools::-webkit-scrollbar {
-  display: none;
 }
 .hc-toolbar__end {
   display: flex;
@@ -1062,6 +1055,107 @@ body.public-chat-scroll-lock #root {
   border-radius: 50%;
   background: var(--hc-accent);
   box-shadow: 0 0 0 2px var(--hc-raised);
+}
+/* Phone: one row — the 「+」 sheet, the input, the send control. */
+.hc-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 5px 6px;
+}
+.hc-composer-row .public-chat-composer-input {
+  min-height: 36px;
+  padding: 8px 6px;
+}
+.hc-composer-row .public-chat-send-button,
+.hc-composer-row .hc-tool--icon {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+}
+
+/* Suggested questions: a strip above the box once a conversation has
+   content; the blank conversation shows them as cards instead. */
+.hc-suggest {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(calc(var(--hc-column) + var(--hc-gutter) * 2), 100%);
+  margin: 0 auto 6px;
+  padding: 0 var(--hc-gutter);
+}
+.hc-suggest__scroller {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 0;
+}
+.hc-suggest__scroller::-webkit-scrollbar {
+  display: none;
+}
+.hc-suggest__chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--hc-line);
+  border-radius: 999px;
+  background: var(--hc-raised);
+  color: var(--hc-text);
+  cursor: pointer;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.hc-suggest__chip:hover {
+  border-color: var(--hc-line-strong);
+  background: color-mix(in srgb, var(--hc-raised) 60%, var(--hc-fill));
+}
+.hc-suggest__chip small {
+  color: var(--hc-accent-ink);
+  font-family: var(--hc-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.hc-suggest__chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hc-suggest__hide {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--hc-faint);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.hc-suggest__hide:hover {
+  background: var(--hc-fill);
+  color: var(--hc-ink);
+}
+@media (max-width: 1024px) {
+  .hc-quota {
+    display: none;
+  }
 }
 .hc-quota {
   color: var(--hc-faint);
@@ -1398,43 +1492,30 @@ body.public-chat-scroll-lock #root {
   .hc-trail {
     font-size: 13px;
   }
-  .hc-tool .hc-tool__label {
-    display: none;
-  }
   .hc-tool {
     width: 36px;
     height: 36px;
     padding: 0;
-  }
-  .hc-tool--filled {
-    width: auto;
-    padding: 0 10px;
-  }
-  .hc-tool--filled .hc-tool__label {
-    display: inline;
   }
   .public-chat-send-button {
     width: 36px;
     height: 36px;
     flex-basis: 36px;
   }
-  .hc-toolbar {
-    gap: 6px;
-    padding: 2px 6px 6px;
-  }
-  .hc-tool__dot {
-    top: 4px;
-    right: 4px;
-  }
-  .hc-quota {
-    display: none;
-  }
   .public-chat-composer {
     padding-top: 4px;
   }
-  .public-chat-composer-input {
-    min-height: 44px;
-    padding: 11px 14px 2px;
+  .hc-suggest {
+    margin-bottom: 5px;
+  }
+  .hc-suggest__chip {
+    max-width: 240px;
+    font-size: 12px;
+  }
+  /* The legal line costs a row on every screen; a phone shows it on the
+     blank conversation, where the space is free, and in the 「我的」 page. */
+  .public-chat-page--ready:not(.is-empty) .public-chat-disclaimer {
+    display: none;
   }
   .public-chat-disclaimer {
     padding: 5px var(--hc-gutter) 6px;
