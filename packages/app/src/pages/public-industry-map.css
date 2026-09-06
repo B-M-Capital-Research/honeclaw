@@ -913,3 +913,572 @@
 .industry-signal-latest-asof .industry-input {
   flex: 1 1 auto;
 }
+
+/* ── 本体 V3：方法论条、找公司、估值执行卡、底层估值逻辑 ─────────────────────
+   详情区的阅读顺序变成：定位（子类型与锚）→ 上游最近做了什么 → 为什么会变（逻辑与公式）
+   → 公司表。方法论条只在详情区顶部放一次，所有行共用。右列自己是一个纵向 flex，
+   每个孩子都 min-width: 0——表格在自己的容器里横向滚动，页面本身不横向滚动。 */
+
+.industry-detail-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.industry-detail-column > * {
+  min-width: 0;
+}
+
+/* 方法论条 */
+
+.industry-method {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+}
+
+.industry-method h2 {
+  margin: 0;
+  font-family: var(--hone-font-display);
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-method-lead {
+  margin: 0;
+  font-size: var(--hone-text-xs);
+  line-height: 1.55;
+  color: var(--hone-ink-500);
+}
+
+/* 七段需求链：一排药丸，中间是箭头；窄屏自动换行，箭头跟着它前面那一段走。 */
+.industry-method-chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0;
+}
+
+.industry-method-chain li {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.industry-method-chain li:not(:last-child)::after {
+  content: "→";
+  margin: 0 0.4rem;
+  font-size: var(--hone-text-xs);
+  color: var(--hone-ink-400);
+}
+
+.industry-method-step {
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-100);
+  font-size: var(--hone-text-xs);
+  line-height: 1.5;
+  color: var(--hone-ink-800);
+  overflow-wrap: anywhere;
+}
+
+/* 两句要背下来的话：核心原则用珊瑚边，后视镜错误用信号橙。 */
+.industry-callout {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: 0 var(--hone-radius-sm) var(--hone-radius-sm) 0;
+  background: var(--hone-paper-100);
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-800);
+  overflow-wrap: anywhere;
+}
+
+.industry-callout.is-warn {
+  border-left-color: var(--hone-signal-orange);
+  background: var(--hone-signal-orange-soft);
+}
+
+.industry-callout-label {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-callout.is-warn .industry-callout-label {
+  color: var(--hone-signal-orange-ink);
+}
+
+/* 折叠面板：执行规则、输出字段、原文、倍数锚原文共用。 */
+.industry-details {
+  min-width: 0;
+  padding: 0 0.75rem;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-surface-raised);
+}
+
+.industry-details[open] {
+  padding-bottom: 0.6rem;
+}
+
+.industry-details > summary {
+  padding: 0.5rem 0;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  color: var(--hone-ink-800);
+  cursor: pointer;
+}
+
+.industry-details > summary:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-details[open] > summary {
+  border-bottom: 1px solid var(--hone-line);
+  margin-bottom: 0.4rem;
+}
+
+.industry-details + .industry-details {
+  margin-top: 0.5rem;
+}
+
+.industry-details .industry-field {
+  margin: 0.4rem 0 0;
+}
+
+.industry-table-scroll {
+  overflow-x: auto;
+}
+
+.industry-rules {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-rules th,
+.industry-rules td {
+  border-bottom: 1px solid var(--hone-line);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.55;
+}
+
+.industry-rules th {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+  white-space: nowrap;
+}
+
+.industry-rules td:first-child {
+  min-width: 8rem;
+  font-weight: 600;
+  color: var(--hone-ink-950);
+}
+
+.industry-rules td:last-child {
+  min-width: 16rem;
+  color: var(--hone-ink-800);
+}
+
+/* 找公司：树顶上的一个输入框，下面一行是命中结果。 */
+
+.industry-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.6rem;
+}
+
+.industry-search-result {
+  margin: 0;
+  font-size: var(--hone-text-2xs);
+  line-height: 1.5;
+  color: var(--hone-ink-400);
+  overflow-wrap: anywhere;
+}
+
+.industry-search-result.is-hit {
+  color: var(--hone-ink-800);
+  font-weight: 600;
+}
+
+/* 标题下的「典型 State」。 */
+
+.industry-state-note {
+  margin: 0.5rem 0 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+}
+
+.industry-state-label {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-signal-green-soft);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  color: var(--hone-signal-green-ink);
+  vertical-align: 0.1em;
+}
+
+/* 估值执行卡 */
+
+.industry-valuation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.industry-subtype-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.industry-subtype-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  font-family: inherit;
+  font-size: var(--hone-text-sm);
+  cursor: pointer;
+  transition:
+    background 120ms var(--hone-ease),
+    border-color 120ms var(--hone-ease);
+}
+
+.industry-subtype-chip:hover {
+  background: var(--hone-paper-100);
+}
+
+.industry-subtype-chip:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-subtype-chip.is-active {
+  border-color: var(--hone-coral-600);
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-ink-950);
+  font-weight: 600;
+}
+
+.industry-subtype-count {
+  font-size: var(--hone-text-2xs);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-400);
+}
+
+.industry-subtype-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+}
+
+.industry-subtype-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.industry-subtype-head strong {
+  font-size: var(--hone-text-md);
+  color: var(--hone-ink-950);
+}
+
+.industry-subtype-id {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-400);
+}
+
+.industry-subtype-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.industry-subtype-grid,
+.industry-anchor-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  font-size: var(--hone-text-sm);
+}
+
+.industry-subtype-grid dt,
+.industry-anchor-rows dt {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  letter-spacing: 0.04em;
+  line-height: 1.8;
+  color: var(--hone-ink-500);
+}
+
+.industry-subtype-grid dd,
+.industry-anchor-rows dd {
+  margin: 0;
+  min-width: 0;
+  line-height: 1.6;
+  color: var(--hone-ink-800);
+  overflow-wrap: anywhere;
+}
+
+.industry-subtype-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.industry-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-200);
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--hone-ink-800);
+}
+
+/* 推断成员：虚线框、浅一档，旁边一个小「推断」标，悬停给出处。 */
+.industry-member-chip.is-inferred {
+  border-color: var(--hone-line-strong);
+  border-style: dashed;
+  background: transparent;
+  font-weight: 500;
+  color: var(--hone-ink-600);
+}
+
+.industry-inferred-tag {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-400);
+  cursor: help;
+}
+
+/* 行级锚的「禁止」：红描边的小标，一眼看出哪些算法在这一行不许用。 */
+.industry-forbidden {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.industry-forbidden li {
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--hone-signal-red);
+  border-radius: var(--hone-radius-pill);
+  background: transparent;
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--hone-signal-red-ink);
+}
+
+/* 底层估值逻辑 */
+
+.industry-valuation-logic {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.industry-valuation-summary {
+  margin: 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.7;
+  color: var(--hone-ink-800);
+}
+
+.industry-formulas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.industry-formulas li {
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
+}
+
+.industry-formula {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+  color: var(--hone-ink-950);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.industry-formula-note {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: var(--hone-text-xs);
+  line-height: 1.55;
+  color: var(--hone-ink-500);
+}
+
+.industry-subhead {
+  margin: 0.9rem 0 0.4rem;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.industry-valuation-logic .industry-subhead {
+  margin-top: 0;
+}
+
+.industry-forward-focus {
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-800);
+}
+
+.industry-forward-focus li + li {
+  margin-top: 0.25rem;
+}
+
+.industry-paragraph {
+  margin: 0.5rem 0 0;
+  font-size: var(--hone-text-sm);
+  line-height: 1.7;
+  color: var(--hone-ink-800);
+  overflow-wrap: anywhere;
+}
+
+/* 公司表：子类型列、「问 HONE」、搜索命中的那一行。 */
+
+.industry-subtype-tag {
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-800);
+  font-family: inherit;
+  font-size: var(--hone-text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.industry-subtype-tag:hover {
+  background: var(--hone-paper-200);
+}
+
+.industry-subtype-tag:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+
+.industry-subtype-tag.is-inferred {
+  border-style: dashed;
+  color: var(--hone-ink-500);
+}
+
+.industry-subtype-none {
+  color: var(--hone-ink-400);
+}
+
+.industry-members .industry-select {
+  min-width: 9rem;
+}
+
+.industry-members-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.industry-members tr.is-hit > td {
+  background: var(--hone-signal-yellow-soft);
+  transition: background 600ms var(--hone-ease);
+}
+
+/* 「最近动作」超过 100 天：灰标，不报警，只提醒引用前先核最近一期。 */
+.industry-signal-stale {
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-signal-neutral-soft);
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-signal-neutral-ink);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.industry-form-error {
+  font-size: var(--hone-text-xs);
+  color: var(--hone-error-600);
+}
+
+@media (max-width: 760px) {
+  .industry-subtype-grid,
+  .industry-anchor-rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem 0;
+  }
+
+  .industry-subtype-grid dd + dt,
+  .industry-anchor-rows dd + dt {
+    margin-top: 0.45rem;
+  }
+
+  .industry-subtype-actions {
+    margin-left: 0;
+  }
+}

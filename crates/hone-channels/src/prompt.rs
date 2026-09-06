@@ -244,37 +244,53 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
     let (map, _) = hone_core::industry_map::load(data_root);
     let mut sections = Vec::new();
     for industry in &map.industries {
-        if industry.ai_valuation_logic.driver_chain.trim().is_empty() {
+        if industry.ai_valuation_logic.driver_chain.trim().is_empty()
+            && industry.valuation.logic.summary.trim().is_empty()
+        {
             continue;
         }
-        let matched_members = industry
+        let matched = industry
             .members
             .iter()
             .filter(|member| {
                 explicit_symbol_match(user_input, &member.symbol)
                     || alias_match(user_input, &member.name)
             })
-            .map(|member| format!("{}（{}）", member.symbol, member.name))
             .collect::<Vec<_>>();
         let by_alias = industry
             .aliases
             .iter()
             .any(|alias| alias_match(user_input, alias));
-        if matched_members.is_empty() && !by_alias {
+        if matched.is_empty() && !by_alias {
             continue;
         }
 
         let logic = &industry.ai_valuation_logic;
-        let mut lines = vec![format!("- {}（{}）", industry.name, industry.id)];
-        if !matched_members.is_empty() {
-            lines.push(format!("  本轮命中的成员：{}", matched_members.join("、")));
+        let valuation = &industry.valuation;
+        // 命中公司所属的子类型：知识被消费的最小单位。多家命中时取第一家的子类型，
+        // 其余公司若在别的子类型里，只点名它们的子类型名，不整段重复。
+        let primary_member = matched.first();
+        let subtype = primary_member.and_then(|member| valuation.subtype_of(&member.symbol));
+        let mut head = format!("- {}（{}）", industry.name, industry.id);
+        if !matched.is_empty() {
+            head.push_str(&format!(
+                " · 本轮命中：{}",
+                matched
+                    .iter()
+                    .map(|member| {
+                        let tag = valuation
+                            .subtype_of(&member.symbol)
+                            .map(|s| format!("｜{}", s.name))
+                            .unwrap_or_default();
+                        format!("{}（{}{}）", member.symbol, member.name, tag)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("、")
+            ));
         }
-        // 本体的边：这一行由谁的最近行为决定。排在传导链之前，而且先给事实（它最近一季实际做了什么，
-        // 带日期），再给核对取法——上一版只给「去取什么」的指令，生产上 7 家成员公司的回答 0 家照做；
-        // 模型对拿到手的事实会直接用，对「去取」的指令常常不理。
-        //
-        // 只注入前两条（NVDA 永远排第一），读数各截到一句——完整的 `pull` / `why` 留给研究台页面和
-        // `industry-map` skill。
+        let mut lines = vec![head];
+
+        // 1) 本体的边：上游最近动作先给事实（带日期），再给核对取法。只带两条，NVDA 永远第一。
         let mut signals = industry.upstream_signals.iter().collect::<Vec<_>>();
         signals.sort_by_key(|signal| signal.symbol != "NVDA");
         for signal in signals.into_iter().take(MAX_PROJECTED_UPSTREAM_SIGNALS) {
@@ -312,23 +328,109 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
                 clip(&signal.why, 80)
             ));
         }
-        lines.push(format!("  需求传导链：{}", logic.driver_chain));
-        // 注入读短版：长版是给研究台页面看的，整段注入每轮要多花上千 token。
-        let anchor = if logic.multiple_anchor_short.trim().is_empty() {
-            &logic.multiple_anchor
+
+        // 2) 估值执行卡：这家公司该用哪个前瞻财年、哪一族倍数、区间由什么决定、什么被禁止。
+        //    先给子类型（命中公司专属），子类型缺失时退到行级倍数锚。
+        if let Some(subtype) = subtype {
+            let mut card = format!(
+                "  估值执行卡 · 子类型「{}」：主锚 {}",
+                subtype.name,
+                clip(&subtype.primary, 160)
+            );
+            if !subtype.secondary.trim().is_empty() {
+                card.push_str(&format!("；次锚 {}", clip(&subtype.secondary, 120)));
+            }
+            if !subtype.when.trim().is_empty() {
+                card.push_str(&format!("；适用阶段：{}", clip(&subtype.when, 120)));
+            }
+            if !subtype.note.trim().is_empty() {
+                card.push_str(&format!("；这家的特别提醒：{}", clip(&subtype.note, 200)));
+            }
+            lines.push(card);
+        } else if !valuation.anchor.paragraphs.is_empty() {
+            lines.push(format!(
+                "  估值执行卡 · 行级倍数锚：{}",
+                clip(&valuation.anchor.paragraphs[0], 300)
+            ));
         } else {
-            &logic.multiple_anchor_short
-        };
-        if !anchor.trim().is_empty() {
-            lines.push(format!("  倍数锚：{anchor}"));
+            let anchor = if logic.multiple_anchor_short.trim().is_empty() {
+                &logic.multiple_anchor
+            } else {
+                &logic.multiple_anchor_short
+            };
+            if !anchor.trim().is_empty() {
+                lines.push(format!("  倍数锚：{anchor}"));
+            }
         }
+        if !valuation.anchor.upper_range_drivers.trim().is_empty() {
+            lines.push(format!(
+                "  倍数上沿由什么决定：{}",
+                clip(&valuation.anchor.upper_range_drivers, 220)
+            ));
+        }
+        if !valuation.anchor.revision_optionality.trim().is_empty() {
+            lines.push(format!(
+                "  盈利上修期权（提高 FY+2 权重或取区间上半部的条件）：{}",
+                clip(&valuation.anchor.revision_optionality, 260)
+            ));
+        }
+        let mut forbidden = valuation
+            .anchor
+            .forbidden
+            .iter()
+            .take(4)
+            .map(|item| clip(item, 60))
+            .collect::<Vec<_>>();
         let anti = if logic.anti_pattern_short.trim().is_empty() {
             &logic.anti_pattern
         } else {
             &logic.anti_pattern_short
         };
-        if !anti.trim().is_empty() {
-            lines.push(format!("  这一行的估值反模式：{anti}"));
+        if forbidden.is_empty() && !anti.trim().is_empty() {
+            forbidden.push(anti.clone());
+        }
+        if !forbidden.is_empty() {
+            lines.push(format!("  这一行禁止的估值动作：{}", forbidden.join("；")));
+        }
+
+        // 3) 底层估值逻辑：第一性原理一句 + 公式 + 前瞻重点；再带上带日期的需求传导链。
+        if !valuation.logic.summary.trim().is_empty() {
+            lines.push(format!(
+                "  底层估值逻辑：{}",
+                clip(&valuation.logic.summary, 260)
+            ));
+        }
+        let formulas = valuation
+            .logic
+            .formulas
+            .iter()
+            .take(2)
+            .map(|f| clip(&f.formula, 110))
+            .collect::<Vec<_>>();
+        if !formulas.is_empty() {
+            lines.push(format!("  量化关系：{}", formulas.join("；")));
+        }
+        let focus = valuation
+            .logic
+            .forward_focus
+            .iter()
+            .take(3)
+            .map(|item| clip(item, 90))
+            .collect::<Vec<_>>();
+        if !focus.is_empty() {
+            lines.push(format!("  未来 1–3 年先看：{}", focus.join("；")));
+        }
+        if !valuation.logic.state_note.trim().is_empty() {
+            lines.push(format!(
+                "  这一行典型的 State：{}",
+                clip(&valuation.logic.state_note, 200)
+            ));
+        }
+        if !logic.driver_chain.trim().is_empty() {
+            lines.push(format!(
+                "  需求传导链（带日期的量）：{}",
+                logic.driver_chain
+            ));
         }
         let watch = industry
             .core_watch
@@ -353,12 +455,48 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
     if sections.is_empty() {
         return None;
     }
+    // 通用执行规则的压缩版：只带能改变分母与倍数选择的那几条；全文在 `industry-map` skill。
+    let rules = map
+        .methodology
+        .execution_rules
+        .iter()
+        .filter(|rule| {
+            matches!(
+                rule.rule.as_str(),
+                "Forward denominator"
+                    | "Capacity Unlock Gate"
+                    | "Market-implied check"
+                    | "DCF"
+                    | "Hard checks"
+            )
+        })
+        .map(|rule| format!("{}：{}", rule.rule, clip(&rule.requirement, 170)))
+        .collect::<Vec<_>>();
+    let rules_block = if rules.is_empty() {
+        String::new()
+    } else {
+        format!("\n通用执行规则：{}。", rules.join("；"))
+    };
+    let fields_block = if map.methodology.output_fields.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n估值类终稿按 HOne 强制输出字段落笔（就落在对账表、三问、三情景的现有位置里，不另起一套）：{}。",
+            map.methodology
+                .output_fields
+                .iter()
+                .map(|field| field.rule.clone())
+                .collect::<Vec<_>>()
+                .join("、")
+        )
+    };
     Some(format!(
-        "【本轮相关行业】\n以下来自 `industry-map` 的 AI 数据中心行业树，是这一行的**结构与先验**，不是当前事实。\
-需求侧照这条传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
-不得把行业增速直接当成公司增速。倍数先看公司卡的估值框架，公司卡没指定时才用这里的倍数锚当先验，仍要按 `valuation-audit` 的三问推导出本轮倍数；\
-行业反模式与公司卡的「不要…」同等对待，在真正选倍数或分母的那一句里点名对照。\
-带「上游最近动作」的行，那一行是本文的起点事实，要落进终稿已有的位置而不是另起一段：公司研究稿落在「行业位置与关键对手」一节的第一句，估值稿落在对账表的「上游最近动作」行、一问的增长来源第一句和基准情景的第一项经营输入——每处都就从那条最近动作写起（日期和数字都带上），再写它沿传导链怎么到这家公司（份额、认证、产能或合约哪道闸门决定这家拿到多少），最后用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
+        "【本轮相关行业 · HOne 前瞻估值执行版】\n以下来自 `industry-map` 的 AI 数据中心行业本体，是这一行的**结构与先验**，不是当前事实。\
+需求侧照底层估值逻辑与传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
+不得把行业增速直接当成公司增速。\
+带「上游最近动作」的行，那一行是本文的起点事实，要落进终稿已有的位置而不是另起一段：公司研究稿落在「行业位置与关键对手」一节的第一句，估值稿落在对账表的「上游最近动作」行、一问的增长来源第一句和基准情景的第一项经营输入——每处都就从那条最近动作写起（日期和数字都带上），再写它沿传导链怎么到这家公司，最后用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。\
+估值执行卡决定分母与倍数：先判 State（Capacity Unlock / Structural Re-rating / Mature Growth / Cyclical High），再按 Capacity Unlock Gate 决定财年（Demand、Qualification、Capacity、Economics、Funding 五项至少四项才从 NTM/FY+1 前移到 FY+2/FY+3，写明为什么），主锚次锚与权重照子类型给，倍数区间只由 Growth、Scarcity、Duration、Value Capture、Incremental ROIC 决定，不因「AI 标签」机械上调；公司卡指定了估值框架时以公司卡为准，子类型锚做交叉检查。\
+最常见的后视镜错误不是倍数太低而是分母太低：用当前受限产能的收入、未成熟的利润率或过早回归旧周期均值，会把即将发生的产能释放和盈利上修抹掉。{rules_block}{fields_block}\n\n{}",
         sections.join("\n\n")
     ))
 }
@@ -804,7 +942,7 @@ mod tests {
 
     #[tokio::test]
     async fn industry_baseline_pulls_nvda_first_and_keeps_the_upstream_block_compact() {
-        // 存储行：底稿里有 4 条上游信号，注入只带 2 条且英伟达在前，每条的读数被截成一句。
+        // 存储行：上游最近动作在前（英伟达第一），估值执行卡带 SNDK 所属子类型的主锚，通用规则压缩版在头部。
         let text = industry_baseline(
             "SNDK 的合理估值是多少",
             std::path::Path::new("/nonexistent"),
@@ -821,20 +959,41 @@ mod tests {
             upstream[0]
         );
         assert!(upstream[0].contains("截至 2026-08-26"), "{}", upstream[0]);
-        assert!(upstream[0].contains("$89.0B"), "{}", upstream[0]);
         assert!(text.contains("data_fetch(data_type=\"earnings_outlook\", ticker=\"NVDA\")"));
-        // 事实行必须排在传导链之前：模型先看到上游做了什么，再看链条。
         assert!(
-            text.find("上游最近动作 · NVDA").unwrap() < text.find("需求传导链").unwrap(),
+            text.find("上游最近动作 · NVDA").unwrap() < text.find("估值执行卡 · ").unwrap()
+                && text.find("估值执行卡 · ").unwrap() < text.find("需求传导链").unwrap(),
             "{text}"
         );
-        assert!(text.contains("就从那条最近动作写起"));
-        // 两行合计的注入体量要留在预算内（这里以字符数守住）。
         assert!(
-            text.chars().count() < 3000,
+            text.contains("SNDK（闪迪（SanDisk）｜"),
+            "命中行要带子类型名：{text}"
+        );
+        assert!(text.contains("估值执行卡 · 子类型「"), "{text}");
+        assert!(text.contains("Forward PE"), "{text}");
+        assert!(text.contains("这一行禁止的估值动作"), "{text}");
+        assert!(text.contains("Capacity Unlock Gate"), "{text}");
+        assert!(text.contains("HOne 强制输出字段"), "{text}");
+        // 单行命中的注入体量守在 4,600 字以内（约 2,300 token）：头部规则约 1,400 字，行内约 3,000 字。
+        assert!(
+            text.chars().count() < 4600,
             "注入过长：{} 字",
             text.chars().count()
         );
+    }
+
+    #[tokio::test]
+    async fn industry_baseline_falls_back_to_the_row_anchor_for_industry_level_questions() {
+        let text = industry_baseline(
+            "光通信这一行现在怎么看",
+            std::path::Path::new("/nonexistent"),
+        )
+        .expect("optical alias");
+        assert!(
+            text.contains("估值执行卡 · 行级倍数锚") || text.contains("估值执行卡 · 子类型"),
+            "{text}"
+        );
+        assert!(!text.contains("本轮命中："), "no member hit: {text}");
     }
 
     #[tokio::test]

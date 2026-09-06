@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "generated_at": "2026-09-03",
+  "schema_version": 3,
+  "generated_at": "2026-09-06",
   "root": {
     "id": "ai-datacenter",
     "name": "AI 数据中心",
@@ -287,7 +287,111 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "估值从客户愿意付费的有效 AI 任务出发，而不是从 CSP CapEx 或 GPU 出货单向外推。",
+          "paragraphs": [
+            "估值从客户愿意付费的有效 AI 任务出发，而不是从 CSP CapEx 或 GPU 出货单向外推。训练、后训练和推理分别建模：训练侧看模型架构、Active Parameters、训练 Token 和重训频率；推理侧看输入/输出/Reasoning Token、Agent 循环、上下文、并发、TTFT/TPOT 和任务成功率。量化、蒸馏、稀疏化、缓存和更高效芯片会降低单位任务资源消耗，因此 Token 增长只有在快于效率提升时才转化为更多有效算力需求。",
+            "系统需求进一步受逻辑裸片、CoWoS/先进封装、HBM、基板、网络、整机集成、电力与客户验收中的最紧约束限制。对 NVDA 等平台公司，收入用分平台估算：可兑现需求、锁定且合格的供应、系统验收上限三者取最小值，再乘系统净实现售价，并加上未包含在整机售价中的增量平台销售。系统价值密度上升必须来自客户每美元、每瓦、每机房空间能获得更多有效 AI 产出，并且公司能够通过软件、互联、平台整合与迁移成本分享这部分价值。",
+            "GPU 与 ASIC 可以同时增长，但特定客户、工作负载和预算内存在替代。ASIC 应按实际出货×实现 ASP 建模，不能套用 NVIDIA 的平台收入/GW。网络若已经包含在平台价值中，不能再作为终端TAM重复相加。NVDA、AVGO、AMD、MRVL、ARM等分别按计算、定制、网络、许可/版税和真实产品收入拆分，不随“AI芯片”标签重复入账。",
+            "前瞻重点放在未来1-3年：一是 Token/Agent/Reasoning 是否继续扩大有效任务；二是单系统有效吞吐和单位能耗改善有多快；三是平台份额、系统 ASP 与 Attach 能否同步兑现；四是供给闸门是否从“需求受限”转为“交付受限”。当需求显著高于可交付供给，且新平台/新产能已获客户验证，FY+2往往比 NTM 更能反映盈利能力。"
+          ],
+          "formulas": [
+            {
+              "formula": "AI Compute Demand = Training Compute + Inference Tokens × Compute / Token",
+              "note": "训练、后训练和推理分别建模；Token 增长只有在快于效率提升时才转化为更多有效算力需求。"
+            },
+            {
+              "formula": "Required Systems ≈ AI Compute Demand ÷ (Effective Compute/System × Utilization × Online Time)",
+              "note": "系统需求进一步受逻辑裸片、CoWoS/先进封装、HBM、基板、网络、整机集成、电力与客户验收中的最紧约束限制。"
+            },
+            {
+              "formula": "Platform Revenue ≈ min(Qualified Demand, Qualified Supply, Acceptance Capacity) × System ASP + Incremental Platform Attach",
+              "note": "平台公司收入分平台估算：可兑现需求、锁定且合格的供应、系统验收上限三者取最小值，再乘系统净实现售价，并加上未包含在整机售价中的增量平台销售。"
+            }
+          ],
+          "forward_focus": [
+            "一是 Token/Agent/Reasoning 是否继续扩大有效任务",
+            "二是单系统有效吞吐和单位能耗改善有多快",
+            "三是平台份额、系统 ASP 与 Attach 能否同步兑现",
+            "四是供给闸门是否从“需求受限”转为“交付受限”"
+          ],
+          "state_note": "当需求显著高于可交付供给，且新平台/新产能已获客户验证，FY+2往往比 NTM 更能反映盈利能力。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "平台型公司以明确财年的 Forward P/E 为主，EV/EBIT 或 EV/Sales 为辅，FCF Yield仅作现金质量检查。若 FY+1仍明显受 CoWoS、HBM、系统验收或电力限制，而 FY+2出现明确产能释放，主分母转向 FY+2；若下一代平台在 FY+3仍有可验证需求和生态锁定，可用 FY+2/FY+3双锚。",
+            "倍数上沿由五个因素决定：有效AI任务增长持续、系统价值密度提升、平台份额/ASP/Attach稳定、软件/生态迁移成本跨代延续、增量ROIC和现金转化保持高位。单纯销量上升主要抬 EPS 分母；只有超额利润持续期延长，才支持在同一财年盈利上给更高倍数。Earnings Revision Optionality 较高时——例如新平台产能释放快于共识、管理层连续上修交付/收入、客户认证已完成而收入尚未完全体现——可提高 FY+2 权重或把倍数放在同业区间上半部，但不能对同一收入上修再额外加一个“AI溢价”。",
+            "连接/IP型公司在利润率尚未稳定时可用 FY+2 EV/Sales 作为主/次锚，但必须反算目标毛利、运营费用、SBC和资本需求；一旦稳定盈利，转为 Forward PE / EV/EBIT。制造与封装型公司更偏 EV/EBITDA、EV/EBIT 与 Forward PE，单位产能/重置成本仅作同资产范围的Sanity Check。DCF默认禁用。"
+          ],
+          "upper_range_drivers": "倍数上沿由五个因素决定：有效AI任务增长持续、系统价值密度提升、平台份额/ASP/Attach稳定、软件/生态迁移成本跨代延续、增量ROIC和现金转化保持高位。",
+          "revision_optionality": "Earnings Revision Optionality 较高时——例如新平台产能释放快于共识、管理层连续上修交付/收入、客户认证已完成而收入尚未完全体现——可提高 FY+2 权重或把倍数放在同业区间上半部，但不能对同一收入上修再额外加一个“AI溢价”。",
+          "forbidden": [
+            "ASIC 应按实际出货×实现 ASP 建模，不能套用 NVIDIA 的平台收入/GW",
+            "网络若已经包含在平台价值中，不能再作为终端TAM重复相加",
+            "NVDA、AVGO、AMD、MRVL、ARM等分别按计算、定制、网络、许可/版税和真实产品收入拆分，不随“AI芯片”标签重复入账",
+            "不能对同一收入上修再额外加一个“AI溢价”",
+            "单位产能/重置成本仅作同资产范围的Sanity Check",
+            "DCF默认禁用"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "platform",
+            "name": "平台型公司",
+            "members": [
+              "NVDA",
+              "AMD"
+            ],
+            "inferred_members": [
+              "AMD"
+            ],
+            "primary": "明确财年的 Forward P/E 为主；若 FY+1仍明显受 CoWoS、HBM、系统验收或电力限制，而 FY+2出现明确产能释放，主分母转向 FY+2；若下一代平台在 FY+3仍有可验证需求和生态锁定，可用 FY+2/FY+3双锚",
+            "secondary": "EV/EBIT 或 EV/Sales 为辅，FCF Yield仅作现金质量检查",
+            "when": "当需求显著高于可交付供给，且新平台/新产能已获客户验证，FY+2往往比 NTM 更能反映盈利能力",
+            "note": "对 NVDA 等平台公司，收入用分平台估算：可兑现需求、锁定且合格的供应、系统验收上限三者取最小值，再乘系统净实现售价，并加上未包含在整机售价中的增量平台销售。单纯销量上升主要抬 EPS 分母；只有超额利润持续期延长，才支持在同一财年盈利上给更高倍数。AMD 未被文档明确归入平台型，按 GPU 平台公司（计算）就近归入。"
+          },
+          {
+            "id": "connectivity-ip",
+            "name": "连接/IP型公司",
+            "members": [
+              "AVGO",
+              "MRVL",
+              "ALAB",
+              "ARM"
+            ],
+            "inferred_members": [
+              "AVGO",
+              "ALAB"
+            ],
+            "primary": "利润率尚未稳定时可用 FY+2 EV/Sales 作为主/次锚，但必须反算目标毛利、运营费用、SBC和资本需求",
+            "secondary": "一旦稳定盈利，转为 Forward PE / EV/EBIT",
+            "when": "利润率尚未稳定时用 FY+2 EV/Sales；一旦稳定盈利转为 Forward PE / EV/EBIT",
+            "note": "NVDA、AVGO、AMD、MRVL、ARM等分别按计算、定制、网络、许可/版税和真实产品收入拆分，不随“AI芯片”标签重复入账；ASIC 应按实际出货×实现 ASP 建模，不能套用 NVIDIA 的平台收入/GW；网络若已经包含在平台价值中，不能再作为终端TAM重复相加。AVGO 在文档中按“定制”拆分、未被明确归入连接/IP型，ALAB 未在文档中出现，二者按定制 ASIC/连接业务就近归入。"
+          },
+          {
+            "id": "manufacturing-packaging",
+            "name": "制造与封装型公司",
+            "members": [
+              "TSM",
+              "AMKR",
+              "ASX",
+              "INTC"
+            ],
+            "inferred_members": [
+              "TSM",
+              "AMKR",
+              "ASX",
+              "INTC"
+            ],
+            "primary": "更偏 EV/EBITDA、EV/EBIT 与 Forward PE",
+            "secondary": "单位产能/重置成本仅作同资产范围的Sanity Check",
+            "when": "",
+            "note": "文档未点名具体公司；TSM/AMKR/ASX/INTC 按逻辑裸片代工与 CoWoS/先进封装环节归入制造与封装型。"
+          }
+        ]
+      }
     },
     {
       "id": "storage",
@@ -535,7 +639,99 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "存储估值从模型工作集、内存带宽、KV Cache、训练数据、缓存与持久数据需求出发，不能把 GPU数量、Token、上下文和每GPU HBM 作为四个独立增长乘数。",
+          "paragraphs": [
+            "存储估值从模型工作集、内存带宽、KV Cache、训练数据、缓存与持久数据需求出发，不能把 GPU数量、Token、上下文和每GPU HBM 作为四个独立增长乘数。HBM是高带宽“工作台”，企业SSD是高速缓存与数据层，HDD是大规模持久数据层；三者的需求驱动、供给约束和价值捕获不同。",
+            "推理阶段需要分别判断容量与带宽瓶颈。长上下文、Agent并发和Reasoning会扩大KV Cache与数据移动，但GQA/MQA、量化、Cache复用、压缩、卸载和更高HBM良率会降低单位任务资源消耗。真正的结构性变量是 Memory/Storage Intensity：单位AI工作需要的内存容量、带宽与持久存储是否持续上升。",
+            "供给端分别看 HBM/普通DRAM/NAND/HDD：HBM与标准DRAM争用部分晶圆与封装资源，逐代核投片、合格bit、堆叠良率、先进封装、客户认证和扩产；NAND看层数、产能纪律、eSSD认证、控制器/固件与JV资本；HDD看Nearline EB、每TB实现价格、单盘容量和技术成本。LTA/SCA/NBM只能改变数量、价格与现金流可见性，本身不创造物理短缺。",
+            "对 MU/SK Hynix，核心是 HBM/DRAM 量价、Memory Intensity、认证与合同保护；对 SNDK，核心是 NAND/eSSD、AI数据/缓存增长、控制器/固件、NBM覆盖和资本负担，不能套 HBM 增长。SNDK若 NBM覆盖率提高、eSSD占比上升且现金回报模型稳定，本质上是 Business Model Unlock：它会抬高盈利底部和持续期，而不仅是一次NAND涨价。",
+            "阶段上区分量价齐升、量增价涨放缓、量增价平、量增价跌。盈利率下降不等于利润额下降，尤其当bit出货、产品Mix与合同覆盖同步改善时。未来1-3年的结构化正常化盈利必须保留 HBM/eSSD Mix、量增、技术成本和合同条款，不能机械回到旧周期均值。"
+          ],
+          "formulas": [
+            {
+              "formula": "HBM Capacity ≈ Model Weights + KV Cache + Activations + Workspace",
+              "note": "HBM是高带宽“工作台”；推理阶段需要分别判断容量与带宽瓶颈。"
+            },
+            {
+              "formula": "Memory Bandwidth Demand ≈ Token Throughput × Bytes/Token",
+              "note": ""
+            },
+            {
+              "formula": "Persistent Storage ≈ Dataset + Checkpoint + Embedding + Prefix/KV Cache + Logs + Retained Data",
+              "note": "企业SSD是高速缓存与数据层，HDD是大规模持久数据层。"
+            }
+          ],
+          "forward_focus": [
+            "真正的结构性变量是 Memory/Storage Intensity：单位AI工作需要的内存容量、带宽与持久存储是否持续上升。",
+            "未来1-3年的结构化正常化盈利必须保留 HBM/eSSD Mix、量增、技术成本和合同条款，不能机械回到旧周期均值。"
+          ],
+          "state_note": "阶段上区分量价齐升、量增价涨放缓、量增价平、量增价跌。盈利率下降不等于利润额下降，尤其当bit出货、产品Mix与合同覆盖同步改善时。SNDK若 NBM覆盖率提高、eSSD占比上升且现金回报模型稳定，本质上是 Business Model Unlock：它会抬高盈利底部和持续期，而不仅是一次NAND涨价。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "DRAM/HBM公司主用 FY+1/FY+2 Forward PE，EV/EBITDA与P/B辅助；P/B只是周期校验，不与PE价值相加。若 HBM4/HBM4E、新产能或客户认证在 FY+2明显释放，而FY+1仍受供给约束，应提高 FY+2权重。倍数区间由 Memory Intensity、有效bit供给追赶速度、客户认证、合同保护期与增量ROIC共同决定。",
+            "纯NAND/eSSD公司如SNDK，主用 FY+1/FY+2 Forward PE + EV/EBITDA；当NBM覆盖、企业SSD结构和现金回报明显改变商业模式，可把同业倍数从纯周期下沿向中枢/上半部迁移，但不能复制MU的HBM倍数。FY+2/FY+3的盈利上修期权较高时，允许使用更前瞻财年，但必须有合同覆盖、合格产能、客户认证和资本支持。",
+            "HDD公司主用 Forward PE + EV/EBITDA + FCF Yield，P/B只有在账面权益正且有经济意义时低权重使用。存储全行业均禁止峰值季度EPS×4；Forward PE的分母必须是明确财年、结构化预测。若当前股价只有在“峰值价格立刻回落”才合理，而合同、供给与AI Memory Intensity支持更长盈利期，则低Forward PE本身可能就是重估机会。DCF默认禁用。"
+          ],
+          "upper_range_drivers": "倍数区间由 Memory Intensity、有效bit供给追赶速度、客户认证、合同保护期与增量ROIC共同决定。",
+          "revision_optionality": "若 HBM4/HBM4E、新产能或客户认证在 FY+2明显释放，而FY+1仍受供给约束，应提高 FY+2权重。FY+2/FY+3的盈利上修期权较高时，允许使用更前瞻财年，但必须有合同覆盖、合格产能、客户认证和资本支持。",
+          "forbidden": [
+            "不能把 GPU数量、Token、上下文和每GPU HBM 作为四个独立增长乘数",
+            "SNDK 不能套 HBM 增长",
+            "未来1-3年的结构化正常化盈利不能机械回到旧周期均值",
+            "P/B只是周期校验，不与PE价值相加",
+            "纯NAND/eSSD公司不能复制MU的HBM倍数",
+            "存储全行业均禁止峰值季度EPS×4",
+            "Forward PE的分母必须是明确财年、结构化预测",
+            "DCF默认禁用"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "dram-hbm",
+            "name": "DRAM/HBM公司",
+            "members": [
+              "MU"
+            ],
+            "inferred_members": [],
+            "primary": "主用 FY+1/FY+2 Forward PE；若 HBM4/HBM4E、新产能或客户认证在 FY+2明显释放，而FY+1仍受供给约束，应提高 FY+2权重",
+            "secondary": "EV/EBITDA与P/B辅助；P/B只是周期校验，不与PE价值相加",
+            "when": "FY+1仍受供给约束而 FY+2明显释放时，提高 FY+2权重",
+            "note": "对 MU/SK Hynix，核心是 HBM/DRAM 量价、Memory Intensity、认证与合同保护。"
+          },
+          {
+            "id": "nand-essd",
+            "name": "纯NAND/eSSD公司",
+            "members": [
+              "SNDK"
+            ],
+            "inferred_members": [],
+            "primary": "主用 FY+1/FY+2 Forward PE + EV/EBITDA",
+            "secondary": "当NBM覆盖、企业SSD结构和现金回报明显改变商业模式，可把同业倍数从纯周期下沿向中枢/上半部迁移，但不能复制MU的HBM倍数",
+            "when": "FY+2/FY+3的盈利上修期权较高时，允许使用更前瞻财年，但必须有合同覆盖、合格产能、客户认证和资本支持",
+            "note": "对 SNDK，核心是 NAND/eSSD、AI数据/缓存增长、控制器/固件、NBM覆盖和资本负担，不能套 HBM 增长。SNDK若 NBM覆盖率提高、eSSD占比上升且现金回报模型稳定，本质上是 Business Model Unlock：它会抬高盈利底部和持续期，而不仅是一次NAND涨价。"
+          },
+          {
+            "id": "hdd",
+            "name": "HDD公司",
+            "members": [
+              "STX",
+              "WDC"
+            ],
+            "inferred_members": [
+              "STX",
+              "WDC"
+            ],
+            "primary": "主用 Forward PE + EV/EBITDA + FCF Yield",
+            "secondary": "P/B只有在账面权益正且有经济意义时低权重使用",
+            "when": "",
+            "note": "HDD看Nearline EB、每TB实现价格、单盘容量和技术成本。文档未点名 STX/WDC，按 HDD 业务归入。"
+          }
+        ]
+      }
     },
     {
       "id": "optical",
@@ -813,7 +1009,115 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "光通信估值从AI集群需要交换多少数据、在多短时延内完成、以及系统如何连接出发。网络的价值不是“配套件”，而是减少GPU空等、提升集群利用率和作业完成速度。",
+          "paragraphs": [
+            "光通信估值从AI集群需要交换多少数据、在多短时延内完成、以及系统如何连接出发。Scale-up、Scale-out、Scale-across/DCI分别建模：Scale-up看柜内/机架内紧耦合带宽密度和时延；Scale-out看多机架拓扑、拥塞控制和端口；Scale-across看数据中心之间的带宽、距离与任务复制。网络的价值不是“配套件”，而是减少GPU空等、提升集群利用率和作业完成速度。",
+            "800G→1.6T、未来更高速率、OCS、CPO/NPO/ELS、Optical I/O等首先改变每系统端口数、光化率、ASP/端口和器件内容量，而不是直接变成统一TAM。每Gb价格可能下降，但单系统总价值仍可上升。铜/光边界、CPO/LPO、客户自研和架构变化会迁移利润池，必须按连接段拆分。",
+            "LITE/COHR的核心是InP/EML/CW光源、器件/模块、外售/内用、良率、客户认证和合格产能。AAOI/FN更接近制造/组装与客户认证；CRDO/MRVL连接芯片看SerDes/AEC/DSP/交换的内容量与采用；ANET看有效GPU利用率、端口速率、EOS软件和网络份额。不同价值链不能统一套“光通信倍数”。",
+            "光通信最典型的前瞻状态是 Capacity Unlock：需求与订单已经存在，但合格InP、EML、封装、测试或客户认证限制当前收入；未来1-4个季度产能翻倍或良率上升，会让Revenue、Utilization、Gross Margin和EPS同步加速。此时用当前受限收入/利润率估值会系统性偏低，应把FY+2作为核心分母。"
+          ],
+          "formulas": [
+            {
+              "formula": "T_AI ≈ max(T_compute, T_memory, T_network)",
+              "note": "仅作为理想重叠近似"
+            },
+            {
+              "formula": "Optical Content/XPU ≈ Ports/XPU × Opticalization Ratio × ASP/Port",
+              "note": "800G→1.6T、未来更高速率、OCS、CPO/NPO/ELS、Optical I/O等首先改变每系统端口数、光化率、ASP/端口和器件内容量，而不是直接变成统一TAM。"
+            },
+            {
+              "formula": "Optical Revenue ≈ min(Qualified Demand, Qualified Optical Capacity) × Product ASP + New Architecture Attach",
+              "note": "合格InP、EML、封装、测试或客户认证限制当前收入时，收入由合格光学产能而非需求决定。"
+            }
+          ],
+          "forward_focus": [
+            "800G→1.6T、未来更高速率、OCS、CPO/NPO/ELS、Optical I/O等首先改变每系统端口数、光化率、ASP/端口和器件内容量，而不是直接变成统一TAM；每Gb价格可能下降，但单系统总价值仍可上升。",
+            "铜/光边界、CPO/LPO、客户自研和架构变化会迁移利润池，必须按连接段拆分。",
+            "未来1-4个季度产能翻倍或良率上升，会让Revenue、Utilization、Gross Margin和EPS同步加速。"
+          ],
+          "state_note": "光通信最典型的前瞻状态是 Capacity Unlock：需求与订单已经存在，但合格InP、EML、封装、测试或客户认证限制当前收入；未来1-4个季度产能翻倍或良率上升，会让Revenue、Utilization、Gross Margin和EPS同步加速。此时用当前受限收入/利润率估值会系统性偏低，应把FY+2作为核心分母。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "垂直一体化器件/激光器厂在“产能受限、下一年明确扩产”阶段，默认权重可为：FY+2 Forward PE约50%，FY+2 EV/Sales约30%，EV/EBITDA约20%。PE反映盈利兑现，EV/Sales捕捉利润率尚未完全爬坡时的收入释放，EV/EBITDA用于资本结构和折旧交叉检查。",
+            "如果利润率尚未稳定但合格订单/需求非常强，FY+2 EV/Sales可升为主锚，权重45%-60%；一旦利润率和EPS可审计，PE权重提高。倍数上沿由 Optical Content/XPU、合格产能稀缺期、认证持续性、跨代产品份额和增量ROIC决定。新产线/六英寸InP等重置成本只检查产能经济性，不作为公司价值保底。",
+            "Earnings Revision Optionality对光通信尤为重要：若管理层明确指引下季/下年产能提高、订单排期超出当前收入、1.6T/OCS/CPO等新产品占比上升，而卖方共识尚未完全重置，可提高FY+2权重或倍数取上半部。COHR/LITE这类公司不能只因当期Forward PE较高就判贵；必须同时展示FY+2 PE和FY+2 EV/Sales。DCF默认禁用。"
+          ],
+          "upper_range_drivers": "倍数上沿由 Optical Content/XPU、合格产能稀缺期、认证持续性、跨代产品份额和增量ROIC决定。",
+          "revision_optionality": "Earnings Revision Optionality对光通信尤为重要：若管理层明确指引下季/下年产能提高、订单排期超出当前收入、1.6T/OCS/CPO等新产品占比上升，而卖方共识尚未完全重置，可提高FY+2权重或倍数取上半部。",
+          "forbidden": [
+            "不同价值链不能统一套“光通信倍数”",
+            "新产线/六英寸InP等重置成本只检查产能经济性，不作为公司价值保底",
+            "COHR/LITE这类公司不能只因当期Forward PE较高就判贵；必须同时展示FY+2 PE和FY+2 EV/Sales",
+            "DCF默认禁用"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "vertically-integrated-laser",
+            "name": "垂直一体化器件/激光器厂",
+            "members": [
+              "LITE",
+              "COHR",
+              "GLW"
+            ],
+            "inferred_members": [
+              "GLW"
+            ],
+            "primary": "在“产能受限、下一年明确扩产”阶段，默认权重可为：FY+2 Forward PE约50%，FY+2 EV/Sales约30%，EV/EBITDA约20%",
+            "secondary": "如果利润率尚未稳定但合格订单/需求非常强，FY+2 EV/Sales可升为主锚，权重45%-60%；一旦利润率和EPS可审计，PE权重提高；EV/EBITDA用于资本结构和折旧交叉检查",
+            "when": "产能受限、下一年明确扩产阶段（Capacity Unlock）；利润率尚未稳定但合格订单/需求非常强时 EV/Sales 升为主锚，利润率和EPS可审计后 PE 权重提高",
+            "note": "LITE/COHR的核心是InP/EML/CW光源、器件/模块、外售/内用、良率、客户认证和合格产能；COHR/LITE这类公司不能只因当期Forward PE较高就判贵，必须同时展示FY+2 PE和FY+2 EV/Sales；新产线/六英寸InP等重置成本只检查产能经济性，不作为公司价值保底。GLW 未在文档中出现，按垂直一体化的光纤/光缆与连接器件厂就近归入（无激光器业务）。"
+          },
+          {
+            "id": "manufacturing-assembly",
+            "name": "制造/组装",
+            "members": [
+              "AAOI",
+              "FN"
+            ],
+            "inferred_members": [],
+            "primary": "文档未对制造/组装型单独给出权重；按行业规则以 FY+2 作为核心分母，并同时展示 FY+2 PE 和 FY+2 EV/Sales",
+            "secondary": "",
+            "when": "Capacity Unlock：需求与订单已经存在，但合格产能或客户认证限制当前收入",
+            "note": "AAOI/FN更接近制造/组装与客户认证；不同价值链不能统一套“光通信倍数”。"
+          },
+          {
+            "id": "connectivity-chip",
+            "name": "连接芯片",
+            "members": [
+              "CRDO",
+              "MRVL",
+              "AVGO"
+            ],
+            "inferred_members": [
+              "AVGO"
+            ],
+            "primary": "文档未在光通信章节单独给出倍数；连接芯片看SerDes/AEC/DSP/交换的内容量与采用，必须按连接段拆分。AI 芯片章节对连接/IP型公司的规则可参照：利润率尚未稳定时可用 FY+2 EV/Sales 作为主/次锚，一旦稳定盈利转为 Forward PE / EV/EBIT",
+            "secondary": "",
+            "when": "利润率尚未稳定时 FY+2 EV/Sales；稳定盈利后 Forward PE / EV/EBIT（参照 AI 芯片章节连接/IP型规则）",
+            "note": "CRDO/MRVL连接芯片看SerDes/AEC/DSP/交换的内容量与采用；AVGO 未在光通信章节出现，按连接芯片（SerDes/DSP/交换）就近归入。"
+          },
+          {
+            "id": "network-systems",
+            "name": "网络系统",
+            "members": [
+              "ANET",
+              "CIEN"
+            ],
+            "inferred_members": [
+              "CIEN"
+            ],
+            "primary": "文档未对网络系统单独给出倍数；ANET看有效GPU利用率、端口速率、EOS软件和网络份额",
+            "secondary": "",
+            "when": "",
+            "note": "ANET看有效GPU利用率、端口速率、EOS软件和网络份额。CIEN 未在文档中出现，按 Scale-across/DCI 网络系统就近归入。"
+          }
+        ]
+      }
     },
     {
       "id": "power",
@@ -1105,7 +1409,109 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "电力估值从有效AI任务对应的IT能耗与设施能耗出发，同时考虑芯片/软件效率进步。价值核心不是“全美缺电”口号，而是具体区域的 Power Gap、可靠性和提前可用时间。",
+          "paragraphs": [
+            "电力估值从有效AI任务对应的IT能耗与设施能耗出发，同时考虑芯片/软件效率进步。Token、Reasoning和Agent增加工作量，性能/W、量化、调度和系统优化降低单位任务能耗。总设施负荷决定发电、并网、变压器与备用容量，单柜功率密度和热流密度决定VRT/ETN等供配电、液冷和控制系统的内容量。",
+            "价值核心不是“全美缺电”口号，而是具体区域的 Power Gap、可靠性和提前可用时间。现场电源能缩短等待，但燃料、冗余、维护、排放、部署和并网安排改变全生命周期成本。GEV价值来自可交付设备、价格、服务寿命；VST/CEG来自电力市场、PPA与资产现金流；VRT/ETN来自Online MW×Content/MW×份额；BE来自设备/项目交付的实际经济性。",
+            "BE等现场供电公司最重要的前瞻变量是 Demand MW 与 Capacity MW 的差。如果客户合同化需求显著超过当前工厂/部署能力，未来扩产本身就是可估值的Capacity Unlock；收入上限由工厂产能、供应链和安装速度决定，而不是需求。MSA上限、战略合作与融资框架不能直接当backlog，但已合同化并处在扩产路径上的MW应进入FY+2/FY+3收入情景。",
+            "VRT/ETN则同时受总MW和Rack Density驱动。即使数据中心GW增速放缓，单柜从几十kW向100-200kW甚至更高推进，也可能提高每MW的供配电和液冷价值。IPP/存量电厂与设备/现场供电必须分开估值。"
+          ],
+          "formulas": [
+            {
+              "formula": "AI Energy Demand = Effective AI Workload × Joules/Task",
+              "note": "Token、Reasoning和Agent增加工作量，性能/W、量化、调度和系统优化降低单位任务能耗。"
+            },
+            {
+              "formula": "Facility Power = IT Power × PUE",
+              "note": ""
+            },
+            {
+              "formula": "AI Power Gap = Required Facility Power - Grid Deliverable Power",
+              "note": "价值核心是具体区域的 Power Gap、可靠性和提前可用时间。"
+            },
+            {
+              "formula": "BE Revenue ≈ min(Qualified Demand MW, Factory Capacity MW, Deployment Capacity MW) × Realized $/MW + Service/Project",
+              "note": "收入上限由工厂产能、供应链和安装速度决定，而不是需求。"
+            }
+          ],
+          "forward_focus": [
+            "价值核心不是“全美缺电”口号，而是具体区域的 Power Gap、可靠性和提前可用时间。",
+            "BE等现场供电公司最重要的前瞻变量是 Demand MW 与 Capacity MW 的差。",
+            "VRT/ETN则同时受总MW和Rack Density驱动。即使数据中心GW增速放缓，单柜从几十kW向100-200kW甚至更高推进，也可能提高每MW的供配电和液冷价值。"
+          ],
+          "state_note": "如果客户合同化需求显著超过当前工厂/部署能力，未来扩产本身就是可估值的Capacity Unlock；收入上限由工厂产能、供应链和安装速度决定，而不是需求。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "BE/现场供电在高速扩张期以FY+2 EV/Sales为主，Forward PE和EV/EBITDA/EV-MW为辅。默认可按 EV/Sales 45%-55%、Forward PE 25%-35%、EV/EBITDA/EV-MW 15%-25%起步，再根据利润率稳定度调整。若未来2-3年收入增长由已验证Power Gap与扩产共同驱动，而增量毛利/ROIC可维持，EV/Sales可以落在高增长基础设施/设备公司区间上半部。",
+            "GEV/VRT/ETN主用Forward PE/EV/EBITDA，EV/Sales辅助；关键不是订单总额，而是可交付硬订单、服务Attach、产能和内容量。VST/CEG/TLN/NRG主用EV/EBITDA + FCF Yield，Forward PE校验，按地区电价、容量价、套保、PPA、资产寿命和检修计划建模。",
+            "Earnings Revision Optionality在电力设备和BE上主要来自：新增GW工厂产能、安装周期缩短、合同化MW增长快于市场共识、$/MW和服务收入高于预期、利润率随规模改善。如果扩产依赖高成本融资、低价增发或利润率显著下降，应降低EV/Sales倍数。DCF默认禁用，不能用十年后成熟利润率否定未来2-3年的Power Gap重估。"
+          ],
+          "upper_range_drivers": "若未来2-3年收入增长由已验证Power Gap与扩产共同驱动，而增量毛利/ROIC可维持，EV/Sales可以落在高增长基础设施/设备公司区间上半部；对设备公司，关键不是订单总额，而是可交付硬订单、服务Attach、产能和内容量。",
+          "revision_optionality": "Earnings Revision Optionality在电力设备和BE上主要来自：新增GW工厂产能、安装周期缩短、合同化MW增长快于市场共识、$/MW和服务收入高于预期、利润率随规模改善。如果扩产依赖高成本融资、低价增发或利润率显著下降，应降低EV/Sales倍数。",
+          "forbidden": [
+            "MSA上限、战略合作与融资框架不能直接当backlog",
+            "IPP/存量电厂与设备/现场供电必须分开估值",
+            "DCF默认禁用，不能用十年后成熟利润率否定未来2-3年的Power Gap重估"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "onsite-power",
+            "name": "BE/现场供电",
+            "members": [
+              "BE",
+              "OKLO"
+            ],
+            "inferred_members": [
+              "OKLO"
+            ],
+            "primary": "高速扩张期以FY+2 EV/Sales为主；默认可按 EV/Sales 45%-55%、Forward PE 25%-35%、EV/EBITDA/EV-MW 15%-25%起步，再根据利润率稳定度调整",
+            "secondary": "Forward PE和EV/EBITDA/EV-MW为辅",
+            "when": "高速扩张期；若未来2-3年收入增长由已验证Power Gap与扩产共同驱动，而增量毛利/ROIC可维持，EV/Sales可以落在高增长基础设施/设备公司区间上半部；如果扩产依赖高成本融资、低价增发或利润率显著下降，应降低EV/Sales倍数",
+            "note": "BE来自设备/项目交付的实际经济性；最重要的前瞻变量是 Demand MW 与 Capacity MW 的差；MSA上限、战略合作与融资框架不能直接当backlog，但已合同化并处在扩产路径上的MW应进入FY+2/FY+3收入情景。OKLO 未在文档中出现，按面向数据中心的现场供电就近归入。"
+          },
+          {
+            "id": "power-equipment",
+            "name": "电力设备（GEV/VRT/ETN）",
+            "members": [
+              "GEV",
+              "VRT",
+              "ETN",
+              "CAT",
+              "PWR",
+              "BWXT"
+            ],
+            "inferred_members": [
+              "CAT",
+              "PWR",
+              "BWXT"
+            ],
+            "primary": "主用Forward PE/EV/EBITDA",
+            "secondary": "EV/Sales辅助",
+            "when": "关键不是订单总额，而是可交付硬订单、服务Attach、产能和内容量",
+            "note": "GEV价值来自可交付设备、价格、服务寿命；VRT/ETN来自Online MW×Content/MW×份额，同时受总MW和Rack Density驱动：即使数据中心GW增速放缓，单柜从几十kW向100-200kW甚至更高推进，也可能提高每MW的供配电和液冷价值。CAT/PWR/BWXT 未在文档中出现，按发电设备、电网/并网建设与核电设备就近归入。"
+          },
+          {
+            "id": "ipp",
+            "name": "IPP/存量电厂",
+            "members": [
+              "VST",
+              "CEG",
+              "TLN",
+              "NRG"
+            ],
+            "inferred_members": [],
+            "primary": "主用EV/EBITDA + FCF Yield",
+            "secondary": "Forward PE校验",
+            "when": "按地区电价、容量价、套保、PPA、资产寿命和检修计划建模",
+            "note": "VST/CEG价值来自电力市场、PPA与资产现金流；IPP/存量电厂与设备/现场供电必须分开估值。"
+          }
+        ]
+      }
     },
     {
       "id": "neocloud",
@@ -1346,7 +1752,70 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "新云估值从客户愿意持续购买的有效AI产出出发，先分训练、批量推理和低时延在线推理，再估可计费GPU-hour或Token。",
+          "paragraphs": [
+            "新云估值从客户愿意持续购买的有效AI产出出发，先分训练、批量推理和低时延在线推理，再估可计费GPU-hour或Token。Agent、长思考和上下文会扩大负载，但新卡、量化、缓存和调度提高每瓦产出，也会压旧卡租金，因此必须按GPU代际/项目批次建模。",
+            "逐项目记录已获电力、已通电、GPU已部署、可售、已出租、签约未建；统一IT MW与设施MW。RPO/backlog逐笔核期限、确认节奏、交付前提、取消/重议价、最低用量、客户信用和预付款。Take-or-pay提高收入可见性，但不保证交付前收入或利润。",
+            "新云的正向飞轮是：客户长约→融资/预付款→电力与GPU交付→Online MW→Utilization→Revenue/EBITDA/FCF→再融资扩张。反向飞轮是：交付延迟、GPU-hour价格下降、利用率不足→折旧/利息先发生→融资成本上升→扩张受限。真正创造股东价值的条件是边际项目回报高于资本成本且新增股数没有吞掉每股价值。",
+            "Capacity Unlock在新云上表现为“已签约/有需求但未通电/未交付”的容量逐季转成Online和Billable。此时FY+2收入通常比当前收入更能代表规模，但必须扣除新项目资本需求、债务与稀释。"
+          ],
+          "formulas": [
+            {
+              "formula": "Billable GPU-hours = Weighted Online GPUs × Service Hours × Billable Utilization",
+              "note": "新卡、量化、缓存和调度提高每瓦产出，也会压旧卡租金，因此必须按GPU代际/项目批次建模。"
+            },
+            {
+              "formula": "Revenue ≈ Billable GPU-hours × Realized Price/GPU-hour + Separately Charged Services",
+              "note": ""
+            }
+          ],
+          "forward_focus": [
+            "逐项目记录已获电力、已通电、GPU已部署、可售、已出租、签约未建；统一IT MW与设施MW。",
+            "RPO/backlog逐笔核期限、确认节奏、交付前提、取消/重议价、最低用量、客户信用和预付款。Take-or-pay提高收入可见性，但不保证交付前收入或利润。",
+            "真正创造股东价值的条件是边际项目回报高于资本成本且新增股数没有吞掉每股价值。"
+          ],
+          "state_note": "Capacity Unlock在新云上表现为“已签约/有需求但未通电/未交付”的容量逐季转成Online和Billable。此时FY+2收入通常比当前收入更能代表规模，但必须扣除新项目资本需求、债务与稀释。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "高增长未盈利阶段主用FY+1/FY+2 EV/Sales，EV/contracted revenue和EV/online MW作辅助；EBITDA稳定但净利未稳定时，用EV/Sales + EV/EBITDA；净利稳定转正后增加Forward PE。EV/Sales必须统一机型、服务范围、合同期限、利用率和拥有/租赁模式，不能只比名义收入增长。",
+            "倍数上沿由可计费利用率、GPU-hour净实现价格、合同久期、客户信用、Online MW释放速度和新增项目ROIC决定；需求强但新增项目回报不足，不能通过更高EV/Sales掩盖。Earnings Revision Optionality来自提前通电、GPU交付快于计划、利用率高于共识、客户预付款降低融资缺口。",
+            "未签约容量不是零价值，但只能按未来签约概率、CapEx与利用率情景估期权；不能直接套已签约单位价值。会计折旧年限变化不直接创造价值。DCF默认禁用，RPO不得直接资本化为利润。"
+          ],
+          "upper_range_drivers": "倍数上沿由可计费利用率、GPU-hour净实现价格、合同久期、客户信用、Online MW释放速度和新增项目ROIC决定；需求强但新增项目回报不足，不能通过更高EV/Sales掩盖。",
+          "revision_optionality": "Earnings Revision Optionality来自提前通电、GPU交付快于计划、利用率高于共识、客户预付款降低融资缺口。",
+          "forbidden": [
+            "EV/Sales必须统一机型、服务范围、合同期限、利用率和拥有/租赁模式，不能只比名义收入增长",
+            "需求强但新增项目回报不足，不能通过更高EV/Sales掩盖",
+            "未签约容量只能按未来签约概率、CapEx与利用率情景估期权；不能直接套已签约单位价值",
+            "会计折旧年限变化不直接创造价值",
+            "DCF默认禁用，RPO不得直接资本化为利润"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "neocloud-by-stage",
+            "name": "新云（按盈利阶段）",
+            "members": [
+              "CRWV",
+              "NBIS",
+              "IREN"
+            ],
+            "inferred_members": [
+              "CRWV",
+              "NBIS",
+              "IREN"
+            ],
+            "primary": "高增长未盈利阶段主用FY+1/FY+2 EV/Sales；EBITDA稳定但净利未稳定时，用EV/Sales + EV/EBITDA；净利稳定转正后增加Forward PE",
+            "secondary": "EV/contracted revenue和EV/online MW作辅助",
+            "when": "三个阶段：高增长未盈利阶段 → EBITDA稳定但净利未稳定 → 净利稳定转正后",
+            "note": "EV/Sales必须统一机型、服务范围、合同期限、利用率和拥有/租赁模式，不能只比名义收入增长；FY+2收入通常比当前收入更能代表规模，但必须扣除新项目资本需求、债务与稀释；未签约容量不是零价值，但只能按未来签约概率、CapEx与利用率情景估期权。文档未点名任何新云公司，CRWV/NBIS/IREN 按行业唯一子类型归入。"
+          }
+        ]
+      }
     },
     {
       "id": "equipment",
@@ -1618,7 +2087,129 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "设备估值沿“AI计算/内存需求→合格芯片数量与面积→晶圆投入/工艺复杂度→客户WFE→设备订单/验收→收入与服务”展开。设备股的前瞻不是GPU收入增长，而是晶圆数量、工艺步骤、良率要求和客户采用的共同变化。",
+          "paragraphs": [
+            "设备估值沿“AI计算/内存需求→合格芯片数量与面积→晶圆投入/工艺复杂度→客户WFE→设备订单/验收→收入与服务”展开。设备股的前瞻不是GPU收入增长，而是晶圆数量、工艺步骤、良率要求和客户采用的共同变化。",
+            "KLAC看Process Control Intensity：先进逻辑、HBM堆叠、Chiplet、Hybrid Bonding等提高失效成本，可能增加关键步骤覆盖、采样率和高性能检测/量测价值；LRCX看Etch/Deposition Steps；AMAT看Materials Engineering Intensity；ASML看Lithography Intensity与系统生产率；TER看Test Seconds/Chip和并行效率。不同公司不能共用“AI CapEx固定抽成”。",
+            "订单→出货→客户验收→收入存在时滞。新增厂房空间、电力、工艺转换和产能利用率决定设备订单何时兑现。若WFE预测已经包含工艺强度提高，不再乘同一Complexity弹性。服务收入按装机基座×渗透率×单机收入建模，维护、升级、备件和利用率具有不同周期性。",
+            "未来1-3年若 WFE、HBM/先进封装、Process Control Intensity 和服务基座同时上行，即使当前财年盈利尚未完全体现，FY+2往往更能反映结构性盈利。供给受限还可能推迟收入并延长backlog兑现期，而不是自动减少价值。"
+          ],
+          "formulas": [
+            {
+              "formula": "Equipment Revenue ≈ Relevant WFE × Complexity Intensity × Company Share + Service",
+              "note": "若WFE预测已经包含工艺强度提高，不再乘同一Complexity弹性；服务收入按装机基座×渗透率×单机收入建模。"
+            },
+            {
+              "formula": "KLAC Tool Demand ≈ Wafer Starts × Applicable Steps × Sampling Intensity ÷ Tool Productivity",
+              "note": "KLAC看Process Control Intensity：先进逻辑、HBM堆叠、Chiplet、Hybrid Bonding等提高失效成本，可能增加关键步骤覆盖、采样率和高性能检测/量测价值。"
+            }
+          ],
+          "forward_focus": [
+            "设备股的前瞻不是GPU收入增长，而是晶圆数量、工艺步骤、良率要求和客户采用的共同变化。",
+            "订单→出货→客户验收→收入存在时滞。新增厂房空间、电力、工艺转换和产能利用率决定设备订单何时兑现。",
+            "服务收入按装机基座×渗透率×单机收入建模，维护、升级、备件和利用率具有不同周期性。"
+          ],
+          "state_note": "未来1-3年若 WFE、HBM/先进封装、Process Control Intensity 和服务基座同时上行，即使当前财年盈利尚未完全体现，FY+2往往更能反映结构性盈利。供给受限还可能推迟收入并延长backlog兑现期，而不是自动减少价值。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "主用FY+1/FY+2 Forward PE，EV/EBIT辅助；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重。ASML/KLAC等高服务占比、高工艺壁垒公司可落在同角色倍数区间上半部，但必须由持续份额、ASP、服务收入和资本回报验证，不能仅按毛利率排序。",
+            "如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主。周期位置只能用于调整可比区间，不使用“WFE高点固定低PE、低点固定高PE”的机械函数。",
+            "当前股价的Forward PE应同时展示FY+1和FY+2，并反算市场隐含的WFE、份额、订单交付与服务利润。若共识未反映订单/验收上修，FY+2 PE往往比NTM更有信息量。DCF默认禁用。"
+          ],
+          "upper_range_drivers": "ASML/KLAC等高服务占比、高工艺壁垒公司可落在同角色倍数区间上半部，但必须由持续份额、ASP、服务收入和资本回报验证，不能仅按毛利率排序。",
+          "revision_optionality": "如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主。若共识未反映订单/验收上修，FY+2 PE往往比NTM更有信息量。",
+          "forbidden": [
+            "不同公司不能共用“AI CapEx固定抽成”",
+            "若WFE预测已经包含工艺强度提高，不再乘同一Complexity弹性",
+            "同角色倍数区间上半部必须由持续份额、ASP、服务收入和资本回报验证，不能仅按毛利率排序",
+            "不使用“WFE高点固定低PE、低点固定高PE”的机械函数",
+            "DCF默认禁用"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "high-service-high-barrier",
+            "name": "高服务占比、高工艺壁垒公司（ASML/KLAC等）",
+            "members": [
+              "ASML",
+              "KLAC"
+            ],
+            "inferred_members": [],
+            "primary": "主用FY+1/FY+2 Forward PE；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重",
+            "secondary": "EV/EBIT辅助；如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主",
+            "when": "可落在同角色倍数区间上半部，但必须由持续份额、ASP、服务收入和资本回报验证，不能仅按毛利率排序；订单强、WFE加速或复杂度提升尚未完全进入利润时提高FY+2权重；盈利成熟后以PE/EV/EBIT为主；周期位置只能用于调整可比区间",
+            "note": "ASML看Lithography Intensity与系统生产率；KLAC看Process Control Intensity（KLAC Tool Demand ≈ Wafer Starts × Applicable Steps × Sampling Intensity ÷ Tool Productivity）。"
+          },
+          {
+            "id": "etch-deposition-materials",
+            "name": "Etch/Deposition 与 Materials Engineering 设备公司（LRCX/AMAT）",
+            "members": [
+              "LRCX",
+              "AMAT"
+            ],
+            "inferred_members": [],
+            "primary": "主用FY+1/FY+2 Forward PE；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重",
+            "secondary": "EV/EBIT辅助；如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主",
+            "when": "订单强、WFE加速或复杂度提升尚未完全进入利润时提高FY+2权重；盈利成熟后以PE/EV/EBIT为主；周期位置只能用于调整可比区间",
+            "note": "LRCX看Etch/Deposition Steps；AMAT看Materials Engineering Intensity；不同公司不能共用“AI CapEx固定抽成”。文档以角色描述这两家公司，未单独定义子类型倍数，适用行业通用锚。"
+          },
+          {
+            "id": "test",
+            "name": "测试设备公司（TER）",
+            "members": [
+              "TER",
+              "FORM"
+            ],
+            "inferred_members": [
+              "FORM"
+            ],
+            "primary": "主用FY+1/FY+2 Forward PE；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重",
+            "secondary": "EV/EBIT辅助；如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主",
+            "when": "订单强、WFE加速或复杂度提升尚未完全进入利润时提高FY+2权重；盈利成熟后以PE/EV/EBIT为主；周期位置只能用于调整可比区间",
+            "note": "TER看Test Seconds/Chip和并行效率。FORM 未在文档中出现，按测试环节（探针卡）就近归入，适用行业通用锚。"
+          },
+          {
+            "id": "process-control",
+            "name": "过程控制/量测检测设备公司",
+            "members": [
+              "ONTO",
+              "CAMT",
+              "NVMI"
+            ],
+            "inferred_members": [
+              "ONTO",
+              "CAMT",
+              "NVMI"
+            ],
+            "primary": "主用FY+1/FY+2 Forward PE；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重",
+            "secondary": "EV/EBIT辅助；如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主",
+            "when": "订单强、WFE加速或复杂度提升尚未完全进入利润时提高FY+2权重；盈利成熟后以PE/EV/EBIT为主；周期位置只能用于调整可比区间",
+            "note": "文档以 KLAC 描述 Process Control Intensity：先进逻辑、HBM堆叠、Chiplet、Hybrid Bonding等提高失效成本，可能增加关键步骤覆盖、采样率和高性能检测/量测价值。ONTO/CAMT/NVMI 未在文档中出现，按过程控制角色就近归入；“同角色倍数区间上半部”仅由文档授予 ASML/KLAC 等高服务占比、高工艺壁垒公司。"
+          },
+          {
+            "id": "materials-components",
+            "name": "材料与零部件供应商",
+            "members": [
+              "ENTG",
+              "MKSI",
+              "UCTT"
+            ],
+            "inferred_members": [
+              "ENTG",
+              "MKSI",
+              "UCTT"
+            ],
+            "primary": "主用FY+1/FY+2 Forward PE；在订单强、WFE加速或复杂度提升尚未完全进入利润时，提高FY+2权重",
+            "secondary": "EV/EBIT辅助；如果公司利润率受短期产能/验收限制但收入路径清晰，可低权重使用EV/Sales作为Earnings Revision Optionality的辅助锚；一旦盈利成熟，应以PE/EV/EBIT为主",
+            "when": "订单强、WFE加速或复杂度提升尚未完全进入利润时提高FY+2权重；盈利成熟后以PE/EV/EBIT为主；周期位置只能用于调整可比区间",
+            "note": "文档未描述材料与零部件角色；ENTG/MKSI/UCTT 按行业通用锚处理（主用FY+1/FY+2 Forward PE，EV/EBIT辅助），服务/耗材收入按装机基座×渗透率×单机收入建模。"
+          }
+        ]
+      }
     },
     {
       "id": "server-oem",
@@ -1863,7 +2454,83 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "AI整机需求由目标任务量、模型/上下文、服务时延和系统有效产出决定，再形成集群数、每集群机柜数和设备配置。OEM/ODM真正创造的价值是系统集成、部署、液冷/电力、网络/存储Attach、软件/服务和营运资本效率。",
+          "paragraphs": [
+            "AI整机需求由目标任务量、模型/上下文、服务时延和系统有效产出决定，再形成集群数、每集群机柜数和设备配置。平台升级可能表现为更多机柜，也可能是更高单柜价值与更复杂的网络、存储、液冷、电力和生命周期服务。",
+            "GPU/HBM等高价值穿透物料会显著放大收入，但OEM/ODM真正创造的价值是系统集成、部署、液冷/电力、网络/存储Attach、软件/服务和营运资本效率。因此不能因为AI服务器收入高增就给芯片平台EV/Sales。自采料总额模式与客户供料模式要先核合同责任；总额/净额变化可能改变收入和毛利率展示而不改变经济利润。",
+            "DELL/HPE按公开分部利润起步。DELL尤其要看ISG营业利润、AI服务器订单/backlog、Storage/Networking Attach和服务收入；HPE看AI集群赢单、网络/存储/软件服务交叉销售。缺少AI与非AI精确分部利润时，必须用ISG/披露分部总利润约束，不能虚构SOTP。",
+            "前瞻时重点看：AI backlog能否转收入、ISG/相关分部利润率是否随规模改善、Storage/Network Attach是否上升、组件账期/客户预付是否改善现金周转。如果FY+1指引刚被大幅上调、订单/backlog仍显著高于收入，而且FY+2卖方共识尚未完全重置，FY+2 EPS可作为核心前瞻分母。"
+          ],
+          "formulas": [
+            {
+              "formula": "AI Infra Revenue ≈ Clusters × Racks/Cluster × Win Rate × Compute ASP × [1 + Network + Storage/Data + Software/Services Attach]",
+              "note": "平台升级可能表现为更多机柜，也可能是更高单柜价值与更复杂的网络、存储、液冷、电力和生命周期服务。"
+            },
+            {
+              "formula": "Economic Profit ≈ Racks × Value-Added Revenue/Rack × Value-Added Margin",
+              "note": "GPU/HBM等高价值穿透物料会显著放大收入，但OEM/ODM真正创造的价值是系统集成、部署、液冷/电力、网络/存储Attach、软件/服务和营运资本效率。"
+            }
+          ],
+          "forward_focus": [
+            "AI backlog能否转收入",
+            "ISG/相关分部利润率是否随规模改善",
+            "Storage/Network Attach是否上升",
+            "组件账期/客户预付是否改善现金周转"
+          ],
+          "state_note": "如果FY+1指引刚被大幅上调、订单/backlog仍显著高于收入，而且FY+2卖方共识尚未完全重置，FY+2 EPS可作为核心前瞻分母。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "品牌OEM主用Forward PE + EV/EBIT，FCF Yield辅助，EV/Sales仅低权重。FY+2 EPS的合理倍数由AI订单持续期、单柜Value-Added Margin、Storage/Network/Service Attach、客户留存和现金周转决定，而不是AI服务器总收入。台系ODM/EMS应按制造复杂度、客户集中和营运资本单独取样，不能直接套品牌OEM倍数。",
+            "Earnings Revision Optionality是DELL/HPE的重要上沿变量：订单/backlog远高于当年收入、管理层连续上调AI服务器指引、分部营业利润率快于收入改善、FY+2共识滞后时，可以提高FY+2权重或取同业PE区间上半部。若未来增长主要来自GPU ASP上涨而Value-Added Margin不提升，倍数不应同步提高。",
+            "Forward PE与EV/EBIT结果冲突时，以可留存营业利润、股数/回购和资本周转解释差异，不机械平均。DCF默认禁用。"
+          ],
+          "upper_range_drivers": "FY+2 EPS的合理倍数由AI订单持续期、单柜Value-Added Margin、Storage/Network/Service Attach、客户留存和现金周转决定，而不是AI服务器总收入。",
+          "revision_optionality": "Earnings Revision Optionality是DELL/HPE的重要上沿变量：订单/backlog远高于当年收入、管理层连续上调AI服务器指引、分部营业利润率快于收入改善、FY+2共识滞后时，可以提高FY+2权重或取同业PE区间上半部。若未来增长主要来自GPU ASP上涨而Value-Added Margin不提升，倍数不应同步提高。",
+          "forbidden": [
+            "不能因为AI服务器收入高增就给芯片平台EV/Sales",
+            "缺少AI与非AI精确分部利润时，必须用ISG/披露分部总利润约束，不能虚构SOTP",
+            "台系ODM/EMS应按制造复杂度、客户集中和营运资本单独取样，不能直接套品牌OEM倍数",
+            "若未来增长主要来自GPU ASP上涨而Value-Added Margin不提升，倍数不应同步提高",
+            "Forward PE与EV/EBIT结果冲突时，以可留存营业利润、股数/回购和资本周转解释差异，不机械平均",
+            "DCF默认禁用"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "brand-oem",
+            "name": "品牌OEM",
+            "members": [
+              "DELL",
+              "HPE"
+            ],
+            "inferred_members": [],
+            "primary": "主用Forward PE + EV/EBIT",
+            "secondary": "FCF Yield辅助，EV/Sales仅低权重",
+            "when": "如果FY+1指引刚被大幅上调、订单/backlog仍显著高于收入，而且FY+2卖方共识尚未完全重置，FY+2 EPS可作为核心前瞻分母",
+            "note": "DELL/HPE按公开分部利润起步。DELL尤其要看ISG营业利润、AI服务器订单/backlog、Storage/Networking Attach和服务收入；HPE看AI集群赢单、网络/存储/软件服务交叉销售。缺少AI与非AI精确分部利润时，必须用ISG/披露分部总利润约束，不能虚构SOTP。Forward PE与EV/EBIT结果冲突时，以可留存营业利润、股数/回购和资本周转解释差异，不机械平均。"
+          },
+          {
+            "id": "odm-ems",
+            "name": "ODM/EMS",
+            "members": [
+              "SMCI",
+              "CLS"
+            ],
+            "inferred_members": [
+              "SMCI",
+              "CLS"
+            ],
+            "primary": "应按制造复杂度、客户集中和营运资本单独取样，不能直接套品牌OEM倍数",
+            "secondary": "",
+            "when": "",
+            "note": "文档原文针对台系ODM/EMS；SMCI/CLS 未在文档中出现，按 ODM/EMS 角色就近归入。自采料总额模式与客户供料模式要先核合同责任；总额/净额变化可能改变收入和毛利率展示而不改变经济利润。"
+          }
+        ]
+      }
     },
     {
       "id": "hyperscaler",
@@ -2117,7 +2784,179 @@
           "latest": "",
           "latest_as_of": ""
         }
-      ]
+      ],
+      "valuation": {
+        "logic": {
+          "summary": "云厂与AI平台估值区分成熟主业现金流与AI新增投入。AI平台从有效任务的付费采用出发：训练、推理卡时或可计费Token按实际计价单位建模。",
+          "paragraphs": [
+            "云厂与AI平台估值区分成熟主业现金流与AI新增投入。AI平台从有效任务的付费采用出发：训练、推理卡时或可计费Token按实际计价单位建模；Agent调用、Reasoning Token与上下文只有经过任务成功率、客户节约成本和可收价格，才形成经济需求。广告和软件则看留存、提价、转化提升及AI替代旧收入后的净利润贡献。",
+            "自研ASIC、量化、缓存和调度提高每瓦/每美元产出，收益可能留在公司毛利、通过降价让给客户、或由更大使用量转为收入，不能三者同时计入。Commercial RPO、云backlog和长期履约义务必须按各公司披露边界处理，不假设全部来自AI。容量上线后还有利用率和收费爬坡，CapEx绝对值本身不是价值。",
+            "MSFT/GOOGL/AMZN/META/ORCL等分别按软件、广告、零售、云和AI增量建互斥SOTP。META没有外售云backlog，AI回报主要来自广告效率与新变现；ORCL等建设投入重、融资压力大的公司要单独看融资成本与RPO兑现；成熟主业高利润不能自动证明新增AI资产也值同样高倍数。",
+            "前瞻重点是未来1-3年的AI使用量、利用率、单位价格、推理成本、AI带动成熟主业的利润率和增量ROIC。如果AI投入快速转化为云/广告/软件利润而共识尚未完全反映，可使用FY+2分部盈利或Sales作为估值分母。"
+          ],
+          "formulas": [
+            {
+              "formula": "AI Economic Revenue ≈ Paid Usage × Net Realized Price + AI-driven Uplift to Existing Businesses",
+              "note": "Agent调用、Reasoning Token与上下文只有经过任务成功率、客户节约成本和可收价格，才形成经济需求。"
+            },
+            {
+              "formula": "Incremental AI ROIC ≈ Incremental NOPAT ÷ Incremental Invested Capital",
+              "note": "容量上线后还有利用率和收费爬坡，CapEx绝对值本身不是价值。"
+            }
+          ],
+          "forward_focus": [
+            "前瞻重点是未来1-3年的AI使用量、利用率、单位价格、推理成本、AI带动成熟主业的利润率和增量ROIC。"
+          ],
+          "state_note": "如果AI投入快速转化为云/广告/软件利润而共识尚未完全反映，可使用FY+2分部盈利或Sales作为估值分母。"
+        },
+        "anchor": {
+          "paragraphs": [
+            "成熟软件/广告主业用Forward PE / EV/EBIT + FCF Yield；AI云高增长业务在利润率尚未稳定时用FY+1/FY+2 EV/Sales + EV/EBIT，稳定盈利后增加Forward PE；混合平台用Forward-multiple SOTP，各部分必须同一估值日、口径互斥。",
+            "AI相关倍数上沿由付费任务增长、价格/成本弹性、利用率、分发/工作流/数据权限护城河和增量ROIC决定。Token增长不能直接等同收入增长；如果效率收益主要通过降价让给客户而没有量的补偿，销售倍数应下降。高RPO只有在转收入后还能形成高利润和高ROIC时才提高价值。",
+            "Earnings Revision Optionality来自在建容量提前上线、利用率/价格高于共识、AI对广告/软件转化改善超预期、或云收入/利润率连续上修。成熟主业与AI增量不能重复享受同一收入/利润。DCF默认禁用；如手工展示，只能0-5% Reference。"
+          ],
+          "upper_range_drivers": "AI相关倍数上沿由付费任务增长、价格/成本弹性、利用率、分发/工作流/数据权限护城河和增量ROIC决定。",
+          "revision_optionality": "Earnings Revision Optionality来自在建容量提前上线、利用率/价格高于共识、AI对广告/软件转化改善超预期、或云收入/利润率连续上修。成熟主业与AI增量不能重复享受同一收入/利润。",
+          "forbidden": [
+            "效率收益留在公司毛利、通过降价让给客户、或由更大使用量转为收入，不能三者同时计入",
+            "Commercial RPO、云backlog和长期履约义务必须按各公司披露边界处理，不假设全部来自AI",
+            "CapEx绝对值本身不是价值",
+            "成熟主业高利润不能自动证明新增AI资产也值同样高倍数",
+            "Token增长不能直接等同收入增长",
+            "成熟主业与AI增量不能重复享受同一收入/利润",
+            "DCF默认禁用；如手工展示，只能0-5% Reference"
+          ]
+        },
+        "subtypes": [
+          {
+            "id": "hybrid-platform-sotp",
+            "name": "混合平台（Forward-multiple SOTP）",
+            "members": [
+              "MSFT",
+              "GOOGL",
+              "AMZN",
+              "META",
+              "ORCL",
+              "BABA"
+            ],
+            "inferred_members": [
+              "BABA"
+            ],
+            "primary": "混合平台用Forward-multiple SOTP，各部分必须同一估值日、口径互斥：成熟软件/广告主业用Forward PE / EV/EBIT + FCF Yield；AI云高增长业务在利润率尚未稳定时用FY+1/FY+2 EV/Sales + EV/EBIT，稳定盈利后增加Forward PE",
+            "secondary": "如果AI投入快速转化为云/广告/软件利润而共识尚未完全反映，可使用FY+2分部盈利或Sales作为估值分母",
+            "when": "AI云高增长业务：利润率尚未稳定时 EV/Sales + EV/EBIT，稳定盈利后增加Forward PE；成熟主业：Forward PE / EV/EBIT + FCF Yield",
+            "note": "MSFT/GOOGL/AMZN/META/ORCL等分别按软件、广告、零售、云和AI增量建互斥SOTP。META没有外售云backlog，AI回报主要来自广告效率与新变现；ORCL等建设投入重、融资压力大的公司要单独看融资成本与RPO兑现；成熟主业高利润不能自动证明新增AI资产也值同样高倍数。BABA 未在文档中出现，按混合平台就近归入。"
+          }
+        ]
+      }
     }
-  ]
+  ],
+  "methodology": {
+    "version": "V3.0",
+    "positioning": "本文件用于 HOne 对 AI 硬件与基础设施八个行业进行可重复、可前瞻的公司估值。每个行业只保留两类核心规则：“底层估值逻辑”回答未来1-3年的收入、利润和现金流为什么会变化；“倍数锚”回答在不同阶段应该使用哪一个前瞻财年、哪一族估值倍数以及如何决定倍数区间。",
+    "principle": "估值不是寻找最保守的数字，而是把第一性原理、可验证需求、合格供给与未来1-3年的盈利能力正确映射到当前交易倍数。在AI硬件链中，最危险的后视镜往往不是倍数太低，而是分母太低：只要需求已经验证、Capacity Unlock具有可执行路径，HOne就应在财报完全兑现之前把FY+2/FY+3纳入估值。",
+    "demand_chain": [
+      "AI需求",
+      "资源强度",
+      "物理需求",
+      "合格供给",
+      "产能释放",
+      "FY+1~3盈利",
+      "前瞻倍数"
+    ],
+    "core_principle": "核心原则：对于需求显著高于合格供给、且未来6-18个月存在可验证产能/良率/交付释放的公司，优先使用 FY+2；若连续两轮产品/产能释放仍有需求支撑，可使用 FY+2~FY+3。DCF 默认禁用，权重0%；只有研究员明确要求时，允许在附录显示 Reference DCF，最高权重5%，不得改变Base目标价。",
+    "execution_rules": [
+      {
+        "rule": "Forward denominator",
+        "requirement": "Forward multiple 指“估值日的EV/股价 ÷ 未来明确财年指标”。FY+2 EPS×合理Forward PE得到的是估值日的交易锚，不是两年后的退出价格，因此不再额外折现。"
+      },
+      {
+        "rule": "Capacity Unlock Gate",
+        "requirement": "Demand、Qualification、Capacity、Economics、Funding 五项至少满足四项，才允许从NTM/FY+1前移至FY+2/FY+3。"
+      },
+      {
+        "rule": "Earnings Revision Optionality",
+        "requirement": "产能/良率释放、管理层指导上修、产品Mix升级或共识尚未完全重置时，提高FY+2/FY+3权重或取可比区间上半部；不得与同一EPS上修重复加成。"
+      },
+      {
+        "rule": "Multiple selection",
+        "requirement": "倍数区间由 Growth、Scarcity、Duration、Value Capture、Incremental ROIC/FCF 五项决定，不因“AI标签”机械上调。"
+      },
+      {
+        "rule": "Market-implied check",
+        "requirement": "不用Reverse DCF；直接反算当前股价对应FY+1/FY+2/FY+3的PE、EV/Sales、EV/EBITDA及需要的收入、产能、份额、ASP、利润率。"
+      },
+      {
+        "rule": "DCF",
+        "requirement": "Default Disabled / 0%。若手工展示，只能作为Reference，最高5%，不能单独压低Forward估值。"
+      },
+      {
+        "rule": "Hard checks",
+        "requirement": "TAM/MSA/融资框架不等于收入；峰值季度EPS不得×4；同一增长不能既完整进入EPS又无理由再完整提高倍数；收入、RPO、CapEx与网络TAM必须去重。"
+      },
+      {
+        "rule": "最常见的后视镜错误",
+        "requirement": "高速扩张期最容易低估的不是倍数，而是分母：用当前受限产能收入、当前未成熟利润率、或过早回归旧周期均值，都会把即将发生的产能释放和盈利上修抹掉。"
+      }
+    ],
+    "hindsight_error": "高速扩张期最容易低估的不是倍数，而是分母：用当前受限产能收入、当前未成熟利润率、或过早回归旧周期均值，都会把即将发生的产能释放和盈利上修抹掉。",
+    "output_fields": [
+      {
+        "rule": "Ticker / Valuation Date",
+        "requirement": "公司代码、估值日、当前价、使用的财年口径"
+      },
+      {
+        "rule": "Industry / Subtype",
+        "requirement": "八行业路由与子类型"
+      },
+      {
+        "rule": "State",
+        "requirement": "Capacity Unlock / Structural Re-rating / Mature Growth / Cyclical High 等"
+      },
+      {
+        "rule": "First-principles Driver",
+        "requirement": "Token/Memory/Network/Power/WFE/Cluster等最重要领先变量"
+      },
+      {
+        "rule": "Demand vs Qualified Supply",
+        "requirement": "明确 Demand < / = / > Qualified Supply"
+      },
+      {
+        "rule": "Capacity Unlock",
+        "requirement": "未来6/12/24个月合格产能、良率、交付或商业模式释放"
+      },
+      {
+        "rule": "Valuation Horizon",
+        "requirement": "NTM / FY+1 / FY+2 / FY+3；说明为什么"
+      },
+      {
+        "rule": "Primary / Secondary",
+        "requirement": "Forward PE、EV/Sales、EV/EBITDA/EV/EBIT、P/B、FCF Yield及权重"
+      },
+      {
+        "rule": "Earnings Revision Optionality",
+        "requirement": "High / Medium / Low；说明共识可能继续上修的证据"
+      },
+      {
+        "rule": "Bear / Base / Bull",
+        "requirement": "每个情景的收入/EPS/EBITDA、倍数和目标价"
+      },
+      {
+        "rule": "Market Implied",
+        "requirement": "当前价对应FY+1/FY+2/FY+3的交易倍数及隐含经营要求"
+      },
+      {
+        "rule": "Catalysts / Risks",
+        "requirement": "产能、客户、认证、ASP、Mix、合同、替代、融资与执行"
+      },
+      {
+        "rule": "DCF",
+        "requirement": "Disabled / 0%；若研究员手工要求，Reference only ≤5%"
+      },
+      {
+        "rule": "Integrity Check",
+        "requirement": "PASS / WARN / FAIL；列出触发的Hard Checks"
+      }
+    ]
+  }
 }

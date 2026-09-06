@@ -301,6 +301,7 @@ pub(crate) async fn handle_get_industry_map(
                 "core_watch": industry.core_watch,
                 "sources": industry.sources,
                 "upstream_signals": industry.upstream_signals,
+                "valuation": industry.valuation,
                 "members": rank_members(&industry.members, &facts, &shares),
                 "last_edited_at": last_edited.get(&industry.id),
             })
@@ -343,6 +344,7 @@ pub(crate) async fn handle_get_industry_map(
         "recent_edits": recent,
         "edit_count": edits.len(),
         "is_admin": is_admin,
+        "methodology": map.methodology,
     }))
     .into_response()
 }
@@ -938,6 +940,11 @@ mod tests {
             r#"{"industry":"storage","op":{"kind":"add_upstream_signal","signal":{"symbol":"NVDA","name":"英伟达","relation":"demand_source","why":"y","pull":["a","b"],"cadence":"q"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_upstream_signal","symbol":"NVDA"}}"#,
             r#"{"industry":"storage","op":{"kind":"set_upstream_latest","symbol":"NVDA","latest":"FY27Q2：数据中心 $89.0B","as_of":"2026-08-26"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_valuation_field","field":"logic.state_note","value":"量增价平"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_valuation_list","field":"anchor.forbidden","items":["峰值季度EPS×4","DCF"]}}"#,
+            r#"{"industry":"storage","op":{"kind":"upsert_subtype","subtype":{"id":"nand-essd","name":"纯NAND/eSSD","members":["SNDK"],"inferred_members":[],"primary":"FY+1/FY+2 Forward PE + EV/EBITDA","secondary":"","when":"","note":""}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_subtype","id":"nand-essd"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_member_subtype","symbol":"WDC","subtype":"hdd"}}"#,
             r#"{"industry":"cooling","op":{"kind":"add_industry","industry":{"id":"cooling","name":"散热","one_liner":"","aliases":["散热"]}}}"#,
             r#"{"industry":"cooling","op":{"kind":"remove_industry"}}"#,
         ];

@@ -93,6 +93,31 @@ allowed-tools:
 - 预测窗口写死：任何 forward EPS / 营收都要在同一行写出窗口（FYxx，季度 a–b，来自 `analyst_estimates` 的 `forward_period_ends`）；同一标的一天内不得一次用 FY27E、一次用「未来四季」而不点明；一致预期年化值与公司最新指引偏差超过一半时，先写出冲突并以指引为准，不拿两者中更顺手的那个。
 - 交叉验证不许调参凑数：FCF 收益率、EV/EBITDA 的目标带在算之前按公司类型定死并写出来；两种方法差异超过 20% 时写「哪种更可信、为什么」，不许换参数换假设直到「与 P/E 中枢高度吻合」。
 
+### 树内公司的前瞻估值执行卡（HOne V3：对账表填完、三问之前先过这一段）
+
+本轮提示里的【本轮相关行业 · HOne 前瞻估值执行版】给的是这家公司所属**子类型**的主锚、次锚、适用阶段与禁止清单，
+以及行级的倍数上沿、盈利上修期权和底层估值逻辑。对树内公司，估值部分按下面的顺序落笔，每一项都落在本文已有的位置里：
+
+1. **State**：Capacity Unlock / Structural Re-rating / Mature Growth / Cyclical High 四选一，一句为什么（写在一问的类型判断旁）。
+2. **Demand vs Qualified Supply**：明确 Demand < / = / > Qualified Supply，用行业块的量化关系与上游最近动作作证（写在一问的增长来源）。
+3. **Capacity Unlock**：未来 6 / 12 / 24 个月的合格产能、良率、交付或商业模式释放各一句；没有就写「无可验证释放」。
+4. **Valuation Horizon**：NTM / FY+1 / FY+2 / FY+3 选一个并说明为什么——Capacity Unlock Gate 的 Demand、Qualification、Capacity、
+   Economics、Funding 五项逐项打勾，至少四项才从 NTM/FY+1 前移到 FY+2/FY+3；Forward multiple 是估值日的 EV/股价 ÷ 未来明确财年指标，
+   FY+2 EPS × 合理 Forward PE 得到的是估值日的交易锚，不再额外折现。
+5. **Primary / Secondary**：照子类型卡给主锚、次锚与权重（例如「FY+2 Forward PE 50% / FY+2 EV/Sales 30% / EV/EBITDA 20%」），
+   权重写进三问的产出里；卡没给权重就按「主锚 ≥60%」写并说明。
+6. **Earnings Revision Optionality**：High / Medium / Low，证据是产能/良率释放、指引上修、Mix 升级或共识尚未重置；高时提高 FY+2/FY+3
+   权重或取同业区间上半部，但不得对同一 EPS 上修重复加成。
+7. **Bear / Base / Bull**：第四步照常，每档写收入 / EPS 或 EBITDA、倍数、目标价，分母用上面选定的财年。
+8. **Market Implied**：不用 Reverse DCF；直接反算现价对应 FY+1 / FY+2 / FY+3 的 PE、EV/Sales、EV/EBITDA 及需要的收入、产能、份额、
+   ASP、利润率（第四步「反向估值」那句就写这个）。
+9. **DCF**：Disabled / 0%；只有用户明确要求才在附录给 Reference DCF，最高 5%，不得改变 Base 目标价。
+10. **Integrity Check**：PASS / WARN / FAIL，逐条列触发的 Hard checks——TAM/MSA/融资框架不等于收入；峰值季度 EPS 不得 ×4；同一增长不能既完整进入
+    EPS 又无理由再完整提高倍数；收入、RPO、CapEx 与网络 TAM 必须去重；行业块「禁止」清单里的每一条。这是你自己的自检，不是拒答条件。
+
+最常见的后视镜错误不是倍数太低，而是分母太低：用当前受限产能的收入、当前未成熟的利润率、或过早回归旧周期均值，都会把即将发生的产能释放
+和盈利上修抹掉。公司卡指定了估值框架时以公司卡为准，子类型卡做交叉检查并写出分歧。
+
 ### 第二步：先看公司特定估值逻辑，再选通用方法
 
 本轮提示里若出现【历史公司研究基线】，其中的**估值框架**与**重点验证**是该公司专属的估值逻辑，优先级高于下面的通用分支：通用分支决定"用哪一类方法"，公司卡决定"这家公司必须算清楚哪几件事"。两者冲突时按公司卡的口径做，并在正文说明。基线是历史判断，数字仍须本轮工具核验。

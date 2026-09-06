@@ -1160,6 +1160,64 @@ export type IndustryEdit = {
   note: string;
 };
 
+/** 一条公式：原文 + 一句说明。 */
+export type IndustryFormula = { formula: string; note: string };
+
+/** 底层估值逻辑：未来 1–3 年收入、利润、现金流为什么会变。 */
+export type IndustryValuationLogic = {
+  summary: string;
+  paragraphs: string[];
+  formulas: IndustryFormula[];
+  forward_focus: string[];
+  /** 这一行现在典型处在哪个 State；空串表示底稿没写。 */
+  state_note: string;
+};
+
+/** 倍数锚：在什么阶段用哪个前瞻财年、哪一族倍数、区间由什么决定、什么被禁止。 */
+export type IndustryValuationAnchor = {
+  paragraphs: string[];
+  upper_range_drivers: string;
+  revision_optionality: string;
+  forbidden: string[];
+};
+
+/**
+ * 子类型：同一行里价值链位置不同的公司，各自的主锚 / 次锚与适用阶段。
+ * inferred_members 是底稿按最近子类型推断、待人工确认的成员；members 是明确归入的。
+ */
+export type IndustrySubtype = {
+  /** 小写 kebab-case。 */
+  id: string;
+  name: string;
+  members: string[];
+  inferred_members: string[];
+  primary: string;
+  secondary: string;
+  when: string;
+  note: string;
+};
+
+export type IndustryValuation = {
+  logic: IndustryValuationLogic;
+  anchor: IndustryValuationAnchor;
+  subtypes: IndustrySubtype[];
+};
+
+/** 「规则名 → 执行要求」或「输出字段 → 输出要求」，两张表同一形状。 */
+export type IndustryMethodRule = { rule: string; requirement: string };
+
+/** HOne 前瞻估值执行版的通用部分，挂在树根上，所有行共用。 */
+export type IndustryMethodology = {
+  version: string;
+  positioning: string;
+  principle: string;
+  demand_chain: string[];
+  core_principle: string;
+  execution_rules: IndustryMethodRule[];
+  hindsight_error: string;
+  output_fields: IndustryMethodRule[];
+};
+
 export type Industry = {
   id: string;
   name: string;
@@ -1173,6 +1231,8 @@ export type Industry = {
   sources: IndustrySource[];
   /** 这一行的需求源头与卡口；渲染时按空列表兜底，后端先后上线也不至于整页报错。 */
   upstream_signals: IndustryUpstreamSignal[];
+  /** 前瞻估值：底层逻辑、倍数锚与子类型；旧后端没带时读端按空结构兜底。 */
+  valuation: IndustryValuation;
 };
 
 export type IndustryMapSnapshot = {
@@ -1192,6 +1252,8 @@ export type IndustryMapSnapshot = {
   edit_count: number;
   /** true 时页面露出「编辑本体」开关；写入仍由后端按会话再核一次。 */
   is_admin: boolean;
+  /** 前瞻估值执行版的通用方法论；旧后端没带时读端按空结构兜底。 */
+  methodology: IndustryMethodology;
 };
 
 /** 管理员可就地改的文本字段；短版是每轮注入模型的压缩版。 */
@@ -1204,6 +1266,20 @@ export type IndustryEditField =
   | "anti_pattern_short";
 
 export type IndustryNewMember = Pick<IndustryMember, "symbol" | "name" | "role">;
+
+/** `set_valuation_field` 能改的文本字段。 */
+export type IndustryValuationTextField =
+  | "logic.summary"
+  | "logic.state_note"
+  | "anchor.upper_range_drivers"
+  | "anchor.revision_optionality";
+
+/** `set_valuation_list` 能整表替换的列表字段。 */
+export type IndustryValuationListField =
+  | "logic.paragraphs"
+  | "logic.forward_focus"
+  | "anchor.paragraphs"
+  | "anchor.forbidden";
 
 /** 在线新增一个行业时提交的骨架；其余字段留空，之后用别的改动填。 */
 export type IndustryNewIndustry = {
@@ -1227,6 +1303,13 @@ export type IndustryEditOp =
   | { kind: "remove_upstream_signal"; symbol: string }
   /** 只改一条上游信号的「最近动作」与它的截至日期，按 symbol 找到那条。 */
   | { kind: "set_upstream_latest"; symbol: string; latest: string; as_of: string }
+  | { kind: "set_valuation_field"; field: IndustryValuationTextField; value: string }
+  | { kind: "set_valuation_list"; field: IndustryValuationListField; items: string[] }
+  /** 新增或整体替换一个子类型（按 id 匹配）；id 须为小写 kebab-case，members 是代码。 */
+  | { kind: "upsert_subtype"; subtype: IndustrySubtype }
+  | { kind: "remove_subtype"; id: string }
+  /** 把一家公司挪到某个子类型，从其它子类型（含推断）里移出。 */
+  | { kind: "set_member_subtype"; symbol: string; subtype: string }
   /** 此时请求体的 industry 就是新行业的 id。 */
   | { kind: "add_industry"; industry: IndustryNewIndustry }
   | { kind: "remove_industry" };

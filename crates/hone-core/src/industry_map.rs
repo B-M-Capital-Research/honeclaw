@@ -102,6 +102,129 @@ pub struct UpstreamSignal {
     pub latest_as_of: String,
 }
 
+/// HOne 前瞻估值执行版（V3.0）的通用部分：定位、原则、七段需求链、通用执行规则、强制输出字段。
+/// 挂在树根上，所有行共用；注入时只带执行规则与输出字段的压缩版，全文留给页面与 skill。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct Methodology {
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub positioning: String,
+    #[serde(default)]
+    pub principle: String,
+    #[serde(default)]
+    pub demand_chain: Vec<String>,
+    #[serde(default)]
+    pub core_principle: String,
+    #[serde(default)]
+    pub execution_rules: Vec<MethodRule>,
+    #[serde(default)]
+    pub hindsight_error: String,
+    #[serde(default)]
+    pub output_fields: Vec<MethodRule>,
+}
+
+/// 「规则名 → 执行要求」或「输出字段 → 输出要求」，两张表同一形状。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct MethodRule {
+    #[serde(default)]
+    pub rule: String,
+    #[serde(default)]
+    pub requirement: String,
+}
+
+/// 一条公式：原文 + 一句说明。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct Formula {
+    #[serde(default)]
+    pub formula: String,
+    #[serde(default)]
+    pub note: String,
+}
+
+/// 底层估值逻辑：未来 1–3 年收入、利润、现金流为什么会变。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct ValuationLogic {
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub paragraphs: Vec<String>,
+    #[serde(default)]
+    pub formulas: Vec<Formula>,
+    #[serde(default)]
+    pub forward_focus: Vec<String>,
+    #[serde(default)]
+    pub state_note: String,
+}
+
+/// 倍数锚：在什么阶段用哪个前瞻财年、哪一族倍数、区间由什么决定、什么被禁止。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct ValuationAnchor {
+    #[serde(default)]
+    pub paragraphs: Vec<String>,
+    #[serde(default)]
+    pub upper_range_drivers: String,
+    #[serde(default)]
+    pub revision_optionality: String,
+    #[serde(default)]
+    pub forbidden: Vec<String>,
+}
+
+/// 子类型：同一行里价值链位置不同的公司，各自的主锚 / 次锚与适用阶段。
+/// 这是「这些知识被消费」的最小单位——注入时只带命中公司所属的那一条。
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct Subtype {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub members: Vec<String>,
+    #[serde(default)]
+    pub inferred_members: Vec<String>,
+    #[serde(default)]
+    pub primary: String,
+    #[serde(default)]
+    pub secondary: String,
+    #[serde(default)]
+    pub when: String,
+    #[serde(default)]
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct IndustryValuation {
+    #[serde(default)]
+    pub logic: ValuationLogic,
+    #[serde(default)]
+    pub anchor: ValuationAnchor,
+    #[serde(default)]
+    pub subtypes: Vec<Subtype>,
+}
+
+impl IndustryValuation {
+    /// 一家公司在这一行里属于哪个子类型；不在任何子类型里就返回 None。
+    pub fn subtype_of(&self, symbol: &str) -> Option<&Subtype> {
+        self.subtypes
+            .iter()
+            .find(|subtype| subtype.members.iter().any(|member| member == symbol))
+    }
+}
+
+/// `SetValuationField` 能改的文本字段。
+pub const VALUATION_TEXT_FIELDS: &[&str] = &[
+    "logic.summary",
+    "logic.state_note",
+    "anchor.upper_range_drivers",
+    "anchor.revision_optionality",
+];
+/// `SetValuationList` 能改的列表字段（整表替换）。
+pub const VALUATION_LIST_FIELDS: &[&str] = &[
+    "logic.paragraphs",
+    "logic.forward_focus",
+    "anchor.paragraphs",
+    "anchor.forbidden",
+];
+
 pub const UPSTREAM_RELATIONS: &[&str] = &[
     "demand_source",
     "capex_source",
@@ -139,6 +262,9 @@ pub struct Industry {
     pub sources: Vec<IndustrySource>,
     #[serde(default)]
     pub upstream_signals: Vec<UpstreamSignal>,
+    /// HOne 前瞻估值执行版：底层估值逻辑、倍数锚、子类型。
+    #[serde(default)]
+    pub valuation: IndustryValuation,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -147,6 +273,9 @@ pub struct IndustryMap {
     pub generated_at: String,
     pub root: IndustryRoot,
     pub industries: Vec<Industry>,
+    /// 全树共用的方法论（V3）。
+    #[serde(default)]
+    pub methodology: Methodology,
 }
 
 impl IndustryMap {
@@ -218,6 +347,28 @@ pub enum EditOp {
         #[serde(default)]
         as_of: String,
     },
+    /// 改前瞻估值里的一个文本字段（见 `VALUATION_TEXT_FIELDS`）。
+    SetValuationField {
+        field: String,
+        value: String,
+    },
+    /// 整表替换前瞻估值里的一个列表字段（见 `VALUATION_LIST_FIELDS`）。
+    SetValuationList {
+        field: String,
+        items: Vec<String>,
+    },
+    /// 新增或整体替换一个子类型（按 id 匹配）。
+    UpsertSubtype {
+        subtype: Subtype,
+    },
+    RemoveSubtype {
+        id: String,
+    },
+    /// 把一家公司挪到某个子类型（从其它子类型里移出）。
+    SetMemberSubtype {
+        symbol: String,
+        subtype: String,
+    },
     /// 新增一个行业。`IndustryEdit.industry` 就是新行业的 id。
     AddIndustry {
         industry: NewIndustry,
@@ -248,6 +399,17 @@ impl EditOp {
                 } else {
                     format!("更新上游动作 {symbol}（截至 {as_of}）")
                 }
+            }
+            EditOp::SetValuationField { field, value } => {
+                format!("改写估值字段 {field}（{} 字）", value.chars().count())
+            }
+            EditOp::SetValuationList { field, items } => {
+                format!("替换估值列表 {field}（{} 条）", items.len())
+            }
+            EditOp::UpsertSubtype { subtype } => format!("写入子类型「{}」", subtype.name),
+            EditOp::RemoveSubtype { id } => format!("移除子类型 {id}"),
+            EditOp::SetMemberSubtype { symbol, subtype } => {
+                format!("把 {symbol} 归到子类型 {subtype}")
             }
             EditOp::AddIndustry { industry } => format!("新增行业「{}」", industry.name),
             EditOp::RemoveIndustry => "移除整个行业".to_string(),
@@ -329,6 +491,8 @@ pub enum ApplyError {
     UnknownSignal(String),
     DuplicateSignal(String),
     InvalidRelation(String),
+    UnknownSubtype(String),
+    InvalidSubtypeId(String),
 }
 
 impl std::fmt::Display for ApplyError {
@@ -357,6 +521,10 @@ impl std::fmt::Display for ApplyError {
                 "relation 不合法：{relation}（可用：{}）",
                 UPSTREAM_RELATIONS.join(" / ")
             ),
+            ApplyError::UnknownSubtype(id) => write!(formatter, "没有这个子类型：{id}"),
+            ApplyError::InvalidSubtypeId(id) => {
+                write!(formatter, "子类型 id 只能用小写字母、数字和连字符：{id}")
+            }
         }
     }
 }
@@ -387,6 +555,7 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
                 members: Vec::new(),
                 sources: Vec::new(),
                 upstream_signals: Vec::new(),
+                valuation: IndustryValuation::default(),
             });
             return Ok(());
         }
@@ -441,6 +610,91 @@ pub fn apply(map: &mut IndustryMap, edit: &IndustryEdit) -> Result<(), ApplyErro
             };
             signal.latest = latest.trim().to_string();
             signal.latest_as_of = as_of.trim().to_string();
+        }
+        EditOp::SetValuationField { field, value } => {
+            let value = value.trim().to_string();
+            let v = &mut industry.valuation;
+            match field.as_str() {
+                "logic.summary" => v.logic.summary = value,
+                "logic.state_note" => v.logic.state_note = value,
+                "anchor.upper_range_drivers" => v.anchor.upper_range_drivers = value,
+                "anchor.revision_optionality" => v.anchor.revision_optionality = value,
+                other => return Err(ApplyError::UnknownField(other.to_string())),
+            }
+        }
+        EditOp::SetValuationList { field, items } => {
+            let items = items
+                .iter()
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>();
+            let v = &mut industry.valuation;
+            match field.as_str() {
+                "logic.paragraphs" => v.logic.paragraphs = items,
+                "logic.forward_focus" => v.logic.forward_focus = items,
+                "anchor.paragraphs" => v.anchor.paragraphs = items,
+                "anchor.forbidden" => v.anchor.forbidden = items,
+                other => return Err(ApplyError::UnknownField(other.to_string())),
+            }
+        }
+        EditOp::UpsertSubtype { subtype } => {
+            let id = subtype.id.trim();
+            if id.is_empty()
+                || !id
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                return Err(ApplyError::InvalidSubtypeId(subtype.id.clone()));
+            }
+            let mut fresh = subtype.clone();
+            fresh.id = id.to_string();
+            fresh.members = fresh
+                .members
+                .iter()
+                .map(|m| m.trim().to_ascii_uppercase())
+                .filter(|m| !m.is_empty())
+                .collect();
+            // 一家公司只能在一个子类型里：别的子类型里的同名成员先移出。
+            for other in industry.valuation.subtypes.iter_mut() {
+                if other.id != fresh.id {
+                    other.members.retain(|m| !fresh.members.contains(m));
+                    other
+                        .inferred_members
+                        .retain(|m| !fresh.members.contains(m));
+                }
+            }
+            match industry
+                .valuation
+                .subtypes
+                .iter_mut()
+                .find(|existing| existing.id == fresh.id)
+            {
+                Some(existing) => *existing = fresh,
+                None => industry.valuation.subtypes.push(fresh),
+            }
+        }
+        EditOp::RemoveSubtype { id } => {
+            let before = industry.valuation.subtypes.len();
+            industry.valuation.subtypes.retain(|s| &s.id != id);
+            if industry.valuation.subtypes.len() == before {
+                return Err(ApplyError::UnknownSubtype(id.clone()));
+            }
+        }
+        EditOp::SetMemberSubtype { symbol, subtype } => {
+            let symbol = symbol.trim().to_ascii_uppercase();
+            if !industry.members.iter().any(|m| m.symbol == symbol) {
+                return Err(ApplyError::UnknownMember(symbol));
+            }
+            if !industry.valuation.subtypes.iter().any(|s| &s.id == subtype) {
+                return Err(ApplyError::UnknownSubtype(subtype.clone()));
+            }
+            for s in industry.valuation.subtypes.iter_mut() {
+                s.members.retain(|m| m != &symbol);
+                s.inferred_members.retain(|m| m != &symbol);
+                if &s.id == subtype {
+                    s.members.push(symbol.clone());
+                }
+            }
         }
         EditOp::SetField { field, value } => match field.as_str() {
             "one_liner" => industry.one_liner = value.clone(),
@@ -538,7 +792,7 @@ mod tests {
     #[test]
     fn shipped_base_map_parses_and_carries_short_injection_fields() {
         let map = base_map();
-        assert_eq!(map.schema_version, 1);
+        assert_eq!(map.schema_version, 3);
         assert!(!map.industries.is_empty());
         for industry in &map.industries {
             assert_eq!(industry.parent, map.root.id);
@@ -840,6 +1094,131 @@ mod tests {
             }
             .summary(),
             "更新上游动作 ZZZZ（截至 2026-08-01）"
+        );
+    }
+
+    #[test]
+    fn v3_valuation_fields_subtypes_and_member_moves_apply_in_order() {
+        let mut map = base_map();
+        let storage = map.industries.iter().find(|i| i.id == "storage").unwrap();
+        assert!(
+            !storage.valuation.subtypes.is_empty(),
+            "the base map ships HOne V3 subtypes"
+        );
+        assert!(!map.methodology.execution_rules.is_empty());
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetValuationField {
+                    field: "logic.state_note".into(),
+                    value: " 量增价平阶段 ".into(),
+                },
+            ),
+        )
+        .expect("text field");
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetValuationList {
+                    field: "anchor.forbidden".into(),
+                    items: vec!["峰值季度 EPS×4".into(), " ".into(), "DCF".into()],
+                },
+            ),
+        )
+        .expect("list field");
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::UpsertSubtype {
+                    subtype: Subtype {
+                        id: "test-sub".into(),
+                        name: "测试子类型".into(),
+                        members: vec!["sndk".into()],
+                        primary: "FY+2 Forward PE".into(),
+                        ..Default::default()
+                    },
+                },
+            ),
+        )
+        .expect("upsert subtype");
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::SetMemberSubtype {
+                    symbol: "wdc".into(),
+                    subtype: "test-sub".into(),
+                },
+            ),
+        )
+        .expect("move member");
+        let storage = map.industries.iter().find(|i| i.id == "storage").unwrap();
+        assert_eq!(storage.valuation.logic.state_note, "量增价平阶段");
+        assert_eq!(
+            storage.valuation.anchor.forbidden,
+            vec!["峰值季度 EPS×4", "DCF"]
+        );
+        let sub = storage.valuation.subtype_of("SNDK").expect("SNDK moved");
+        assert_eq!(sub.id, "test-sub");
+        assert!(sub.members.contains(&"WDC".to_string()));
+        assert_eq!(
+            storage
+                .valuation
+                .subtypes
+                .iter()
+                .filter(|s| s.members.contains(&"SNDK".to_string()))
+                .count(),
+            1,
+            "a member lives in exactly one subtype"
+        );
+        assert!(matches!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::SetMemberSubtype {
+                        symbol: "MU".into(),
+                        subtype: "nope".into(),
+                    },
+                ),
+            ),
+            Err(ApplyError::UnknownSubtype(_))
+        ));
+        assert!(matches!(
+            apply(
+                &mut map,
+                &edit(
+                    "storage",
+                    EditOp::UpsertSubtype {
+                        subtype: Subtype {
+                            id: "Bad Id".into(),
+                            ..Default::default()
+                        },
+                    },
+                ),
+            ),
+            Err(ApplyError::InvalidSubtypeId(_))
+        ));
+        apply(
+            &mut map,
+            &edit(
+                "storage",
+                EditOp::RemoveSubtype {
+                    id: "test-sub".into(),
+                },
+            ),
+        )
+        .expect("remove subtype");
+        assert_eq!(
+            EditOp::SetMemberSubtype {
+                symbol: "SNDK".into(),
+                subtype: "nand-essd".into()
+            }
+            .summary(),
+            "把 SNDK 归到子类型 nand-essd"
         );
     }
 

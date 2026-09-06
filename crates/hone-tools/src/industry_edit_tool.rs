@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use hone_core::industry_map::{
     CoreWatch, EDITABLE_FIELDS, EditOp, IndustryEdit, IndustryMember, IndustrySource, NewIndustry,
-    UPSTREAM_RELATIONS, UpstreamSignal,
+    Subtype, UPSTREAM_RELATIONS, UpstreamSignal, VALUATION_LIST_FIELDS, VALUATION_TEXT_FIELDS,
 };
 
 use crate::base::{Tool, ToolParameter};
@@ -61,7 +61,7 @@ impl Tool for IndustryMapEditTool {
         可改字段：`one_liner`（这一行是什么，一句话）、`driver_chain`（从 AI 侧可观测量到这一行收入/价格的传导链，是这一行的第一性公式）、\
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
-        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
+        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。**前瞻估值执行版（V3）**：`set_valuation_field` / `set_valuation_list` 改这一行的底层估值逻辑与倍数锚字段，`upsert_subtype` / `remove_subtype` / `set_member_subtype` 维护子类型（哪些公司用哪个前瞻财年、哪一族倍数、什么权重）——注入给模型的估值执行卡就来自命中公司所属的子类型。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
         行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
         每次改动都要写 `note` 说明依据，例如引用的研报或财报口径变化；它会和改动一起展示给其它管理员。"
     }
@@ -86,6 +86,11 @@ impl Tool for IndustryMapEditTool {
                     "add_upstream_signal".into(),
                     "remove_upstream_signal".into(),
                     "set_upstream_latest".into(),
+                    "set_valuation_field".into(),
+                    "set_valuation_list".into(),
+                    "upsert_subtype".into(),
+                    "remove_subtype".into(),
+                    "set_member_subtype".into(),
                     "add_industry".into(),
                     "remove_industry".into(),
                 ]),
@@ -267,6 +272,54 @@ impl Tool for IndustryMapEditTool {
                 r#enum: None,
                 items: None,
             },
+            ToolParameter {
+                name: "items".to_string(),
+                param_type: "string".to_string(),
+                description: "set_valuation_list 用：整表替换的条目，用「；」分隔（logic.paragraphs / logic.forward_focus / anchor.paragraphs / anchor.forbidden）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "subtype".to_string(),
+                param_type: "string".to_string(),
+                description: "set_member_subtype 用：目标子类型 id（如 nand-essd）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "members".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：所属公司代码，用「；」或「,」分隔".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "primary".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：主锚（前瞻财年 + 倍数族 + 权重，如「FY+2 Forward PE 约50% / FY+2 EV/Sales 约30% / EV/EBITDA 约20%」）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "secondary".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：次锚".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "when".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：适用阶段（如「利润率尚未稳定时」「净利稳定转正后」）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
         ]
     }
 
@@ -313,6 +366,73 @@ impl Tool for IndustryMapEditTool {
                     return missing("field / value");
                 };
                 EditOp::SetField { field, value }
+            }
+            "set_valuation_field" => {
+                let (Some(field), Some(value)) = (text(&args, "field"), text(&args, "value"))
+                else {
+                    return missing("field / value");
+                };
+                if !VALUATION_TEXT_FIELDS.contains(&field.as_str()) {
+                    return Ok(json!({ "ok": false,
+                        "error": format!("field 只能是 {}", VALUATION_TEXT_FIELDS.join(" / ")) }));
+                }
+                EditOp::SetValuationField { field, value }
+            }
+            "set_valuation_list" => {
+                let (Some(field), Some(items)) = (text(&args, "field"), text(&args, "items"))
+                else {
+                    return missing("field / items");
+                };
+                if !VALUATION_LIST_FIELDS.contains(&field.as_str()) {
+                    return Ok(json!({ "ok": false,
+                        "error": format!("field 只能是 {}", VALUATION_LIST_FIELDS.join(" / ")) }));
+                }
+                EditOp::SetValuationList {
+                    field,
+                    items: split_list(&items),
+                }
+            }
+            "upsert_subtype" => {
+                let (Some(id), Some(name)) = (text(&args, "id"), text(&args, "name")) else {
+                    return missing("id / name");
+                };
+                EditOp::UpsertSubtype {
+                    subtype: Subtype {
+                        id: id.trim().to_ascii_lowercase(),
+                        name,
+                        members: text(&args, "members")
+                            .map(|v| {
+                                split_list(&v)
+                                    .into_iter()
+                                    .map(|m| m.to_ascii_uppercase())
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        inferred_members: Vec::new(),
+                        primary: text(&args, "primary").unwrap_or_default(),
+                        secondary: text(&args, "secondary").unwrap_or_default(),
+                        when: text(&args, "when").unwrap_or_default(),
+                        note: text(&args, "note").unwrap_or_default(),
+                    },
+                }
+            }
+            "remove_subtype" => {
+                let Some(id) = text(&args, "id") else {
+                    return missing("id");
+                };
+                EditOp::RemoveSubtype {
+                    id: id.trim().to_ascii_lowercase(),
+                }
+            }
+            "set_member_subtype" => {
+                let (Some(symbol), Some(subtype)) = (text(&args, "symbol"), text(&args, "subtype"))
+                else {
+                    return missing("symbol / subtype");
+                };
+                EditOp::SetMemberSubtype {
+                    symbol: symbol.to_ascii_uppercase(),
+                    subtype: subtype.trim().to_ascii_lowercase(),
+                }
             }
             "add_member" => {
                 let (Some(symbol), Some(name), Some(role)) = (
@@ -498,6 +618,14 @@ impl Tool for IndustryMapEditTool {
     }
 }
 
+/// 「；」「;」「,」「，」分隔的一串条目。
+fn split_list(raw: &str) -> Vec<String> {
+    raw.split(['；', ';', ',', '，'])
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +771,82 @@ mod tests {
                 .0
                 .industry("cooling")
                 .is_none()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn v3_subtype_and_valuation_actions_work_through_the_tool() {
+        let dir = temp("v3");
+        let t = tool(&dir);
+        let up = t
+            .execute(json!({
+                "action": "upsert_subtype", "industry": "storage", "id": "Test-Sub", "name": "测试子类型",
+                "members": "sndk；wdc", "primary": "FY+2 Forward PE 50% / EV/EBITDA 50%",
+                "when": "量增价平", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(up["ok"], true, "{up}");
+        let moved = t
+            .execute(json!({
+                "action": "set_member_subtype", "industry": "storage", "symbol": "mu",
+                "subtype": "test-sub", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(moved["ok"], true, "{moved}");
+        let field = t
+            .execute(json!({
+                "action": "set_valuation_field", "industry": "storage",
+                "field": "logic.state_note", "value": "Capacity Unlock", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(field["ok"], true, "{field}");
+        let list = t
+            .execute(json!({
+                "action": "set_valuation_list", "industry": "storage",
+                "field": "anchor.forbidden", "items": "峰值季度EPS×4；DCF默认禁用", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(list["ok"], true, "{list}");
+        let bad = t
+            .execute(json!({
+                "action": "set_valuation_field", "industry": "storage",
+                "field": "anchor.paragraphs", "value": "x", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(bad["ok"], false, "{bad}");
+        let (map, edits) = hone_core::industry_map::load(&dir);
+        assert_eq!(edits.len(), 4, "the rejected field write is not logged");
+        let storage = map.industry("storage").expect("storage");
+        let sub = storage.valuation.subtype_of("MU").expect("MU moved");
+        assert_eq!(sub.id, "test-sub");
+        assert!(
+            sub.members.contains(&"SNDK".to_string()) && sub.members.contains(&"WDC".to_string())
+        );
+        assert_eq!(storage.valuation.logic.state_note, "Capacity Unlock");
+        assert_eq!(
+            storage.valuation.anchor.forbidden,
+            vec!["峰值季度EPS×4", "DCF默认禁用"]
+        );
+        let removed = t
+            .execute(json!({ "action": "remove_subtype", "industry": "storage", "id": "test-sub", "note": "撤回" }))
+            .await
+            .expect("tool");
+        assert_eq!(removed["ok"], true, "{removed}");
+        assert!(
+            hone_core::industry_map::load(&dir)
+                .0
+                .industry("storage")
+                .unwrap()
+                .valuation
+                .subtype_of("MU")
+                .map(|s| s.id != "test-sub")
+                .unwrap_or(true)
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

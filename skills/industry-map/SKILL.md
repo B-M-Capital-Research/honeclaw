@@ -38,13 +38,17 @@ allowed-tools:
 | `ai_valuation_logic.anti_pattern` | 这一行最常见的估值错法 | 与公司卡的「不要…」同等对待：在真正选倍数或分母的那一句里点名对照 |
 | `core_watch` | 这一行最该盯的先行指标与它的出现频率 | 触发条件与跟踪清单从这里取，不要写「持续关注行业动态」 |
 | `upstream_signals` | **本体的边**：这一行的收入由哪几家上市公司的最近行为决定，以及写这一行之前该先取它们的哪几个读数 | 命中成员公司时，**先取上游再写公司**：`data_fetch(earnings_outlook, ticker=<上游>)` 拿最新一季收入/指引/毛利率，`analyst_actions` 拿评级与目标价变动，`transcript`/`press_releases` 拿管理层关于本行的原话。需求侧第一段写「上游最近做了什么 → 沿传导链到这家」，不是「关注英伟达财报」 |
+| `valuation.logic` | **底层估值逻辑（HOne V3）**：`summary` 一句从哪里出发、`paragraphs` 原文、`formulas` 量化关系、`forward_focus` 未来 1–3 年先看什么、`state_note` 这一行典型的 State。 |
+| `valuation.anchor` | **倍数锚（HOne V3）**：`paragraphs` 原文、`upper_range_drivers` 倍数上沿由什么决定、`revision_optionality` 盈利上修期权、`forbidden` 禁止清单。 |
+| `valuation.subtypes[]` | **子类型**：同一行里价值链位置不同的公司各自的 `primary` / `secondary` / `when` / `note`，`members` 是所属公司；注入时只带命中公司那一条。`inferred_members` 标记底稿按最近子类型推断归类、尚未人工确认的公司。 |
+| 根 `methodology` | 七段需求链、通用执行规则（Forward denominator / Capacity Unlock Gate / Earnings Revision Optionality / Multiple selection / Market-implied check / DCF / Hard checks）、强制输出字段、最终原则。 |
 | `upstream_signals[].latest` / `latest_as_of` | 那家上游**最近一季实际做了什么**（带数字、带日期的一段）与截至日期。注入时排在传导链之前，需求侧第一段就从它写起；管理员每季财报后用页面或 `industry_map_edit(action="set_upstream_latest")` 更新，过期就按截至日期注明。 |
 
 ## 怎么把行业接进个股分析
 
 本轮系统提示出现【本轮相关行业】时，说明用户问的公司在树里。四件事，按顺序：
 
-0. **先写上游最近动作，再核对更新，再写公司。**行业块里每条上游信号带的「上游最近动作」是这一行的起点事实（带日期数字），对账表、增长来源、基准情景三处都要落它，写之前用 `earnings_outlook(ticker=X)` 核对有没有更新的一季。 行业块里列的「上游信号」是这一行收入的来源（存储、光通信、新云都挂在英伟达的财报上）。
+0. **先写上游最近动作，再核对更新，再按子类型执行卡定财年与倍数，再写公司。**行业块里每条上游信号带的「上游最近动作」是这一行的起点事实（带日期数字），对账表、增长来源、基准情景三处都要落它，写之前用 `earnings_outlook(ticker=X)` 核对有没有更新的一季。 行业块里列的「上游信号」是这一行收入的来源（存储、光通信、新云都挂在英伟达的财报上）。
    这一轮的第一批取数里必须有它们：最新一季实际数字与下季指引、毛利率、管理层关于本行的表述、评级与目标价变动。
    正文需求侧第一段写的是「上游**最近一季**实际做了什么 → 沿传导链传到这家」；上游没取到就明写「本轮未取到 X 的最新财报」，
    不得略过，也不得拿记忆里的旧季度代替。这一步做不到，后面的估值就还是「按标准模板答」。
