@@ -14,8 +14,9 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 use hone_core::industry_map::{
-    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryEdit, IndustryMember, IndustrySource, NewIndustry,
-    Subtype, UPSTREAM_RELATIONS, UpstreamSignal, VALUATION_LIST_FIELDS, VALUATION_TEXT_FIELDS,
+    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryBrief, IndustryEdit, IndustryMember,
+    IndustrySource, NewIndustry, Subtype, UPSTREAM_RELATIONS, UpstreamSignal,
+    VALUATION_LIST_FIELDS, VALUATION_TEXT_FIELDS,
 };
 
 use crate::base::{Tool, ToolParameter};
@@ -60,6 +61,7 @@ impl Tool for IndustryMapEditTool {
         `action=\"show\"` 先读当前内容再改——不要凭记忆改，树的内容会被别的管理员改动。\n\
         可改字段：`one_liner`（这一行是什么，一句话）、`driver_chain`（从 AI 侧可观测量到这一行收入/价格的传导链，是这一行的第一性公式）、\
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
+        **行业简报 brief** 是研究台页面第一块「当前重点」：用 `set_brief` 的 `question` 写现在值得研究的问题、`body` 写为什么是现在、`next` 写下一次验证；每季财报或口径变化后先改它，`clear_brief` 可清空。用 `set_watch` 把关注点里的数字更新到最新一季并带 `as_of`，省略的字段沿用原值，改名用 `new_what`。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
         **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。**前瞻估值执行版（V3）**：`set_valuation_field` / `set_valuation_list` 改这一行的底层估值逻辑与倍数锚字段，`upsert_subtype` / `remove_subtype` / `set_member_subtype` 维护子类型（哪些公司用哪个前瞻财年、哪一族倍数、什么权重）——注入给模型的估值执行卡就来自命中公司所属的子类型。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
         行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
@@ -71,7 +73,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "action".to_string(),
                 param_type: "string".to_string(),
-                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / remove_watch / add_upstream_signal / remove_upstream_signal / add_industry / remove_industry".to_string(),
+                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / set_watch / remove_watch / set_brief / clear_brief / add_upstream_signal / remove_upstream_signal / add_industry / remove_industry".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "show".into(),
@@ -82,7 +84,10 @@ impl Tool for IndustryMapEditTool {
                     "add_source".into(),
                     "remove_source".into(),
                     "add_watch".into(),
+                    "set_watch".into(),
                     "remove_watch".into(),
+                    "set_brief".into(),
+                    "clear_brief".into(),
                     "add_upstream_signal".into(),
                     "remove_upstream_signal".into(),
                     "set_upstream_latest".into(),
@@ -187,7 +192,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "what".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch / remove_watch 用：关注点本身".to_string(),
+                description: "add_watch / set_watch / remove_watch 用：关注点本身；set_watch 按现有标题定位".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -195,7 +200,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "why".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch 用：为什么它重要、怎么传导".to_string(),
+                description: "add_watch / set_watch 用：为什么它重要、怎么传导".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -203,7 +208,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "cadence".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
+                description: "add_watch / set_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -219,7 +224,39 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "as_of".to_string(),
                 param_type: "string".to_string(),
-                description: "add_upstream_signal / set_upstream_latest 用：latest 截至哪一天，如 2026-08-26".to_string(),
+                description: "add_watch / set_watch / set_brief / add_upstream_signal / set_upstream_latest 用：这段内容截至哪一天，如 2026-08-26（或 2026-06）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "new_what".to_string(),
+                param_type: "string".to_string(),
+                description: "set_watch 用：改名时的新标题，可选".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "question".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：现在值得研究的问题，一句".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "body".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：为什么是现在，一段".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "next".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：接下来要确认什么，多条用「；」分隔".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -330,7 +367,11 @@ impl Tool for IndustryMapEditTool {
         if action == "show" {
             return Ok(match text(&args, "industry") {
                 Some(id) => match map.industry(&id) {
-                    Some(industry) => json!({ "ok": true, "industry": industry }),
+                    Some(industry) => {
+                        let mut row = json!(industry);
+                        row["content_as_of"] = json!(industry.content_as_of());
+                        json!({ "ok": true, "industry": row })
+                    }
                     None => json!({
                         "ok": false,
                         "error": format!("没有这个行业：{id}"),
@@ -344,6 +385,7 @@ impl Tool for IndustryMapEditTool {
                         "id": item.id,
                         "name": item.name,
                         "one_liner": item.one_liner,
+                        "content_as_of": item.content_as_of(),
                         "members": item.members.len(),
                         "sources": item.sources.len(),
                     })).collect::<Vec<_>>(),
@@ -506,9 +548,62 @@ impl Tool for IndustryMapEditTool {
                         what,
                         why: text(&args, "why").unwrap_or_default(),
                         cadence: text(&args, "cadence").unwrap_or_default(),
+                        as_of: text(&args, "as_of").unwrap_or_default(),
                     },
                 }
             }
+            "set_watch" => {
+                let Some(what) = text(&args, "what") else {
+                    return missing("what");
+                };
+                // 工具接受局部更新，日志保留整条替换，避免重放时再依赖缺省字段的解释。
+                let mut watch = map
+                    .industry(&industry)
+                    .and_then(|item| {
+                        item.core_watch
+                            .iter()
+                            .find(|item| item.what.trim() == what.trim())
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| CoreWatch {
+                        what: what.clone(),
+                        why: String::new(),
+                        cadence: String::new(),
+                        as_of: String::new(),
+                    });
+                for (key, value) in [
+                    ("new_what", &mut watch.what),
+                    ("why", &mut watch.why),
+                    ("cadence", &mut watch.cadence),
+                    ("as_of", &mut watch.as_of),
+                ] {
+                    if let Some(fresh) = args.get(key).and_then(Value::as_str) {
+                        *value = fresh.trim().to_string();
+                    }
+                }
+                EditOp::SetWatch { what, watch }
+            }
+            "set_brief" => {
+                let Some(question) = text(&args, "question") else {
+                    return missing("question");
+                };
+                EditOp::SetBrief {
+                    brief: IndustryBrief {
+                        question,
+                        body: text(&args, "body").unwrap_or_default(),
+                        next: text(&args, "next")
+                            .map(|value| split_list(&value))
+                            .unwrap_or_default(),
+                        as_of: text(&args, "as_of").unwrap_or_else(|| {
+                            hone_core::local_now()
+                                .date_naive()
+                                .format("%Y-%m-%d")
+                                .to_string()
+                        }),
+                    },
+                }
+            }
+            "clear_brief" => EditOp::ClearBrief,
             "remove_watch" => {
                 let Some(what) = text(&args, "what") else {
                     return missing("what");
@@ -770,6 +865,132 @@ mod tests {
             hone_core::industry_map::load(&dir)
                 .0
                 .industry("cooling")
+                .is_none()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_brief_and_set_watch_work_through_the_tool() {
+        let dir = temp("brief-watch");
+        let t = tool(&dir);
+        let added = t
+            .execute(json!({
+                "action": "add_watch", "industry": "storage", "what": "测试季度读数",
+                "why": "原始读数", "cadence": "季度财报", "as_of": "2026-08-26"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(added["ok"], true, "{added}");
+        let changed = t.execute(json!({
+            "action": "set_watch", "industry": "storage", "what": " 测试季度读数 ", "why": "最新季度读数"
+        })).await.expect("tool");
+        assert_eq!(changed["ok"], true, "{changed}");
+        let (map, _) = hone_core::industry_map::load(&dir);
+        let watch = map.industry("storage").unwrap().core_watch.last().unwrap();
+        assert_eq!(watch.what, "测试季度读数");
+        assert_eq!(watch.why, "最新季度读数");
+        assert_eq!(watch.cadence, "季度财报");
+        assert_eq!(watch.as_of, "2026-08-26");
+
+        let renamed = t
+            .execute(json!({
+                "action": "set_watch", "industry": "storage", "what": "测试季度读数",
+                "new_what": "测试月度读数", "cadence": "月度", "as_of": "2026-09"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(renamed["ok"], true, "{renamed}");
+        let watch = renamed["industry_after"]["core_watch"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap();
+        assert_eq!(watch["what"], "测试月度读数");
+        assert_eq!(watch["why"], "最新季度读数");
+        assert_eq!(watch["cadence"], "月度");
+        assert_eq!(watch["as_of"], "2026-09");
+        let unknown = t
+            .execute(json!({
+                "action": "set_watch", "industry": "storage", "what": "不存在的关注点"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(unknown["ok"], false);
+        assert_eq!(unknown["error"], "这一行的关注点里没有「不存在的关注点」");
+        for (action, field) in [("set_watch", "what"), ("set_brief", "question")] {
+            let missing = t
+                .execute(json!({ "action": action, "industry": "storage" }))
+                .await
+                .expect("tool");
+            assert_eq!(missing["ok"], false);
+            assert_eq!(missing["error"], format!("缺少参数 {field}"));
+        }
+        assert_eq!(
+            hone_core::industry_map::load_log(&dir).edits.len(),
+            3,
+            "拒绝操作不写日志"
+        );
+
+        let today_before = hone_core::local_now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        let brief = t
+            .execute(json!({
+                "action": "set_brief", "industry": "storage", "question": " 现在研究什么？ ",
+                "next": " 下季财报验证 ； ；月度出货确认；"
+            }))
+            .await
+            .expect("tool");
+        let today_after = hone_core::local_now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(brief["ok"], true, "{brief}");
+        let show = t
+            .execute(json!({ "action": "show", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(show["ok"], true, "{show}");
+        let row = &show["industry"];
+        assert_eq!(row["brief"]["question"], "现在研究什么？");
+        assert_eq!(row["brief"]["body"], "");
+        assert_eq!(
+            row["brief"]["next"],
+            json!(["下季财报验证", "月度出货确认"])
+        );
+        let as_of = row["brief"]["as_of"].as_str().expect("简报有日期");
+        assert!(as_of == today_before || as_of == today_after, "{as_of}");
+        let (map, _) = hone_core::industry_map::load(&dir);
+        let content_as_of = map.industry("storage").unwrap().content_as_of();
+        assert!(content_as_of.is_some());
+        assert_eq!(row["content_as_of"], json!(content_as_of));
+        let overview = t.execute(json!({ "action": "show" })).await.expect("tool");
+        let row = overview["industries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == "storage")
+            .unwrap();
+        assert_eq!(row["content_as_of"], json!(content_as_of));
+
+        let cleared = t
+            .execute(json!({ "action": "clear_brief", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(cleared["ok"], true, "{cleared}");
+        let show = t
+            .execute(json!({ "action": "show", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(show["industry"].get("brief"), Some(&Value::Null));
+        assert!(
+            hone_core::industry_map::load(&dir)
+                .0
+                .industry("storage")
+                .unwrap()
+                .brief
                 .is_none()
         );
         let _ = std::fs::remove_dir_all(&dir);
