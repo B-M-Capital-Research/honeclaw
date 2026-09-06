@@ -1,12 +1,22 @@
-// Bottom-sheet on mobile / centered dialog on desktop. The picker shows a
-// short message window ending at the clicked message, then previews the
-// rendered image before export/copy/share actions.
+// One-screen share dialog: pick messages and a text size on the left, see the
+// real card on the right, act from one row of buttons. On a phone it is a
+// sheet — preview first, picker beneath, actions pinned above the safe area.
+// The PNG is only rasterised when an action asks for it, and warmed in the
+// background so an iOS share can still happen inside the tap gesture.
 
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+} from "solid-js";
 import { Portal } from "solid-js/web";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
-import { ChatShareCard } from "./chat-share-card";
+import { ChatShareCard, SHARE_CARD_WIDTH } from "./chat-share-card";
 import {
   ShareRenderError,
   canvasToPngBlob,
@@ -16,7 +26,10 @@ import {
   isShareAbortError,
   isShareRenderError,
   recentShareMessages,
+  sharePickerPreview,
+  shareTextForClipboard,
 } from "./chat-share-export";
+import "./chat-share.css";
 
 type ChatShareModalProps = {
   open: boolean;
@@ -55,6 +68,16 @@ type ChatShareModalProps = {
     role_assistant: string;
     nothing_selected: string;
     rendering: string;
+    included: string;
+    picker_hint: string;
+    font_size: string;
+    font_s: string;
+    font_m: string;
+    font_l: string;
+    font_xl: string;
+    preview_label: string;
+    card_disclaimer: string;
+    text_footer: string;
   };
   onClose: () => void;
 };
@@ -64,27 +87,22 @@ type Toast =
   | { kind: "error"; text: string }
   | null;
 
-type ShareStep = "select" | "preview";
-
-const SHARE_FONT_SIZES = [15, 16.5, 18, 20] as const;
-const DEFAULT_SHARE_FONT_INDEX = 2;
+/** Card text sizes: the conversation's 15px is the middle of the range. */
+const SHARE_FONT_SIZES = [14, 15, 16.5, 18] as const;
+const DEFAULT_SHARE_FONT_INDEX = 1;
 
 export function ChatShareModal(props: ChatShareModalProps) {
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [toast, setToast] = createSignal<Toast>(null);
   const [busy, setBusy] = createSignal(false);
-  const [step, setStep] = createSignal<ShareStep>("select");
-  const [previewUrl, setPreviewUrl] = createSignal<string | null>(null);
   const [fontIndex, setFontIndex] = createSignal(DEFAULT_SHARE_FONT_INDEX);
   let cardEl: HTMLDivElement | undefined;
-  let listEl: HTMLUListElement | undefined;
+  let closeRef: HTMLButtonElement | undefined;
   let toastTimer: number | undefined;
   let wasOpen = false;
-  let selectionRenderKey = "";
   let renderKey = "";
   let cachedBlob: Blob | null = null;
   let renderPromise: Promise<Blob> | null = null;
-  let previewRenderPromise: Promise<void> | null = null;
 
   const recentMessages = createMemo<PublicChatMessage[]>(() =>
     recentShareMessages(props.messages, 4, props.seedIndex),
@@ -92,14 +110,15 @@ export function ChatShareModal(props: ChatShareModalProps) {
   const selectedMessages = createMemo<PublicChatMessage[]>(() =>
     recentMessages().filter((m) => selected().has(m.id)),
   );
+  const hasSelection = () => selectedMessages().length > 0;
   const shareFontSize = () =>
     SHARE_FONT_SIZES[fontIndex()] ?? SHARE_FONT_SIZES[DEFAULT_SHARE_FONT_INDEX];
-
-  const revokePreviewUrl = () => {
-    const url = previewUrl();
-    if (url) URL.revokeObjectURL(url);
-    setPreviewUrl(null);
-  };
+  const fontLabels = () => [
+    props.strings.font_s,
+    props.strings.font_m,
+    props.strings.font_l,
+    props.strings.font_xl,
+  ];
 
   const showToast = (t: Toast) => {
     setToast(t);
@@ -109,60 +128,46 @@ export function ChatShareModal(props: ChatShareModalProps) {
     }
   };
 
-  // Reset selection to the final item in the picker window whenever the modal
-  // transitions from closed to open; the parent keeps this component mounted
-  // across opens.
+  // Reset to the clicked message whenever the dialog transitions from closed
+  // to open; the parent keeps this component mounted across opens.
   createEffect(() => {
     if (props.open && !wasOpen) {
-      const recent = recentMessages();
-      const defaultId = defaultShareMessageId(recent);
+      const defaultId = defaultShareMessageId(recentMessages());
       setSelected(defaultId ? new Set([defaultId]) : new Set<string>());
-      setStep("select");
       setFontIndex(DEFAULT_SHARE_FONT_INDEX);
-      revokePreviewUrl();
       setBusy(false);
       setToast(null);
-      window.requestAnimationFrame(() => {
-        const item = listEl?.querySelector<HTMLElement>(
-          ".pub-share-item[data-selected='true']",
-        );
-        if (!item || !listEl) return;
-        listEl.scrollTop =
-          item.offsetTop - listEl.clientHeight / 2 + item.clientHeight / 2;
-      });
+      cachedBlob = null;
+      renderPromise = null;
+      renderKey = "";
+      window.requestAnimationFrame(() => closeRef?.focus());
     }
     wasOpen = props.open;
   });
 
-  const selectionKey = () => selectedMessages().map((m) => m.id).join("|");
-  const renderSignature = () => `${selectionKey()}::font:${shareFontSize()}`;
+  const renderSignature = () =>
+    `${selectedMessages().map((m) => m.id).join("|")}::font:${shareFontSize()}`;
 
+  // Warm the PNG for the current selection so a later share on iOS can hand
+  // the file over inside the tap gesture budget.
   createEffect(() => {
-    const key = selectionKey();
-    if (!props.open || !key) {
-      selectionRenderKey = "";
-      renderKey = "";
+    const key = renderSignature();
+    if (!props.open || !hasSelection()) {
       cachedBlob = null;
       renderPromise = null;
-      previewRenderPromise = null;
-      revokePreviewUrl();
+      renderKey = "";
       return;
     }
-    if (selectionRenderKey !== key) {
-      selectionRenderKey = key;
-      renderKey = "";
+    if (renderKey !== key) {
       cachedBlob = null;
       renderPromise = null;
-      previewRenderPromise = null;
-      revokePreviewUrl();
-      setStep("select");
+      renderKey = "";
     }
     const timer = window.setTimeout(() => {
       void renderPngBlob().catch(() => {
-        // Export handlers surface render failures to the user; background
-        // warm-up only exists to keep iOS share inside the tap gesture budget.
+        // Export handlers surface render failures to the user.
       });
-    }, 80);
+    }, 300);
     onCleanup(() => window.clearTimeout(timer));
   });
 
@@ -174,7 +179,6 @@ export function ChatShareModal(props: ChatShareModalProps) {
     onCleanup(() => {
       window.removeEventListener("keydown", onKey);
       if (toastTimer) window.clearTimeout(toastTimer);
-      revokePreviewUrl();
     });
   });
 
@@ -198,15 +202,12 @@ export function ChatShareModal(props: ChatShareModalProps) {
     if (!cardEl) {
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     }
-    if (!cardEl) {
-      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-    }
     if (!cardEl) throw new ShareRenderError("Share card is not ready");
     const { default: html2canvas } = await import("html2canvas");
     try {
       return await html2canvas(cardEl, {
         scale: window.devicePixelRatio >= 2 ? 2 : 1.5,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#fffdf8",
         useCORS: true,
         logging: false,
       });
@@ -221,12 +222,14 @@ export function ChatShareModal(props: ChatShareModalProps) {
     if (key && renderKey === key && renderPromise) return renderPromise;
     renderKey = key;
     const canvas = await renderCanvas();
-    renderPromise = canvasToPngBlob(canvas).then((blob) => {
-      if (renderKey === key) cachedBlob = blob;
-      return blob;
-    }).finally(() => {
-      if (renderKey === key) renderPromise = null;
-    });
+    renderPromise = canvasToPngBlob(canvas)
+      .then((blob) => {
+        if (renderKey === key) cachedBlob = blob;
+        return blob;
+      })
+      .finally(() => {
+        if (renderKey === key) renderPromise = null;
+      });
     return renderPromise;
   };
 
@@ -252,44 +255,6 @@ export function ChatShareModal(props: ChatShareModalProps) {
     document.body.removeChild(link);
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     showToast({ kind: "success", text: props.strings.save_image_hint });
-  };
-
-  const showPreview = async () => {
-    setStep("preview");
-    const blob = await renderPngBlob();
-    revokePreviewUrl();
-    setPreviewUrl(URL.createObjectURL(blob));
-  };
-
-  createEffect(() => {
-    if (!props.open || step() !== "preview" || !hasSelection() || previewUrl()) {
-      return;
-    }
-    if (busy() || previewRenderPromise) return;
-    previewRenderPromise = withBusy(showPreview).finally(() => {
-      previewRenderPromise = null;
-    });
-  });
-
-  const changeFontSize = (index: number) => {
-    if (index === fontIndex()) {
-      if (step() === "preview" && hasSelection() && !previewUrl() && !busy()) {
-        void withBusy(showPreview).catch(() => undefined);
-      }
-      return;
-    }
-    setFontIndex(index);
-    cachedBlob = null;
-    renderPromise = null;
-    previewRenderPromise = null;
-    renderKey = "";
-    revokePreviewUrl();
-    if (step() === "preview" && hasSelection()) {
-      withBusy(async () => {
-        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-        await showPreview();
-      }).catch(() => undefined);
-    }
   };
 
   const withBusy = async (fn: () => Promise<void>) => {
@@ -318,15 +283,6 @@ export function ChatShareModal(props: ChatShareModalProps) {
       text: isShareRenderError(error) ? props.strings.error_render : fallbackText,
     });
   };
-
-  const handleGenerateImage = () =>
-    withBusy(async () => {
-      try {
-        await showPreview();
-      } catch (error) {
-        showExportError("download", error, props.strings.error_render);
-      }
-    });
 
   const handleSaveImage = () =>
     withBusy(async () => {
@@ -379,13 +335,14 @@ export function ChatShareModal(props: ChatShareModalProps) {
   const handleCopyText = () =>
     withBusy(async () => {
       try {
-        const text = selectedMessages()
-          .map((m) => {
-            const label =
-              m.role === "user" ? props.strings.role_user : props.strings.role_assistant;
-            return `【${label}】\n${stripAttachmentMarkers(m.content).trim()}`;
-          })
-          .join("\n\n");
+        const text = shareTextForClipboard(
+          selectedMessages().map((m) => ({
+            role: m.role,
+            content: stripAttachmentMarkers(m.content),
+          })),
+          { user: props.strings.role_user, assistant: props.strings.role_assistant },
+          props.strings.text_footer,
+        );
         await navigator.clipboard.writeText(text);
         showToast({ kind: "success", text: props.strings.success_copy_text });
       } catch (error) {
@@ -417,36 +374,29 @@ export function ChatShareModal(props: ChatShareModalProps) {
       }
     });
 
-  const hasSelection = () => selectedMessages().length > 0;
-  const previewLabel = (m: PublicChatMessage) => {
-    const text = stripAttachmentMarkers(m.content).replace(/\s+/g, " ").trim();
-    return text.length > 80 ? `${text.slice(0, 80)}…` : text || "—";
-  };
+  const previewLabel = (m: PublicChatMessage) =>
+    sharePickerPreview(stripAttachmentMarkers(m.content));
 
   return (
     <Show when={props.open}>
       <Portal>
-        <div class="pub-share-overlay" onClick={props.onClose} role="presentation">
-          <style>{MODAL_CSS}</style>
+        <div class="hc-share" onClick={props.onClose} role="presentation">
           <div
-            class="pub-share-panel"
+            class="hc-share__panel"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label={props.strings.title}
           >
-            <div class="pub-share-header">
+            <header class="hc-share__head">
               <div>
-                <div class="pub-share-title">{props.strings.title}</div>
-                <div class="pub-share-subtitle">
-                  {step() === "preview"
-                    ? props.strings.preview_subtitle
-                    : props.strings.subtitle}
-                </div>
+                <strong>{props.strings.title}</strong>
+                <small>{props.strings.subtitle}</small>
               </div>
               <button
+                ref={closeRef}
                 type="button"
-                class="pub-share-close"
+                class="hc-share__close"
                 aria-label={props.strings.close_aria}
                 onClick={props.onClose}
               >
@@ -465,155 +415,149 @@ export function ChatShareModal(props: ChatShareModalProps) {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-            </div>
+            </header>
 
-            <Show
-              when={step() === "preview"}
-              fallback={
-                <>
-                  <div class="pub-share-body">
-                    <div class="pub-share-list-head">
-                      <span>
-                        {selectedMessages().length} / {recentMessages().length}
-                      </span>
-                    </div>
-                    <ul class="pub-share-list" ref={listEl}>
-                      <For each={recentMessages()}>
-                        {(m) => (
-                          <li
-                            class="pub-share-item"
-                            data-selected={selected().has(m.id) ? "true" : undefined}
-                            data-role={m.role}
+            <div class="hc-share__grid">
+              <aside class="hc-share__side">
+                <section class="hc-share__section">
+                  <div class="hc-share__section-head">
+                    <b>{props.strings.included}</b>
+                    <span>
+                      {selectedMessages().length} / {recentMessages().length}
+                    </span>
+                  </div>
+                  <ul class="hc-share__list">
+                    <For each={recentMessages()}>
+                      {(m) => (
+                        <li>
+                          <button
+                            type="button"
+                            class="hc-share__row"
+                            aria-pressed={selected().has(m.id)}
+                            onClick={() => toggle(m.id)}
                           >
-                            <label class="pub-share-item-label">
-                              <input
-                                type="checkbox"
-                                checked={selected().has(m.id)}
-                                onChange={() => toggle(m.id)}
-                              />
-                              <span class="pub-share-item-role">
+                            <span class="hc-share__check" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="3"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                              >
+                                <path d="M20 6L9 17l-5-5" />
+                              </svg>
+                            </span>
+                            <span class="hc-share__row-copy">
+                              <small data-role={m.role}>
                                 {m.role === "user"
                                   ? props.strings.role_user
                                   : props.strings.role_assistant}
-                              </span>
-                              <span class="pub-share-item-preview">
-                                {previewLabel(m)}
-                              </span>
-                            </label>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                  </div>
+                              </small>
+                              <span>{previewLabel(m)}</span>
+                            </span>
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </section>
 
-                  <div class="pub-share-actions pub-share-actions--single">
-                    <button
-                      type="button"
-                      class="pub-share-action pub-share-action--primary"
-                      disabled={!hasSelection() || busy()}
-                      onClick={handleGenerateImage}
-                    >
-                      <ActionIcon name="image" />
-                      <span>{props.strings.generate_image}</span>
-                    </button>
+                <section class="hc-share__section">
+                  <div class="hc-share__section-head">
+                    <b>{props.strings.font_size}</b>
                   </div>
-                </>
-              }
-            >
-              <div class="pub-share-preview-body">
-                <div class="pub-share-font-toolbar" aria-label="Share image font size">
-                  <For each={SHARE_FONT_SIZES}>
-                    {(size, i) => (
-                      <button
-                        type="button"
-                        class="pub-share-font-button"
-                        data-active={i() === fontIndex() ? "true" : undefined}
-                        style={{ "font-size": `${12 + i() * 1.5}px` }}
-                        aria-label={`Font size ${i() + 1}: ${size}px`}
-                        onClick={() => changeFontSize(i())}
-                      >
-                        Aa
-                      </button>
-                    )}
-                  </For>
-                </div>
-                <Show when={previewUrl()}>
-                  {(url) => (
-                    <div
-                      class="pub-share-preview-frame"
-                      role="region"
-                      tabIndex={0}
-                      aria-label={props.strings.preview_scroll_hint}
-                    >
-                      <img src={url()} alt={props.strings.title} />
-                    </div>
-                  )}
-                </Show>
-                <div class="pub-share-preview-scroll-hint">
-                  {props.strings.preview_scroll_hint}
-                </div>
-                <button
-                  type="button"
-                  class="pub-share-back"
-                  onClick={() => setStep("select")}
-                >
-                  {props.strings.back_to_select}
-                </button>
-              </div>
+                  <div class="hc-share__seg" role="radiogroup" aria-label={props.strings.font_size}>
+                    <For each={SHARE_FONT_SIZES}>
+                      {(size, i) => (
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={i() === fontIndex()}
+                          aria-label={`${fontLabels()[i()]} ${size}px`}
+                          onClick={() => setFontIndex(i())}
+                        >
+                          {fontLabels()[i()]}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </section>
 
-              <div class="pub-share-actions">
-                <button
-                  type="button"
-                  class="pub-share-action"
-                  disabled={!hasSelection() || busy()}
-                  onClick={handleSaveImage}
-                >
-                  <ActionIcon name="download" />
-                  <span>{props.strings.save_image}</span>
-                </button>
-                <button
-                  type="button"
-                  class="pub-share-action"
-                  disabled={!hasSelection() || busy()}
-                  onClick={handleCopyImage}
-                >
-                  <ActionIcon name="image" />
-                  <span>{props.strings.copy_image}</span>
-                </button>
-                <button
-                  type="button"
-                  class="pub-share-action"
-                  disabled={!hasSelection() || busy()}
-                  onClick={handleCopyText}
-                >
-                  <ActionIcon name="text" />
-                  <span>{props.strings.copy_text}</span>
-                </button>
-                <Show when={supportsSystemShare()}>
+                <div class="hc-share__actions">
                   <button
                     type="button"
-                    class="pub-share-action"
+                    class="hc-share__action is-primary"
                     disabled={!hasSelection() || busy()}
-                    onClick={handleSystemShare}
+                    onClick={handleSaveImage}
                   >
-                    <ActionIcon name="share" />
-                    <span>{props.strings.share_other_app}</span>
+                    <ActionIcon name="download" />
+                    <span>{props.strings.save_image}</span>
                   </button>
+                  <button
+                    type="button"
+                    class="hc-share__action"
+                    disabled={!hasSelection() || busy()}
+                    onClick={handleCopyImage}
+                  >
+                    <ActionIcon name="image" />
+                    <span>{props.strings.copy_image}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="hc-share__action"
+                    disabled={!hasSelection() || busy()}
+                    onClick={handleCopyText}
+                  >
+                    <ActionIcon name="text" />
+                    <span>{props.strings.copy_text}</span>
+                  </button>
+                  <Show when={supportsSystemShare()}>
+                    <button
+                      type="button"
+                      class="hc-share__action"
+                      disabled={!hasSelection() || busy()}
+                      onClick={handleSystemShare}
+                    >
+                      <ActionIcon name="share" />
+                      <span>{props.strings.share_other_app}</span>
+                    </button>
+                  </Show>
+                </div>
+              </aside>
+
+              <div class="hc-share__preview" aria-label={props.strings.preview_label}>
+                <Show
+                  when={hasSelection()}
+                  fallback={<p class="hc-share__empty">{props.strings.nothing_selected}</p>}
+                >
+                  <ScaledCard>
+                    <ChatShareCard
+                      messages={selectedMessages()}
+                      brandName={props.brandName}
+                      brandTagline={props.brandTagline}
+                      qrUrl={props.qrUrl}
+                      qrCaption={props.qrCaption}
+                      disclaimer={props.strings.card_disclaimer}
+                      messageFontSize={shareFontSize()}
+                    />
+                  </ScaledCard>
                 </Show>
               </div>
-            </Show>
+            </div>
 
             <Show when={busy()}>
-              <div class="pub-share-busy">{props.strings.rendering}</div>
+              <div class="hc-share__busy">{props.strings.rendering}</div>
             </Show>
 
             <Show when={toast()}>
-              <div class="pub-share-toast" data-kind={toast()!.kind}>
+              <div class="hc-share__toast" data-kind={toast()!.kind}>
                 {toast()!.text}
               </div>
             </Show>
           </div>
 
+          {/* Offscreen twin of the preview: the element html2canvas captures. */}
           <Show when={hasSelection()}>
             <ChatShareCard
               messages={selectedMessages()}
@@ -621,6 +565,7 @@ export function ChatShareModal(props: ChatShareModalProps) {
               brandTagline={props.brandTagline}
               qrUrl={props.qrUrl}
               qrCaption={props.qrCaption}
+              disclaimer={props.strings.card_disclaimer}
               messageFontSize={shareFontSize()}
               hidden
               registerRef={(el) => (cardEl = el)}
@@ -632,14 +577,57 @@ export function ChatShareModal(props: ChatShareModalProps) {
   );
 }
 
+/**
+ * Shows the 420px card at the width available to it. The card keeps its
+ * export width and is scaled down as a whole, so the preview is the image.
+ */
+function ScaledCard(props: { children: any }) {
+  const [scale, setScale] = createSignal(1);
+  const [height, setHeight] = createSignal<number>();
+  let stageRef: HTMLDivElement | undefined;
+  let innerRef: HTMLDivElement | undefined;
+
+  onMount(() => {
+    if (typeof ResizeObserver === "undefined" || !stageRef || !innerRef) return;
+    const stage = stageRef;
+    const inner = innerRef;
+    const apply = () => {
+      const next = Math.min(1, stage.clientWidth / SHARE_CARD_WIDTH);
+      setScale(next);
+      setHeight(Math.ceil(inner.offsetHeight * next));
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(stage);
+    ro.observe(inner);
+    apply();
+    onCleanup(() => ro.disconnect());
+  });
+
+  return (
+    <div
+      ref={stageRef}
+      class="hc-share__stage"
+      style={{ height: height() !== undefined ? `${height()}px` : undefined }}
+    >
+      <div
+        ref={innerRef}
+        class="hc-share__stage-inner"
+        style={{ transform: `scale(${scale()})` }}
+      >
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
 function ActionIcon(props: { name: "download" | "image" | "text" | "share" }) {
   const common = {
-    width: "18",
-    height: "18",
+    width: "16",
+    height: "16",
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    "stroke-width": "2",
+    "stroke-width": "1.8",
     "stroke-linecap": "round" as const,
     "stroke-linejoin": "round" as const,
     "aria-hidden": true,
@@ -680,301 +668,3 @@ function ActionIcon(props: { name: "download" | "image" | "text" | "share" }) {
       );
   }
 }
-
-const MODAL_CSS = `
-  .pub-share-overlay {
-    position: fixed; inset: 0;
-    background: rgba(23, 32, 31, 0.42);
-    z-index: 1000;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-    -webkit-backdrop-filter: blur(2px);
-    backdrop-filter: blur(2px);
-    animation: pub-share-fade 0.18s ease-out;
-  }
-  @keyframes pub-share-fade { from { opacity: 0; } to { opacity: 1; } }
-  .pub-share-panel {
-    position: relative;
-    width: 100%; max-width: 460px;
-    background: #fff;
-    border-radius: var(--hone-radius-md);
-    box-shadow: 0 24px 60px rgba(23,32,31,0.25);
-    display: flex; flex-direction: column;
-    max-height: calc(100vh - 48px);
-    overflow: hidden;
-    animation: pub-share-pop 0.22s var(--hone-ease);
-  }
-  .pub-share-panel :focus-visible {
-    outline: 3px solid var(--hone-focus-ring);
-    outline-offset: 3px;
-  }
-  @keyframes pub-share-pop {
-    from { transform: translateY(12px) scale(0.97); opacity: 0; }
-    to { transform: none; opacity: 1; }
-  }
-  .pub-share-header {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 16px;
-    padding: 20px 22px 14px 22px;
-    border-bottom: 1px solid var(--hone-line);
-    background: #fff;
-  }
-  .pub-share-header > div { min-width: 0; }
-  .pub-share-title { font-size: 19px; font-weight: 800; color: var(--hone-ink-950); }
-  .pub-share-subtitle { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--hone-ink-600); }
-  .pub-share-close {
-    width: 32px; height: 32px;
-    flex: 0 0 32px;
-    border-radius: 999px; border: 0;
-    background: var(--hone-paper-200);
-    color: var(--hone-ink-800);
-    display: inline-flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    position: relative;
-    z-index: 2;
-    transition: background 0.15s, color 0.15s;
-  }
-  .pub-share-close:hover { background: var(--hone-line); color: var(--hone-ink-950); }
-  .pub-share-body { padding: 14px 22px 10px 22px; overflow-y: auto; flex: 1; min-height: 0; }
-  .pub-share-preview-body {
-    padding: 16px 22px 12px 22px;
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    background: linear-gradient(180deg, var(--hone-paper-100) 0%, #ffffff 100%);
-  }
-  .pub-share-font-toolbar {
-    width: min(100%, 320px);
-    margin: 0 auto 10px;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-    padding: 4px;
-    border: 1px solid var(--hone-line);
-    border-radius: var(--hone-radius-md);
-    background: rgba(255,255,255,0.86);
-    box-shadow: 0 10px 24px rgba(23,32,31,0.08);
-  }
-  .pub-share-font-button {
-    min-height: 34px;
-    border: 0;
-    border-radius: var(--hone-radius-sm);
-    background: transparent;
-    color: var(--hone-ink-600);
-    font-family: var(--hone-font-body);
-    font-weight: 800;
-    cursor: pointer;
-    transition: background 0.14s ease, color 0.14s ease, transform 0.06s ease;
-  }
-  .pub-share-font-button:hover {
-    background: var(--hone-paper-200);
-    color: var(--hone-ink-950);
-  }
-  .pub-share-font-button[data-active="true"] {
-    background: var(--hone-ink-950);
-    color: #fff;
-  }
-  .pub-share-font-button:active { transform: scale(0.98); }
-  .pub-share-preview-frame {
-    width: min(100%, 320px);
-    max-height: min(54vh, 560px);
-    margin: 0 auto;
-    border-radius: var(--hone-radius-md);
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-    background: #fff;
-    border: 1px solid var(--hone-line);
-    box-shadow: 0 18px 50px rgba(23,32,31,0.16);
-  }
-  .pub-share-preview-frame img {
-    display: block;
-    width: 100%;
-    height: auto;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-touch-callout: default;
-  }
-  .pub-share-preview-scroll-hint {
-    width: min(100%, 320px);
-    margin: 9px auto 0;
-    color: var(--hone-ink-600);
-    font-size: 12.5px;
-    line-height: 1.45;
-    text-align: center;
-  }
-  .pub-share-back {
-    display: block;
-    margin: 12px auto 0;
-    background: none;
-    border: 0;
-    color: var(--hone-coral-600);
-    font-size: 12.5px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .pub-share-back:hover { text-decoration: underline; }
-  .pub-share-list-head {
-    display: flex; align-items: center; justify-content: space-between;
-    font-size: 12.5px; color: var(--hone-ink-600);
-    margin-bottom: 10px;
-  }
-  .pub-share-toggle-all {
-    background: none; border: 0;
-    color: var(--hone-coral-600); font-weight: 600; font-size: 12.5px;
-    cursor: pointer; padding: 4px 0;
-  }
-  .pub-share-toggle-all:hover { text-decoration: underline; }
-  .pub-share-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .pub-share-item { border-radius: var(--hone-radius-sm); transition: background 0.12s; }
-  .pub-share-item[data-selected="true"] { background: var(--hone-paper-200); }
-  .pub-share-item-label {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 9px 12px;
-    cursor: pointer;
-    line-height: 1.45;
-  }
-  .pub-share-item-label input {
-    margin-top: 3px;
-    flex: none;
-    cursor: pointer;
-    accent-color: var(--hone-ink-950);
-  }
-  .pub-share-item-role {
-    flex: none;
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 0.04em; text-transform: uppercase;
-    color: var(--hone-ink-400);
-    padding-top: 1px;
-  }
-  .pub-share-item[data-role="assistant"] .pub-share-item-role { color: var(--hone-coral-500); }
-  .pub-share-item-preview {
-    flex: 1; min-width: 0;
-    font-size: 13px; color: var(--hone-ink-800);
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-  .pub-share-actions {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-    padding: 12px 22px 18px 22px;
-    border-top: 1px solid var(--hone-line);
-    background: var(--hone-paper-100);
-  }
-  .pub-share-actions--single { grid-template-columns: 1fr; }
-  .pub-share-actions--single .pub-share-action {
-    width: min(260px, 100%);
-    justify-self: center;
-  }
-  .pub-share-action {
-    display: inline-flex; align-items: center; justify-content: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: #fff;
-    color: var(--hone-ink-950);
-    border: 1px solid var(--hone-line);
-    border-radius: var(--hone-radius-md);
-    font-size: 13.5px; font-weight: 600;
-    cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, transform 0.06s;
-  }
-  .pub-share-action:hover:not(:disabled) { background: var(--hone-paper-100); border-color: var(--hone-line-strong); }
-  .pub-share-action--primary {
-    background: var(--hone-ink-950);
-    color: #fff;
-    border-color: var(--hone-ink-950);
-  }
-  .pub-share-action--primary:hover:not(:disabled) {
-    background: var(--hone-ink-800);
-    border-color: var(--hone-ink-800);
-  }
-  .pub-share-action:active:not(:disabled) { transform: scale(0.98); }
-  .pub-share-action:disabled { opacity: 0.45; cursor: not-allowed; }
-  .pub-share-busy {
-    position: absolute; inset: 0;
-    background: rgba(255,255,255,0.82);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; color: var(--hone-ink-800);
-    pointer-events: none;
-  }
-  .pub-share-toast {
-    position: absolute; left: 50%; bottom: 78px;
-    transform: translateX(-50%);
-    background: var(--hone-ink-950); color: #fff;
-    padding: 7px 14px; border-radius: 999px;
-    font-size: 12.5px;
-    pointer-events: none;
-    animation: pub-share-toast-in 0.2s ease-out;
-  }
-  .pub-share-toast[data-kind="error"] { background: #b0443b; }
-  @keyframes pub-share-toast-in {
-    from { opacity: 0; transform: translate(-50%, 6px); }
-    to { opacity: 1; transform: translate(-50%, 0); }
-  }
-  [data-theme="dark"] .pub-share-panel,
-  [data-theme="dark"] .pub-share-header {
-    background: #1b1e1c;
-  }
-  [data-theme="dark"] .pub-share-preview-body,
-  [data-theme="dark"] .pub-share-actions {
-    background: #171a18;
-  }
-  [data-theme="dark"] .pub-share-font-toolbar,
-  [data-theme="dark"] .pub-share-preview-frame,
-  [data-theme="dark"] .pub-share-action {
-    background: #242825;
-    border-color: rgba(255,255,255,0.14);
-    color: #f1f3ef;
-  }
-  [data-theme="dark"] .pub-share-item[data-selected="true"],
-  [data-theme="dark"] .pub-share-close {
-    background: #2b302d;
-  }
-  [data-theme="dark"] .pub-share-busy {
-    background: rgba(23,26,24,0.88);
-    color: #f1f3ef;
-  }
-  [data-theme="dark"] .pub-share-action--primary {
-    background: #eef1ed;
-    border-color: #eef1ed;
-    color: #171917;
-  }
-  @media (max-width: 600px) {
-    .pub-share-overlay {
-      align-items: flex-end;
-      justify-content: center;
-      padding: max(16px, calc(env(safe-area-inset-top, 0px) + 12px)) 0 0;
-    }
-    .pub-share-panel {
-      max-width: none; width: 100%;
-      border-radius: var(--hone-radius-md) var(--hone-radius-md) 0 0;
-      max-height: calc(100vh - max(16px, calc(env(safe-area-inset-top, 0px) + 12px)));
-      max-height: calc(100dvh - max(16px, calc(env(safe-area-inset-top, 0px) + 12px)));
-      padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-    .pub-share-header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      align-items: center;
-      padding: 14px calc(16px + env(safe-area-inset-right, 0px)) 12px calc(18px + env(safe-area-inset-left, 0px));
-      box-shadow: 0 1px 0 var(--hone-line);
-    }
-    .pub-share-close {
-      width: 44px;
-      height: 44px;
-      flex-basis: 44px;
-      margin: -6px 0 -6px 8px;
-      background: var(--hone-paper-200);
-      box-shadow: 0 1px 3px rgba(23,32,31,0.08);
-      position: relative;
-      z-index: 21;
-    }
-    .pub-share-close svg {
-      width: 18px;
-      height: 18px;
-    }
-    .pub-share-actions { grid-template-columns: repeat(2, 1fr); }
-  }
-`;

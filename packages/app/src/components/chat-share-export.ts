@@ -57,24 +57,73 @@ export function defaultShareMessageId<T extends { id: string }>(
   return messages[messages.length - 1]?.id ?? null;
 }
 
-export function shareUserBubbleStyle(fontSize: number) {
+/**
+ * The shared question is a quiet, left-aligned block — the same shape it has
+ * in the conversation — rather than a dark centred bubble that reads as a
+ * different product from the answer beneath it. Colours are literals: the
+ * card is rasterised by html2canvas, which cannot evaluate color-mix().
+ */
+export function shareQuestionStyle(fontSize: number) {
   return {
-    "max-width": "86%",
-    background: "#0f172a",
-    color: "#f8fafc",
-    display: "flex",
-    "align-items": "center",
-    "justify-content": "center",
-    "min-height": `${Math.round(fontSize * 1.45 + 20)}px`,
-    padding: "10px 15px",
+    "max-width": "88%",
+    "align-self": "flex-end",
+    background: "#f1f0eb",
+    color: "#17201f",
+    padding: "9px 13px",
     "border-radius": "12px 12px 4px 12px",
     "font-size": `${fontSize}px`,
-    "line-height": "1.45",
+    "line-height": "1.55",
     "white-space": "pre-wrap",
-    "text-align": "center",
+    "text-align": "left",
     "word-break": "break-word",
     "box-sizing": "border-box",
   } as const;
+}
+
+/**
+ * Plain-text form of a shared exchange for the clipboard: speaker labels,
+ * blank lines between turns, and one attribution line at the end so a pasted
+ * answer still says where it came from.
+ */
+export function shareTextForClipboard(
+  messages: readonly { role: "user" | "assistant"; content: string }[],
+  labels: { user: string; assistant: string },
+  footer: string,
+): string {
+  const turns = messages
+    .map((message) => {
+      const label = message.role === "user" ? labels.user : labels.assistant;
+      return `${label}：${message.content.trim()}`;
+    })
+    .filter((line) => line.length > 0);
+  return [...turns, footer].join("\n\n");
+}
+
+/**
+ * One line of a message for the picker: markdown syntax removed so a row
+ * reads as prose ("结论：营收与 EPS 双超预期…"), not as source ("**结论…**").
+ */
+export function sharePickerPreview(content: string, limit = 90): string {
+  const text = content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+\.\s+)/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "—";
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+/** Date stamp on the card, in the reader's local time. */
+export function shareDateLabel(now = new Date()) {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 export async function canvasToPngBlob(canvas: HTMLCanvasElement) {

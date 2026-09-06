@@ -46,7 +46,7 @@ export default function SharePreviewPage() {
       const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(el, {
         scale: 2,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#fffdf8",
         useCORS: true,
         logging: false,
       });
@@ -78,6 +78,7 @@ export default function SharePreviewPage() {
         brandTagline="Sharpen your edge."
         qrUrl="https://hone-claw.com/chat"
         qrCaption="Scan to try HONE Chat"
+        disclaimer="Research reference only; not investment advice"
         registerRef={(el) => setRegistered(el)}
       />
       {pngUrl() && (

@@ -84,6 +84,25 @@
 `FinanceCalendarDialog`，用 `openRequest` 计数打开），输入框维护一份 `ComposerAction[]`：
 桌面渲染成 chip，手机渲染进面板，管理员项进工具菜单——一份列表三处复用。
 
+## 第三轮：分享（同日）
+
+> 分享这个也要跟上，把分享的样式和交互全部重构。
+
+原来是两步向导（勾消息 → 生成 PNG → 预览图上再选动作），400 行样式内联在 TSX 里，卡片是深色居中气泡。改成：
+
+- **一屏直出**：桌面左栏「包含的消息」（最近 4 条，勾选行带角色标签与去掉 Markdown 标记的摘要）+ 字号四档
+  （小 / 标准 / 大 / 特大，标准 = 对话页 15px）+ 一列动作（保存图片为主，复制图片 / 仅复制文字 / 分享到其他应用）；
+  右栏实时渲染**真实卡片**（`ScaledCard` 按容器宽度整体缩放，预览即成图），不再等 PNG。手机端是底部 sheet：
+  预览框固定 46dvh 内滚，勾选与字号在下方，动作吸底。
+- **卡片**（`chat-share-card.tsx` + `chat-share.css`）：420px 暖纸底，头部 logo + HONE + 日期，提问是浅灰左对齐块，
+  回答是文档排版（署名点 + HONE、650 标题、hairline 表格、等宽数字、带边框代码块），页脚品牌 + 扫码说明 +
+  一行免责 + 二维码。卡片令牌钉在根元素上、颜色全是字面值——html2canvas 不认 `color-mix()`。
+- PNG 仍只在动作时栅格化，并在选择变化后 300ms 预热，保住 iOS 必须在手势内 `navigator.share` 的约束。
+- 纯文本复制改成「我：… / HONE：…」+ 一行来源署名（`shareTextForClipboard`）。
+
+验证：`/__share-preview` 路由跑 html2canvas 实际导出，列表符号、代码块、表格、二维码与网页预览一致；
+390 / 1280 两档弹窗截图；单测新增摘要去标记、文本复制、日期戳三组。
+
 ## verification
 
 - `bun run typecheck` 通过；`bun test --preload ./happydom.ts ./src ./public` 541 pass / 0 fail

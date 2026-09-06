@@ -1,16 +1,18 @@
-// Render-only card used both for the modal preview and as the html2canvas
-// source for exported images. Layout stays self-contained through inline and
-// scoped styles so the output does not inherit chat-page CSS.
+// Render-only card used both for the live preview inside the share dialog and
+// as the html2canvas source for the exported image. It is styled by the
+// scoped rules in chat-share.css and by the light tokens pinned on its root,
+// so the output is the same whichever page or theme mounted it.
 
 import { Markdown } from "@hone-financial/ui/markdown";
 import { For, Show, createEffect, createSignal } from "solid-js";
 import QRCode from "qrcode";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
-import { shareUserBubbleStyle } from "./chat-share-export";
-// Export card renders offscreen/standalone; import the foundation sheet so the
-// --hone-* tokens below always resolve regardless of which page mounted us.
+import { shareDateLabel, shareQuestionStyle } from "./chat-share-export";
+// The card renders offscreen and standalone; the foundation sheet keeps the
+// --hone-* font tokens resolving regardless of which page mounted us.
 import "@/pages/public-foundation.css";
+import "./chat-share.css";
 
 type ChatShareCardProps = {
   messages: PublicChatMessage[];
@@ -18,16 +20,17 @@ type ChatShareCardProps = {
   brandTagline: string;
   qrUrl: string;
   qrCaption: string;
+  disclaimer: string;
   messageFontSize?: number;
   /** When true, position offscreen for capture; otherwise render inline. */
   hidden?: boolean;
-  /** Refs the wrapper element so the caller can hand it to html2canvas. */
+  /** Refs the card element so the caller can hand it to html2canvas. */
   registerRef?: (el: HTMLDivElement) => void;
 };
 
 // Portrait phone-screenshot width: narrower than a desktop card so long-form
 // output keeps its mobile rhythm when people read or forward it inside IM.
-const CARD_WIDTH = 420;
+export const SHARE_CARD_WIDTH = 420;
 
 // Inline SVG version of /logo.svg — html2canvas can't reliably rasterize
 // external SVG <img src="…"> sources (CORS / referrer / async-load races
@@ -40,7 +43,7 @@ function HoneLogo(props: { size: number }) {
       width={props.size}
       height={props.size}
       aria-hidden="true"
-      style={{ display: "block" }}
+      style={{ display: "block", "flex-shrink": "0" }}
     >
       <defs>
         <linearGradient id="hone-share-stone-top" x1="0%" y1="100%" x2="100%" y2="0%">
@@ -76,140 +79,17 @@ function HoneLogo(props: { size: number }) {
   );
 }
 
-// Scoped markdown styling so the screenshot looks identical regardless of
-// viewport / chat-page CSS — only rules under .hf-share-card-md apply here.
-const SHARE_CARD_CSS = `
-  .hf-share-card-md p { margin: 0.5em 0; }
-  .hf-share-card-md p:first-child { margin-top: 0; }
-  .hf-share-card-md p:last-child { margin-bottom: 0; }
-  .hf-share-card-md strong { color: var(--hone-ink-950); font-weight: 700; }
-  .hf-share-card-md ul,
-  .hf-share-card-md ol {
-    margin: 0.62em 0;
-    padding-left: 0;
-    list-style: none;
-  }
-  .hf-share-card-md ol { counter-reset: hone-share-ol; }
-  .hf-share-card-md li {
-    position: relative;
-    margin: 0.26em 0;
-    padding-left: 1.45em;
-    line-height: 1.58;
-  }
-  .hf-share-card-md ol > li {
-    counter-increment: hone-share-ol;
-  }
-  .hf-share-card-md ul > li::before,
-  .hf-share-card-md ol > li::before {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 1.05em;
-    color: var(--hone-ink-400);
-    font-size: 1em;
-    font-weight: 700;
-    line-height: inherit;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .hf-share-card-md ul > li::before {
-    content: "•";
-  }
-  .hf-share-card-md ul ul > li::before {
-    content: "◦";
-    font-size: 0.95em;
-  }
-  .hf-share-card-md ul ul ul > li::before {
-    content: "▪";
-    font-size: 0.72em;
-  }
-  .hf-share-card-md ol > li::before {
-    content: counter(hone-share-ol) ".";
-  }
-  .hf-share-card-md li > p {
-    margin: 0.24em 0;
-  }
-  .hf-share-card-md li > ul,
-  .hf-share-card-md li > ol {
-    margin: 0.28em 0 0.44em;
-  }
-  .hf-share-card-md h1,
-  .hf-share-card-md h2,
-  .hf-share-card-md h3,
-  .hf-share-card-md h4 {
-    color: var(--hone-ink-950);
-    margin: 0.9em 0 0.3em;
-    font-weight: 800;
-    line-height: 1.35;
-  }
-  .hf-share-card-md h1 { font-size: 1.2em; }
-  .hf-share-card-md h2 { font-size: 1.1em; }
-  .hf-share-card-md h3 { font-size: 1.05em; }
-  .hf-share-card-md h4 { font-size: 1em; }
-  .hf-share-card-md blockquote {
-    margin: 0.7em 0;
-    padding: 0.1em 0 0.1em 0.9em;
-    border-left: 3px solid var(--hone-line);
-    color: var(--hone-ink-800);
-    font-style: italic;
-  }
-  .hf-share-card-md table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.7em 0;
-    font-size: 0.95em;
-  }
-  .hf-share-card-md th,
-  .hf-share-card-md td {
-    border: 1px solid var(--hone-line);
-    padding: 6px 9px;
-    text-align: left;
-  }
-  .hf-share-card-md th { background: var(--hone-paper-100); color: var(--hone-ink-950); font-weight: 700; }
-  .hf-share-card-md .hf-markdown-code { margin: 10px 0; }
-  .hf-share-card-md .hf-markdown-code pre,
-  .hf-share-card-md .hf-markdown-code pre.shiki {
-    margin: 0;
-    padding: 10px 12px;
-    background: var(--hone-paper-200) !important;
-    border: 0;
-    border-radius: var(--hone-radius-sm);
-    font-size: 13px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-    font-family: var(--hone-font-body);
-  }
-  .hf-share-card-md .hf-markdown-code code {
-    background: transparent !important;
-    padding: 0;
-    font-family: inherit;
-  }
-  .hf-share-card-md .hf-markdown-code code span {
-    vertical-align: baseline;
-    line-height: inherit;
-  }
-  .hf-share-card-md :not(pre) > code {
-    background: rgba(23, 32, 31, 0.06);
-    border-radius: 4px;
-    padding: 1px 6px;
-    font-size: 0.92em;
-    font-family: var(--hone-font-body);
-  }
-`;
-
 export function ChatShareCard(props: ChatShareCardProps) {
   const [qrDataUrl, setQrDataUrl] = createSignal<string>("");
-  const messageFontSize = () => props.messageFontSize ?? 16.5;
+  const messageFontSize = () => props.messageFontSize ?? 15;
 
   createEffect(() => {
     let cancelled = false;
     QRCode.toDataURL(props.qrUrl, {
       errorCorrectionLevel: "M",
       margin: 1,
-      width: 240,
-      color: { dark: "#0f172a", light: "#ffffff" },
+      width: 216,
+      color: { dark: "#17201f", light: "#ffffff" },
     })
       .then((url) => {
         if (!cancelled) setQrDataUrl(url);
@@ -229,21 +109,21 @@ export function ChatShareCard(props: ChatShareCardProps) {
         left: "-99999px",
         top: "0",
         "pointer-events": "none" as const,
-        width: `${CARD_WIDTH}px`,
+        width: `${SHARE_CARD_WIDTH}px`,
       };
     }
-    return { width: `${CARD_WIDTH}px`, margin: "0 auto" };
+    return { width: `${SHARE_CARD_WIDTH}px` };
   };
 
   return (
     <div style={wrapperStyle()} aria-hidden={props.hidden ? "true" : undefined}>
-      <style>{SHARE_CARD_CSS}</style>
       <div
         ref={(el) => props.registerRef?.(el)}
+        class="hf-share-card"
         style={{
-          // Exported/previewed cards are intentionally light artifacts. Pin
-          // every token they consume so a dark application theme cannot turn
-          // the white card into a low-contrast white-on-white surface.
+          // Exported and previewed cards are intentionally light artifacts.
+          // Pin every token they consume so a dark application theme cannot
+          // turn the card into a low-contrast white-on-white surface.
           "--hone-ink-950": "#17201f",
           "--hone-ink-800": "#2d3735",
           "--hone-ink-600": "#606c68",
@@ -253,160 +133,62 @@ export function ChatShareCard(props: ChatShareCardProps) {
           "--hone-paper-200": "#eee8dc",
           "--hone-line": "rgba(23, 32, 31, 0.11)",
           "--hone-line-strong": "rgba(23, 32, 31, 0.18)",
-          width: `${CARD_WIDTH}px`,
-          background:
-            "linear-gradient(180deg, #fffaf3 0%, #ffffff 12%, #ffffff 100%)",
-          "font-family": "var(--hone-font-body)",
-          color: "var(--hone-ink-950)",
-          "box-sizing": "border-box",
+          "--text-primary": "#17201f",
+          "--text-secondary": "#2d3735",
+          "--accent": "#a83c2c",
+          "--border": "rgba(23, 32, 31, 0.11)",
+          "--shadow": "none",
+          "font-size": `${messageFontSize()}px`,
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            gap: "10px",
-            padding: "22px 20px 16px 20px",
-            "border-bottom": "1px solid var(--hone-line)",
-          }}
-        >
-          <HoneLogo size={30} />
-          <div style={{ display: "flex", "flex-direction": "column" }}>
-            <span
-              style={{
-                "font-size": "16px",
-                "font-weight": "800",
-                "letter-spacing": "0.02em",
-                color: "var(--hone-ink-950)",
-              }}
-            >
-              {props.brandName}
-            </span>
-            <span style={{ "font-size": "11.5px", color: "var(--hone-ink-600)", "margin-top": "1px" }}>
-              {props.brandTagline}
-            </span>
-          </div>
-        </div>
+        <header class="hf-share-card__head">
+          <HoneLogo size={22} />
+          <span class="hf-share-card__brand">{props.brandName}</span>
+          <span class="hf-share-card__date">{shareDateLabel()}</span>
+        </header>
 
-        {/* Messages */}
-        <div
-          style={{
-            padding: "18px 20px 22px 20px",
-            display: "flex",
-            "flex-direction": "column",
-            gap: "14px",
-          }}
-        >
+        <div class="hf-share-card__body">
           <For each={props.messages}>
             {(msg) => (
               <Show
                 when={msg.role === "user"}
                 fallback={
-                  <AssistantRow
-                    content={msg.content}
-                    fontSize={messageFontSize()}
-                  />
+                  <div class="hf-share-card__answer">
+                    <div class="hf-share-card__byline">
+                      <i aria-hidden="true" />
+                      {props.brandName}
+                    </div>
+                    <Markdown
+                      text={stripAttachmentMarkers(msg.content)}
+                      class="hf-share-card-md"
+                    />
+                  </div>
                 }
               >
-                <UserRow content={msg.content} fontSize={messageFontSize()} />
+                <div style={shareQuestionStyle(messageFontSize())}>
+                  {stripAttachmentMarkers(msg.content)}
+                </div>
               </Show>
             )}
           </For>
         </div>
 
-        {/* Footer */}
-        <div
-          style={{
-            display: "grid",
-            "grid-template-columns": "1fr auto",
-            "align-items": "center",
-            gap: "18px",
-            padding: "16px 20px 22px 20px",
-            "border-top": "1px solid var(--hone-line)",
-            background: "var(--hone-paper-100)",
-          }}
-        >
-          <div style={{ display: "flex", "flex-direction": "column", gap: "7px", "min-width": "0" }}>
-            <div style={{ display: "flex", "align-items": "center", gap: "8px", "min-height": "28px" }}>
-              <HoneLogo size={24} />
-              <span
-                style={{
-                  "font-size": "14.5px",
-                  "font-weight": "800",
-                  color: "var(--hone-ink-950)",
-                  "letter-spacing": "0.02em",
-                }}
-              >
-                {props.brandName}
-              </span>
+        <footer class="hf-share-card__foot">
+          <div class="hf-share-card__foot-copy">
+            <div class="hf-share-card__foot-brand">
+              <HoneLogo size={18} />
+              <b>{props.brandName}</b>
+              <span>{props.brandTagline}</span>
             </div>
-            <span style={{ "font-size": "11.5px", color: "var(--hone-ink-600)", "line-height": "1.4" }}>
-              {props.qrCaption}
-            </span>
+            <small>{props.qrCaption}</small>
+            <small class="is-legal">{props.disclaimer}</small>
           </div>
           <Show when={qrDataUrl()}>
-            <div
-              style={{
-                width: "88px",
-                height: "88px",
-                display: "flex",
-                "align-items": "center",
-                "justify-content": "center",
-                "border-radius": "var(--hone-radius-md)",
-                background: "#fff",
-                border: "1px solid var(--hone-line)",
-                "flex-shrink": "0",
-                "box-sizing": "border-box",
-              }}
-            >
-              <img
-                src={qrDataUrl()}
-                alt=""
-                style={{
-                  display: "block",
-                  width: "76px",
-                  height: "76px",
-                }}
-              />
+            <div class="hf-share-card__qr">
+              <img src={qrDataUrl()} alt="" />
             </div>
           </Show>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserRow(props: { content: string; fontSize: number }) {
-  const cleaned = () => stripAttachmentMarkers(props.content);
-  return (
-    <div style={{ display: "flex", "justify-content": "flex-end" }}>
-      <div style={shareUserBubbleStyle(props.fontSize)}>
-        <span style={{ display: "block", width: "100%" }}>{cleaned()}</span>
-      </div>
-    </div>
-  );
-}
-
-function AssistantRow(props: { content: string; fontSize: number }) {
-  return (
-    <div style={{ display: "flex", "justify-content": "flex-start" }}>
-      <div
-        style={{
-          "max-width": "94%",
-          background: "#ffffff",
-          color: "var(--hone-ink-800)",
-          padding: "12px 14px",
-          "border-radius": "4px var(--hone-radius-md) var(--hone-radius-md) var(--hone-radius-md)",
-          border: "1px solid var(--hone-line)",
-          "font-size": `${props.fontSize}px`,
-          "line-height": "1.6",
-        }}
-      >
-        <Markdown
-          text={stripAttachmentMarkers(props.content)}
-          class="hf-share-card-md break-words"
-        />
+        </footer>
       </div>
     </div>
   );
