@@ -808,21 +808,15 @@ mod tests {
             "Administrator updated storage overview"
         );
 
+        // An administrator's edit does not open the ontology to a reader: the same
+        // non-admin session is refused again afterwards, so neither the edited
+        // content nor the private review note reaches a reader in any payload.
         let public_read = handle_get_industry_map(State(state.clone()), unpaid_headers).await;
-        assert_eq!(public_read.status(), StatusCode::OK);
-        let public_snapshot = response_json(public_read).await;
-        assert_eq!(public_snapshot["recent_edits"], json!([]));
-        let public_json = public_snapshot.to_string();
-        assert!(!public_json.contains(&user.user_id));
-        assert!(!public_json.contains("private-admin-review-note-3d-access"));
-        let public_storage = public_snapshot["industries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|industry| industry["id"] == "storage")
-            .expect("public storage industry");
-        assert_eq!(public_storage["one_liner"], storage["one_liner"]);
-        assert!(public_storage["last_edited_at"].is_string());
+        assert_eq!(public_read.status(), StatusCode::FORBIDDEN);
+        let refused_again = response_json(public_read).await.to_string();
+        assert!(!refused_again.contains(&user.user_id));
+        assert!(!refused_again.contains("private-admin-review-note-3d-access"));
+        assert!(!refused_again.contains("Administrator updated storage overview"));
 
         let admin_read = handle_get_industry_map(State(state.clone()), headers).await;
         assert_eq!(admin_read.status(), StatusCode::OK);
