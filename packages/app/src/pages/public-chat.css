@@ -110,6 +110,13 @@ body.public-chat-scroll-lock #root {
   filter: blur(80px);
 }
 
+/* The marketing header's "HONE · 投资助手" subtitle belongs to the phone
+   layout only; on a desktop the wordmark already says it, and showing both
+   printed the brand twice on the signed-out page. */
+.pub-nav-chat-copy {
+  display: none;
+}
+
 /* ── Shell ── */
 .public-chat-shell {
   position: relative;
