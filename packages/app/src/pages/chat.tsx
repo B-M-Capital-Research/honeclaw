@@ -68,6 +68,7 @@ import {
   getPublicChatBootstrap,
   getPublicCommunity,
   getPublicFinanceCalendar,
+  getPublicInfluencerDigest,
   getPublicHistory,
   getPublicPushes,
   getPublicGeneratedFileBlob,
@@ -143,6 +144,7 @@ import { buildChatStarterPrompts } from "@/lib/chat-empty-prompts";
 import { useLocale } from "@/lib/i18n";
 import type {
   FinanceCalendarPayload,
+  InfluencerDigestSnapshot,
   PublicCommunityContent,
   PublicAuthUserInfo,
   PublicPushDetail,
@@ -2144,6 +2146,9 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
       items: [
         { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
         { href: "/research?panel=daily-signal-macro", panel: "daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
+        // Released to everyone: the digest now syncs every few minutes and
+        // reads as a timeline, so it no longer waits in the admin group.
+        { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
       ],
     },
     // Everything below the macro light is still being polished, so it stays
@@ -2155,7 +2160,6 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
             items: [
               { href: "/research?panel=daily-signal-ai", panel: "daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
               { href: "/research?panel=company-ratings", panel: "company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
-              { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
               { href: "/research?panel=key-event-chain", panel: "key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
               { href: "/research?panel=weekly-brief", panel: "weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
               { href: "/research?panel=portfolio-news", panel: "portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
@@ -2631,6 +2635,8 @@ export default function PublicChatPage() {
   >([]);
   const [workspaceCalendar, setWorkspaceCalendar] =
     createSignal<FinanceCalendarPayload>();
+  const [workspaceInfluencer, setWorkspaceInfluencer] =
+    createSignal<InfluencerDigestSnapshot | null>(null);
   const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
   const [conversationStartIndex, setConversationStartIndex] = createSignal<number | null>(null);
   // True when the user has scrolled up far enough to lose track of the latest
@@ -2704,6 +2710,10 @@ export default function PublicChatPage() {
       getPublicFinanceCalendar(defaultFinanceCalendarMonth()).then(
         setWorkspaceCalendar,
       ),
+      // The newest commentator post, so the blank conversation can offer
+      // "Serenity just said …" as a concrete question rather than a generic
+      // one. Three rows are enough; the panel reads the full window itself.
+      getPublicInfluencerDigest(undefined, { limit: 3 }).then(setWorkspaceInfluencer),
     ]);
   };
 
@@ -2871,6 +2881,7 @@ export default function PublicChatPage() {
       holdings: workspaceCalendar()?.holdings ?? [],
       events: workspaceCalendar()?.events ?? [],
       today: workspaceCalendar()?.today,
+      influencer: workspaceInfluencer(),
       locale: useLocale(),
     }),
   );

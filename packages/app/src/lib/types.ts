@@ -1610,6 +1610,8 @@ export type InfluencerDigestSnapshot = {
   timezone: string;
   next_refresh_at: string;
   lookback_hours: number;
+  /** Worker cadence, so the panel prints "每 15 分钟同步" from data. */
+  refresh_interval_minutes?: number;
   model_version: string;
   status: string;
   summary: string;
@@ -1620,6 +1622,10 @@ export type InfluencerDigestSnapshot = {
     items: number;
     analyzed: number;
   };
+  latest_published_at?: string | null;
+  latest_published_at_local?: string;
+  /** Posts published in the last 24 hours. */
+  fresh_24h?: number;
   authors: Array<{
     id: string;
     name: string;
@@ -1629,6 +1635,8 @@ export type InfluencerDigestSnapshot = {
     source_status: string;
     item_count: number;
     last_published_at?: string | null;
+    /** The source failed this round; these posts are last round's. */
+    carried_over?: boolean;
   }>;
   items: InfluencerDigestItem[];
   disclaimer: string;

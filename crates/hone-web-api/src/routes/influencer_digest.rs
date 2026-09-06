@@ -1,8 +1,17 @@
-//! Cached daily brief of explicitly registered public industry commentators.
+//! Cached rolling brief of explicitly registered public industry commentators.
 //!
 //! Author identity and source provenance are fail-closed. A configured model
 //! summarizes only fetched public excerpts; missing X access never falls back
 //! to reposts, search snippets, or a similarly named account.
+//!
+//! The brief used to be a once-a-day 19:50 snapshot over the prior 36 hours,
+//! which meant a post published at noon surfaced seven hours later and a
+//! quiet day left the panel empty. It is now a rolling window: the worker
+//! polls every registered feed on the fastest interval those feeds declare
+//! (fifteen minutes for the Serenity feed), keeps the last seven days, reuses
+//! the model's reading of every post it has already analysed so a refresh
+//! costs one model call per *new* post, and keeps an author's posts from the
+//! previous snapshot when that author's source fails for a round.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -10,7 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
@@ -22,11 +31,21 @@ use tracing::{info, warn};
 
 use crate::state::AppState;
 
-const LOOKBACK_HOURS: i64 = 36;
-const REFRESH_HOUR: u32 = 19;
-const REFRESH_MINUTE: u32 = 50;
+/// Rolling window kept in the snapshot. A week is long enough that a quiet
+/// weekend never empties the panel, short enough that a post still reads as
+/// "recent" rather than as an archive.
+const LOOKBACK_HOURS: i64 = 24 * 7;
+/// Posts younger than this are counted as "new" on the desk card.
+const FRESH_WINDOW_HOURS: i64 = 24;
+/// Refresh cadence when no registered feed declares an interval.
+const DEFAULT_REFRESH_SECS: u64 = 15 * 60;
+const MIN_REFRESH_SECS: u64 = 5 * 60;
+const MAX_REFRESH_SECS: u64 = 6 * 60 * 60;
+/// A snapshot the worker has not rewritten for this long is labelled stale:
+/// on a fifteen-minute cadence that is a dozen missed rounds, not one.
+const STALE_AFTER_HOURS: i64 = 3;
 const MODEL_VERSION: &str = "hone-influencer-digest-v1";
-const MAX_ITEMS: usize = 24;
+const MAX_ITEMS: usize = 80;
 const MAX_SERENITY_BYTES: usize = 2_000_000;
 const SERENITY_AGGREGATION_URL: &str = "https://aichainmap.com/serenity/";
 /// Author text is kept whole so readers see the post, not a stub. The bound is
@@ -81,6 +100,11 @@ pub(crate) struct InfluencerAuthorStatus {
     pub source_status: String,
     pub item_count: usize,
     pub last_published_at: Option<DateTime<Utc>>,
+    /// The source failed this round and the posts shown are the ones the
+    /// previous snapshot already held. The panel says so instead of silently
+    /// dropping an author for fifteen minutes.
+    #[serde(default)]
+    pub carried_over: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,13 +174,30 @@ pub(crate) struct InfluencerDigestSnapshot {
     pub next_refresh_at: DateTime<Utc>,
     pub timezone: String,
     pub lookback_hours: i64,
+    /// How often the worker polls the sources, so the panel can say "每 15
+    /// 分钟同步" instead of hard-coding a clock time.
+    #[serde(default = "default_refresh_interval_minutes")]
+    pub refresh_interval_minutes: u32,
     pub model_version: String,
     pub status: String,
     pub summary: String,
     pub coverage: InfluencerDigestCoverage,
+    /// Newest post in the window, so a reader (and the desk card) can see at
+    /// a glance whether anything happened since they last looked.
+    #[serde(default)]
+    pub latest_published_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub latest_published_at_local: String,
+    /// Posts published in the last `FRESH_WINDOW_HOURS`.
+    #[serde(default)]
+    pub fresh_24h: usize,
     pub authors: Vec<InfluencerAuthorStatus>,
     pub items: Vec<InfluencerDigestItem>,
     pub disclaimer: String,
+}
+
+fn default_refresh_interval_minutes() -> u32 {
+    (DEFAULT_REFRESH_SECS / 60) as u32
 }
 
 #[derive(Debug, Clone)]
@@ -285,9 +326,18 @@ struct AnalysisItem {
     counterpoint: String,
 }
 
+/// `?limit=N` trims the item list. The chat home reads the newest post to
+/// phrase a starter question and must not pay for eighty full-text rows.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct InfluencerDigestQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 pub(crate) async fn handle_get_influencer_digest(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Query(query): Query<InfluencerDigestQuery>,
 ) -> Response {
     if let Err(response) = crate::routes::public::require_public_user(&state, &headers).await {
         return response;
@@ -295,12 +345,21 @@ pub(crate) async fn handle_get_influencer_digest(
     let mut snapshot = read_snapshot(&state)
         .await
         .unwrap_or_else(unconfigured_snapshot);
-    if Utc::now() - snapshot.generated_at > chrono::Duration::hours(LOOKBACK_HOURS) {
+    if let Some(limit) = query.limit.filter(|value| *value > 0) {
+        snapshot.items.truncate(limit);
+    }
+    if is_stale(&snapshot, Utc::now()) {
         snapshot.status = "stale".to_string();
-        snapshot.summary =
-            format!("上次成功快照已超过 {LOOKBACK_HOURS} 小时，请核对原文时间后使用。")
+        snapshot.summary = format!(
+            "上次同步 {}，已超过 {STALE_AFTER_HOURS} 小时没有新的同步；请核对原文时间后使用。",
+            snapshot.generated_at_local
+        );
     }
     Json(snapshot).into_response()
+}
+
+fn is_stale(snapshot: &InfluencerDigestSnapshot, now: DateTime<Utc>) -> bool {
+    now - snapshot.generated_at > chrono::Duration::hours(STALE_AFTER_HOURS)
 }
 
 /// Compact overview projection of the latest stored snapshot. `None` when no
@@ -315,43 +374,120 @@ pub(crate) async fn overview_card(
         "观点不等于事实",
     );
     card.report_date = Some(snapshot.report_date.clone());
-    card.status = if Utc::now() - snapshot.generated_at > chrono::Duration::hours(LOOKBACK_HOURS) {
+    card.status = if is_stale(&snapshot, Utc::now()) {
         "stale".to_string()
     } else {
         snapshot.status.clone()
     };
-    card.metric = Some(format!("{} 条观点", snapshot.coverage.items));
+    // The desk card leads with what was said most recently, not with how
+    // many rows the job produced: "Serenity：内存瓶颈并未改变…" is the reason
+    // to open the panel, "24 条观点" is not.
+    card.metric = Some(overview_metric(&snapshot));
     card.summary = Some(crate::routes::research_overview::short_summary(
-        &snapshot.summary,
+        &overview_summary(&snapshot),
     ));
     card.generated_at = Some(snapshot.generated_at);
     Some(card)
 }
 
-pub(crate) async fn influencer_digest_worker(state: Arc<AppState>) {
-    refresh_and_store(&state).await;
-    loop {
-        let next = next_refresh(Utc::now());
-        info!(next_refresh = %next, "influencer digest worker waiting");
-        let wait = (next - Utc::now())
-            .to_std()
-            .unwrap_or_else(|_| Duration::from_secs(60));
-        tokio::time::sleep(wait).await;
-        refresh_and_store(&state).await;
+fn overview_metric(snapshot: &InfluencerDigestSnapshot) -> String {
+    if snapshot.fresh_24h > 0 {
+        format!("24 小时内 {} 条", snapshot.fresh_24h)
+    } else {
+        format!("近 7 天 {} 条", snapshot.coverage.items)
     }
+}
+
+/// Author and first line of the newest post; the snapshot summary when the
+/// window is empty.
+fn overview_summary(snapshot: &InfluencerDigestSnapshot) -> String {
+    let Some(latest) = snapshot.items.first() else {
+        return snapshot.summary.clone();
+    };
+    let text = [
+        latest.source_text_cn.as_str(),
+        latest.source_text_en.as_str(),
+        latest.source_excerpt.as_str(),
+        latest.title.as_str(),
+    ]
+    .into_iter()
+    .map(str::trim)
+    .find(|value| !value.is_empty())
+    .unwrap_or_default();
+    let first_line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    let author = latest
+        .author_name
+        .split(['/', '／'])
+        .next()
+        .unwrap_or(&latest.author_name)
+        .trim();
+    format!("{author} {}：{first_line}", latest.published_at_local)
+}
+
+pub(crate) async fn influencer_digest_worker(state: Arc<AppState>) {
+    loop {
+        refresh_and_store(&state).await;
+        let interval = refresh_interval(&state);
+        info!(
+            next_refresh_secs = interval.as_secs(),
+            "influencer digest worker waiting"
+        );
+        tokio::time::sleep(interval).await;
+    }
+}
+
+/// The worker polls on the fastest interval a registered influencer feed
+/// declares in `event_engine.sources.rss_feeds`, clamped so a typo cannot
+/// hammer a public endpoint or park the brief for a day.
+fn refresh_interval(state: &AppState) -> Duration {
+    refresh_interval_from_feeds(&state.core.config.event_engine.sources.rss_feeds)
+}
+
+fn refresh_interval_from_feeds(feeds: &[hone_core::config::RssFeedConfig]) -> Duration {
+    let secs = feeds
+        .iter()
+        .filter(|feed| author_for_handle(&feed.handle).is_some())
+        .map(|feed| feed.interval_secs)
+        .min()
+        .unwrap_or(DEFAULT_REFRESH_SECS);
+    Duration::from_secs(secs.clamp(MIN_REFRESH_SECS, MAX_REFRESH_SECS))
 }
 
 async fn refresh_and_store(state: &AppState) {
-    let snapshot = generate_snapshot(state).await;
+    let previous = read_snapshot(state).await;
+    let snapshot = generate_snapshot(state, previous.as_ref()).await;
+    // Every source failing at once is a transient network condition, not a
+    // finding. The previous snapshot stays as it is and turns stale on its
+    // own clock if the outage lasts.
+    if snapshot.status == "data_unavailable"
+        && previous.as_ref().is_some_and(|earlier| !earlier.items.is_empty())
+    {
+        warn!("influencer digest: every source failed this round; keeping the previous snapshot");
+        return;
+    }
     if let Err(error) = write_snapshot(state, &snapshot).await {
         warn!(%error, "influencer digest snapshot write failed");
     } else {
-        info!(status = %snapshot.status, items = snapshot.coverage.items, "influencer digest refreshed");
+        info!(
+            status = %snapshot.status,
+            items = snapshot.coverage.items,
+            fresh_24h = snapshot.fresh_24h,
+            analyzed = snapshot.coverage.analyzed,
+            "influencer digest refreshed"
+        );
     }
 }
 
-async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
+async fn generate_snapshot(
+    state: &AppState,
+    previous: Option<&InfluencerDigestSnapshot>,
+) -> InfluencerDigestSnapshot {
     let feeds = &state.core.config.event_engine.sources.rss_feeds;
+    let now = Utc::now();
     let mut statuses = AUTHORS
         .iter()
         .map(|author| InfluencerAuthorStatus {
@@ -363,6 +499,7 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
             source_status: "unconfigured".to_string(),
             item_count: 0,
             last_published_at: None,
+            carried_over: false,
         })
         .collect::<Vec<_>>();
     let mut fetched = Vec::new();
@@ -394,6 +531,12 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
                 }
             }
         }
+        if !author_source_ok {
+            // One failed round must not blank an author for fifteen minutes:
+            // what the previous snapshot held is still the best public record.
+            author_items = carried_over_items(previous, author.id, now);
+            statuses[author_index].carried_over = !author_items.is_empty();
+        }
         let mut seen = HashSet::new();
         author_items.retain(|item| seen.insert(item.url.clone()));
         author_items.sort_by(|a, b| b.published_at.cmp(&a.published_at));
@@ -407,16 +550,36 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
     }
     fetched.sort_by(|a, b| b.published_at.cmp(&a.published_at));
     fetched.truncate(MAX_ITEMS);
+    // Author tallies describe the rows the reader can actually open, not the
+    // rows the feed offered before the cap.
+    for status in statuses.iter_mut() {
+        status.item_count = fetched
+            .iter()
+            .filter(|item| item.author.id == status.id)
+            .count();
+    }
 
-    let analyzer = resolve_analyzer(state);
-    let analyses = match analyzer.as_ref() {
-        Some(created) if !fetched.is_empty() => analyze_items(created, &fetched).await,
-        _ => HashMap::new(),
-    };
+    // The model reads a post once. Every later refresh reuses that reading,
+    // so a fifteen-minute cadence costs one call per new post, not per round.
+    let mut analyses = cached_analyses(previous);
+    let pending = fetched
+        .iter()
+        .filter(|item| !analyses.contains_key(&item.id))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !pending.is_empty() {
+        if let Some(created) = resolve_analyzer(state) {
+            analyses.extend(analyze_items(&created, &pending).await);
+        }
+    }
     let items = fetched
         .iter()
         .map(|item| public_item(item, analyses.get(&item.id)))
         .collect::<Vec<_>>();
+    let fresh_24h = items
+        .iter()
+        .filter(|item| item.published_at >= now - chrono::Duration::hours(FRESH_WINDOW_HOURS))
+        .count();
     let configured = statuses.iter().filter(|item| item.configured).count();
     let analyzed = items
         .iter()
@@ -446,7 +609,75 @@ async fn generate_snapshot(state: &AppState) -> InfluencerDigestSnapshot {
             items: fetched.len(),
             analyzed,
         },
+        fresh_24h,
+        refresh_interval(state),
     )
+}
+
+/// The previous snapshot's posts for one author, still inside the window.
+fn carried_over_items(
+    previous: Option<&InfluencerDigestSnapshot>,
+    author_id: &str,
+    now: DateTime<Utc>,
+) -> Vec<FetchedItem> {
+    let Some(previous) = previous else {
+        return Vec::new();
+    };
+    let Some(author) = AUTHORS.iter().copied().find(|author| author.id == author_id) else {
+        return Vec::new();
+    };
+    previous
+        .items
+        .iter()
+        .filter(|item| item.author_id == author_id)
+        .filter(|item| within_lookback(item.published_at, now, LOOKBACK_HOURS))
+        .map(|item| FetchedItem {
+            id: item.id.clone(),
+            author,
+            title: item.title.clone(),
+            published_at: item.published_at,
+            url: item.source_url.clone(),
+            excerpt: item.source_excerpt.clone(),
+            text_cn: item.source_text_cn.clone(),
+            text_en: item.source_text_en.clone(),
+            media_urls: item.media_urls.clone(),
+            reply_context: item.reply_context.clone(),
+            metrics: item.metrics,
+            aggregation_source: item.aggregation_source.clone(),
+            aggregation_url: item.aggregation_url.clone(),
+            post_kind: item.post_kind.clone(),
+        })
+        .collect()
+}
+
+/// Model readings the previous snapshot already holds, keyed by post id.
+/// Only readings from the same contract version are reused.
+fn cached_analyses(previous: Option<&InfluencerDigestSnapshot>) -> HashMap<String, AnalysisItem> {
+    previous
+        .filter(|earlier| earlier.model_version == MODEL_VERSION)
+        .map(|earlier| {
+            earlier
+                .items
+                .iter()
+                .filter(|item| item.analysis_status == "model_analyzed")
+                .map(|item| {
+                    (
+                        item.id.clone(),
+                        AnalysisItem {
+                            id: item.id.clone(),
+                            summary: item.summary.clone(),
+                            stance: item.stance.clone(),
+                            horizon: item.horizon.clone(),
+                            content_type: item.content_type.clone(),
+                            topics: item.topics.clone(),
+                            tickers: item.tickers.clone(),
+                            counterpoint: item.counterpoint.clone(),
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn author_for_handle(handle: &str) -> Option<AuthorDef> {
@@ -984,39 +1215,55 @@ fn snapshot(
     authors: Vec<InfluencerAuthorStatus>,
     items: Vec<InfluencerDigestItem>,
     coverage: InfluencerDigestCoverage,
+    fresh_24h: usize,
+    refresh_every: Duration,
 ) -> InfluencerDigestSnapshot {
     let now = Utc::now();
+    let lookback_days = LOOKBACK_HOURS / 24;
+    let refresh_interval_minutes = (refresh_every.as_secs() / 60).max(1) as u32;
     let summary = match status {
         "source_unconfigured" => {
             "尚未配置可验证作者源；不会使用搬运页或搜索摘要代替原文。".to_string()
         }
-        "data_unavailable" => "作者源本次读取失败，今日不生成观点摘要。".to_string(),
+        "data_unavailable" => "作者源本次读取失败，没有生成新的速报。".to_string(),
         "no_updates" => format!(
-            "已读取 {} 个作者源，近 {} 小时没有新内容。",
-            coverage.succeeded, LOOKBACK_HOURS
+            "已读取 {} 个作者源，近 {lookback_days} 天没有新内容。",
+            coverage.succeeded
         ),
         "source_only" => format!(
-            "发现 {} 条公开原文，模型未配置；当前只展示来源内容。",
+            "近 {lookback_days} 天 {} 条公开原文，24 小时内 {fresh_24h} 条；模型未配置，只展示来源内容。",
             coverage.items
         ),
         _ => format!(
-            "近 {} 小时整理 {} 位作者的 {} 条更新，其中 {} 条完成观点分析。",
-            LOOKBACK_HOURS, coverage.succeeded, coverage.items, coverage.analyzed
+            "近 {lookback_days} 天整理 {} 位作者的 {} 条更新，24 小时内 {fresh_24h} 条；{} 条完成观点整理，每 {refresh_interval_minutes} 分钟同步一次。",
+            coverage.succeeded, coverage.items, coverage.analyzed
         ),
     };
+    let latest_published_at = items.iter().map(|item| item.published_at).max();
     InfluencerDigestSnapshot {
         report_date: hone_core::local_time_at(now).format("%Y-%m-%d").to_string(),
         generated_at: now,
         generated_at_local: hone_core::local_time_at(now)
             .format("%Y-%m-%d %H:%M")
             .to_string(),
-        next_refresh_at: next_refresh(now),
+        next_refresh_at: now
+            + chrono::Duration::from_std(refresh_every).unwrap_or_else(|_| chrono::Duration::zero()),
         timezone: hone_core::runtime_timezone_name(),
         lookback_hours: LOOKBACK_HOURS,
+        refresh_interval_minutes,
         model_version: MODEL_VERSION.to_string(),
         status: status.to_string(),
         summary,
         coverage,
+        latest_published_at,
+        latest_published_at_local: latest_published_at
+            .map(|value| {
+                hone_core::local_time_at(value)
+                    .format("%m-%d %H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default(),
+        fresh_24h,
         authors,
         items,
         disclaimer:
@@ -1039,6 +1286,7 @@ fn unconfigured_snapshot() -> InfluencerDigestSnapshot {
                 source_status: "unconfigured".to_string(),
                 item_count: 0,
                 last_published_at: None,
+                carried_over: false,
             })
             .collect(),
         vec![],
@@ -1046,6 +1294,8 @@ fn unconfigured_snapshot() -> InfluencerDigestSnapshot {
             authors: AUTHORS.len(),
             ..Default::default()
         },
+        0,
+        Duration::from_secs(DEFAULT_REFRESH_SECS),
     )
 }
 
@@ -1140,14 +1390,9 @@ async fn write_snapshot(
     Ok(())
 }
 
-fn next_refresh(now: DateTime<Utc>) -> DateTime<Utc> {
-    crate::routes::research_store::next_local_refresh(now, REFRESH_HOUR, REFRESH_MINUTE)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Timelike};
 
     fn fetched(id: &str) -> FetchedItem {
         FetchedItem {
@@ -1382,12 +1627,137 @@ mod tests {
         );
     }
 
+    fn feed(handle: &str, interval_secs: u64) -> hone_core::config::RssFeedConfig {
+        hone_core::config::RssFeedConfig {
+            handle: handle.into(),
+            url: "https://example.test/feed".into(),
+            interval_secs,
+        }
+    }
+
     #[test]
-    fn next_refresh_is_1950_local() {
-        let next = hone_core::local_time_at(next_refresh(
-            Utc.with_ymd_and_hms(2026, 8, 11, 8, 0, 0).unwrap(),
+    fn refresh_follows_the_fastest_registered_feed_within_bounds() {
+        // The Serenity feed declares 900s and SemiAnalysis 3600s: poll every
+        // fifteen minutes. Unrelated feeds do not set the cadence.
+        let feeds = vec![
+            feed("bloomberg_markets", 60),
+            feed("influencer_serenity", 900),
+            feed("influencer_semianalysis", 3600),
+        ];
+        assert_eq!(refresh_interval_from_feeds(&feeds).as_secs(), 900);
+        // No registered influencer feed: the default cadence.
+        assert_eq!(
+            refresh_interval_from_feeds(&[feed("bloomberg_markets", 60)]).as_secs(),
+            DEFAULT_REFRESH_SECS
+        );
+        // A typo cannot hammer a public endpoint or park the brief for a day.
+        assert_eq!(
+            refresh_interval_from_feeds(&[feed("influencer_serenity", 5)]).as_secs(),
+            MIN_REFRESH_SECS
+        );
+        assert_eq!(
+            refresh_interval_from_feeds(&[feed("influencer_serenity", 999_999)]).as_secs(),
+            MAX_REFRESH_SECS
+        );
+    }
+
+    fn previous_snapshot(items: Vec<InfluencerDigestItem>) -> InfluencerDigestSnapshot {
+        snapshot(
+            "live",
+            vec![],
+            items,
+            InfluencerDigestCoverage::default(),
+            0,
+            Duration::from_secs(900),
+        )
+    }
+
+    #[test]
+    fn a_previous_reading_is_reused_and_a_failed_author_keeps_its_posts() {
+        let analyzed = AnalysisItem {
+            id: "serenity:1".into(),
+            summary: "HBM 供给仍紧".into(),
+            stance: "bullish".into(),
+            horizon: "medium".into(),
+            content_type: "opinion".into(),
+            topics: vec!["HBM".into()],
+            tickers: vec!["MU".into()],
+            counterpoint: "缺少库存数据".into(),
+        };
+        let mut old = fetched("serenity:1");
+        old.published_at = Utc::now() - chrono::Duration::days(2);
+        let mut expired = fetched("serenity:2");
+        expired.published_at = Utc::now() - chrono::Duration::days(9);
+        let previous = previous_snapshot(vec![
+            public_item(&old, Some(&analyzed)),
+            public_item(&expired, None),
+        ]);
+
+        let cached = cached_analyses(Some(&previous));
+        assert_eq!(cached.len(), 1, "only model-analyzed rows are reused");
+        assert_eq!(cached["serenity:1"].summary, "HBM 供给仍紧");
+        assert_eq!(cached["serenity:1"].tickers, vec!["MU"]);
+
+        let carried = carried_over_items(Some(&previous), "serenity", Utc::now());
+        assert_eq!(carried.len(), 1, "a post outside the window is not revived");
+        assert_eq!(carried[0].id, "serenity:1");
+        assert_eq!(carried[0].url, old.url);
+        assert!(carried_over_items(Some(&previous), "jukan", Utc::now()).is_empty());
+        assert!(carried_over_items(None, "serenity", Utc::now()).is_empty());
+
+        // A different model contract never inherits readings.
+        let mut other_version = previous.clone();
+        other_version.model_version = "hone-influencer-digest-v0".into();
+        assert!(cached_analyses(Some(&other_version)).is_empty());
+    }
+
+    #[test]
+    fn snapshot_reports_cadence_freshness_and_the_newest_post() {
+        let mut fresh = fetched("serenity:fresh");
+        fresh.text_cn = "内存瓶颈并未改变\n第二行".into();
+        let mut older = fetched("serenity:older");
+        older.published_at = Utc::now() - chrono::Duration::days(3);
+        let built = snapshot(
+            "source_only",
+            vec![],
+            vec![public_item(&fresh, None), public_item(&older, None)],
+            InfluencerDigestCoverage {
+                items: 2,
+                ..Default::default()
+            },
+            1,
+            Duration::from_secs(900),
+        );
+        assert_eq!(built.refresh_interval_minutes, 15);
+        assert_eq!(built.fresh_24h, 1);
+        assert_eq!(built.lookback_hours, 24 * 7);
+        assert_eq!(built.latest_published_at, Some(fresh.published_at));
+        assert!(built.summary.contains("24 小时内 1 条"));
+        assert!(
+            (built.next_refresh_at - built.generated_at).num_seconds().abs_diff(900) <= 1
+        );
+        // The desk card: newest post first, counted as new.
+        assert_eq!(overview_metric(&built), "24 小时内 1 条");
+        let summary = overview_summary(&built);
+        assert!(summary.starts_with("Serenity "), "{summary}");
+        assert!(summary.ends_with("：内存瓶颈并未改变"), "{summary}");
+        assert!(!is_stale(&built, Utc::now()));
+        assert!(is_stale(
+            &built,
+            Utc::now() + chrono::Duration::hours(STALE_AFTER_HOURS + 1)
         ));
-        assert_eq!((next.hour(), next.minute()), (19, 50));
+        // Older snapshots without the new fields still deserialize.
+        let legacy = serde_json::json!({
+            "report_date": "2026-08-30", "generated_at": Utc::now(),
+            "generated_at_local": "2026-08-30 09:16", "next_refresh_at": Utc::now(),
+            "timezone": "Asia/Shanghai", "lookback_hours": 36, "model_version": MODEL_VERSION,
+            "status": "source_only", "summary": "", "coverage": {"authors":3,"configured":2,"succeeded":2,"items":0,"analyzed":0},
+            "authors": [], "items": [], "disclaimer": ""
+        });
+        let parsed: InfluencerDigestSnapshot = serde_json::from_value(legacy).unwrap();
+        assert_eq!(parsed.refresh_interval_minutes, 15);
+        assert_eq!(parsed.fresh_24h, 0);
+        assert!(parsed.latest_published_at.is_none());
     }
 
     #[test]
@@ -1396,5 +1766,6 @@ mod tests {
         assert_eq!(snapshot.status, "source_unconfigured");
         assert_eq!(snapshot.authors.len(), 3);
         assert!(snapshot.items.is_empty());
+        assert_eq!(snapshot.refresh_interval_minutes, 15);
     }
 }

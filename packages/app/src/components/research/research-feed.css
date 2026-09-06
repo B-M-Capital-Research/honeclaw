@@ -28,6 +28,59 @@
 .research-feed-item.is-orange { border-left-color: var(--hone-signal-orange); }
 .research-feed-item.is-red { border-left-color: var(--hone-signal-red); }
 
+/* A post timeline: who is speaking sits in its own column, the way every
+   social feed draws it, and the writing starts on the same line as the name. */
+.research-feed-item.has-avatar {
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.research-feed-item__avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-label);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.research-feed-item__main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Day dividers: 今天 / 昨天 / MM-DD. Sticky, so the day a post belongs to
+   stays readable while the timeline scrolls under it. */
+.research-feed-day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 2px 6px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-paper-50);
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--hone-ink-500);
+}
+
+.research-feed-day small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--hone-ink-400);
+}
+
 .research-feed-item__head {
   display: flex;
   align-items: baseline;
@@ -46,6 +99,14 @@
 .research-feed-item__handle {
   font-family: var(--hone-font-label);
   font-size: 12px;
+}
+
+.research-feed-item__kind {
+  padding: 1px 7px;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-paper-100);
+  font-size: 11.5px;
+  color: var(--hone-ink-500);
 }
 
 .research-feed-item__meta {
@@ -79,6 +140,7 @@
 .research-feed-item__quoted {
   margin: 0;
   padding: 9px 12px;
+  border: 1px solid var(--hone-line);
   border-radius: var(--hone-radius-sm);
   background: var(--hone-paper-100);
 }
@@ -188,6 +250,22 @@
   margin: 0;
 }
 
+/* Reach, links and actions: one row, quiet, under the post. */
+.research-feed-item__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: var(--hone-ink-500);
+}
+
+.research-feed-item__stats {
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .research-feed-item__links {
   display: flex;
   flex-wrap: wrap;
@@ -210,4 +288,26 @@
 .research-feed-item__links i {
   font-style: normal;
   font-size: 10px;
+}
+
+.research-feed-item__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.research-feed-item__actions button {
+  padding: 4px 11px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-800);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
+}
+
+.research-feed-item__actions button:hover {
+  border-color: var(--hone-coral-600);
+  color: var(--hone-coral-600);
 }

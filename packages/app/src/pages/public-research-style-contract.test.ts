@@ -50,6 +50,45 @@ describe("research desk contract", () => {
     expect(page).toContain('{ key: "admin", label: "管理", adminOnly: true }');
   });
 
+  it("releases the commentator digest to every reader under its own group", () => {
+    // Sliced to the next section rather than to a named neighbour: sections
+    // get reordered, and a slice anchored on one must not silently invert.
+    const start = page.indexOf('key: "influencer-digest"');
+    const block = page.slice(start, page.indexOf('key: "', start + 20));
+    expect(start).toBeGreaterThan(-1);
+    expect(block).toContain('group: "voices"');
+    expect(block).not.toContain("adminOnly");
+    expect(page).toContain('{ key: "voices", label: "大V观点" }');
+    // A snapshot whose model did not run still carries its sources, so it is
+    // a finding, not an empty day.
+    expect(page).not.toContain('"source_only"');
+  });
+
+  it("explains itself and gives administrators the reader's view", () => {
+    // Every section states what it is and how to read it; the desk used to
+    // assume the reader already knew what a 关键事件链 was for.
+    for (const key of ["what:", "howTo:", "question:"]) {
+      expect(page).toContain(key);
+    }
+    expect(page).toContain("public-research-what");
+    expect(page).toContain("研究台是什么、怎么用");
+    expect(css).toContain(".public-research-guide {");
+    // The 问 HONE hand-off is a plain navigation with the question in the
+    // URL, sent on arrival — no stash, no second click.
+    expect(page).toContain("/chat?q=${encodeURIComponent(section.question)}&send=1");
+    expect(page).toContain("public-research-tochat");
+    // Administrators can switch to exactly what a reader sees; the choice
+    // lives on the device, never in the URL a reader could be handed.
+    expect(page).toContain("viewAsUser");
+    expect(page).toContain("管理员视角");
+    expect(page).toContain("用户视角");
+    expect(page).toContain("const adminView = createMemo(() => isAdmin() && !viewAsUser())");
+    expect(page).toContain("!item.adminOnly || adminView()");
+    expect(page).toContain("!section.adminOnly || adminView()");
+    expect(page).toContain('activeGroup() === "admin" && adminView()');
+    expect(css).toContain(".public-research-view {");
+  });
+
   it("paints the grid from one aggregate call and degrades to static cards", () => {
     expect(page).toContain("getPublicResearchOverview");
     // Two API touchpoints on the page itself (auth + overview), each named

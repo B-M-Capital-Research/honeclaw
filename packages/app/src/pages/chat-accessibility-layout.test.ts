@@ -55,7 +55,7 @@ describe("chat accessibility layout", () => {
     expect(chat).not.toContain('searchParams.ask');
   });
 
-  it("shows five personalized research hooks in a blank conversation", () => {
+  it("shows seven personalized research hooks in a blank conversation", () => {
     expect(chat).toContain("buildChatStarterPrompts");
     expect(chat).toContain('class="chat-empty-prompts"');
     expect(chat).toContain("CONTENT.chat_page.workspace.starter_kicker");

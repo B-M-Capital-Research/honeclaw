@@ -16,6 +16,20 @@
   padding: 26px 20px 48px;
 }
 
+/* ── Header: what this page is, and whose view ──────────────────────────── */
+
+.public-research-header {
+  display: grid;
+  gap: 10px;
+}
+
+.public-research-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .public-research-header h1 {
   margin: 0 0 6px;
   font-family: var(--hone-font-display);
@@ -35,6 +49,96 @@
 .public-research-header b {
   font-weight: 600;
   color: var(--hone-ink-800);
+}
+
+/* Administrators switch between their own page and the reader's. A quiet
+   segmented control: the page, not the switch, is the thing to look at. */
+.public-research-view {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-surface-raised);
+}
+
+.public-research-view button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--hone-radius-pill);
+  background: none;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.public-research-view button.is-active {
+  background: var(--hone-paper-200);
+  color: var(--hone-ink-950);
+  font-weight: 600;
+}
+
+.public-research-view__hint {
+  font-size: var(--hone-text-2xs);
+  color: var(--hone-ink-500);
+}
+
+/* Three steps for a first visit. Folds, and stays folded on this device. */
+.public-research-guide {
+  margin-top: 4px;
+  padding: 12px 16px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+}
+
+.public-research-guide > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  list-style: none;
+  font-size: var(--hone-text-sm);
+  font-weight: 600;
+  color: var(--hone-ink-950);
+  cursor: pointer;
+}
+
+.public-research-guide > summary::-webkit-details-marker {
+  display: none;
+}
+
+.public-research-guide > summary::after {
+  content: "展开";
+  margin-left: auto;
+  font-size: var(--hone-text-2xs);
+  font-weight: 700;
+  color: var(--hone-link);
+}
+
+.public-research-guide[open] > summary::after {
+  content: "收起";
+}
+
+.public-research-guide ol {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: var(--hone-text-sm);
+  line-height: 1.65;
+  color: var(--hone-ink-600);
+}
+
+.public-research-guide li b {
+  font-weight: 600;
+  color: var(--hone-ink-950);
+}
+
+@media (max-width: 620px) {
+  .public-research-header__row {
+    flex-direction: column;
+  }
 }
 
 /* ── Category switcher ──────────────────────────────────────────────────── */
@@ -95,6 +199,46 @@
   gap: 26px;
 }
 
+/* One line under every section saying what it is or how to read it. Quiet
+   on purpose: it is there for the first visit and must not compete with the
+   finding on the hundredth. */
+.public-research-what {
+  display: block;
+  font-size: var(--hone-text-2xs);
+  line-height: 1.5;
+  color: var(--hone-ink-400);
+}
+
+/* Every row ends in the same two controls: open the section, or hand its
+   context to the assistant. */
+.public-research-row__actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+.public-research-row__actions button {
+  padding: 5px 12px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-800);
+  font-size: var(--hone-text-2xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
+}
+
+.public-research-row__actions button:hover {
+  border-color: var(--hone-coral-600);
+  color: var(--hone-coral-600);
+}
+
+.public-research-row__actions .public-research-tochat {
+  border-color: var(--hone-line-strong);
+  font-weight: 600;
+}
+
 /* ── Tier 1: the verdicts ───────────────────────────────────────────────── */
 
 .public-research-verdicts {
@@ -118,8 +262,25 @@
 /* No border, no fill, no corner radius: the number carries the weight. */
 .public-research-verdict {
   display: grid;
-  gap: 5px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
   padding: 16px 2px;
+}
+
+/* On a phone the action pair moves under the verdict; beside it, it squeezed
+   the title onto two lines. Declared after the base rule so it wins. */
+@media (max-width: 720px) {
+  .public-research-verdict {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.public-research-verdict__open {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
   border: 0;
   background: none;
   text-align: left;
@@ -162,7 +323,7 @@
   line-height: 1.6;
 }
 
-.public-research-verdict:hover .public-research-verdict__note {
+.public-research-verdict__open:hover .public-research-verdict__note {
   color: var(--hone-ink-950);
 }
 
@@ -222,21 +383,29 @@
 
 /* A finding is a sentence with a source, so it reads as a line of prose with
    a label — not as a tile whose content you have to go and fetch. */
-.public-research-findings button {
+.public-research-finding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--hone-line);
+}
+
+.public-research-finding__open {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 14px;
+  min-width: 0;
   padding: 10px 2px;
   border: 0;
-  border-bottom: 1px solid var(--hone-line);
   background: none;
   text-align: left;
   cursor: pointer;
   color: var(--hone-ink-950);
 }
 
-.public-research-findings button:hover {
+.public-research-finding__open:hover {
   background: var(--hone-paper-100);
 }
 
@@ -259,7 +428,15 @@
 }
 
 @media (max-width: 620px) {
-  .public-research-findings button {
+  .public-research-finding {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .public-research-finding .public-research-row__actions {
+    padding: 0 2px 10px;
+  }
+
+  .public-research-finding__open {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 10px;
   }
@@ -288,15 +465,22 @@
 
 /* ── Tier 3: not yet ────────────────────────────────────────────────────── */
 
-/* Sections with nothing to say today get one row between them, not a card
-   each. They stay reachable; they just stop competing for the eye. */
+/* Sections with nothing to say today get one row each: the pill that opens
+   them, and the line that says what they are. They stay reachable; they
+   just stop competing for the eye. */
 .public-research-pending {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 10px;
+  display: grid;
+  gap: 8px;
 }
 
-.public-research-pending button {
+.public-research-pending__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.public-research-pending__row > button {
   display: inline-flex;
   align-items: baseline;
   gap: 7px;
@@ -309,7 +493,7 @@
   cursor: pointer;
 }
 
-.public-research-pending button:hover {
+.public-research-pending__row > button:hover {
   border-style: solid;
   color: var(--hone-ink-950);
 }
@@ -317,6 +501,10 @@
 .public-research-pending small {
   color: var(--hone-ink-500);
   font-size: var(--hone-text-2xs);
+}
+
+.public-research-pending__row .public-research-what {
+  flex: 1 1 260px;
 }
 
 /* ── Administration ─────────────────────────────────────────────────────── */

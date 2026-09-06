@@ -1,8 +1,8 @@
-import type { FinanceCalendarEvent } from "./types";
+import type { FinanceCalendarEvent, InfluencerDigestSnapshot } from "./types";
 import type { Locale } from "./i18n";
 
 export type ChatStarterPrompt = {
-  id: "macro" | "portfolio" | "calendar" | "industry" | "valuation";
+  id: "macro" | "portfolio" | "calendar" | "influencer" | "ai-infra" | "industry" | "valuation";
   eyebrow: string;
   title: string;
   question: string;
@@ -12,6 +12,8 @@ type ChatStarterPromptInput = {
   holdings?: string[];
   events?: FinanceCalendarEvent[];
   today?: string;
+  /** The latest commentator digest, so the Serenity hook can quote her newest post. */
+  influencer?: InfluencerDigestSnapshot | null;
   locale?: Locale;
 };
 
@@ -26,16 +28,49 @@ function nextCalendarEvent(events: FinanceCalendarEvent[], today: string) {
     .sort((left, right) => left.date.localeCompare(right.date))[0];
 }
 
+/**
+ * The newest Serenity post in the digest, flattened to one line.
+ *
+ * Only Serenity is quoted by name on the home screen: she is the author the
+ * digest exists for, and a hook that says "SemiAnalysis just wrote…" about an
+ * essay title would not read as a question anyone wants to ask.
+ */
+function latestSerenityPost(snapshot: InfluencerDigestSnapshot | null | undefined) {
+  const item = snapshot?.items?.find((entry) => entry.author_id === "serenity");
+  if (!item) return undefined;
+  const raw = (item.source_text_cn || item.source_text_en || item.source_excerpt || item.title || "")
+    .replace(/https?:\/\/\S+/g, "")
+    .trim();
+  const text = raw.replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+  // The hook's title is the post's first sentence, not its first N
+  // characters: a cut mid-clause reads as noise on a card.
+  const lead = raw.split(/(?<=[。！？!?])|\n/).map((part) => part.trim()).find(Boolean) ?? text;
+  return {
+    when: item.published_at_local,
+    text,
+    lead,
+    tickers: item.tickers ?? [],
+  };
+}
+
+function clip(text: string, max: number) {
+  const chars = [...text];
+  return chars.length > max ? `${chars.slice(0, max).join("")}…` : text;
+}
+
 export function buildChatStarterPrompts({
   holdings = [],
   events = [],
   today = new Date().toISOString().slice(0, 10),
+  influencer,
   locale = "zh",
 }: ChatStarterPromptInput): ChatStarterPrompt[] {
   const symbols = cleanHoldings(holdings);
   const holdingsLabel = symbols.length > 0 ? symbols.join("、") : "我的持仓";
   const firstHolding = symbols[0];
   const nextEvent = nextCalendarEvent(events, today);
+  const latest = latestSerenityPost(influencer);
 
   if (locale === "en") {
     const holdingsLabelEn = symbols.length > 0 ? symbols.join(", ") : "my holdings";
@@ -66,6 +101,23 @@ export function buildChatStarterPrompts({
         question: nextEvent
           ? `The calendar shows “${nextEvent.title}” on ${nextEvent.date.slice(0, 10)}. Verify the latest official time and explain how it could affect my holdings; do not guess unreleased results.`
           : "List the most important macro releases, AI-company earnings and industry conferences over the next week and explain how they could affect my holdings. Use official dates and do not invent unconfirmed events.",
+      },
+      {
+        id: "influencer",
+        eyebrow: "Serenity",
+        title: latest
+          ? `Serenity, ${latest.when}: ${clip(latest.lead, 40)}`
+          : "What is Serenity (@aleabitoreddit) focused on right now?",
+        question: latest
+          ? `Serenity (@aleabitoreddit) posted on ${latest.when}: “${clip(latest.text, 220)}”. Using the commentator digest and verifiable market, filing and news evidence, explain what she is saying, separate fact from her judgment, state what it means for ${latest.tickers.length ? latest.tickers.map((ticker) => `$${ticker}`).join(", ") : "the companies involved"} and my holdings, and list what still needs verification.`
+          : "Summarize Serenity's (@aleabitoreddit) views from the last three days in the commentator digest: which companies and bottlenecks she is watching, what is fact versus her judgment, where it overlaps with my holdings, and what still needs verification.",
+      },
+      {
+        id: "ai-infra",
+        eyebrow: "AI infrastructure",
+        title: "Where is the AI infrastructure chain tightest right now?",
+        question:
+          "Walk the AI data-center chain (GPU/ASIC → HBM and storage → optical modules and CPO → power and cooling → hyperscaler capex). Using the latest quarterly results, guidance and capacity signals from each layer's leaders, identify the tightest bottleneck, the layer that is loosening, the companies that benefit or suffer, and the next data points to verify.",
       },
       {
         id: "industry",
@@ -116,6 +168,23 @@ export function buildChatStarterPrompts({
       question: nextEvent
         ? `财经日历显示下一个重要事件是“${nextEvent.title}”（${nextEvent.date.slice(0, 10)}）。请核对最新官方时间，分析它可能如何影响我的持仓；尚未公布的结果不要猜。`
         : "请整理未来一周最重要的宏观数据、AI 公司财报和产业会议，并分析它们可能如何影响我的持仓。日期必须引用官方来源，未确认的不要补造。",
+    },
+    {
+      id: "influencer",
+      eyebrow: "大V速报 · Serenity",
+      title: latest
+        ? `白毛 ${latest.when}：${clip(latest.lead, 30)}`
+        : "Serenity（白毛）最近在关注什么？",
+      question: latest
+        ? `Serenity（白毛，@aleabitoreddit）${latest.when} 发推：“${clip(latest.text, 220)}”。请结合大V速报和本轮可核验的行情、财报与新闻说明：这条在讲什么，哪些是事实、哪些是作者判断，对 ${latest.tickers.length ? latest.tickers.map((ticker) => `$${ticker}`).join("、") : "相关公司"} 和我的持仓意味着什么，以及接下来需要验证的数据点。`
+        : "整理大V速报里 Serenity（白毛，@aleabitoreddit）最近三天推文的观点：她在关注哪些公司与瓶颈，哪些是事实、哪些是判断，与我的持仓有什么交集，以及需要验证的数据点。",
+    },
+    {
+      id: "ai-infra",
+      eyebrow: "AI 基础设施",
+      title: "AI 基础设施这条链，现在最紧的是哪一环？",
+      question:
+        "沿 AI 数据中心产业链（GPU/ASIC → HBM 与存储 → 光模块与 CPO → 电力与散热 → 云厂资本开支），结合各环节龙头最新一季财报、指引与产能信号，判断当前最紧的瓶颈环节、正在松动的环节、对应受益与承压的公司，并给出下一步要验证的数据点。",
     },
     {
       id: "industry",

@@ -18,6 +18,7 @@ const PERSISTENT_TOOL_NAMES: &[&str] = &[
 const KNOWN_READ_ONLY_TOOL_NAMES: &[&str] = &[
     "data_fetch",
     "discover_skills",
+    "influencer_views",
     "load_skill",
     "local_list_files",
     "local_read_file",
@@ -199,6 +200,10 @@ mod tests {
         assert!(tool_call_is_known_read_only(
             "data_fetch",
             &json!({"data_type":"quote","ticker":"CRWV"})
+        ));
+        assert!(tool_call_is_known_read_only(
+            "hone/influencer_views",
+            &json!({"symbol":"MU"})
         ));
         assert!(!tool_call_is_known_read_only(
             "external_unknown_tool",

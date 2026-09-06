@@ -369,6 +369,8 @@ event_engine:
         interval_secs: 3600
       # 大V速报：白毛使用用户确认的 aichainmap 公共整理 feed，条目仍以 X 原链
       # 为内容来源；SemiAnalysis 使用官方 RSS。Jukan 仍需部署方配置合法 bridge。
+      # 速报 worker 按这些 influencer_* feed 里最小的 interval_secs 滚动同步
+      # （夹在 5 分钟到 6 小时之间），保留近 7 天；同一条只调一次模型。
       - handle: influencer_serenity
         url: https://serenity-webhook.pages.dev/feed
         interval_secs: 900

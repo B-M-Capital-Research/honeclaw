@@ -37,15 +37,51 @@ describe("influencer digest dashboard", () => {
     expect(component).toContain("翻译/聚合源");
     // Opinion never reads as fact: stance, fact/opinion split and the
     // counterpoint are printed on the card itself.
-    expect(component).toContain("stanceLabel(item.stance)");
+    expect(component).toContain("stanceLabel(item().stance)");
     expect(component).toContain("反方 / 未证实处：");
     expect(component).toContain("未配置来源不会被补造内容");
   });
 
-  it("is cached and scheduled", () => {
-    expect(component).toContain("每日 19:50 更新");
+  it("reads a rolling snapshot and says how often it syncs", () => {
+    // The brief is no longer a 19:50 daily file: the worker polls the feeds
+    // every few minutes and the panel prints that cadence from the snapshot
+    // instead of hard-coding a clock time.
     expect(component).toContain("getPublicInfluencerDigest");
+    expect(component).toContain("refresh_interval_minutes");
+    expect(component).toContain("分钟同步一次");
+    expect(component).not.toContain("每日 19:50");
     expect(component).not.toContain("生成速报");
+  });
+
+  it("hides authors whose source does not exist yet", () => {
+    // Jukan has no lawful bridge. A filter chip that can only ever say
+    // "源待配置" is not a filter, so unconfigured authors are not offered.
+    expect(component).toContain(".filter((author) => author.configured)");
+    // The old chip printed "源待配置" for an unconfigured author; that branch
+    // is gone with the author.
+    expect(component).not.toContain("item.configured ?");
+    // An author whose feed failed this round says so rather than vanishing.
+    expect(component).toContain("carried_over");
+    expect(component).toContain("沿用上次");
+  });
+
+  it("reads like a post timeline: avatar, day dividers, reach and one action", () => {
+    expect(component).toContain("ResearchFeedDay");
+    expect(component).toContain('"今天"');
+    expect(component).toContain('"昨天"');
+    expect(component).toContain("avatar={avatarOf(item())}");
+    expect(component).toContain("stats={stats(item())}");
+    expect(component).toContain('label: "问 HONE"');
+    // The question carries the post's date and words, closes the sheet and
+    // lands in the assistant with send=1, so no second click is needed.
+    expect(component).toContain("props.onClose();");
+    expect(component).toContain("/chat?q=${encodeURIComponent(question)}&send=1");
+    expect(feed).toContain("export function ResearchFeedDay");
+    expect(feed).toContain("research-feed-item__avatar");
+    expect(feed).toContain("research-feed-item__bar");
+    expect(feedStyles).toContain(".research-feed-day {");
+    expect(feedStyles).toContain("position: sticky");
+    expect(feedStyles).toContain(".research-feed-item.has-avatar {");
   });
 
   it("is a controlled research panel without its own launcher or modal chrome", () => {
@@ -83,7 +119,7 @@ describe("influencer digest dashboard", () => {
     expect(component).not.toContain("detail={snapshot()?.summary}");
   });
 
-  it("scrolls the author filter through the shared scroller", () => {
+  it("scrolls the author and type filters through the shared scroller", () => {
     // Overflow, the right-edge fade and the snap belong to one shared class,
     // so the row never cuts an author chip in half at the container edge.
     expect(component).toContain('class="influencer-authors research-scroller"');
@@ -95,17 +131,21 @@ describe("influencer digest dashboard", () => {
     expect(shellStyles).toContain("scroll-snap-type: x proximity");
     // The shared shell owns the panel's only scroll container.
     expect(styles).toContain(".influencer-digest-body {");
+    expect(component).toContain('setKind("original")');
+    expect(component).toContain('setKind("media")');
   });
 
   it("keeps two judgement chips per post and drops the repeated timezone", () => {
     // Stance and fact-vs-opinion are the calls; topics and tickers are index
     // terms and read as one quiet line, not a dozen equal-weight chips.
-    expect(component).toContain("stanceLabel(item.stance)");
-    expect(component).toContain('item.content_type === "fact"');
+    expect(component).toContain("stanceLabel(item().stance)");
+    expect(component).toContain('item().content_type === "fact"');
     expect(component).not.toContain("<For each={item.topics}>{(topic) => <span>{topic}</span>}</For>");
     expect(component).not.toContain("<For each={item.tickers}>{(ticker) => <span>${ticker}</span>}</For>");
-    // The head's meta line already prints the run timezone once.
-    expect(component).toContain("shortLocalTimestamp(item.published_at_local)");
+    // Under a day divider a row needs only its clock; the head's meta line
+    // already prints the run timezone once.
+    expect(component).toContain("shortLocalTimestamp(item().published_at_local)");
+    expect(component).toContain("clockOf(");
     expect(component).not.toContain("{item.published_at_local} {snapshot()?.timezone}");
   });
 
@@ -121,7 +161,7 @@ describe("influencer digest dashboard", () => {
     // HONE inferred sits behind one line.
     expect(component).toContain("<ResearchFeed>");
     expect(component).toContain("<ResearchFeedItem");
-    expect(component).toContain("{sourceText(item) || item.title}");
+    expect(component).toContain("{sourceText(item()) || item().title}");
     expect(component).not.toContain("<summary>作者原文</summary>");
     expect(component).not.toContain("HONE 摘要");
     expect(component).toContain('analysisLabel="HONE 解读"');
@@ -137,7 +177,7 @@ describe("influencer digest dashboard", () => {
 
   it("renders post images and the replied-to context", () => {
     expect(component).toContain("media_urls");
-    expect(component).toContain('item.post_kind === "quote" ? "引用" : "回复"');
+    expect(component).toContain('item().post_kind === "quote" ? "引用" : "回复"');
     // Lazy loading is deliberately absent: the panel pins the page for its
     // iOS-safe scroll lock, and Chrome then never resolves the intersection
     // for images inside the portal, so they would sit visible and unloaded.
@@ -165,6 +205,10 @@ describe("influencer digest dashboard", () => {
     expect(styles).not.toContain("#b65340");
     expect(styles).not.toContain("#fff4d8");
     expect(styles).not.toContain("#fff6e3");
+    // Every post skin the panel used to carry itself now lives in the feed.
+    expect(styles).not.toContain(".influencer-media");
+    expect(styles).not.toContain(".influencer-tags");
+    expect(styles).not.toContain(".influencer-quoted");
   });
 
   it("has no manual refresh button and no ask-the-chat footer", () => {
@@ -175,12 +219,14 @@ describe("influencer digest dashboard", () => {
     expect(code).not.toContain("重新读取");
     expect(code).not.toContain("读取中…");
     // 「发送到对话」is gone end to end: no composer in the footer, no prompt
-    // envelope, and no chat sink on the props.
+    // envelope, and no chat sink on the props. The only hand-off is the
+    // per-post 问 HONE, which navigates with the post's own words.
     expect(propsType).toBe("type Props = {\n  onClose: () => void;\n};");
     expect(code).not.toContain("onAsk");
     expect(code).not.toContain("发送到对话");
     expect(code).not.toContain("buildSavedReportPrompt");
     expect(code).not.toContain("HONE_SAVED");
+    expect(styles).not.toContain(".influencer-digest-dialog input");
     // load() survives for exactly two callers: first paint and error retry.
     expect(code).toContain("onMount(() => void load())");
   });

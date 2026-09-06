@@ -71,7 +71,10 @@ describe("public workspace page contract", () => {
     expect(research).toContain("isAdmin()");
     expect(research).toContain("<PublicAdminUsagePanel />");
     expect(research).toContain("<PublicAdminWhitelistPanel />");
-    expect(research).toContain('activeGroup() === "admin" && isAdmin()');
+    // 管理面板跟着「管理员视角」走，而视角只是 is_admin 之上的本机开关，
+    // 普通用户永远到不了这个分支。
+    expect(research).toContain("const adminView = createMemo(() => isAdmin() && !viewAsUser())");
+    expect(research).toContain('activeGroup() === "admin" && adminView()');
     expect(css).toContain(".public-admin-panel");
     expect(css).toContain(".public-admin-live-summary");
     expect(css).toContain(".public-admin-table td::before");
