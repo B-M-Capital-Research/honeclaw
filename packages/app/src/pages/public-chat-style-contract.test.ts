@@ -173,7 +173,17 @@ describe("public chat visual contract", () => {
     const toolbar = chat.slice(chat.indexOf('class="hc-toolbar__tools"'), chat.indexOf('class="hc-toolbar__end"'));
     expect(toolbar).toContain('variant="tools"');
     expect(toolbar).toContain("<For each={chipActions()}>");
-    expect(chat).toContain("actions().filter((action) => !action.adminOnly)");
+    expect(chat).toContain("actions().filter((action) => !action.adminOnly && !action.secondary)");
+    // The commentator digest took the calendar's chip and opens over the
+    // conversation; the calendar is still reachable from 工具 / the sheet.
+    const shortcuts = chat.slice(chat.indexOf("const actions = createMemo<ComposerAction[]>"), chat.indexOf("const chipActions"));
+    expect(shortcuts.indexOf('id: "influencer-digest"')).toBeGreaterThan(-1);
+    expect(shortcuts).toContain('run: () => props.onOpenPanel("influencer-digest")');
+    expect(shortcuts.indexOf('id: "influencer-digest"')).toBeLessThan(shortcuts.indexOf('id: "community"'));
+    const calendar = shortcuts.slice(shortcuts.indexOf('id: "calendar"'), shortcuts.indexOf('id: "calendar"') + 600);
+    expect(calendar).toContain("secondary: true");
+    expect(chat).toContain("props.actions.filter((action) => action.adminOnly || action.secondary)");
+    expect(chat).not.toContain('panel: "influencer-digest", title:');
     expect(block(css, ".hc-toolbar__tools")).toContain("flex-wrap: wrap");
     // A phone gets one row — 「+」, input, send — and the 「+」 opens a sheet
     // where every attachment, tool, shortcut and suggestion carries a label.

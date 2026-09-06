@@ -103,6 +103,21 @@
 验证：`/__share-preview` 路由跑 html2canvas 实际导出，列表符号、代码块、表格、二维码与网页预览一致；
 390 / 1280 两档弹窗截图；单测新增摘要去标记、文本复制、日期戳三组。
 
+## 第四轮：输入框的「财经日历」换成「大V观点速报」（同日）
+
+> 把财经日历这里改成 大V观点速报。
+
+- `Composer` 的快捷入口列表里，财经日历那一格换成 **大V观点速报**（`id: "influencer-digest"`，喇叭图标），
+  点开直接走 `onOpenPanel("influencer-digest")`——和「工具」菜单打开研究面板一样盖在对话上，不跳研究台、
+  不丢当前会话；手机端 `+` 面板同一条目带一句说明（"Serenity 等作者的最新推文与观点，每 15 分钟同步"）。
+- 财经日历没有删：`ComposerAction` 新增 `secondary` 标记，桌面端从 chip 行退到「工具」菜单的「工作流」组
+  （原「财报工作流」改名「工作流」，非管理员也能看到这组），手机端仍在 `+` 面板的「快捷入口」里排最后。
+- 「工具」菜单「每日研究」组里原来的「大V速报」一行删掉（它已经是 chip，避免桌面与手机面板各出现两次），
+  对应的 `tools_influencer_*` 文案键随之移除；研究台自身的「大V速报」标题未动。
+- 契约测试钉住：chip 过滤 `!adminOnly && !secondary`、digest 条目在社区之前并走 `onOpenPanel`、
+  日历 `secondary: true`、菜单里不再重复 digest。Playwright 点过桌面 chip / 工具菜单 / 手机面板，
+  三处弹层都在视口内。
+
 ## verification
 
 - `bun run typecheck` 通过；`bun test --preload ./happydom.ts ./src ./public` 541 pass / 0 fail

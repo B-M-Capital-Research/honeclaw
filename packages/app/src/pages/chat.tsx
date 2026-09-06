@@ -1886,6 +1886,8 @@ type ComposerAction = {
   icon: () => JSX.Element;
   run: () => void;
   adminOnly?: boolean;
+  /** Reachable from 工具 and the phone sheet, but not shown as a desktop chip. */
+  secondary?: boolean;
   dot?: boolean;
 };
 
@@ -1910,6 +1912,7 @@ function usePhoneLayout() {
 function ToolIcon(props: {
   name:
     | "data-center"
+    | "influencer"
     | "calendar"
     | "earnings-preview"
     | "earnings-analysis"
@@ -1935,6 +1938,10 @@ function ToolIcon(props: {
         <Match when={props.name === "data-center"}>
           <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
           <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+        </Match>
+        <Match when={props.name === "influencer"}>
+          <path d="M3 10.5v3a1.5 1.5 0 0 0 1.5 1.5H7l5.5 4V5L7 9H4.5A1.5 1.5 0 0 0 3 10.5Z" />
+          <path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10" />
         </Match>
         <Match when={props.name === "calendar"}>
           <path d="M8 2v4M16 2v4" />
@@ -2046,9 +2053,8 @@ function ChatToolsMenu(props: {
       items: [
         { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
         { href: "/research?panel=daily-signal-macro", panel: "daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
-        // Released to everyone: the digest now syncs every few minutes and
-        // reads as a timeline, so it no longer waits in the admin group.
-        { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
+        // The commentator digest is a composer shortcut now, so it is not
+        // repeated here.
       ],
     },
     // Everything below the macro light is still being polished, so it stays
@@ -2072,10 +2078,11 @@ function ChatToolsMenu(props: {
       : []),
   ];
 
-  /** The desktop menu carries only the admin workflows; the phone sheet
-      lists every shortcut, since it is the only place a phone shows them. */
+  /** The desktop menu carries the admin workflows and the secondary tools
+      that lost their chip; the phone sheet lists every shortcut, since it is
+      the only place a phone shows them. */
   const shortcutActions = () =>
-    isPlus() ? props.actions : props.actions.filter((action) => action.adminOnly);
+    isPlus() ? props.actions : props.actions.filter((action) => action.adminOnly || action.secondary);
   const shortcutsLabel = () =>
     isPlus() ? CONTENT.chat_page.composer.actions_group : copy().tools_group_workflows;
 
@@ -2370,11 +2377,13 @@ function Composer(props: {
       run: () => navigate("/data-center"),
     },
     {
-      id: "calendar",
-      label: CONTENT.chat_page.composer.finance_calendar_tip,
-      hint: CONTENT.chat_page.composer.finance_calendar_hint,
-      icon: () => <ToolIcon name="calendar" />,
-      run: () => setCalendarSeq((seq) => seq + 1),
+      id: "influencer-digest",
+      label: CONTENT.chat_page.composer.influencer_tip,
+      hint: CONTENT.chat_page.composer.influencer_hint,
+      icon: () => <ToolIcon name="influencer" />,
+      // Opens over the conversation, the way the 工具 menu does, so the
+      // reader keeps their place instead of being sent to the research desk.
+      run: () => props.onOpenPanel("influencer-digest"),
     },
     {
       id: "community",
@@ -2383,6 +2392,16 @@ function Composer(props: {
       icon: () => <ToolIcon name="community" />,
       run: props.onOpenCommunity,
       dot: props.communityUnread,
+    },
+    {
+      id: "calendar",
+      label: CONTENT.chat_page.composer.finance_calendar_tip,
+      hint: CONTENT.chat_page.composer.finance_calendar_hint,
+      icon: () => <ToolIcon name="calendar" />,
+      run: () => setCalendarSeq((seq) => seq + 1),
+      // Its chip slot went to the commentator digest; the calendar stays
+      // reachable from 工具 on desktop and the 「+」 sheet on phones.
+      secondary: true,
     },
     ...(props.isAdmin
       ? [
@@ -2405,8 +2424,9 @@ function Composer(props: {
         ]
       : []),
   ]);
-  /** Desktop chips: the everyday shortcuts. Admin workflows sit in 工具. */
-  const chipActions = () => actions().filter((action) => !action.adminOnly);
+  /** Desktop chips: the everyday shortcuts. Admin workflows and secondary
+      tools sit in 工具. */
+  const chipActions = () => actions().filter((action) => !action.adminOnly && !action.secondary);
 
   const renderTextarea = () => (
     <textarea
