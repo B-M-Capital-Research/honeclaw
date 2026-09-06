@@ -4,6 +4,11 @@ import type { Industry, IndustrySubtype } from "./types";
 import {
   askHoneHref,
   askHonePrompt,
+  askNextStepPrompt,
+  askSignalPrompt,
+  askSourcePrompt,
+  askWatchPrompt,
+  relationLabel,
   findMember,
   isInferredMember,
   isLatestStale,
@@ -190,5 +195,79 @@ describe("subtype form inputs", () => {
   it("reads members one per line or comma-separated, uppercased and deduplicated", () => {
     expect(splitSymbols("sndk\nWDC, mu，stx\n\nSNDK")).toEqual(["SNDK", "WDC", "MU", "STX"]);
     expect(splitSymbols("")).toEqual([]);
+  });
+});
+
+describe("relation labels", () => {
+  it("translates the four relations and echoes anything else unchanged", () => {
+    expect(["demand_source", "capex_source", "supply_gate", "peer_signal"].map(relationLabel)).toEqual([
+      "需求来源",
+      "资本开支来源",
+      "供给卡口",
+      "同业信号",
+    ]);
+    expect(relationLabel("customer")).toBe("customer");
+  });
+});
+
+describe("contextual ask HONE prompts", () => {
+  const nvda = {
+    symbol: "NVDA",
+    name: "英伟达",
+    relation: "peer_signal",
+    latest: "FY27Q2：数据中心收入 $89.0B（同比 +117%），Q3 指引 $108B。",
+    latest_as_of: "2026-08-26",
+    pull: ["数据中心收入与环比", " 毛利率指引 ", ""],
+  };
+
+  it("asks about a dated upstream action, naming the focus company when there is one", () => {
+    const prompt = askSignalPrompt("存储", nvda, { symbol: "MU", name: "美光科技" });
+    expect(prompt).toContain("NVDA（英伟达）截至 2026-08-26 的最近动作：「FY27Q2：数据中心收入 $89.0B");
+    expect(prompt).toContain("它是存储的同业信号。");
+    expect(prompt).toContain("这会影响 MU（美光科技）哪部分业务、传导要几个季度？");
+    expect(prompt).toContain("再列要核的读数：数据中心收入与环比；毛利率指引");
+    expect(prompt).not.toContain("undefined");
+    expect(askHoneHref(prompt)).toMatch(/^\/chat\?q=.*&send=1$/);
+    expect(askHoneHref(prompt).length).toBeLessThan(2000);
+  });
+
+  it("degrades cleanly when the action, the date, the relation or the pull list are missing", () => {
+    const prompt = askSignalPrompt("存储", { symbol: "TSM", name: "", relation: "", latest: "", latest_as_of: "", pull: [] });
+    expect(prompt).toBe("TSM最近一季实际做了什么？这先影响存储里哪几家公司、哪部分业务？按行业本体给结论。");
+    expect(prompt).not.toContain("截至");
+    expect(prompt).not.toContain("（）");
+  });
+
+  it("asks about a source with its takeaway clipped and the focus company named", () => {
+    const prompt = askSourcePrompt(
+      "AI 芯片",
+      { house: "Broadcom（SEC 8-K）", title: "FY2026 Q3", date: "2026-09-02", takeaway: "x".repeat(300) },
+      { symbol: "AVGO", name: "博通" },
+    );
+    expect(prompt.startsWith("Broadcom（SEC 8-K）｜FY2026 Q3（2026-09-02）。要点：")).toBe(true);
+    expect(prompt).toContain("这对 AVGO（博通） 意味着什么、改变了哪条假设？");
+    expect(prompt.endsWith("按行业本体给结论，并说明还要核什么。")).toBe(true);
+    expect(prompt.length).toBeLessThan(400);
+    expect(askSourcePrompt("AI 芯片", { house: "h", title: "t", date: "", takeaway: "" })).toBe(
+      "h｜t。这改变了AI 芯片的哪条假设、先影响哪几家公司？按行业本体给结论，并说明还要核什么。",
+    );
+  });
+
+  it("asks about a watch item with the reason clipped, defaulting the target to the industry", () => {
+    const long = "理由".repeat(200);
+    const prompt = askWatchPrompt("电力", { what: "PJM 容量拍卖", why: long, cadence: "每年 7 月" });
+    expect(prompt.startsWith("电力的关注点「PJM 容量拍卖」（每年 7 月）：最近一期读数是多少、相对上一期变了什么、对 这一行 的估值结论要不要改？看它的原因：")).toBe(true);
+    expect(prompt.endsWith("…")).toBe(true);
+    expect(prompt.length).toBeLessThan(long.length);
+    expect(askWatchPrompt("电力", { what: "w", why: "", cadence: "" }, { symbol: "VST", name: "" })).toBe(
+      "电力的关注点「w」：最近一期读数是多少、相对上一期变了什么、对 VST 的估值结论要不要改？",
+    );
+  });
+
+  it("turns a next step into a task with the brief's lead as context", () => {
+    expect(askNextStepPrompt("AI 芯片", "订单增加之后，收入兑现还卡在哪里？", " 9 月下旬 MU 财报 ")).toBe(
+      "AI 芯片当前重点：订单增加之后，收入兑现还卡在哪里？。请完成下一步「9 月下旬 MU 财报」，给出数据、来源与对估值结论的影响。",
+    );
+    expect(askNextStepPrompt("AI 芯片", "", "x")).toBe("AI 芯片：请完成下一步「x」，给出数据、来源与对估值结论的影响。");
   });
 });

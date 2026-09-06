@@ -1,9 +1,10 @@
 import { Show, createEffect, createSignal, on } from "solid-js";
 
+import { LATEST_STALE_AFTER_DAYS, isLatestStale } from "@/lib/industry-valuation";
 import type {
   Industry,
   IndustryEditOp,
-  IndustryUpstreamRelation,
+  IndustryMember,
   IndustryUpstreamSignal,
 } from "@/lib/types";
 
@@ -27,17 +28,6 @@ export type Editor = {
   /** 成功返回 true；页面已用返回的快照整体替换本地状态并回显 applied。 */
   submit: (industry: string, op: IndustryEditOp) => Promise<boolean>;
 };
-
-export const RELATION_LABELS: Record<IndustryUpstreamRelation, string> = {
-  demand_source: "需求来源",
-  capex_source: "资本开支来源",
-  supply_gate: "供给卡口",
-  peer_signal: "同业信号",
-};
-
-export function relationLabel(value: string) {
-  return (RELATION_LABELS as Record<string, string>)[value] ?? value;
-}
 
 /** 行业树只收美股与 ADR：带交易所后缀（0700.HK）或前缀（NYSE:TSM）的代码在前端就拒掉。 */
 export const NON_US_SYMBOL_MESSAGE = "只收美股与 ADR";
@@ -252,4 +242,50 @@ export function LatestEditor(props: {
       </div>
     </div>
   );
+}
+
+/**
+ * 公司视角：选中一家公司后整页围绕它重排。状态由页面入口持有（就是 URL 里的 `?symbol=`），
+ * 各区块只读 `member()`、只触发 enter / exit。
+ */
+export type Lens = {
+  member: () => IndustryMember | undefined;
+  enter: (symbol: string, options?: { replace?: boolean }) => void;
+  exit: () => void;
+};
+
+/** 跳到详情里的某个锚点；落在研究底稿里的锚点要先把 <details> 展开再滚，所以不能用裸 #hash。 */
+export type DetailJump = (id: string) => void;
+
+/**
+ * 「截至 2026-08-26」+ 超过一个季度就标「可能已过期」。上游动作、关注点、简报、来源都用它，
+ * 读者在任何一块看到的日期语义一致。空日期不渲染。
+ */
+export function AsOfTag(props: {
+  asOf?: string | null;
+  now?: Date;
+  prefix?: string;
+  staleText?: string;
+}) {
+  const asOf = () => (props.asOf ?? "").trim();
+  return (
+    <Show when={asOf()}>
+      <span class="industry-asof">
+        {props.prefix ?? "截至"} {asOf()}
+        <Show when={isLatestStale(asOf(), props.now)}>
+          <span
+            class="industry-stale"
+            title={`日期已超过 ${LATEST_STALE_AFTER_DAYS} 天，引用前先核最近一期`}
+          >
+            {props.staleText ?? "可能已过期"}
+          </span>
+        </Show>
+      </span>
+    </Show>
+  );
+}
+
+/** 公司视角下，提到了选中公司的条目打这个标；只在读模式前置，编辑态只打标不重排。 */
+export function RelatedTag(props: { symbol: string }) {
+  return <span class="industry-related-tag">与 {props.symbol} 有关</span>;
 }

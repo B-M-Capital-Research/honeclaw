@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 
 import {
+  RELATION_LABELS,
   isInferredMember,
   isSubtypeId,
   splitSymbols,
@@ -11,7 +12,6 @@ import type { Industry, IndustrySubtype, IndustryUpstreamRelation } from "@/lib/
 
 import {
   NON_US_SYMBOL_MESSAGE,
-  RELATION_LABELS,
   isNonUsSymbol,
   splitAliases,
   splitLines,

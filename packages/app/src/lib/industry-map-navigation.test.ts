@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import industryMap from "../../../../skills/industry-map/references/industry-map.json";
-import { resolveIndustryMapSelection } from "./industry-map-navigation";
+import { resolveIndustryMapLens, resolveIndustryMapSelection } from "./industry-map-navigation";
 
 const industries = industryMap.industries;
 
@@ -36,5 +36,22 @@ describe("industry map deep links", () => {
   it("does not invent a selected industry before data arrives or for an empty tree", () => {
     expect(resolveIndustryMapSelection([], "optical")).toBeUndefined();
     expect(resolveIndustryMapSelection([], undefined)).toBeUndefined();
+  });
+});
+
+describe("industry map company lens", () => {
+  const storage = industries.find((industry) => industry.id === "storage")!;
+
+  it("accepts a member of the selected industry in any case and returns the canonical symbol", () => {
+    expect(resolveIndustryMapLens(storage, "mu")).toBe("MU");
+    expect(resolveIndustryMapLens(storage, " SNDK ")).toBe("SNDK");
+  });
+
+  it("ignores symbols from other industries, empty values, arrays and a missing industry", () => {
+    expect(resolveIndustryMapLens(storage, "NVDA")).toBeUndefined();
+    expect(resolveIndustryMapLens(storage, "")).toBeUndefined();
+    expect(resolveIndustryMapLens(storage, ["MU", "SNDK"])).toBeUndefined();
+    expect(resolveIndustryMapLens(storage, undefined)).toBeUndefined();
+    expect(resolveIndustryMapLens(undefined, "MU")).toBeUndefined();
   });
 });

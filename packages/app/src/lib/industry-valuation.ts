@@ -1,9 +1,13 @@
 import type {
   Industry,
+  IndustryCoreWatch,
   IndustryMapSnapshot,
   IndustryMember,
   IndustryMethodology,
+  IndustrySource,
   IndustrySubtype,
+  IndustryUpstreamRelation,
+  IndustryUpstreamSignal,
   IndustryValuation,
 } from "./types";
 
@@ -49,6 +53,18 @@ export function methodologyOf(
     hindsight_error: value?.hindsight_error ?? "",
     output_fields: value?.output_fields ?? [],
   };
+}
+
+export const RELATION_LABELS: Record<IndustryUpstreamRelation, string> = {
+  demand_source: "需求来源",
+  capex_source: "资本开支来源",
+  supply_gate: "供给卡口",
+  peer_signal: "同业信号",
+};
+
+/** 上游关系的中文标签；底稿里出现没见过的值就原样回显，不吞掉。 */
+export function relationLabel(value: string): string {
+  return (RELATION_LABELS as Record<string, string>)[value] ?? value;
 }
 
 /** 一家公司在这一行里属于哪个子类型：明确成员优先，其次是底稿推断的成员；都不在就 undefined。 */
@@ -144,6 +160,79 @@ export function askHonePrompt(symbol: string, name: string, subtypeName: string)
 
 export function askHoneHref(prompt: string): string {
   return `/chat?q=${encodeURIComponent(prompt)}&send=1`;
+}
+
+/** 提示词里引用的长段落只带开头：URL 要短，模型也不需要整段 why。 */
+function clip(text: string, limit: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= limit) return trimmed;
+  return `${trimmed.slice(0, limit).trimEnd()}…`;
+}
+
+type Focus = Pick<IndustryMember, "symbol" | "name">;
+
+function focusLabel(focus: Focus | undefined, fallback: string): string {
+  if (!focus) return fallback;
+  return focus.name?.trim() ? `${focus.symbol}（${focus.name.trim()}）` : focus.symbol;
+}
+
+/**
+ * 从「最近变化」里的一条上游动作发问：这个动作影响谁、怎么传导、该去核什么。
+ * 缺字段就省掉对应片段，不能出现「截至 」「undefined」这种半句。
+ */
+export function askSignalPrompt(
+  industryName: string,
+  signal: Pick<
+    IndustryUpstreamSignal,
+    "symbol" | "name" | "relation" | "latest" | "latest_as_of" | "pull"
+  >,
+  focus?: Focus,
+): string {
+  const who = focusLabel({ symbol: signal.symbol, name: signal.name }, signal.symbol);
+  const asOf = signal.latest_as_of?.trim() ? `截至 ${signal.latest_as_of.trim()} 的` : "";
+  const latest = signal.latest?.trim()
+    ? `${who}${asOf}最近动作：「${clip(signal.latest, 220)}」。`
+    : `${who}最近一季实际做了什么？`;
+  const relation = signal.relation ? `它是${industryName}的${relationLabel(signal.relation)}。` : "";
+  const label = focusLabel(focus, "");
+  const target = focus
+    ? `这会影响 ${label}${label.endsWith("）") ? "" : " "}哪部分业务、传导要几个季度？`
+    : `这先影响${industryName}里哪几家公司、哪部分业务？`;
+  const pull = (signal.pull ?? []).map((item) => item.trim()).filter(Boolean);
+  const tail = pull.length > 0 ? `按行业本体给结论，再列要核的读数：${pull.join("；")}` : "按行业本体给结论。";
+  return `${latest}${relation}${target}${tail}`;
+}
+
+/** 从「最近变化」里的一条来源发问：这份材料改变了哪条假设、先影响谁。 */
+export function askSourcePrompt(
+  industryName: string,
+  source: Pick<IndustrySource, "house" | "title" | "date" | "takeaway">,
+  focus?: Focus,
+): string {
+  const when = source.date?.trim() ? `（${source.date.trim()}）` : "";
+  const takeaway = source.takeaway?.trim() ? `要点：${clip(source.takeaway, 220)}。` : "";
+  const target = focus
+    ? `这对 ${focusLabel(focus, "")} 意味着什么、改变了哪条假设？`
+    : `这改变了${industryName}的哪条假设、先影响哪几家公司？`;
+  return `${source.house.trim()}｜${source.title.trim()}${when}。${takeaway}${target}按行业本体给结论，并说明还要核什么。`;
+}
+
+/** 从一条关注点发问：最近一期读数、相对上一期的变化、要不要改估值结论。 */
+export function askWatchPrompt(
+  industryName: string,
+  watch: Pick<IndustryCoreWatch, "what" | "why" | "cadence">,
+  focus?: Focus,
+): string {
+  const cadence = watch.cadence?.trim() ? `（${watch.cadence.trim()}）` : "";
+  const target = focusLabel(focus, "这一行");
+  const why = watch.why?.trim() ? `看它的原因：${clip(watch.why, 160)}` : "";
+  return `${industryName}的关注点「${watch.what.trim()}」${cadence}：最近一期读数是多少、相对上一期变了什么、对 ${target} 的估值结论要不要改？${why}`;
+}
+
+/** 从简报的「下一次先看」发问：把那一步做完，给数据、来源与对结论的影响。 */
+export function askNextStepPrompt(industryName: string, lead: string, step: string): string {
+  const context = lead.trim() ? `${industryName}当前重点：${clip(lead, 120)}。` : `${industryName}：`;
+  return `${context}请完成下一步「${step.trim()}」，给出数据、来源与对估值结论的影响。`;
 }
 
 /** 子类型 id：小写 kebab-case（与后端 UpsertSubtype 的校验同口径）。 */

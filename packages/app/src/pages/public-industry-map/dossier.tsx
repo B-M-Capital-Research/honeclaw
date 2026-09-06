@@ -1,9 +1,12 @@
 import { For, Show, createEffect, createSignal, on } from "solid-js";
 
+import { mentionsMember, variableText } from "@/lib/industry-lens";
 import { INFERRED_MEMBER_TIP } from "@/lib/industry-valuation";
 import type {
   Industry,
+  IndustryEditField,
   IndustryKeyVariable,
+  IndustryMember,
   IndustryMethodRule,
   IndustryMethodology,
   IndustrySubtype,
@@ -13,11 +16,19 @@ import type {
 } from "@/lib/types";
 
 import { SubtypeForm } from "./admin-editors";
-import { FieldEditor, ListEditor, type Editor } from "./shared";
+import { AsOfTag, FieldEditor, ListEditor, RelatedTag, type Editor } from "./shared";
 
 /** 研究底稿的几块：方法论条、可观测变量表、估值执行卡、底层估值逻辑。 */
 
-export function VariablesTable(props: { variables: IndustryKeyVariable[] }) {
+export function VariablesTable(props: {
+  variables: IndustryKeyVariable[];
+  /** 公司视角下提到它的行打标（不重排：表格顺序就是传导链的顺序）。 */
+  member?: Pick<IndustryMember, "symbol" | "name">;
+  now?: Date;
+}) {
+  const dated = () => props.variables.some((variable) => variable.as_of);
+  const related = (variable: IndustryKeyVariable) =>
+    props.member ? mentionsMember(variableText(variable), props.member) : false;
   return (
     <table class="industry-variables">
       <thead>
@@ -25,20 +36,177 @@ export function VariablesTable(props: { variables: IndustryKeyVariable[] }) {
           <th>可观测变量</th>
           <th>它在链条哪一环</th>
           <th>去哪取</th>
+          <Show when={dated()}>
+            <th>数字截至</th>
+          </Show>
         </tr>
       </thead>
       <tbody>
         <For each={props.variables}>
           {(variable) => (
-            <tr>
-              <td>{variable.name}</td>
+            <tr classList={{ "is-related": related(variable) }}>
+              <td>
+                {variable.name}
+                <Show when={related(variable) && props.member}>
+                  {(member) => <RelatedTag symbol={member().symbol} />}
+                </Show>
+              </td>
               <td>{variable.why}</td>
               <td class="industry-where">{variable.where}</td>
+              <Show when={dated()}>
+                <td class="industry-variable-asof">
+                  <AsOfTag asOf={variable.as_of} now={props.now} prefix="" />
+                </td>
+              </Show>
             </tr>
           )}
         </For>
       </tbody>
     </table>
+  );
+}
+
+/** 传导链与旧版锚：一段传导链、可观测变量表、倍数锚与常见错法；编辑态逐段就地改。 */
+export function DriverChainBlock(props: {
+  industry: Industry;
+  editMode: boolean;
+  editor: Editor;
+  setField: (field: IndustryEditField, value: string) => Promise<boolean>;
+  member?: Pick<IndustryMember, "symbol" | "name">;
+  now?: Date;
+}) {
+  const logic = () => props.industry.ai_valuation_logic;
+  return (
+    <Show
+      when={props.editMode}
+      fallback={
+        <Show
+          when={logic().driver_chain}
+          fallback={<p class="industry-detail-note">这一行的传导链尚未定稿。</p>}
+        >
+          <p class="industry-chain">{logic().driver_chain}</p>
+          <Show when={logic().key_variables.length > 0}>
+            <VariablesTable variables={logic().key_variables} member={props.member} now={props.now} />
+          </Show>
+          <dl class="industry-anchor">
+            <dt>倍数锚</dt>
+            <dd>{logic().multiple_anchor || "—"}</dd>
+            <dt>这一行最常见的估值错法</dt>
+            <dd>{logic().anti_pattern || "—"}</dd>
+          </dl>
+        </Show>
+      }
+    >
+      <FieldEditor
+        label="传导链"
+        value={logic().driver_chain}
+        rows={4}
+        editor={props.editor}
+        onSave={(value) => props.setField("driver_chain", value)}
+      />
+      <Show when={logic().key_variables.length > 0}>
+        <p class="industry-detail-note">可观测变量表暂不在页面上改。</p>
+        <VariablesTable variables={logic().key_variables} now={props.now} />
+      </Show>
+      <FieldEditor
+        label="倍数锚（长版，研究台看）"
+        value={logic().multiple_anchor}
+        editor={props.editor}
+        onSave={(value) => props.setField("multiple_anchor", value)}
+      />
+      <FieldEditor
+        label="倍数锚（短版，每轮注入模型，110 字内）"
+        value={logic().multiple_anchor_short ?? ""}
+        rows={2}
+        editor={props.editor}
+        onSave={(value) => props.setField("multiple_anchor_short", value)}
+      />
+      <FieldEditor
+        label="这一行最常见的估值错法（长版，研究台看）"
+        value={logic().anti_pattern}
+        editor={props.editor}
+        onSave={(value) => props.setField("anti_pattern", value)}
+      />
+      <FieldEditor
+        label="估值错法（短版，每轮注入模型，110 字内）"
+        value={logic().anti_pattern_short ?? ""}
+        rows={2}
+        editor={props.editor}
+        onSave={(value) => props.setField("anti_pattern_short", value)}
+      />
+    </Show>
+  );
+}
+
+export const DOSSIER_IDS = ["dossier", "method", "valuation-card", "valuation-logic", "driver-chain"] as const;
+
+/**
+ * 完整研究底稿：方法论、这类公司怎么估值、底层估值逻辑、传导链，折在一个 <details> 里。
+ * 用 <details> 而不是条件渲染：里面的编辑器草稿依赖组件实例存活，折叠不能把它们卸载。
+ * 编辑态默认展开——管理员进来就是要改这些。
+ */
+export function ResearchDossier(props: {
+  industry: Industry;
+  valuation: IndustryValuation;
+  methodology: IndustryMethodology;
+  activeSubtype: IndustrySubtype | undefined;
+  onSelectSubtype: (id: string) => void;
+  editMode: boolean;
+  editor: Editor;
+  setField: (field: IndustryEditField, value: string) => Promise<boolean>;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+  jump: (id: string) => void;
+  member?: Pick<IndustryMember, "symbol" | "name">;
+  now?: Date;
+}) {
+  return (
+    <details
+      class="industry-details industry-dossier"
+      id="dossier"
+      open={props.open}
+      onToggle={(event) => props.onToggle(event.currentTarget.open)}
+    >
+      <summary>
+        完整研究底稿
+        <span class="industry-dossier-hint">方法论 · 这类公司怎么估值 · 底层估值逻辑 · 传导链</span>
+      </summary>
+      <nav class="industry-dossier-nav" aria-label="底稿目录">
+        <button type="button" onClick={() => props.jump("method")}>方法论</button>
+        <button type="button" onClick={() => props.jump("valuation-card")}>这类公司怎么估值</button>
+        <button type="button" onClick={() => props.jump("valuation-logic")}>底层估值逻辑</button>
+        <button type="button" onClick={() => props.jump("driver-chain")}>传导链</button>
+      </nav>
+      <div id="method">
+        <MethodologyStrip methodology={props.methodology} />
+      </div>
+      <h4 class="industry-dossier-title" id="valuation-card">这类公司怎么估值</h4>
+      <p class="industry-detail-note">先在这里定位：公司在哪个子类型、用哪个前瞻财年与哪一族倍数、什么被禁止；再去看上游最近做了什么。</p>
+      <ValuationCard
+        industry={props.industry}
+        valuation={props.valuation}
+        active={props.activeSubtype}
+        onSelect={props.onSelectSubtype}
+        editMode={props.editMode}
+        editor={props.editor}
+      />
+      <h4 class="industry-dossier-title" id="valuation-logic">底层估值逻辑</h4>
+      <ValuationLogicBlock
+        industry={props.industry}
+        valuation={props.valuation}
+        editMode={props.editMode}
+        editor={props.editor}
+      />
+      <h4 class="industry-dossier-title" id="driver-chain">传导链与旧版锚（带日期的量）</h4>
+      <DriverChainBlock
+        industry={props.industry}
+        editMode={props.editMode}
+        editor={props.editor}
+        setField={props.setField}
+        member={props.member}
+        now={props.now}
+      />
+    </details>
   );
 }
 
@@ -51,7 +219,7 @@ export function MethodologyStrip(props: { methodology: IndustryMethodology }) {
   return (
     <Show when={method().execution_rules.length > 0}>
       <section class="industry-method" aria-label="估值方法论">
-        <h2>HOne 前瞻估值执行版 {method().version}</h2>
+        <h4>HOne 前瞻估值执行版 {method().version}</h4>
         <Show when={method().positioning}>
           <p class="industry-method-lead">{method().positioning}</p>
         </Show>
