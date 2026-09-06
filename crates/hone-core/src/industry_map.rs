@@ -1261,11 +1261,22 @@ mod tests {
     #[test]
     fn brief_is_absent_in_base_and_round_trips_through_set_and_clear() {
         let mut map = base_map();
-        assert!(
-            map.industries
-                .iter()
-                .all(|industry| industry.brief.is_none())
-        );
+        // 底稿里写了简报的行，简报必须完整：有问题、有可解析的截至日；没写的行保持 None。
+        for industry in &map.industries {
+            if let Some(brief) = &industry.brief {
+                assert!(
+                    !brief.question.trim().is_empty(),
+                    "{} 的简报没有 question",
+                    industry.id
+                );
+                assert!(
+                    parse_as_of(&brief.as_of).is_some(),
+                    "{} 的简报截至日不可解析：{}",
+                    industry.id,
+                    brief.as_of
+                );
+            }
+        }
         assert_eq!(
             serde_json::from_str::<IndustryBrief>("{}").unwrap(),
             IndustryBrief::default()
