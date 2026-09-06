@@ -280,6 +280,15 @@ pub(crate) async fn handle_get_industry_map(
         .is_web_admin(&user.user_id)
         .await
         .unwrap_or(false);
+    // 行业本体是研究底稿——传导链、倍数锚、上游信号与成员判断，都是内部先验而不是
+    // 已发布的结论。读和写走同一条门槛：普通读者不该拿到内容，前端也就不必靠隐藏
+    // 字段来假装它是公开的。
+    if !is_admin {
+        return crate::routes::json_error(
+            axum::http::StatusCode::FORBIDDEN,
+            "行业分析仅管理员可见".to_string(),
+        );
+    }
 
     let data_root = state.core.config.storage.data_root();
     let (map, edits) = hone_core::industry_map::load(&data_root);
@@ -720,7 +729,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn industry_map_read_is_session_only_and_edits_remain_admin_only() {
+    async fn industry_map_read_and_edits_are_both_admin_only() {
         let state = access_test_state().await;
         let anonymous = handle_get_industry_map(State(state.clone()), HeaderMap::new()).await;
         assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
@@ -732,7 +741,8 @@ mod tests {
         .await;
         assert_eq!(anonymous_edit.status(), StatusCode::UNAUTHORIZED);
 
-        // An email account without an entitlement is still a logged-in reader.
+        // A logged-in reader is refused the ontology itself, not merely the
+        // editing controls: the payload never reaches a non-administrator.
         let unpaid_user = state
             .web_auth
             .ensure_international_email_user("industry-reader@example.com")
@@ -745,11 +755,9 @@ mod tests {
         );
         let unpaid_headers = session_headers(&state, &unpaid_user.user_id).await;
         let read = handle_get_industry_map(State(state.clone()), unpaid_headers.clone()).await;
-        assert_eq!(read.status(), StatusCode::OK);
-        let snapshot = response_json(read).await;
-        assert_eq!(snapshot["available"], true);
-        assert_eq!(snapshot["is_admin"], false);
-        assert!(!snapshot["industries"].as_array().unwrap().is_empty());
+        assert_eq!(read.status(), StatusCode::FORBIDDEN);
+        let refused = response_json(read).await;
+        assert!(refused["industries"].is_null());
 
         // An ordinary user with product access must fail before body parsing.
         let user = state

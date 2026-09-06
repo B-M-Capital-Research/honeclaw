@@ -15,6 +15,10 @@ const foundation = readFileSync(
   new URL("./public-foundation.css", import.meta.url),
   "utf8",
 );
+const dataCenter = readFileSync(
+  new URL("./public-data-center.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("research desk contract", () => {
   it("is the URL-addressable home of every daily research product", () => {
@@ -62,6 +66,25 @@ describe("research desk contract", () => {
     // A snapshot whose model did not run still carries its sources, so it is
     // a finding, not an empty day.
     expect(page).not.toContain('"source_only"');
+  });
+
+  it("keeps the industry ontology admin-only, on the desk and on the way in", () => {
+    // The ontology is research draft — transmission chains, multiple anchors,
+    // upstream signals. The server refuses it to non-administrators, so the
+    // desk entry must not advertise a page a reader cannot open.
+    const start = page.indexOf('key: "industry-map"');
+    expect(start).toBeGreaterThan(-1);
+    expect(page.slice(start, page.indexOf('key: "', start + 20))).toContain("adminOnly: true");
+    // The 3D scene stays public, so it must not hand a reader a door that
+    // answers 403: every way it offers into the ontology sits behind the
+    // administrator gate, checked by looking at what precedes each link.
+    expect(dataCenter).toContain("user()?.is_admin === true");
+    const ways = [...dataCenter.matchAll(/\/industry-map|industryHref\(/g)].map((m) => m.index ?? 0);
+    expect(ways.length).toBeGreaterThanOrEqual(2);
+    for (const at of ways) {
+      const lead = dataCenter.slice(Math.max(0, at - 400), at);
+      expect(lead.includes("<Show when={isAdmin()}>") || lead.includes("import")).toBe(true);
+    }
   });
 
   it("explains itself and gives administrators the reader's view", () => {

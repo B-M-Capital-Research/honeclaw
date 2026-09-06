@@ -114,13 +114,16 @@ const SECTIONS: SectionDef[] = [
   {
     key: "industry-map",
     title: "行业分析",
-    kicker: "产业链与关键变量",
+    kicker: "本体 · 可在线编辑",
     group: "industry",
-    blurb: "行业树 · 上游信号 · 估值逻辑 · 相关公司",
-    what: "AI 数据中心八条产业线的行业树、上游信号与估值逻辑，以及每条线上的公司。",
-    howTo: "先看这一行的传导链和该盯的变量，再看它的成员公司；管理员可以在线改。",
+    blurb: "行业树 · 上游信号 · 估值逻辑 · 管理员可直接改",
+    what: "AI 数据中心八条产业线的行业树、上游信号与估值逻辑，管理员可在线编辑。",
+    howTo: "改动即时生效并注入对话；每季财报后更新上游的「最近动作」。",
     refreshAt: "研究底稿维护",
     href: "/industry-map",
+    // 行业本体是研究底稿而不是已发布结论，仍然只对管理员开放；服务端同样拒绝
+    // 非管理员读取，所以这里不是靠藏入口来保密。
+    adminOnly: true,
   },
   {
     key: "influencer-digest",
@@ -621,7 +624,13 @@ export default function PublicResearchPage() {
                       <For each={industrySections()}>
                         {(section) => (
                           <button type="button" onClick={() => openSection(section)}>
-                            <span class="public-research-findings__label">{section.title}</span>
+                            <span class="public-research-findings__label">
+                              {section.title}
+                              {/* 管理员在这一层也要能一眼看出哪张还没对用户放出。 */}
+                              <Show when={section.adminOnly}>
+                                <i class="public-research-gated">未发布</i>
+                              </Show>
+                            </span>
                             <span class="public-research-findings__text">{section.blurb}</span>
                             <span class="public-research-findings__metric" aria-hidden="true">↗</span>
                           </button>

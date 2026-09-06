@@ -106,6 +106,29 @@
 - 契约测试 `releases the commentator digest…` 原本按「速报 → 行业分析」的顺序切片，rebase 后顺序反转导致空切片，
   改成切到「下一个 `key: "`」，与排序无关。
 
+## 行业分析收回为仅管理员可见（同日，用户要求）
+
+上游把「行业分析」从管理组移到新的「产业研究」组并对所有登录用户开放（`GET /api/public/industry-map`
+只校验登录、`is_admin` 仅用于编辑栏，3D 数据中心还建了跳进去的公开链路与 e2e）。用户要求收回：本体是研究底稿
+（传导链、倍数锚、上游信号、成员判断），不是已发布结论。改法是读写同一条门槛，而不是靠前端藏字段：
+
+- `crates/hone-web-api/src/routes/industry_map.rs`：`handle_get_industry_map` 在拿到 `is_admin` 后，
+  非管理员一律 403「行业分析仅管理员可见」，内容根本不出服务端。原单测
+  `industry_map_read_is_session_only_and_edits_remain_admin_only` 改名并把「读者拿到 200」翻成 403。
+- 研究台条目加 `adminOnly: true`（仍留在「产业研究」组，管理员在该层也能看到「未发布」标记）。
+- `public-data-center.tsx`：3D 场景保持公开，但它通往本体的两处入口（页头「完整行业分析」与浮窗里的行业链接）
+  只对管理员渲染——公开页面不该把读者送到一扇回 403 的门。
+- `public-industry-map.tsx`：已有的 `forbidden` 视图文案改成「行业分析仅管理员可见，当前账号没有查看权限。」
+- `packages/app/e2e/public-data-center.spec.ts`：mock 与服务端一致（非管理员读本体返回 403）；
+  原「普通读者跳进行业分析」一测改成「读者拿得到 3D、拿不到本体」，原来的导航与历史回退流程移到管理员用例。
+
+**验证**：本地后端（8188）实测同一会话——管理员 200 且 8 个行业，撤销管理员后同一 cookie 403
+（`{"error":"行业分析仅管理员可见"}`），恢复后又 200。浏览器里以真实非管理员账号确认：3D 页面 0 个
+`/industry-map` 链接、六个热点仍可用；直接输 URL 得到「仅管理员可见」；研究台「产业研究」只剩 3D 数据中心，
+既没有视角切换也没有管理分组。`industry_map` 的那条后端单测需要 PostgreSQL 运行时配置，本地与干净 origin/main
+同样报 `PostgreSQL must be configured for the runtime`，因此该断言只在带 PG 的环境（CI）里真正执行；
+上面的 curl 实测是它的替代证据。
+
 ## 风险与未决
 
 - 生产 feed 每轮 15 分钟拉一次 aichainmap 的公开 JSON（约 340KB），比之前每天一次多出 ~96 次/天；
@@ -115,6 +138,10 @@
 - `influencer_views` 读取的是 web 进程写的数据目录；渠道进程（飞书等）与 web 进程必须共用同一个 `storage.data_root`，
   生产是同一台机器同一份 config，本地也是。
 - 未做：Jukan 合法 bridge；面板里的「问 HONE」在飞书等渠道没有对应入口。
+- 「行业分析」收回后，3D 数据中心对普通用户成了没有下一跳的展示页（浮窗里「继续看完整行业分析」整块不再渲染）。
+  如果后续希望读者也有去处，应另给一个面向读者的落点，而不是把本体重新放开。
+- 本次只收回「行业分析」；3D 数据中心仍对所有用户开放（上游本轮刚发布的）。要一并收回的话，
+  给 `data-center` 条目加 `adminOnly: true` 即可。
 
 ## 分支与落地
 

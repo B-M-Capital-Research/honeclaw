@@ -1608,7 +1608,9 @@ export default function PublicIndustryMapPage() {
           <PublicWorkspaceShell active="research" topbarLabel="行业分析">
             <Show
               when={view() !== "forbidden"}
-              fallback={<p class="industry-map-empty">暂时无法查看行业分析，请确认账户权限后重试。</p>}
+              fallback={
+                <p class="industry-map-empty">行业分析仅管理员可见，当前账号没有查看权限。</p>
+              }
             >
               <Show
                 when={view() !== "error"}

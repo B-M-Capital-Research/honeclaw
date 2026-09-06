@@ -7,6 +7,7 @@ import {
   createMemo,
   createSignal,
   onCleanup,
+  onMount,
 } from "solid-js";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { DataCenterScene } from "@/components/data-center-scene";
@@ -15,10 +16,30 @@ import {
   industryHref,
   type DataCenterZoneId,
 } from "@/lib/data-center-model";
+import { getPublicAuthMe } from "@/lib/api";
+import { cachedPublicUser, setCachedPublicUser } from "@/lib/public-session-cache";
+import type { PublicAuthUserInfo } from "@/lib/types";
 import "./public-data-center.css";
 
 export default function PublicDataCenterPage() {
   const [selected, setSelected] = createSignal<DataCenterZoneId | null>(null);
+  /**
+   * The 3D scene is for everyone; the industry ontology it links into is not.
+   * So the links out of this page appear only for administrators — a public
+   * page must not hand a reader a door that answers 403.
+   */
+  const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
+  const isAdmin = createMemo(() => user()?.is_admin === true);
+  onMount(() => {
+    void (async () => {
+      try {
+        setUser(await getPublicAuthMe());
+      } catch {
+        setUser(null);
+        setCachedPublicUser(null);
+      }
+    })();
+  });
   const current = createMemo(() =>
     DATA_CENTER_ZONES.find((zone) => zone.id === selected()),
   );
@@ -61,9 +82,11 @@ export default function PublicDataCenterPage() {
               </h1>
               <p>走进一座 AI 数据中心，看懂算力背后的产业连接。</p>
             </div>
-            <A href="/industry-map" class="dc-all-industries">
-              完整行业分析 <span aria-hidden="true">↗</span>
-            </A>
+            <Show when={isAdmin()}>
+              <A href="/industry-map" class="dc-all-industries">
+                完整行业分析 <span aria-hidden="true">↗</span>
+              </A>
+            </Show>
           </header>
           <DataCenterScene selected={selected()} onSelect={select} />
           <section class="dc-explore" aria-labelledby="dc-explore-title">
@@ -161,21 +184,23 @@ export default function PublicDataCenterPage() {
               <ul class="dc-focus-list">
                 <For each={zone().focus}>{(item) => <li>{item}</li>}</For>
               </ul>
-              <div class="dc-detail-links">
-                <h3>继续看完整行业分析</h3>
-                <For each={zone().industries}>
-                  {(industry) => (
-                    <A
-                      href={industryHref(industry.id)}
-                      onClick={() => dialog.close()}
-                    >
-                      <span>{industry.name}</span>
-                      <span aria-hidden="true">↗</span>
-                    </A>
-                  )}
-                </For>
-                <p>登录后可阅读行业逻辑、关键变量和相关公司。</p>
-              </div>
+              <Show when={isAdmin()}>
+                <div class="dc-detail-links">
+                  <h3>继续看完整行业分析</h3>
+                  <For each={zone().industries}>
+                    {(industry) => (
+                      <A
+                        href={industryHref(industry.id)}
+                        onClick={() => dialog.close()}
+                      >
+                        <span>{industry.name}</span>
+                        <span aria-hidden="true">↗</span>
+                      </A>
+                    )}
+                  </For>
+                  <p>行业逻辑、关键变量与相关公司在行业分析里维护。</p>
+                </div>
+              </Show>
             </div>
           )}
         </Show>
