@@ -148,6 +148,40 @@ describe("older backends", () => {
     expect(valuationOf(legacy).logic.summary).toBe("");
     expect(methodologyOf(undefined).execution_rules).toEqual([]);
     expect(methodologyOf({}).demand_chain).toEqual([]);
+    // V5.3 fields default to empty on old snapshots …
+    expect(valuationOf(legacy).observables).toEqual([]);
+    expect(valuationOf(legacy).transmission).toBe("");
+    expect(methodologyOf({}).acceptance_cases).toEqual([]);
+    // … and survive normalisation when the backend sends them: the dossier
+    // renders from valuationOf(), so dropping them here hid every V5.3 block.
+    const observable = {
+      name: "净 ASP",
+      definition: "按产品的季度均价",
+      source: "财报",
+      cadence: "季度",
+      transmission: "收入 = bits × ASP",
+    };
+    const v53 = valuationOf({
+      valuation: {
+        ...valuationOf(undefined),
+        observables: [observable],
+        transmission: "先量后价",
+        upstream_summary: "需求从训练任务传到 HBM",
+        subtype_intro: "按角色分",
+        sources_note: "看 10-K",
+      },
+    });
+    expect(v53.observables).toEqual([observable]);
+    expect(v53.transmission).toBe("先量后价");
+    expect(v53.upstream_summary).toBe("需求从训练任务传到 HBM");
+    expect(v53.subtype_intro).toBe("按角色分");
+    expect(v53.sources_note).toBe("看 10-K");
+    const rule = { rule: "HBM 晶圆强度", requirement: "按层数与良率折算" };
+    expect(
+      methodologyOf({
+        methodology: { ...methodologyOf(undefined), technical_conventions: [rule], references: [rule] },
+      }).technical_conventions,
+    ).toEqual([rule]);
   });
 });
 

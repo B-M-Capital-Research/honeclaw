@@ -36,6 +36,12 @@ export function valuationOf(
       forbidden: value?.anchor?.forbidden ?? [],
     },
     subtypes: value?.subtypes ?? [],
+    // V5.3 行级散文与可观测变量表：归一化时必须带上，否则页面永远看不到它们。
+    upstream_summary: value?.upstream_summary ?? "",
+    transmission: value?.transmission ?? "",
+    observables: value?.observables ?? [],
+    subtype_intro: value?.subtype_intro ?? "",
+    sources_note: value?.sources_note ?? "",
   };
 }
 
@@ -52,6 +58,9 @@ export function methodologyOf(
     execution_rules: value?.execution_rules ?? [],
     hindsight_error: value?.hindsight_error ?? "",
     output_fields: value?.output_fields ?? [],
+    technical_conventions: value?.technical_conventions ?? [],
+    acceptance_cases: value?.acceptance_cases ?? [],
+    references: value?.references ?? [],
   };
 }
 

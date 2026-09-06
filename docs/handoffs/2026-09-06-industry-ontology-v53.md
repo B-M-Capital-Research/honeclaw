@@ -59,6 +59,9 @@ subtype_intro, sources_note}`、`Subtype.scope_note`；四个散文字段进 `VA
   （锚点放在屋顶远角上方，故意不画几何），这样契约测试「每一行都能从场景到达」继续成立。
 
 新字段在前端类型里全是可选：后端与前端分开上线，旧后端不带这些字段时页面按空值渲染。
+**踩过的坑**：页面各模块拿到的是 `valuationOf(industry)` / `methodologyOf(snapshot)` 归一化后的对象（`lib/industry-valuation.ts`），
+它们是白名单式重建——第一版忘了把新字段带过去，API 明明返回了 70 条可观测变量，页面一个都没渲染（只有随 `subtypes` 整体透传的
+`scope_note` 出来了）。以后给 valuation / methodology 加字段，先改这两个函数与它们的测试。
 CSS 只能用已定义的 `--hone-*` 令牌（契约测试 `public-design-token-contract` 会拦），正文色取 `--hone-ink-800`、备注 `--hone-ink-400`。
 
 ## 4. 测量
@@ -73,7 +76,10 @@ V5.3 上线后第一轮（v53 批次，8 题：NVDA、SNDK、RKLB、PLTR、MU、
 RKLB 的回答落在「商业太空」行（Electron / Neutron / SpaceX 只作范围）、PLTR 落在「AI 应用与数据服务 · 企业工作流软件」，
 两条新行第一次就被消费。没落地的两项——**证据等级**与**红绿灯**——在头部规则里有、在回答模板里没有位置，
 所以第二轮给它们各加一个落点：对账表多一行「远期收入证据等级（A / B / C 各级规模）」，收尾四行改五行（第五行是四盏灯）。
-第二轮结果见文末补记。
+第二轮（v53b 批次，4 题：NVDA、SNDK、RKLB、PLTR，harness 884b1a96）：证据等级 **4/4** / 两种倍数 4 / 价差贡献 4 / 倍数不变 4 /
+资本桥 4 / 估值状态 4 / 上游动作 3（PLTR 所在的 AI 应用行还没有上游信号，合理）/ 子类型锚 4 / 红绿灯 **4/4** / 无 LaTeX 3
+（SNDK 一处 `\times`，前端 `normalizeMathToPlainText` 会转成纯文本，读者看不到）。四份回答都在对账表里写出了
+「远期收入证据等级 | A 级 $… / B 级 $… / C 级 $…」，收尾都有「红绿灯」小节——同一条规则，头部里说了没人用，模板里给一行就全用。
 
 ## 5. 部署与核验
 
