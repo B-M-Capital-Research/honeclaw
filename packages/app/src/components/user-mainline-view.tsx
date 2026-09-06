@@ -8,6 +8,7 @@
 // 与 public 端 /portfolio 一致,但 actor 由 URL 决定而非 session。
 
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { normalizeMathToPlainText } from "@hone-financial/ui/markdown-utils"
 import { marked } from "marked"
 import DOMPurify from "dompurify"
 import {
@@ -71,7 +72,11 @@ function ProfileMarkdownModal(props: {
   const renderedHtml = () => {
     const md = markdown()
     if (!md) return ""
-    const raw = marked.parse(md, { gfm: true, breaks: false }) as string
+    // 与对话正文同一处理：渲染层没有数学引擎，LaTeX 先翻成纯文本算式。
+    const raw = marked.parse(normalizeMathToPlainText(md), {
+      gfm: true,
+      breaks: false,
+    }) as string
     return DOMPurify.sanitize(raw)
   }
 
