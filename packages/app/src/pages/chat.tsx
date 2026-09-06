@@ -120,6 +120,7 @@ import {
   shouldRecoverPinnedBottom,
   shouldKeepBottomAfterRestore,
   isLeaveBottomGesture,
+  isLayoutDrivenScroll,
   shouldPreventPublicChatPinch,
   shouldSubmitPublicChatEnter,
   shouldLoadOlderPublicMessages,
@@ -2580,6 +2581,14 @@ function Composer(props: {
  */
 const ANCHOR_SETTLE_DELAYS_MS = [60, 150, 320, 600];
 
+/**
+ * How long a real gesture keeps ownership of the scroll position.
+ *
+ * Long enough to cover the inertia of one trackpad flick, short enough that a
+ * reconcile arriving a second later is judged on its own.
+ */
+const GESTURE_OWNERSHIP_MS = 1200;
+
 export default function PublicChatPage() {
   const navigate = useNavigate();
   const [authState, setAuthState] = createSignal<AuthState>("loading");
@@ -2645,6 +2654,10 @@ export default function PublicChatPage() {
   let stickToBottom = true;
   let lastScrollTop = 0;
   let suppressScrollUntil = 0;
+  /** 上一次 scroll 事件时的内容高度，用来区分"内容缩短"与"用户上滑"。 */
+  let lastScrollHeight = 0;
+  /** 最近一次滚轮 / 触摸 / 拖滚动条的时刻。只有它能证明滚动来自用户。 */
+  let lastGestureAt = 0;
   let pinBottomUntil = 0;
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
@@ -2755,6 +2768,7 @@ export default function PublicChatPage() {
    * and `handleMessagesScroll` sees the real scroll that follows.
    */
   const releaseBottomPin = () => {
+    lastGestureAt = Date.now();
     stickToBottom = false;
     pinBottomUntil = 0;
     suppressScrollUntil = 0;
@@ -2775,6 +2789,7 @@ export default function PublicChatPage() {
   const handleMessagesTouchStart = () => {
     if (!scrollRef) return;
     if (isLeaveBottomGesture({ kind: "touch", scrollTop: scrollRef.scrollTop })) {
+      lastGestureAt = Date.now();
       // A touch only cancels the pin window; the scroll handler decides from
       // the actual drag whether the user left the bottom.
       pinBottomUntil = 0;
@@ -2787,6 +2802,7 @@ export default function PublicChatPage() {
     // A mouse press on the list itself (not on a bubble) is a scrollbar grab.
     if (event.target !== scrollRef) return;
     if (isLeaveBottomGesture({ kind: "pointer", scrollTop: scrollRef.scrollTop })) {
+      lastGestureAt = Date.now();
       pinBottomUntil = 0;
       suppressScrollUntil = 0;
       lastScrollTop = scrollRef.scrollTop;
@@ -2980,6 +2996,13 @@ export default function PublicChatPage() {
     if (!scrollRef) return;
     const top = scrollRef.scrollTop;
     const dist = distanceFromBottom();
+    // Measured on a seeded 120-message session: a reconcile collapses the list,
+    // the browser clamps `scrollTop` to 0 without any script writing to it, and
+    // the clamp then reads as a user scroll. See `isLayoutDrivenScroll`.
+    const height = scrollRef.scrollHeight;
+    const contentShrank = height < lastScrollHeight - 1;
+    lastScrollHeight = height;
+    const recentGesture = Date.now() - lastGestureAt < GESTURE_OWNERSHIP_MS;
     // Ignore scroll events produced by our own bottom pinning/history
     // compensation. Mobile browsers can emit these while keyboard/layout
     // metrics settle; treating them as user scrolls can jump to older messages.
@@ -3010,6 +3033,15 @@ export default function PublicChatPage() {
       return;
     }
     if (top < lastScrollTop - 2) {
+      if (
+        isLayoutDrivenScroll({ scrolledUp: true, contentShrank, recentGesture })
+      ) {
+        // Layout, not intent: keep following if we were, and let the pin's
+        // own jumps put the viewport back where it belongs.
+        if (stickToBottom) scrollToBottom();
+        lastScrollTop = top;
+        return;
+      }
       // user-initiated scroll up
       stickToBottom = dist < 80;
     } else if (dist < 80) {

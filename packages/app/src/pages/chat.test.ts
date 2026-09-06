@@ -46,6 +46,7 @@ import {
   unreadCountAfterScheduledPush,
   shouldKeepBottomAfterRestore,
   isLeaveBottomGesture,
+  isLayoutDrivenScroll,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
 
@@ -1054,6 +1055,26 @@ describe("chat scroll intent", () => {
     expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 800 })).toBe(true);
     expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 0 })).toBe(false);
     expect(isLeaveBottomGesture({ kind: "pointer", scrollTop: 800 })).toBe(true);
+  });
+
+  it("a clamp from shrinking content is not the reader scrolling up", () => {
+    // reconcile 让列表塌一下，浏览器把 scrollTop 夹到 0——这不是用户上滑，
+    // 当成上滑就会永久关掉"跟随最新消息"，视口从此停在顶部。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: true, recentGesture: false }),
+    ).toBe(true);
+    // 刚刚有滚轮/触摸/拖滚动条：用户的意图优先，即使内容同时在变短。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: true, recentGesture: true }),
+    ).toBe(false);
+    // 内容没变短的上滑，一律算用户的。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: false, recentGesture: false }),
+    ).toBe(false);
+    // 往下滚不适用这条规则。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: false, contentShrank: true, recentGesture: false }),
+    ).toBe(false);
   });
 
   it("a botched prepend compensation is what pages in yet more history", () => {

@@ -607,6 +607,26 @@ export function isLeaveBottomGesture(input: {
   return true;
 }
 
+/**
+ * Whether an upward `scroll` event was produced by layout rather than by the
+ * reader.
+ *
+ * When a reconcile briefly empties the message list, the browser clamps
+ * `scrollTop` into the smaller range — all the way to 0 if the list collapsed —
+ * and that arrives as an ordinary upward scroll. Reading it as "the reader
+ * scrolled up" clears the stick-to-bottom intent for good: nothing follows the
+ * conversation afterwards and the view stays at the top. Only a wheel, touch or
+ * scrollbar gesture proves a scroll came from the reader; short of that, an
+ * upward scroll that arrives while the content is shrinking is layout.
+ */
+export function isLayoutDrivenScroll(input: {
+  scrolledUp: boolean;
+  contentShrank: boolean;
+  recentGesture: boolean;
+}) {
+  return input.scrolledUp && input.contentShrank && !input.recentGesture;
+}
+
 function isPublicChatQuotaCapped(dailyLimit: number | undefined) {
   return !!dailyLimit && dailyLimit > 0;
 }
