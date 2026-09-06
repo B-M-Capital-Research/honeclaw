@@ -54,6 +54,10 @@ pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架�
 - 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
 - 当系统提示中出现“历史公司研究基线”时，说明本轮命中了此前授权研究覆盖公司；必须在形成最终回答前实际加载 `company-thesis-ratings` Skill，同时加载 `hari-invest`。原生 Skill 运行时使用原生加载机制，函数调用运行时使用 `skill_tool(skill_name=\"company-thesis-ratings\")`。公司卡在商业模式、基本面结构、护城河、产业链位置、估值框架与方法选择、风险和证伪条件上优先于模型通用记忆；不得只声称已使用。\n\
 - 历史公司研究基线不是当前事实源。股价、最新财报、指引、订单、新闻、产业状态和估值输入仍须走原有工具链核验；最新一手证据与历史基线冲突时，以最新证据为准，并说明原逻辑加强、削弱或失效。不得向用户泄露逐字稿原文、内部文件名或 Skill 路径。\n\
+- 研究深度默认：每一次投研提问都是一次完整研究，篇幅由本轮取到的证据决定，不由问句字数决定。用户只写一句“X 超预期吗”“X 怎么看”“X 为什么跌”，也要交付完整的研究成品：结论段之后逐块展开已核验事实（每个关键数字带期间、单位、口径、相对谁的预期与差值）、分部与驱动拆解、指引与管理层表述（新旧指引原值对照、引语出处与日期）、市场反应与时段口径、这次改写了哪个长期变量、估值再锚定（输入可得时算出区间与现价位置，不得以“要不要接着算”收尾）、Bull / Bear / Base 的数字链、催化与证伪条件、动作框架。与问题无关的块可以合并，但不得整块省略；每块都要写到具体数字与因果链，不得用一行标签式的话带过。\n\
+- 篇幅下限是硬要求，不是风格偏好：公司深度、财报解读、估值、板块产业链、宏观市场、持仓复核这几类终稿，中文正文不少于 1500 字，本轮证据充分时通常落在 2500–4000 字；英文按等量信息折算。行情速查、关系确认、单点事实不设下限，但也要带数据口径、当日语境和一句含义，不能只报一个数。只有问候、记账追问、实体澄清与产品使用类问题才真正简短。\n\
+- 长度只能由已核验证据、算式、拆解和情景推演堆出来，不得靠复述问题、重复结论、罗列免责声明、堆通用投资常识或反复交代自己做了什么来凑。发送前若发现正文明显短于上述下限，回头补的是本轮已取到却没写进正文的口径、分部、时段、指引、现金流与估值输入，以及尚未展开的推演；补不出来时如实说明缺口，不得用套话填充。\n\
+- 禁止把内容留到下一轮：不得以“需要的话我可以继续展开”“要不要接着算”“如需详细分析请告诉我”这类问句或承诺收尾。本轮能算的现在就算完，能展开的现在就展开。\n\
 - 问候、写作、翻译、编程、产品使用等明显非投资问题不得加载 `hari-invest` 或套用其回答结构。内部 `laowang-investment-distiller` 只用于维护者蒸馏知识，绝不能在普通 HONE 问答中加载、披露或冒充对外 Skill。";
 pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略】\n\
 - 如用户要求在明确时间执行，请使用常规定时任务（daily / weekly / workday / trading_day / holiday / once）。\n\
@@ -813,7 +817,7 @@ const TELEGRAM_FORMAT_GUIDANCE: &str = "【输出格式-Telegram】\n\
 - 文本中的 <、>、& 必须转义为 &lt;、&gt;、&amp;；除了官方支持标签外，不要使用其他 HTML 标签。\n\
 - 未文档化表格支持，避免表格；需要表格时用 <pre>/<code> 生成等宽伪表格，或改为分行列表。\n\
 - 如果原本想写 Markdown 标题或列表，请改成 HTML：标题用 <b>...</b>，列表用纯文本项目符号或分行，不要输出 Markdown 列表标记。\n\
-- 输出保持简洁，优先用短标题 + 分行列表 + 代码块/引用，避免过长段落。";
+- 段落粒度保持轻快，优先用短标题 + 分行列表 + 代码块/引用，避免一段写得过长。这是排版粒度要求，不是篇幅上限：投研终稿该有的研究深度与字数按投研约束执行，不得为了“看起来简洁”削减已核验证据、算式或展开。";
 
 const IMESSAGE_FORMAT_GUIDANCE: &str = "【输出格式-iMessage】\n\
 - iMessage 文本格式依赖客户端（加粗/斜体/下划线/删除线等），其他设备可能仅显示纯文本。\n\
@@ -822,7 +826,7 @@ const IMESSAGE_FORMAT_GUIDANCE: &str = "【输出格式-iMessage】\n\
 const FEISHU_FORMAT_GUIDANCE: &str = "【输出格式-飞书】\n\
 - 飞书富文本/卡片支持 Markdown 语法扩展，支持链接、图片、表格等元素，但有明确限制。\n\
 - 标题仅支持一级与二级；列表不支持缩进；表格有列数与数量上限。\n\
-- 当前渠道使用卡片渲染 Markdown，请保持简单：短段落 + 列表；表格尽量扁平，超过限制则改为列表或代码块。\n\
+- 当前渠道使用卡片渲染 Markdown，请保持结构简单：短段落 + 列表；表格尽量扁平，超过限制则改为列表或代码块。这是结构限制，不是篇幅上限：投研终稿的研究深度与字数按投研约束执行。\n\
 - 正文和列表请只写普通 Markdown；确实需要表格时，只写标准 Markdown 表格（`| 列1 | 列2 |`）。\n\
 - 不要手写飞书卡片标签或扩展组件，例如 `<table .../>`、`<chart .../>`、`<row>`、`<record .../>`、`<button ...>`。\n\
 - 运行时会自动把标准 Markdown 表格转换成飞书 JSON 2.0 原生表格组件；如果你手写原始飞书标签，渠道会降级为普通文本。";
@@ -834,6 +838,30 @@ mod tests {
     use hone_memory::SessionStorage;
     use hone_memory::session::SessionPromptState;
     use std::fs;
+
+    #[test]
+    fn hari_invest_policy_defaults_every_investment_question_to_full_research_depth() {
+        // A one-line question ("戴尔超预期吗") must still come back as a full
+        // research note; brevity is reserved for greetings, ledger follow-ups,
+        // entity clarification and product usage.
+        assert!(
+            DEFAULT_HARI_INVEST_POLICY.contains("研究深度默认：每一次投研提问都是一次完整研究")
+        );
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅由本轮取到的证据决定，不由问句字数决定"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得以“要不要接着算”收尾"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得整块省略"));
+        assert!(
+            DEFAULT_HARI_INVEST_POLICY
+                .contains("只有问候、记账追问、实体澄清与产品使用类问题才真正简短")
+        );
+        // The floor is a hard requirement, and it may only be met with
+        // evidence — never with restated conclusions or disclaimers.
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅下限是硬要求，不是风格偏好"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("中文正文不少于 1500 字"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("2500–4000 字"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得靠复述问题、重复结论、罗列免责声明"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("禁止把内容留到下一轮"));
+    }
 
     #[test]
     fn finance_policy_prioritizes_structured_market_data_without_a_completion_gate() {
@@ -850,6 +878,9 @@ mod tests {
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("$ 只表示货币"));
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("应继续使用当前可得证据与公开搜索"));
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("财报数字时效与准确性"));
+        // Channel formatting trims paragraph size, never research depth.
+        assert!(TELEGRAM_FORMAT_GUIDANCE.contains("这是排版粒度要求，不是篇幅上限"));
+        assert!(FEISHU_FORMAT_GUIDANCE.contains("这是结构限制，不是篇幅上限"));
         assert!(
             DEFAULT_FINANCE_DOMAIN_POLICY.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标")
         );
