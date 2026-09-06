@@ -71,11 +71,12 @@ describe("language is reachable and reported", () => {
   it("reads locale-dependent data at render time", () => {
     // Quick starts and seed insights used to be module-level constants, so
     // they captured whichever language was active at import and never changed
-    // when the user switched.
-    expect(workspace).toContain("const quickStarts = (): QuickStart[] =>");
-    expect(workspace).toContain("<For each={quickStarts()}>");
+    // when the user switched. The overview that held them is gone; what is
+    // left reads the content tree inside functions only.
+    expect(workspace).not.toMatch(/^const \w+ = [\[{][\s\S]*?CONTENT\./m);
+    expect(workspace).toContain("function avatarInitial(userName: string)");
     expect(workspace).toContain(
-      "const fallbackInsights = (): AgentWorkspaceInsight[] =>",
+      "userName === CONTENT.chat_page.workspace.default_user",
     );
     for (const source of localeSensitiveSources) {
       expect(source).not.toMatch(

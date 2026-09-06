@@ -1094,3 +1094,42 @@ describe("chat scroll intent", () => {
     ).toBe(false);
   });
 });
+
+import { carryOverLocalRunTrail } from "@/lib/public-chat";
+
+describe("public chat work trail survives the post-answer restore", () => {
+  const local = [
+    { id: "u1", role: "user" as const, content: "戴尔超预期吗", phase: "done" as const },
+    {
+      id: "a1",
+      role: "assistant" as const,
+      content: "结论……",
+      phase: "done" as const,
+      steps: ["核验实体", "读取财报口径"],
+      startedAt: 1000,
+      finishedAt: 24000,
+    },
+  ];
+
+  it("keeps the local steps and timing when the server copy has none", () => {
+    const restored = carryOverLocalRunTrail(local, [
+      { id: "u1", role: "user", content: "戴尔超预期吗", phase: "done", steps: [] },
+      { id: "a1", role: "assistant", content: "结论……", phase: "done", steps: [] },
+    ]);
+    expect(restored[1]?.steps).toEqual(["核验实体", "读取财报口径"]);
+    expect(restored[1]?.startedAt).toBe(1000);
+    expect(restored[1]?.finishedAt).toBe(24000);
+    // The user turn and unknown ids pass through untouched.
+    expect(restored[0]?.steps).toEqual([]);
+  });
+
+  it("prefers a trail the server sends and leaves unknown turns alone", () => {
+    const restored = carryOverLocalRunTrail(local, [
+      { id: "a1", role: "assistant", content: "", phase: "running", steps: ["服务端步骤"] },
+      { id: "a2", role: "assistant", content: "新回答", phase: "done", steps: [] },
+    ]);
+    expect(restored[0]?.steps).toEqual(["服务端步骤"]);
+    expect(restored[1]?.steps).toEqual([]);
+    expect(carryOverLocalRunTrail([], restored)).toBe(restored);
+  });
+});

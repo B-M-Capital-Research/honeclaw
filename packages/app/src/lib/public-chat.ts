@@ -120,6 +120,9 @@ export type PublicChatMessage = {
   /** 运行期间模型的实时思考摘要（reasoning_delta 累积，截尾保留）。
    *  只在进度卡渲染，最终回答落地后不再展示。 */
   reasoningLog?: string;
+  /** When the run reached a terminal frame in this tab; with `startedAt` it
+   *  gives the folded work trail its "用时 Ns". Never carried by history. */
+  finishedAt?: number;
   attachments?: PublicChatAttachment[];
   financeCalendar?: HistoryFinanceCalendar;
   scheduledPush?: {
@@ -533,6 +536,35 @@ export function rekeyTrailingOptimisticIds<
     (newMsg as { id: string }).id = oldMsg.id;
   }
   return next;
+}
+
+/**
+ * Keeps the work trail a tab collected for a turn when a history restore is
+ * about to overwrite that turn with its server copy.
+ *
+ * History never carries `steps`, `startedAt` or `finishedAt`, and the restore
+ * that follows every finished answer reconciles by id — so without this the
+ * folded "已完成 4 步 · 用时 23s" line vanished one round trip after it
+ * appeared. Only assistant turns the tab already knows, whose server copy has
+ * no trail of its own, take the local one.
+ */
+export function carryOverLocalRunTrail(
+  previous: readonly PublicChatMessage[],
+  next: PublicChatMessage[],
+): PublicChatMessage[] {
+  if (previous.length === 0) return next;
+  const local = new Map(previous.map((message) => [message.id, message]));
+  return next.map((message) => {
+    const known = local.get(message.id);
+    if (!known || message.role !== "assistant") return message;
+    if ((message.steps?.length ?? 0) > 0 || !(known.steps?.length)) return message;
+    return {
+      ...message,
+      steps: known.steps,
+      startedAt: message.startedAt ?? known.startedAt,
+      finishedAt: message.finishedAt ?? known.finishedAt,
+    };
+  });
 }
 
 export function shouldLoadOlderPublicMessages(input: {
