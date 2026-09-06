@@ -15,6 +15,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+# `packages/ui/src/lib` 是源码，不是构建产物；上面的 `lib/` 会把新文件静默吞掉。
+!packages/ui/src/lib/
 !packages/app/src/lib/
 !packages/app/src/lib/**
 lib64/
