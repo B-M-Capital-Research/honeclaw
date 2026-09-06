@@ -44,6 +44,8 @@ import {
   stripAttachmentMarkers,
   toPublicChatMessages,
   unreadCountAfterScheduledPush,
+  shouldKeepBottomAfterRestore,
+  isLeaveBottomGesture,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
 
@@ -1005,6 +1007,69 @@ describe("public chat history window", () => {
         distanceFromBottom: 1800,
         pinnedToBottom: true,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("chat scroll intent", () => {
+  it("a restore decides from the scroll state it lands in, not the one it was requested in", () => {
+    // 用户在请求飞行途中往上读了：落地时必须留在原处。
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: false,
+        distanceFromBottom: 900,
+      }),
+    ).toBe(false);
+    // 仍贴着底 / 只差一个气泡 / 新会话窗口：照常回到最新一条。
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: true,
+        distanceFromBottom: 900,
+      }),
+    ).toBe(true);
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: false,
+        distanceFromBottom: 60,
+      }),
+    ).toBe(true);
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: true,
+        stickToBottom: false,
+        distanceFromBottom: 5000,
+      }),
+    ).toBe(true);
+  });
+
+  it("only an upward gesture with somewhere to go releases the bottom pin", () => {
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: -120, scrollTop: 800 })).toBe(true);
+    // 往下滚不是离开底部的意图。
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: 120, scrollTop: 800 })).toBe(false);
+    // 短对话上面没内容可滚时不解除，否则新回复就不跟随了。
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: -120, scrollTop: 0 })).toBe(false);
+    expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 800 })).toBe(true);
+    expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 0 })).toBe(false);
+    expect(isLeaveBottomGesture({ kind: "pointer", scrollTop: 800 })).toBe(true);
+  });
+
+  it("a botched prepend compensation is what pages in yet more history", () => {
+    // 补偿没做对时视口停在顶端；再一个向上的动作就会继续翻页——用户看到的是「一直被拉到最顶上」。
+    const atTopAfterBadCompensation = {
+      scrollTop: 8,
+      previousScrollTop: 400,
+      distanceFromBottom: 4000,
+      hasOlderMessages: true,
+      loadingOlderMessages: false,
+      sendingOrStreaming: false,
+    };
+    expect(shouldLoadOlderPublicMessages(atTopAfterBadCompensation)).toBe(true);
+    // 锚定补偿把视口留在原来的阅读位置，就不会再触发翻页。
+    expect(
+      shouldLoadOlderPublicMessages({ ...atTopAfterBadCompensation, scrollTop: 620 }),
     ).toBe(false);
   });
 });

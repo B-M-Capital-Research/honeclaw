@@ -565,6 +565,48 @@ export function shouldRecoverPinnedBottom(input: {
   );
 }
 
+/**
+ * Whether a history restore may drag the viewport back to the newest message.
+ *
+ * A restore is requested right after a streamed answer finishes, but it only
+ * lands after a network round trip. The user often starts reading upward in
+ * that gap, and re-pinning on arrival yanks them back to the bottom just as
+ * the reconciled bubbles repaint. So the decision is made when the restore
+ * *lands*, from the live scroll state: stay pinned only while the user still
+ * sticks to the bottom (or is within a bubble of it). `resetWindow` is a new
+ * conversation window and always lands at the bottom.
+ */
+export function shouldKeepBottomAfterRestore(input: {
+  resetWindow: boolean;
+  stickToBottom: boolean;
+  distanceFromBottom: number;
+}) {
+  if (input.resetWindow) return true;
+  if (input.stickToBottom) return true;
+  return input.distanceFromBottom < 120;
+}
+
+/**
+ * Whether a raw input gesture on the message list expresses the intent to
+ * scroll away from the newest message. Programmatic pins (`pinToBottom`)
+ * deliberately ignore `scroll` events for a while, which is right for layout
+ * settling but wrong for a real wheel/touch/scrollbar gesture: those must
+ * cancel the pin at once, otherwise the pin's queued jumps swallow the gesture
+ * and snap the user back down.
+ *
+ * A wheel tick that scrolls down (or any gesture when there is nothing above
+ * to scroll to) is not an intent to leave the bottom.
+ */
+export function isLeaveBottomGesture(input: {
+  kind: "wheel" | "touch" | "pointer";
+  deltaY?: number;
+  scrollTop: number;
+}) {
+  if (input.scrollTop <= 0) return false;
+  if (input.kind === "wheel") return (input.deltaY ?? 0) < 0;
+  return true;
+}
+
 function isPublicChatQuotaCapped(dailyLimit: number | undefined) {
   return !!dailyLimit && dailyLimit > 0;
 }

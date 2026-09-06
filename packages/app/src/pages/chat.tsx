@@ -118,6 +118,8 @@ import {
   shouldRecoverPublicChatAfterEof,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
+  shouldKeepBottomAfterRestore,
+  isLeaveBottomGesture,
   shouldPreventPublicChatPinch,
   shouldSubmitPublicChatEnter,
   shouldLoadOlderPublicMessages,
@@ -2567,6 +2569,17 @@ function Composer(props: {
   );
 }
 
+/**
+ * When to re-apply a viewport anchor after the list changes.
+ *
+ * Bubbles render their Markdown asynchronously and code blocks are highlighted
+ * later still, so a single correction on the next frame measures a list that
+ * has not finished growing. These passes cover the frame, the parse and the
+ * highlight without ever animating: each one only nudges `scrollTop` by the
+ * drift it actually measures, and stops once the drift is under a pixel.
+ */
+const ANCHOR_SETTLE_DELAYS_MS = [60, 150, 320, 600];
+
 export default function PublicChatPage() {
   const navigate = useNavigate();
   const [authState, setAuthState] = createSignal<AuthState>("loading");
@@ -2626,7 +2639,7 @@ export default function PublicChatPage() {
   let restoreController: AbortController | null = null;
   let restoreRetryTimer: number | undefined;
   let scrollRef: HTMLDivElement | undefined;
-  let messagesInnerRef: HTMLDivElement | undefined;
+  const [messagesInner, setMessagesInner] = createSignal<HTMLDivElement>();
   let sessionSyncGeneration = 0;
   let localSendGeneration = 0;
   let stickToBottom = true;
@@ -2697,6 +2710,9 @@ export default function PublicChatPage() {
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (!scrollRef) return;
+      // A pin can be released by a user gesture while its queued jumps are
+      // still in flight; those late jumps must not fire.
+      if (!stickToBottom) return;
       suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 180);
       scrollRef.scrollTop = Math.max(
         0,
@@ -2732,6 +2748,86 @@ export default function PublicChatPage() {
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
       : 0;
+  /**
+   * The user reached for the list with a wheel, finger or scrollbar. That is
+   * the one signal that outranks every programmatic pin: drop the pin window
+   * and the scroll-event suppression so the gesture is honoured immediately
+   * and `handleMessagesScroll` sees the real scroll that follows.
+   */
+  const releaseBottomPin = () => {
+    stickToBottom = false;
+    pinBottomUntil = 0;
+    suppressScrollUntil = 0;
+    if (scrollRef) lastScrollTop = scrollRef.scrollTop;
+  };
+  const handleMessagesWheel = (event: WheelEvent) => {
+    if (!scrollRef) return;
+    if (
+      isLeaveBottomGesture({
+        kind: "wheel",
+        deltaY: event.deltaY,
+        scrollTop: scrollRef.scrollTop,
+      })
+    ) {
+      releaseBottomPin();
+    }
+  };
+  const handleMessagesTouchStart = () => {
+    if (!scrollRef) return;
+    if (isLeaveBottomGesture({ kind: "touch", scrollTop: scrollRef.scrollTop })) {
+      // A touch only cancels the pin window; the scroll handler decides from
+      // the actual drag whether the user left the bottom.
+      pinBottomUntil = 0;
+      suppressScrollUntil = 0;
+      lastScrollTop = scrollRef.scrollTop;
+    }
+  };
+  const handleMessagesPointerDown = (event: PointerEvent) => {
+    if (!scrollRef || event.pointerType === "touch") return;
+    // A mouse press on the list itself (not on a bubble) is a scrollbar grab.
+    if (event.target !== scrollRef) return;
+    if (isLeaveBottomGesture({ kind: "pointer", scrollTop: scrollRef.scrollTop })) {
+      pinBottomUntil = 0;
+      suppressScrollUntil = 0;
+      lastScrollTop = scrollRef.scrollTop;
+    }
+  };
+
+  /**
+   * Pins one message to the screen position it currently occupies, and keeps
+   * it there while the content above finishes settling.
+   *
+   * Every bubble renders its Markdown asynchronously, so a list that just
+   * grew (older history prepended) or was reconciled is still near-zero height
+   * for a frame or more. Measuring `scrollHeight` once on the next frame —
+   * what the delta-based compensation did — therefore under-measures, the
+   * viewport lands near the top of the new content, and the next upward nudge
+   * pages in yet more history: the "jumped to the very top" the user sees.
+   * Re-reading one element's offset instead is self-correcting, because each
+   * pass measures whatever has settled by then.
+   */
+  const anchorViewportTo = (anchorId: string | undefined) => {
+    if (!scrollRef || !anchorId) return () => {};
+    const element = () => document.getElementById(`public-chat-message-${anchorId}`);
+    const before = element()?.getBoundingClientRect().top;
+    if (before === undefined) return () => {};
+    return () => {
+      if (!scrollRef) return;
+      const now = element()?.getBoundingClientRect().top;
+      if (now === undefined) return;
+      const drift = now - before;
+      if (Math.abs(drift) < 1) return;
+      // Our own correction must not read as the user reaching the top.
+      suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 120);
+      scrollRef.scrollTop += drift;
+      lastScrollTop = scrollRef.scrollTop;
+    };
+  };
+  /** Re-apply an anchor while asynchronous bubble content keeps landing. */
+  const holdAnchor = (restore: () => void) => {
+    requestAnimationFrame(restore);
+    for (const delay of ANCHOR_SETTLE_DELAYS_MS) window.setTimeout(restore, delay);
+  };
   const visibleMessages = createMemo(() => {
     const start = conversationStartIndex();
     return start === null ? messages : messages.slice(Math.min(start, messages.length));
@@ -2859,8 +2955,9 @@ export default function PublicChatPage() {
     if (!hasOlderMessages() || loadingOlderMessages()) return;
     const before = historyNextBefore();
     if (before === undefined) return;
-    const previousScrollHeight = scrollRef?.scrollHeight;
-    const previousScrollTop = scrollRef?.scrollTop;
+    // Anchor on the oldest bubble already on screen, captured before the
+    // prepend changes anything.
+    const restoreAnchor = anchorViewportTo(visibleMessages()[0]?.id ?? messages[0]?.id);
     setLoadingOlderMessages(true);
     try {
       const page = await getPublicHistory(before);
@@ -2870,14 +2967,8 @@ export default function PublicChatPage() {
         setHistoryStart(page.history_start);
         setHistoryNextBefore(page.next_before ?? undefined);
       });
-      requestAnimationFrame(() => {
-        if (scrollRef && previousScrollHeight !== undefined && previousScrollTop !== undefined) {
-          suppressScrollUntil = Date.now() + 180;
-          scrollRef.scrollTop =
-            previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
-          lastScrollTop = scrollRef.scrollTop;
-        }
-      });
+      suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 180);
+      holdAnchor(restoreAnchor);
     } catch {
       // Keep the current window intact; the next upward gesture can retry.
     } finally {
@@ -2967,11 +3058,19 @@ export default function PublicChatPage() {
   // When the inner messages content grows (streaming, new message), keep the
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
-    if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
+    // Depends on the signal, so it runs when the list is actually mounted.
+    // The container renders behind `authState() === "ready"`, so a plain `let`
+    // ref was still undefined the one time a non-reactive effect ran — the
+    // observer was never attached, and nothing pulled the view down as the
+    // asynchronously rendered bubbles grew. A long session therefore opened
+    // at scrollTop 0: the initial pin had already fired all its jumps against
+    // an empty list.
+    const inner = messagesInner();
+    if (!inner || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (stickToBottom) scrollToBottom();
     });
-    ro.observe(messagesInnerRef);
+    ro.observe(inner);
     onCleanup(() => ro.disconnect());
   });
 
@@ -3084,7 +3183,6 @@ export default function PublicChatPage() {
   const restoreSession = async (
     options: {
       resetWindow?: boolean;
-      keepAtBottom?: boolean;
       retryOnFailure?: boolean;
       attempt?: number;
       onExhausted?: (message: string) => void;
@@ -3144,12 +3242,18 @@ export default function PublicChatPage() {
       if (recovery.message) {
         merged.messages.push(recovery.message);
       }
-      const previousScrollTop = scrollRef?.scrollTop;
-      const shouldKeepBottom =
-        options.resetWindow ||
-        options.keepAtBottom ||
-        stickToBottom ||
-        distanceFromBottom() < 120;
+      // Decided now, from the live scroll state, not from a flag captured when
+      // the restore was requested: the user may have scrolled up while the
+      // request was in flight, and the reconciled repaint must then stay put
+      // instead of snapping back to the newest message.
+      const restoreAnchor = anchorViewportTo(
+        visibleMessages()[0]?.id ?? messages[0]?.id,
+      );
+      const shouldKeepBottom = shouldKeepBottomAfterRestore({
+        resetWindow: !!options.resetWindow,
+        stickToBottom,
+        distanceFromBottom: distanceFromBottom(),
+      });
       if (shouldKeepBottom) pinToBottom(1200);
       // Keep optimistic UUIDs on the just-sent pair so reconcile patches the
       // bubbles in place instead of swapping the DOM nodes for the next
@@ -3171,13 +3275,12 @@ export default function PublicChatPage() {
       });
       if (shouldKeepBottom) {
         pinToBottom(1200);
-      } else if (previousScrollTop !== undefined) {
-        requestAnimationFrame(() => {
-          if (scrollRef) {
-            scrollRef.scrollTop = previousScrollTop;
-            lastScrollTop = scrollRef.scrollTop;
-          }
-        });
+      } else {
+        // The reconcile above can momentarily shrink the list and let the
+        // browser clamp scrollTop; that synthetic scroll must not read as the
+        // user reaching the top (which would page in older history).
+        suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 260);
+        holdAnchor(restoreAnchor);
       }
       // Keep polling when this tab did not start the run. The placeholder is
       // part of the timeline, so the eventual server reply can re-use its id
@@ -3740,7 +3843,6 @@ export default function PublicChatPage() {
       if (shouldStayAtBottom) pinToBottom(1600);
       setIsSending(false);
       void restoreSession({
-        keepAtBottom: shouldStayAtBottom,
         retryOnFailure: recoverAfterDisconnect,
         onExhausted: recoverAfterDisconnect
           ? () => {
@@ -3821,7 +3923,7 @@ export default function PublicChatPage() {
     const shouldStayAtBottom =
       stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
     if (shouldStayAtBottom) pinToBottom(1400);
-    void restoreSession({ keepAtBottom: shouldStayAtBottom });
+    void restoreSession();
   };
 
   return (
@@ -3951,10 +4053,13 @@ export default function PublicChatPage() {
                             ref={scrollRef}
                             class="public-chat-messages"
                             onScroll={handleMessagesScroll}
+                            onWheel={handleMessagesWheel}
+                            onTouchStart={handleMessagesTouchStart}
+                            onPointerDown={handleMessagesPointerDown}
                             style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}
                           >
                             <div
-                              ref={messagesInnerRef}
+                              ref={setMessagesInner}
                               style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}
                             >
                               <Show when={authState() === "ready" && visibleMessages().length === 0}>
