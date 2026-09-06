@@ -1050,6 +1050,8 @@ export type IndustryKeyVariable = {
   name: string;
   why: string;
   where: string;
+  /** why 里的数字截至哪一天（"2026-08-26"）或哪个月（"2026-06"）；底稿没标时缺省。 */
+  as_of?: string;
 };
 
 export type IndustryAiValuationLogic = {
@@ -1066,6 +1068,19 @@ export type IndustryCoreWatch = {
   what: string;
   why: string;
   cadence: string;
+  /** why 里的数字截至哪一天或哪个月；旧后端与旧日志没有这个字段，读端按空串兜底。 */
+  as_of?: string;
+};
+
+/**
+ * 行业简报：页面第一块「当前重点」。question 是现在值得研究的问题，next 是下一次验证什么，
+ * as_of 是这份判断截至哪一天。管理员每季财报或口径变化后先改它；没写时页面用底稿派生。
+ */
+export type IndustryBrief = {
+  question: string;
+  body: string;
+  next: string[];
+  as_of: string;
 };
 
 export type IndustrySource = {
@@ -1233,12 +1248,22 @@ export type Industry = {
   upstream_signals: IndustryUpstreamSignal[];
   /** 前瞻估值：底层逻辑、倍数锚与子类型；旧后端没带时读端按空结构兜底。 */
   valuation: IndustryValuation;
+  /** 行业简报；底稿没写或旧后端没带时为 null / 缺省。 */
+  brief?: IndustryBrief | null;
+  /**
+   * 这一行内容里最新的事实截至日（简报、上游动作、关注点、来源里最大的那个日期，原样写法）。
+   * 与 last_edited_at 是两回事：那是编辑时钟，改个错别字也会前移。
+   */
+  content_as_of?: string | null;
 };
 
 export type IndustryMapSnapshot = {
   available: boolean;
   schema_version: number;
+  /** 底稿版本日期：整份底稿重新发版时才前移，不表示内容新鲜度；新鲜度看 content_as_of。 */
   generated_at: string;
+  /** 各行 content_as_of 的最大值；旧后端没带时缺省。 */
+  content_as_of?: string | null;
   /** false 表示本次没取到行情，成员仍然全部返回，只是失去市值排序。 */
   market_data_available: boolean;
   /** false 表示本次一家都没有官方股本（worker 还没跑过），全部行退回提供方市值。 */
@@ -1299,6 +1324,10 @@ export type IndustryEditOp =
   | { kind: "remove_source"; url: string }
   | { kind: "add_watch"; watch: IndustryCoreWatch }
   | { kind: "remove_watch"; what: string }
+  /** 整条替换一条关注点，按现有 what 定位（watch.what 可以是改后的新标题）。 */
+  | { kind: "set_watch"; what: string; watch: IndustryCoreWatch }
+  | { kind: "set_brief"; brief: IndustryBrief }
+  | { kind: "clear_brief" }
   | { kind: "add_upstream_signal"; signal: IndustryUpstreamSignal }
   | { kind: "remove_upstream_signal"; symbol: string }
   /** 只改一条上游信号的「最近动作」与它的截至日期，按 symbol 找到那条。 */

@@ -313,6 +313,8 @@ pub(crate) async fn handle_get_industry_map(
                 "valuation": industry.valuation,
                 "members": rank_members(&industry.members, &facts, &shares),
                 "last_edited_at": last_edited.get(&industry.id),
+                "brief": industry.brief,
+                "content_as_of": industry.content_as_of(),
             })
         })
         .collect::<Vec<_>>();
@@ -345,6 +347,7 @@ pub(crate) async fn handle_get_industry_map(
         "available": true,
         "schema_version": map.schema_version,
         "generated_at": map.generated_at,
+        "content_as_of": map.content_as_of(),
         "market_data_available": !facts.is_empty(),
         "official_shares_available": official_shares_available,
         "shares_policy": "shares_outstanding.official_shares_outstanding 是监管申报封面上的官方已发行股数，比提供方数字权威——提供方会整整落后一份申报。market_cap_basis 为 price_x_official_shares 的行，market_cap 已按现价 × 官方股本重算，同一行的 provider_market_cap 是提供方原样的市值，两个口径并列给出、排序用重算值；为 provider 的行只有提供方市值一个数。有官方股数却没重算的行会写出 recompute_blocked_reason：cover_stale（封面日期已过期）、basis_not_us_domestic_periodic（20-F 等外国私人发行人报的是本土普通股而非 ADR 股数）、basis_mismatch_suspected（官方股数与提供方隐含股数差到倍数级，通常是多类别股只统计其中一类）。这三种情况都不得用官方股数推算美股市值。",
@@ -821,6 +824,19 @@ mod tests {
         let admin_read = handle_get_industry_map(State(state.clone()), headers).await;
         assert_eq!(admin_read.status(), StatusCode::OK);
         let admin_snapshot = response_json(admin_read).await;
+        for snapshot in [&edited["snapshot"], &admin_snapshot] {
+            let content_as_of = snapshot.get("content_as_of").expect("全树有内容截至日期键");
+            assert!(content_as_of.is_string() || content_as_of.is_null());
+            for industry in snapshot["industries"].as_array().unwrap() {
+                assert!(
+                    industry.get("brief").is_some(),
+                    "{} 缺简报键",
+                    industry["id"]
+                );
+                let date = industry.get("content_as_of").expect("每行有内容截至日期键");
+                assert!(date.is_string() || date.is_null());
+            }
+        }
         assert_eq!(admin_snapshot["recent_edits"][0]["by"], user.user_id);
         assert_eq!(
             admin_snapshot["recent_edits"][0]["note"],
@@ -938,6 +954,10 @@ mod tests {
             r#"{"industry":"storage","op":{"kind":"add_source","source":{"house":"h","title":"t","date":"2026-09","url":"u","takeaway":"k"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_source","url":"u"}}"#,
             r#"{"industry":"storage","op":{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c","as_of":"2026-08-26"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_watch","what":"w","watch":{"what":"w2","why":"y2","cadence":"c","as_of":"2026-09"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_brief","brief":{"question":"现在研究什么","body":"为什么是现在","next":["下季财报验证"],"as_of":"2026-08-26"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"clear_brief"}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_watch","what":"w"}}"#,
             r#"{"industry":"storage","op":{"kind":"add_upstream_signal","signal":{"symbol":"NVDA","name":"英伟达","relation":"demand_source","why":"y","pull":["a","b"],"cadence":"q"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_upstream_signal","symbol":"NVDA"}}"#,
