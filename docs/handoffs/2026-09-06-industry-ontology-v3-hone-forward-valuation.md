@@ -29,4 +29,36 @@ Optionality / Multiple selection / Market-implied check / DCF 默认禁用 / Har
 
 ## 发布与复测
 
-（待填）
+- 改前基线 `v3base`（生产 05fdf675，8 道估值题：SNDK / LITE / BE / CRWV / DELL / KLAC / NVDA / ORCL）：
+  State 0/8、Capacity Unlock Gate 五项 0/8、主次锚带权重 2/8、Market Implied 1/8、DCF 禁用 0/8、Integrity Check 0/8、
+  Earnings Revision Optionality 0/8；上游最近动作 8/8（V2 的成果）。回答平均约 5,000 字。
+- 发布：`9f67f32b`（镜像 `…@sha256:f01fb3af10006a0dc07055792660e9d26b7473075c194cef8a0b7c490af83937`），2026-09-06 05:18 UTC
+  切换：current → 9f67f32b，previous → 05fdf675，e867eae3 已清，磁盘 6.1G；NRestarts=0、无 error；harness 换了
+  fundamentals / industry-map / valuation-audit，落盘底稿 schema 3、22 个子类型；Pages 已带估值执行卡 / 找公司 / 问 HONE。
+  本地用真实 `hone-console-page` 验过：方法论条、子类型 chip 与卡片、找公司「SNDK · 存储 · 纯NAND/eSSD公司」定位、
+  「问 HONE」跳到对话并自动发送提问（本地无 LLM key 所以回答失败，跳转与预填正确）。
+- 第一轮复测 `v3new`（同 8 题）：State 6/8、Horizon 8/8、Gate 五项 1/8、主次锚权重 3/8、Market Implied 2/8、DCF 0/8、
+  Integrity 0/8、ERO 0/8——执行卡的前半段（State / 财年 / 子类型）落了，收尾字段没落：十步清单太长，末三步被吃掉。
+- 修正 `92a27c34`（只改 `valuation-audit`，harness 05:23 UTC 装入）：三情景表之后紧接三行 `Earnings Revision Optionality` /
+  `DCF：Disabled / 0%` / `Integrity Check：PASS / WARN / FAIL + Hard checks`，权重与 ERO 并入三问的产出。
+- 第二轮复测 `v3new2`：
+
+| 字段 | 改前 | V3 第一版 | V3 第二版 |
+|---|---|---|---|
+| State 四选一 | 0/8 | 6/8 | 6/8 |
+| Capacity Unlock Gate 五项 | 0/8 | 1/8 | 3/8 |
+| 主次锚带权重 | 2/8 | 3/8 | 7/8 |
+| Market Implied（现价隐含 FY+1~3 倍数） | 1/8 | 2/8 | 8/8 |
+| DCF Disabled | 0/8 | 0/8 | 6/8 |
+| Integrity Check | 0/8 | 0/8 | 7/8 |
+| Earnings Revision Optionality | 0/8 | 0/8 | 7/8 |
+| 上游最近动作（V2） | 8/8 | 8/8 | 8/8 |
+
+  SNDK / LITE / NVDA 三题十项全中；KLAC 最弱（只落了财年、Market Implied、子类型），设备行的高服务占比子类型卡
+  还需要再看一轮真实提问。回答平均约 6,000 字，比改前多约 1,000 字。
+
+## 下一步
+
+- 设备 / 云厂两行的子类型卡写得比其它行薄（文档本身对这两行只有一条通用规则），管理员可在页面上补 `note` 与权重。
+- 「推断」成员 29 家（AMD / AVGO / 制造封装型 4 家 / 新云 3 家 / 设备 10 家…）等人工确认：页面成员表的子类型下拉一键改。
+- 上游最近动作的季度更新仍是手动（英伟达财报后改 `latest`）；可做成财报后自动起草、管理员确认。
