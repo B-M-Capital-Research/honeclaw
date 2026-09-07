@@ -24,6 +24,32 @@
 
 - 2026-09-08 `bug-2` 源码复核：保持 `New/P1`。最新巡检证据为 PostgreSQL 连接失败及启动 panic；当前 `core/bot_core.rs` 仍要求 PostgreSQL 初始化成功，符合 `docs/invariants.md` 的唯一权威存储契约。没有证据支持通过修改代码恢复当前数据库可达性，降级 SQLite 会违反契约。本轮按禁止重启/部署范围不修改运行环境，未做 live 恢复确认。下一步由运维核对实际运行配置对应的数据库可达性，再用既有 `/api/meta` 和 scheduler 增量确认恢复；不可仅凭本地 SQLite 时间判断健康。
 
+- 2026-09-08 06:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
+  - 证据来源：
+    - `data/sessions.sqlite3`
+      - 最近四小时窗口 02:02-06:02 CST 内新增 `sessions=0`、`session_messages=0`、`cron_job_runs=0`、`web_push_messages=0`。
+      - `sessions.max(updated_at)=2026-08-01T14:13:46.184727+08:00`
+      - `sessions.max(last_message_at)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(timestamp)=2026-08-01T14:13:46.183054+08:00`
+      - `session_messages.max(imported_at)=2026-08-02T20:59:58.506373+08:00`
+      - `cron_job_runs.max(executed_at)=2026-08-31T00:04:16.160352+08:00`
+      - `web_push_messages.max(created_at)=2026-08-31T00:03:17.507836+08:00`
+    - `data/logs/hone-console-page-source.log`
+      - 正常 source runtime 日志仍只推进到 `2026-09-05T02:04:17Z` / 10:04 CST；本轮 02:02-06:02 CST 没有新的 source runtime、heartbeat、scheduler 或 event-engine 正常推进日志。
+    - `data/runtime/task_runs.2026-09-05.jsonl`
+      - 最新 task run 仍停在 `2026-09-05T02:04:14Z` / 10:04 CST；最后记录为 `internal.daily_report skipped`。
+    - `data/logs/hone-console-page-source.err.log`
+      - 文件 mtime 推进到 06:02 CST，仍在追加 `failed to initialize cloud session storage: Config("Postgres 连接失败: error connecting to server")` 的 `bot_core.rs:96` panic。
+      - 当前文件内同类 panic 计数为 48460 次；上一轮 02:02 CST 记录为 22808 次，说明本轮窗口内 panic loop 继续放大。
+    - 进程表：
+      - 06:02 CST 未见 `hone-cli`、`hone-feishu`、`hone-discord`、`hone-telegram`、`hone-web-api`、`hone-desktop`、`hone-console-page` 或 scheduler 运行进程。
+    - 最近提交：
+      - 02:02-06:02 CST 唯一非文档代码提交 `0b771556 fix: retry streaming provider HTTP overload responses` 修复流式 HTTP 529 重试缺口；该提交不影响当前 PostgreSQL 初始化失败，也未证明 live runtime 恢复。
+  - 判断：
+    - 本轮仍是同一根因和同一影响范围：运行承载进程缺席或持续重启失败，导致渠道接入、scheduler、event-engine 增量与运行台账无法健康推进。
+    - 问题仍是功能性 `P1`；当前未见错投、数据破坏或跨用户泄漏，因此不升级为 `P0`。
+    - 已有关联 Issue #53；本轮确认活跃 P1，但不重复创建 GitHub Issue。
+
 - 2026-09-08 02:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
   - 证据来源：
     - `data/sessions.sqlite3`
