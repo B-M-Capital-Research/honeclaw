@@ -4,6 +4,15 @@ Last updated: 2026-09-07
 
 ## 2026-09-07
 
+### 3D 数据中心在线试玩入口上线
+
+- Status: done / deployed
+- Plan: `docs/archive/plans/data-center-online-demo-deploy.md`
+- Handoff: `docs/handoffs/2026-09-07-data-center-online-demo.md`
+- Commit: `00ea36e01b8d35d4fbd0912fd6a836ce83c1b09b`
+- Verification: 646 Web tests、typecheck、public build、桌面/手机新标签回归、生产 Pages/origin hashes 与真实 Chrome 点击验收。
+- Conclusion: 聊天框「3D 数据中心」新标签打开 NEXUS 官方试玩，聊天保留；前端部署未重启后端。旧 E2E 行业名断言与完整 PostgreSQL 回归限制见 handoff；回滚入口和完整 manifest 链接已留存。
+
 ### User Product README Refresh
 
 - Status: done; delivery target is the GitHub default branch `main`

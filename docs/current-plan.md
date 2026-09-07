@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-09-05
-状态：有 16 个活跃任务
+状态：有 15 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **3D 数据中心在线试玩入口上线**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/data-center-online-demo-deploy.md`
-  - 摘要：替换聊天框桌面/手机入口，验证后部署 Pages 与 origin public fallback
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`
