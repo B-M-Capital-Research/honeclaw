@@ -1,6 +1,18 @@
 # Archive Index
 
-Last updated: 2026-09-05
+Last updated: 2026-09-07
+
+## 2026-09-07
+
+### User Product README Refresh
+
+- Status: done; delivery target is the GitHub default branch `main`
+- Plan: `docs/archive/plans/readme-user-product-2026-09-07.md`
+- Handoff: `docs/handoffs/2026-09-07-readme-user-product.md`
+- Deliverables: `README.md`, `README_EN.md`, `README_ZH.md`, `resources/readme/`
+- Verification: local links, image signatures/dimensions, live Serenity mobile viewport, English copy equality, `git diff --check`
+- Current conclusion: bilingual homepage now introduces AI infrastructure Q&A, roughly 50-company research coverage without revealing ontology content, company following and professional financial data, Serenity updates, and macro transmission into AI infrastructure.
+- Next entry point: review README; refresh screenshots and both languages when the user-facing product changes.
 
 ## 2026-09-05
 

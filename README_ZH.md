@@ -1,180 +1,99 @@
 <p align="center">
-  <img src="./resources/logo.svg" alt="Hone homepage - Your Financial Assistant" width="30%">
+  <img src="./resources/logo.svg" alt="HONE" width="160">
+</p>
+
+<h1 align="center">Hone · 你的 AI 基础设施投研助手</h1>
+
+<p align="center">
+  从一个问题开始，读懂产业变化，持续跟踪你关心的公司。<br>
+  光通信 · 电力 · 存储 · 芯片 · 数据中心
 </p>
 
 <p align="center">
-  <strong> Hone 磨刀石 </strong><br>
-  <strong>“并非迎合你的聊天玩具，而是你投资纪律的无情捍卫者。”</strong><br>
-  Honeclaw 致力于成为懂你的、专业的开源投研基础设施。<br><br>
-  <strong>为什么取名 Hone：</strong><br>
-  Hone 的意思，是磨刀、打磨锋刃。真正严肃的投资，本质上就是这样一个过程：不是追逐每一条新闻，不是对每一次涨跌做情绪化反应，而是在研究、比较、复盘和长期纪律中，不断磨砺自己的判断力。
-</p>
-
-<p align="center">
-  <strong>简体中文</strong> | <a href="./README.md">English</a> | <strong>官网：</strong><a href="https://hone-claw.com" target="_blank">hone-claw.com</a> | <strong>博客：</strong><a href="https://hone-claw.com/blog" target="_blank">hone-claw.com/blog</a> | <strong>💬 社群：</strong> <a href="https://discord.gg/TyDNfYXDGF" target="_blank">Discord</a>
+  <strong>简体中文</strong> · <a href="./README.md">English</a><br>
+  <a href="https://hone-claw.com/chat">开始使用</a> ·
+  <a href="https://hone-claw.com">官网</a> ·
+  <a href="https://hone-claw.com/blog">博客</a> ·
+  <a href="https://discord.gg/TyDNfYXDGF">Discord 社群</a>
 </p>
 
 ---
 
-# 1. 🦅 Honeclaw (Hone Financial)
+**AI 的进步，正在怎样改变你关注的公司？**
 
-Honeclaw（或称 Hone）是一个使用 **Rust** 编写的开源个人投研辅助助手。与市面上习惯于附和用户的“闲聊机器人”不同，Honeclaw 被设计为一个**具备冷静思考能力、客观且克制的投研大脑**。
+新模型发布、推理需求增长、云厂商扩大资本开支，最终会传导到芯片、存储、光互联、电力和数据中心。Hone 帮你把这些变化与具体公司联系起来：用自然语言提问，结合产业研究和专业金融数据理解影响，再把值得持续观察的公司加入关注。
 
-它通过多端渠道（Web 控制台、桌面端、飞书、Discord、Telegram、iMessage）无缝接入你的日常工作流，帮助你跟踪持仓公司动态、执行严格的投资纪律、运行自动化监控任务，并在你面对波动产生情绪化交易冲动时，提供理性的数据与逻辑对抗。
-
-用户端官网已上线：**[hone-claw.com](https://hone-claw.com)**。官网从普通用户视角介绍 Hone 是什么、公开聊天如何使用、持仓监控与定时任务如何嵌入日常投研，以及产品路线图、GitHub、Bilibili 和 YouTube 演示入口。
+Hone 已围绕**约 50 家 AI 基础设施相关公司**建立本体研究体系，覆盖光、电、存、芯等关键环节。这些积累用于支撑问答中的产业理解与公司分析，让研究能沿着上下游关系深入下去。
 
 <p align="center">
-  <img src="./resources/hone_introduction_zh.jpg" alt="Hone Introduction - Your Financial Assistant" width="80%">
+  <img src="./resources/readme/hone-investment-assistant.png" alt="Hone 用户端投资助手：围绕 AI 模型进展，追问产业传导与公司影响" width="100%">
 </p>
+<p align="center"><em>用户端投资助手：从自然语言问题进入研究，在同一段对话中继续追问。截图为界面示例，内容与数据以使用时的来源为准。</em></p>
 
-**系统架构**：[交互式架构图 (HTML)](./resources/architecture.html) — 克隆仓库后，在本地用浏览器打开该文件即可查看。
+## 把 AI 热点，问成可以继续研究的问题
 
-**完整 Wiki**：[仓库目录、启动方式与排障指南](./docs/wiki.md) — 包含目录说明、运行时布局、安装路径、源码启动模式、端口、配置、验证与常见问题。
+你不需要先选工具、写提示词模板或整理一份研究提纲。打开投资助手，直接问你关心的事情：
 
-# 2. ✨ 核心特性 (Key Features)
+- “推理需求增长，会怎样影响光模块、存储和电力需求？”
+- “美光现在的估值怎么看？哪些经营指标值得继续跟踪？”
+- “云厂商上调资本开支，对我关注的公司分别意味着什么？”
+- “这条消息改变了公司的长期逻辑，还是短期情绪？”
 
-- 🧠 **绝对理性的投研内核**：不附和、不盲从。在你做出投资决策时，它会基于数据和预设纪律进行交叉验证，指出你的逻辑漏洞。
-- 📱 **全平台无缝接入**：支持 Web 控制台、iMessage、飞书 (Lark)、Telegram、Discord，随时随地与你的投资大脑进行对话。
-- 🗂️ **公司画像与长期记忆**：Hone 可以把公司主画像与关键事件时间线持续沉淀为 Markdown 档案，长期保留投资主线、核心经营指标、风险台账与重大变化。
-- 📊 **持仓监控与纪律执行**：设定你的止盈止损线、加仓逻辑与核心关注指标，Hone 会持续监控市场，并在你设定的条件触发时主动提醒。
-- ⏰ **强大的定时任务 (Cron)**：支持复杂的定时监控任务，例如盘前摘要、盘后总结、特定财报发布后的自动分析等。
-- ⚡ **Rust 驱动的极致性能**：底层完全使用 Rust 构建，确保毫秒级响应速度，同时保持极低的内存占用和极高的稳定性。
+Hone 把 AI 产业背景、公司研究与当前可获取的数据结合起来，帮助你梳理影响路径、关键假设和需要继续验证的问题。你可以沿着回答追问，也可以从研究面板里的「问 HONE」带着上下文继续聊。
+
+## 关注公司，让情报围绕你的研究展开
+
+把关心的公司加入关注或持仓后，你就有了自己的研究起点。公司新闻、财报进展和相关事件，可以放回这些公司的业务与产业背景中理解；重要变化通过用户端推送查看，随后回到投资助手进一步分析。
+
+**Hone 接入专业金融数据库**，支持结合财务报表、增长与盈利指标、现金流、估值和市场数据开展问答。你可以从“发生了什么”，继续问到“对经营有什么影响”“当前估值隐含了什么预期”，以及“下一次应该看什么数据来验证”。
+
+例如，关注一家存储公司后，可以围绕价格周期、产能、利润率和资本开支持续提问；关注一家光通信公司，则可以沿着产品升级、客户需求与交付节奏跟踪变化。
+
+数据覆盖和更新频率取决于对应数据源；可用功能也取决于账户权限与服务配置。
+
+## Serenity 等大 V 动态，在手机上及时看
+
+在「研究 → 大V速报」中，快速浏览 Serenity（白毛）等已接入作者的公开动态。当前线上速报**每 15 分钟同步一次**，把分散的信息整理到同一条时间线，方便你利用碎片时间跟上产业讨论。
+
+- 阅读中文译文，按需展开英文原文，查看配图与发布时间。
+- 打开作者原文和翻译／聚合来源，核对完整上下文。
+- 展开「HONE 解读」，进一步理解观点与事实的区别，再通过「问 HONE」继续研究。
 
 <p align="center">
-  <a href="./resources/hone_channels_zh.jpg" target="_blank">
-    <img src="./resources/hone_channels_zh.jpg" alt="Hone Channels" width="400">
-  </a>
-  &nbsp;&nbsp;
-  <a href="./resources/hone_solution_zh.jpg" target="_blank">
-    <img src="./resources/hone_solution_zh.jpg" alt="Hone Solution" width="400">
-  </a>
+  <img src="./resources/readme/hone-serenity-mobile.jpg" alt="Hone 手机端大V速报：Serenity 白毛动态、原文配图、来源链接与问 HONE 入口" width="360">
 </p>
+<p align="center"><em>线上用户端的手机视口实拍。作者观点、原文与 HONE 解读分别呈现；作者观点不代表 Hone 判断。</em></p>
 
-<p align="center">
-  <a href="https://hone-claw.com" target="_blank">
-    <img src="./resources/hone_official_site.png" alt="Hone 官网 - hone-claw.com" width="100%">
-  </a>
-</p>
-<p align="center">
-  <em>官网：<a href="https://hone-claw.com">hone-claw.com</a> 介绍 Hone 的公开对话、持仓追踪、定时任务、长期公司画像、跨平台通知和产品路线图。</em>
-</p>
+## 看宏观红绿灯，更看它如何影响 AI 基础设施
 
-<p align="center">
-  <img src="./resources/company_profile.png" alt="公司画像体系 - 长期投研记忆面板" width="100%">
-</p>
-<p align="center">
-  <em>公司画像（Company Profiles）面板：集中管理研究记忆，同步跟踪从日常聊天中积累的基本面逻辑与投资时间线。</em>
-</p>
+宏观红绿灯帮助你观察大盘与经济周期，了解金融条件和市场风险的变化，并查看判断依据。你可以先看信号，再打开详情，或直接追问背后的原因。
 
-# 3. 🏗️ 快速开始 (Getting Started)
+**Hone 更关注这些变化如何传导到 AI 基础设施本身。** 利率、流动性和风险偏好的变化，要进一步放回融资成本、云厂商资本开支、数据中心建设与上游需求中理解。研究中也结合 AI 需求、商业化、融资与资本开支等维度，观察产业增长的持续性。
 
-## 前置依赖
+“今天是什么灯”是入口。更值得追问的是：这次变化会影响谁、通过什么路径影响、公司基本面是否也发生了变化，以及还需要哪些证据。
 
-- **运行环境**：类 Unix 环境（推荐 **macOS** 或 **Ubuntu**）。
-- **Rust**：支持 **Edition 2024** 的稳定工具链。
+## 从今天开始使用
 
-### 技术栈
+1. 打开 **[Hone 用户端](https://hone-claw.com/chat)**，按页面提示登录，提出你的第一个 AI 或公司研究问题。
+2. 添加你关注的公司或持仓，让后续情报有明确的研究对象。
+3. 在「研究」查看宏观红绿灯和大V速报，在「推送」查看与自己相关的更新。
+4. 遇到值得深挖的信息，点击「问 HONE」，回到对话中继续分析。
 
-- **系统主体**：Rust（Tokio, Axum, SSE）
-- **后端**：Rust
-- **客户端**（桌面端）：Rust（Tauri）
-- **前端**：TypeScript（SolidJS + Tailwind v4）
+浏览器即可使用，电脑适合深入研究，手机适合查看动态和随时追问。
 
-为什么使用 Rust：详见第一篇 Hone Blog，[Hone 为什么采用 Rust，以及推荐大家都开始使用 Rust](https://hone-claw.com/blog/why-hone-uses-rust)。
+## 开源与自部署
 
-### 支持渠道
+Honeclaw 是 Hone 的开源项目，采用 **Rust + SolidJS / TypeScript**，提供对话、研究、通知与多端接入的应用基础。希望了解实现、参与开发或自部署，可以从以下文档开始：
 
-- **Web Console**：现代化的浏览器交互界面。
-- **Mac App**：原生 macOS 桌面体验。
-- **IM 集成**：飞书（Feishu / Lark）、Discord、Telegram、iMessage。
+- [完整 Wiki：安装、配置、启动与排障](./docs/wiki.md)
+- [代码库地图与模块入口](./docs/repo-map.md)
+- [开发与协作约定](./AGENTS.md)
+- [Releases 与安装包](https://github.com/B-M-Capital-Research/honeclaw/releases)
 
-## 安装与启动
+线上产品接入的专业金融数据库、专有本体研究与部分研究资产，不随公开代码一并提供。自部署需要自行配置模型与数据服务；克隆仓库不等于获得线上服务的全部数据和权限。
 
-完整启动矩阵、目录说明、端口、配置和排障请看 [Hone Wiki](./docs/wiki.md)。
+欢迎通过 [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues)、Pull Request 或 [Discord](https://discord.gg/TyDNfYXDGF) 反馈问题、分享使用体验和参与贡献。更多内容见 [Bilibili：巴芒投资](https://space.bilibili.com/224670487) 与 [YouTube：巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)。
 
-### 方案 A：通过 `curl | bash` 安装（macOS/Linux）
+Hone 意为打磨。我们希望它帮助你在持续研究、比较与复盘中，磨砺自己的判断力。
 
-```shell
-curl -fsSL https://raw.githubusercontent.com/B-M-Capital-Research/honeclaw/main/scripts/install_hone_cli.sh | bash
-hone-cli doctor
-hone-cli onboard
-hone-cli start
-# 另开一个终端，打开或启动内置 Web 界面：
-hone-cli web admin-ui
-hone-cli web user-ui
-```
-
-### 方案 B：通过 Homebrew 安装
-
-```shell
-brew install B-M-Capital-Research/honeclaw/honeclaw
-hone-cli doctor
-hone-cli onboard
-hone-cli start
-# 另开一个终端，打开或启动内置 Web 界面：
-hone-cli web admin-ui
-hone-cli web user-ui
-```
-
-### 方案 C：源码开发模式
-
-```shell
-git clone https://github.com/B-M-Capital-Research/honeclaw.git
-cd honeclaw
-cargo run -p hone-cli -- start --build
-# 另开终端：
-cargo run -p hone-cli -- web admin-ui --dev
-cargo run -p hone-cli -- web user-ui --dev
-```
-
-源码检出使用本地 CLI 构建启动路径；Homebrew / release 安装用户使用安装好的 `hone-cli start`。
-
----
-
-# 4. 🌰 典型案例
-
-<table>
-<tr>
-<th align="center">1. 系统化单股研究</th>
-<th align="center">2. Discord 协作对话</th>
-<th align="center">3. 自动化定时播报</th>
-</tr>
-<tr>
-<td valign="top" align="center"><img src="./resources/example1.jpg" alt="Honeclaw 示例 1" width="260"/></td>
-<td valign="top" align="center"><img src="./resources/example2.jpg" alt="Honeclaw 示例 2" width="260"/></td>
-<td valign="top" align="center"><img src="./resources/example3.jpg" alt="Honeclaw 示例 3" width="260"/></td>
-</tr>
-</table>
-
-[`CASES_ZH.md`](CASES_ZH.md) 汇总了更多**真实场景问答示例**（个股逻辑、每日建议、深度研究、定时任务、宏观等）。
-
-# 5. 💡 维护者寄语
-
-> “市场充满杂音，贪婪与恐惧是投资者的宿敌。希望 Honeclaw 能够成为你在交易市场中最冷静的锚。”
-
-为遵守开源许可要求，一些专业估值工具、专项投研工作流以及付费知识库未包含在此公开仓库中。
-
-如果你有兴趣获取这些进阶能力，欢迎联系我们：
-
-1. [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)
-2. [BiliBili: 巴芒投资](https://space.bilibili.com/224670487)
-3. [Discord 社群](https://discord.gg/TyDNfYXDGF)
-
-# 6. 🤝 参与贡献
-
-我们欢迎任何形式的贡献！无论是 Rust 后端开发、大模型 Prompt 工程还是金融数据分析。
-
-📄 License
-
-本项目采用 MIT 协议。
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=B-M-Capital-Research%2Fhoneclaw&type=date&logscale=&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=B-M-Capital-Research/honeclaw&type=date&legend=top-left" />
- </picture>
-</a>
+本项目采用 [MIT License](./LICENSE)。Hone 的内容仅供研究参考，不构成投资建议。
