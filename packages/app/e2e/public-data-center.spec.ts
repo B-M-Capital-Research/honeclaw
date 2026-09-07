@@ -132,7 +132,7 @@ async function geometryDigest(page: Page) {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
-  test(`data center is reachable and all zones work at ${viewport.width}px`, async ({ page }, testInfo) => {
+  test(`chat opens the online demo and local data center zones work at ${viewport.width}px`, async ({ page, context }, testInfo) => {
     await page.setViewportSize(viewport);
     // Run as an administrator: this test walks every zone dialog including the
     // links into each industry, and those links exist only for administrators
@@ -142,10 +142,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
 
+    const demoUrl = "https://b-m-capital-research.github.io/nexus-datacenter-ceo/";
+    await context.route(demoUrl, (route) => route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>NEXUS demo</title>",
+    }));
     await page.goto("/chat");
-    // Since 9b7b7466 the chat page has no plain link to the scene: the composer keeps one
-    // action list, rendered as a chip button on desktops and folded into the 「+」 sheet
-    // on phones (PHONE_LAYOUT_QUERY is max-width 820px).
+    const draft = page.locator(".public-chat-composer textarea");
+    await draft.fill("保留这条尚未发送的问题");
+    const demoPagePromise = context.waitForEvent("page");
+    // Both composer layouts open the external demo without leaving the chat.
     if (viewport.width <= 820) {
       await page.getByRole("button", { name: "添加与工具", exact: true }).click();
       const entry = page.getByRole("menuitem", { name: /^3D 数据中心/ });
@@ -156,7 +162,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
       await expect(entry).toBeVisible();
       await entry.click();
     }
-    await expect(page).toHaveURL(/\/data-center$/);
+    const demoPage = await demoPagePromise;
+    await expect(demoPage).toHaveURL(demoUrl);
+    await demoPage.waitForLoadState("domcontentloaded");
+    expect(await demoPage.evaluate(() => window.opener === null)).toBe(true);
+    await expect(page).toHaveURL(/\/chat$/);
+    await expect(draft).toHaveValue("保留这条尚未发送的问题");
+    await demoPage.close();
+
+    // The existing HONE scene remains available by its own route and research desk.
+    await page.goto("/data-center");
     await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
     await expect(page.locator(".dc-scene-svg polygon").first()).toBeVisible();
     await expectNoHorizontalOverflow(page);

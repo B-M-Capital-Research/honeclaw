@@ -2374,7 +2374,13 @@ function Composer(props: {
       label: CONTENT.chat_page.workspace.data_center_tip,
       hint: CONTENT.chat_page.composer.data_center_hint,
       icon: () => <ToolIcon name="data-center" />,
-      run: () => navigate("/data-center"),
+      run: () => {
+        window.open(
+          "https://b-m-capital-research.github.io/nexus-datacenter-ceo/",
+          "_blank",
+          "noopener,noreferrer",
+        );
+      },
     },
     {
       id: "influencer-digest",
