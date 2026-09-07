@@ -33,7 +33,7 @@
 - `bash tests/regression/run_ci.sh`：runtime env contract、billing contract 通过，随后 billing HTTP E2E 因未设置 `HONE_POSTGRES_HOST` 停止；不声称全仓门禁通过。无 Rust 改动，本次未重新运行完整 Rust workspace check/test。
 - 仓库 pre-push hook 手工执行：1 commit scanned，无密钥命中。原 GitHub SSH 22 超时后，通过已登录 `gh` 的 HTTPS credential helper 推送同一 main 提交。
 - 源站完整 archive/manifest/file hash 核对、deploy lock、previous symlink 比较、原子切换与 HTTP index/entry SHA 核对全部通过；managed service PID 与启动时间前后一致。
-- Cloudflare Pages deployment `1566a76e-f3d7-4590-8032-c50291e6e0fb` 成功，对应上述精确 revision；GitHub `frontend-checks` 与 `gitleaks` 均成功。Rust CI 在本任务验收时仍在运行。
+- Cloudflare Pages deployment `1566a76e-f3d7-4590-8032-c50291e6e0fb` 成功，对应上述精确 revision；GitHub `frontend-checks` 与 `gitleaks` 均成功。Rust CI 后续结束：hone-agent 164 passed / 2 failed，失败为 `deferred_prefix_ignores_structurally_invalid_datafetch_activation` 和 `first_batch_identity_route_limit_executes_only_six_valid_routes`。已对照改动前 `08a7ee27` 的 CI run `34122449983`，同为这两项失败；本次 run `34127881576` 未新增失败。
 - Pages 独立构建的 entry `/assets/index-SI3XfZm6.js`，SHA-256 `70ca644828f7cea8cc00e33eac681d5ed0a374311808b0fd31b6e0955ce58c7d`；chat chunk `/assets/chat-DNowxEDg.js`，SHA-256 `0bc4d1ca5fe112a2dfb4602499932b0a9501047103a86660b94d95c6a380d3f9`。直接下载验证目标试玩 URL 与 `noopener,noreferrer` 均存在。Pages/local 构建的 chunk 文件名不同，分别留存各自产物哈希；源站 HTTP 响应逐字节匹配本地精确 build。
 - 线上 `/`、`/chat`、`/roadmap` 均成功；HSTS `max-age=31536000`、CSP `frame-ancestors 'none'`、`X-Frame-Options: DENY`、`nosniff`、`strict-origin-when-cross-origin` 检查通过。
 - 真实 Chrome 已登录会话刷新后加载新版 Pages entry，实际点击「3D 数据中心」，新标签地址精确为官方试玩，标题「NEXUS · 算力纪元」、页面「CEO 办公室」可见，HONE 原标签仍为 `/chat`。未发送聊天消息或修改业务数据。
