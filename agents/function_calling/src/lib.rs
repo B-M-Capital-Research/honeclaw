@@ -17376,11 +17376,18 @@ MU：报价与财报已取到，行业树没有改动。";
         assert_eq!(rejected.result["action"], "set_upstream_latest");
         let events = tool_observer.events.lock().expect("tool observer events");
         assert_eq!(
-            events.iter().filter(|event| event.starts_with("start:")).count(),
+            events
+                .iter()
+                .filter(|event| event.starts_with("start:"))
+                .count(),
             2,
             "both evidence reads reach the registry; the editor never does: {events:?}"
         );
-        assert!(events.iter().all(|event| !event.contains("industry_map_edit")));
+        assert!(
+            events
+                .iter()
+                .all(|event| !event.contains("industry_map_edit"))
+        );
     }
 
     #[test]

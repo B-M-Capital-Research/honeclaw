@@ -203,8 +203,14 @@ mod tests {
             &json!({"action":"show","industry":"storage"})
         ));
         // A missing action is a malformed edit, never a read.
-        assert!(tool_call_has_persistent_side_effect("industry_map_edit", &json!({})));
-        assert!(!tool_call_is_known_read_only("industry_map_edit", &json!({})));
+        assert!(tool_call_has_persistent_side_effect(
+            "industry_map_edit",
+            &json!({})
+        ));
+        assert!(!tool_call_is_known_read_only(
+            "industry_map_edit",
+            &json!({})
+        ));
     }
 
     #[test]
