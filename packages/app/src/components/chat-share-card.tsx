@@ -4,11 +4,12 @@
 // so the output is the same whichever page or theme mounted it.
 
 import { Markdown } from "@hone-financial/ui/markdown";
-import { For, Show, createEffect, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import QRCode from "qrcode";
 import type { PublicChatMessage } from "@/lib/public-chat";
 import { stripAttachmentMarkers } from "@/lib/public-chat";
 import { shareDateLabel, shareQuestionStyle } from "./chat-share-export";
+import { reflowShareTables, shareTableCapacityEm } from "./chat-share-tables";
 // The card renders offscreen and standalone; the foundation sheet keeps the
 // --hone-* font tokens resolving regardless of which page mounted us.
 import "@/pages/public-foundation.css";
@@ -22,6 +23,12 @@ type ChatShareCardProps = {
   qrCaption: string;
   disclaimer: string;
   messageFontSize?: number;
+  /**
+   * "auto" (default) reshapes tables that cannot fit the card's width —
+   * rotated when they are short, one block per row when they are tall.
+   * "table" leaves every table as the conversation rendered it.
+   */
+  tableLayout?: "auto" | "table";
   /** When true, position offscreen for capture; otherwise render inline. */
   hidden?: boolean;
   /** Refs the card element so the caller can hand it to html2canvas. */
@@ -82,6 +89,13 @@ function HoneLogo(props: { size: number }) {
 export function ChatShareCard(props: ChatShareCardProps) {
   const [qrDataUrl, setQrDataUrl] = createSignal<string>("");
   const messageFontSize = () => props.messageFontSize ?? 15;
+  // Memoised so the Markdown resource re-runs only when the size (and with it
+  // the room a table has) actually changes, not on every render.
+  const reflowTables = createMemo(() => {
+    if (props.tableLayout === "table") return undefined;
+    const capacityEm = shareTableCapacityEm(messageFontSize());
+    return (html: string) => reflowShareTables(html, capacityEm);
+  });
 
   createEffect(() => {
     let cancelled = false;
@@ -161,6 +175,7 @@ export function ChatShareCard(props: ChatShareCardProps) {
                     <Markdown
                       text={stripAttachmentMarkers(msg.content)}
                       class="hf-share-card-md"
+                      transform={reflowTables()}
                     />
                   </div>
                 }

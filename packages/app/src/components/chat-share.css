@@ -621,3 +621,62 @@
   font-weight: 500;
   letter-spacing: 0.01em;
 }
+
+/* Tables the card could not fit are reshaped before they reach the DOM
+   (chat-share-tables.ts). A rotated table keeps the table rules above; its
+   first column is now a run of row headers and takes the lighter rule so the
+   grid does not read as a stack of header rows. */
+.hf-share-card-md table[data-hone-share-table="transposed"] tbody th {
+  border-bottom: 1px solid rgba(23, 32, 31, 0.11);
+  color: #606c68;
+  font-weight: 500;
+  text-align: left;
+}
+.hf-share-card-md table[data-hone-share-table="transposed"] tbody tr:last-child th {
+  border-bottom: 1px solid rgba(23, 32, 31, 0.18);
+}
+
+/* A tall wide table becomes one block per row: the first cell as the title,
+   every other column as a "header  value" line. Widths stay literal so
+   html2canvas paints exactly what the preview shows. */
+.hf-share-tlist {
+  display: grid;
+  gap: 8px;
+  margin: 0.7em 0;
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.hf-share-tlist__item {
+  padding: 8px 11px 9px;
+  border: 1px solid rgba(23, 32, 31, 0.11);
+  border-radius: 8px;
+  background: #fbf9f4;
+}
+.hf-share-tlist__title {
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(23, 32, 31, 0.11);
+  color: #17201f;
+  font-weight: 600;
+}
+.hf-share-tlist__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 2px 0;
+}
+.hf-share-tlist__k {
+  flex: 0 0 auto;
+  color: #606c68;
+}
+.hf-share-tlist__v {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #2d3735;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.hf-share-tlist p {
+  display: inline;
+  margin: 0;
+}
