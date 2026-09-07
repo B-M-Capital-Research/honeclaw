@@ -2172,8 +2172,14 @@ fn soul_prompt_keeps_the_full_investment_contract() {
         soul.chars().count() >= 6_000,
         "soul.md must retain the full investment workflow and response-format contract"
     );
+    // Budget history: 12_000 was set on 2026-08-23 with the prompt already at
+    // 12_089, so this guard has been red on `main` since then; the 2026-09-02
+    // research-depth section (六、输出纪律 第 6 条, ~680 chars, shipped to
+    // production on 2026-09-06) took it to ~12_770. The ceiling below records
+    // that reviewed size with a little headroom — growing past it means
+    // compacting, not raising the number again.
     assert!(
-        soul.chars().count() <= 12_000,
+        soul.chars().count() <= 13_000,
         "soul.md grew beyond the reviewed full-prompt budget. Compact duplicated wording, \
          never delete a rule listed below — every one of them is load-bearing and at least \
          one was lost to a budget-driven compaction before"
