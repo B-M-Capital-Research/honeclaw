@@ -8,6 +8,7 @@ use serde_json::Value;
 const PERSISTENT_TOOL_NAMES: &[&str] = &[
     "cron_job",
     "deep_research",
+    "industry_map_edit",
     "portfolio",
     "portfolio_tool",
     "notification_prefs",
@@ -92,6 +93,9 @@ pub fn tool_call_has_persistent_side_effect(name: &str, arguments: &Value) -> bo
     match canonical_hone_tool_name(name) {
         Some("cron_job") => !matches!(tool_action(arguments), Some("list")),
         Some("deep_research") => true,
+        // The admin ontology editor appends to a durable edit log for every
+        // action except `show`, which only renders the current tree.
+        Some("industry_map_edit") => !matches!(tool_action(arguments), Some("show")),
         Some("portfolio") | Some("portfolio_tool") => {
             !matches!(tool_action(arguments), Some("view"))
         }
@@ -121,6 +125,7 @@ pub fn tool_call_is_known_read_only(name: &str, arguments: &Value) -> bool {
     match canonical_hone_tool_name(name) {
         Some("cron_job") => matches!(tool_action(arguments), Some("list")),
         Some("deep_research") => false,
+        Some("industry_map_edit") => matches!(tool_action(arguments), Some("show")),
         Some("portfolio") | Some("portfolio_tool") => {
             matches!(tool_action(arguments), Some("view"))
         }
@@ -178,6 +183,29 @@ pub fn persistent_tool_reconciliation_call(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn industry_map_edit_is_a_known_write_except_show() {
+        assert!(tool_call_has_persistent_side_effect(
+            "industry_map_edit",
+            &json!({"action":"set_upstream_latest","industry":"storage"})
+        ));
+        assert!(!tool_call_is_known_read_only(
+            "industry_map_edit",
+            &json!({"action":"set_upstream_latest","industry":"storage"})
+        ));
+        assert!(!tool_call_has_persistent_side_effect(
+            "industry_map_edit",
+            &json!({"action":"show","industry":"storage"})
+        ));
+        assert!(tool_call_is_known_read_only(
+            "industry_map_edit",
+            &json!({"action":"show","industry":"storage"})
+        ));
+        // A missing action is a malformed edit, never a read.
+        assert!(tool_call_has_persistent_side_effect("industry_map_edit", &json!({})));
+        assert!(!tool_call_is_known_read_only("industry_map_edit", &json!({})));
+    }
 
     #[test]
     fn persistent_and_read_only_actions_share_one_classifier() {
