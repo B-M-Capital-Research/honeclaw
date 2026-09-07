@@ -805,6 +805,113 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn stream_http_errors_use_bounded_same_request_retries() {
+        // A single key: recovery cannot accidentally rely on credential rotation.
+        for (status, retries, recover, expected_attempts) in [
+            (529, 1, true, 2),
+            (503, 1, true, 2),
+            (529, 1, false, 2),
+            (529, 0, false, 1),
+            (400, 1, false, 1),
+            (401, 1, false, 1),
+            (429, 1, false, 1),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let connections = Arc::new(AtomicUsize::new(0));
+            let seen = connections.clone();
+            let server = tokio::spawn(async move {
+                let mut original = None;
+                loop {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let attempt = seen.fetch_add(1, Ordering::SeqCst);
+                    let payload = read_json_request(&mut socket).await;
+                    if let Some(first) = &original {
+                        assert_eq!(first, &payload, "retry must preserve the request");
+                    } else {
+                        original = Some(payload);
+                    }
+                    let (code, content_type, body) = if recover && attempt > 0 {
+                        (
+                            200,
+                            "text/event-stream",
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n\
+                          data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                          data: [DONE]\n\n",
+                        )
+                    } else {
+                        (
+                            status,
+                            "application/json",
+                            "{\"error\":{\"message\":\"busy\"}}",
+                        )
+                    };
+                    let response = format!(
+                        "HTTP/1.1 {code} Test\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                    socket.shutdown().await.unwrap();
+                }
+            });
+            let provider = OpenAiCompatibleProvider::new(
+                "test-key",
+                &format!("http://{addr}"),
+                "test-model",
+                5,
+                64,
+            )
+            .unwrap()
+            .with_transport_retries(Some(retries));
+            let messages = [Message {
+                images: Vec::new(),
+                role: "user".into(),
+                content: Some("answer".into()),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                name: None,
+            }];
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider
+                    .chat_with_tools_stream(&messages, &[], None, ToolChoiceMode::Auto)
+                    .collect::<Vec<_>>(),
+            )
+            .await;
+            server.abort();
+            let server_result = server.await;
+            assert!(
+                server_result.unwrap_err().is_cancelled(),
+                "mock server panicked"
+            );
+            let events = result.expect("retry must terminate within its budget");
+            assert_eq!(
+                connections.load(Ordering::SeqCst),
+                expected_attempts,
+                "HTTP {status}"
+            );
+            if recover {
+                assert!(events.iter().all(Result::is_ok), "{events:?}");
+                assert!(
+                    events
+                        .iter()
+                        .any(|event| matches!(event, Ok(ChatStreamEvent::Done)))
+                );
+            } else {
+                assert!(
+                    events
+                        .iter()
+                        .any(|event| event.as_ref().err().is_some_and(|error| error
+                            .to_string()
+                            .contains(&format!("HTTP {status}")))),
+                    "{events:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn stream_retry_jitter_is_deterministic_and_bounded() {
         for attempt in 0..4 {
@@ -1944,6 +2051,14 @@ impl LlmProvider for OpenAiCompatibleProvider {
                         .send()
                         .await
                     {
+                        Ok(value)
+                            if value.status().is_server_error()
+                                && attempt < self.stream_transport_retries =>
+                        {
+                            // No stream bytes have been exposed yet. Retry overloads
+                            // (including MiniMax's 529) on the same credential and budget.
+                            drop(value);
+                        }
                         Ok(value) => {
                             response = Some(value);
                             break;
@@ -1955,15 +2070,13 @@ impl LlmProvider for OpenAiCompatibleProvider {
                             if !retryable || attempt == self.stream_transport_retries {
                                 break;
                             }
-                            // 指数退避 + 确定性抖动,避免同批任务的重试又一次齐射。
-                            let backoff_ms = STREAM_RETRY_BASE_BACKOFF_MS << attempt;
-                            let jitter_ms = stream_retry_jitter_ms(&client.api_key, attempt);
-                            tokio::time::sleep(std::time::Duration::from_millis(
-                                backoff_ms + jitter_ms,
-                            ))
-                            .await;
                         }
                     }
+                    // Shared budget and backoff for connect failures and HTTP 5xx.
+                    let backoff_ms = STREAM_RETRY_BASE_BACKOFF_MS << attempt;
+                    let jitter_ms = stream_retry_jitter_ms(&client.api_key, attempt);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms + jitter_ms))
+                        .await;
                 }
                 let Some(response) = response else {
                     continue;

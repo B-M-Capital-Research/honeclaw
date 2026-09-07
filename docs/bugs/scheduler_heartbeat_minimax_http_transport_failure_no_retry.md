@@ -3,7 +3,16 @@
 - **发现时间**: 2026-04-17 16:02 CST
 - **Bug Type**: System Error
 - **严重等级**: P2
-- **状态**: New
+- **状态**: Fixed
+
+## 2026-09-08 bug-2 代码修复
+
+- 状态：`Fixed`（流式 HTTP 5xx 重试缺口已修；待自然部署复核，不代表上游持续故障能保证送达）。
+- 根因：`OpenAiCompatibleProvider::chat_with_tools_stream` 对 `.send()` 返回的所有 HTTP 响应直接退出同 key 重试循环；529 属于成功收到响应，未进入已有传输重试。单 key 下首次 529 即整轮失败。
+- 修复：响应头阶段的 5xx（含 529）复用 `max_retries` 预算和指数退避/抖动；保持相同请求，未消费/外发流数据前重试。预算耗尽保留末次 HTTP 错误，4xx 和 required-to-Auto 兼容分支保持原行为。非流式路径不在本次改动范围。
+- 自动化证明：`stream_http_errors_use_bounded_same_request_retries` 用本地 HTTP 服务覆盖 529/503 后成功、529 耗尽、零预算、400/401/429；断言请求一致、请求次数、成功 Done 或末次 HTTP 错误。
+- 验证：`cargo test -p hone-llm --all-targets`（41 passed）、`cargo check -p hone-llm --all-targets` 通过；Rust 文件格式与 `git diff --check` 通过。
+- 未验证：本轮不重启服务、不重建 app。自然部署后观察同一 heartbeat 的 529 后恢复和最终 delivered 状态；持续上游不可用仍应明确失败，不生成虚假成功。
 
 ## 修复进展（2026-04-26）
 

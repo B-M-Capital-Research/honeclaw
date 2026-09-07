@@ -22,6 +22,8 @@
 
 ## 最新进展
 
+- 2026-09-08 `bug-2` 源码复核：保持 `New/P1`。最新巡检证据为 PostgreSQL 连接失败及启动 panic；当前 `core/bot_core.rs` 仍要求 PostgreSQL 初始化成功，符合 `docs/invariants.md` 的唯一权威存储契约。没有证据支持通过修改代码恢复当前数据库可达性，降级 SQLite 会违反契约。本轮按禁止重启/部署范围不修改运行环境，未做 live 恢复确认。下一步由运维核对实际运行配置对应的数据库可达性，再用既有 `/api/meta` 和 scheduler 增量确认恢复；不可仅凭本地 SQLite 时间判断健康。
+
 - 2026-09-08 02:02 CST 运行态持续活跃复核，状态保持 `New/P1`：
   - 证据来源：
     - `data/sessions.sqlite3`

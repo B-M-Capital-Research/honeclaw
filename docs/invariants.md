@@ -208,6 +208,8 @@ Last updated: 2026-08-22
 
 ## Agent Runtime Constraints
 
+- OpenAI-compatible streaming retries HTTP 5xx (including 529) only before consuming the response stream, on the same request and credential within the configured transport retry budget and backoff. Exhaustion preserves the final HTTP failure; this does not replay a partially consumed stream or relax tool-choice constraints.
+
 - Use `agent.runner` as the single source for runner selection; channels and the Web UI should not branch `gemini_cli` or `codex_cli` execution paths on their own
 - `AgentSession` exposes `run()` as the only public entry point; its responsibilities should stay limited to session orchestration, persistence, and listener dispatch. When adding a new execution path, prefer extending the unified runner contract instead of adding a new `run_xxx` branch.
 - Shared execution preparation belongs in `crates/hone-channels/src/execution.rs`; session flows and transient task flows should reuse it instead of each path rebuilding tool registry / runner / sandbox wiring on its own
