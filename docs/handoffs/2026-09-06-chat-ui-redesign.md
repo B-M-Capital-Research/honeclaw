@@ -118,6 +118,25 @@
   日历 `secondary: true`、菜单里不再重复 digest。Playwright 点过桌面 chip / 工具菜单 / 手机面板，
   三处弹层都在视口内。
 
+## 第五轮：分享卡片里行内代码盖住正文（2026-09-07）
+
+> 这块分享的时候，还有一个问题中间有一块渲染不出来。
+
+截图里 `gpt-6-astra` 那一格灰底横贯整行，把「式发布 GPT-6 Astra（内部代号」整段正文盖掉了。
+根因不在样式本身，在 html2canvas：它给**行内元素只算一个矩形**。所以
+
+- 行内代码带 padding 时，底框会画在文字上方半行的位置（没跨行时也一直是歪的，只是不明显）；
+- 一旦这个 span 跨两行（连字符处会断），底框变成两行的并集矩形，从左边距一直画到右边距，
+  盖住同一行前后的字——用户看到的就是这个。
+
+改法：**卡片里的行内代码不画框**（`padding: 0; background: transparent`），只用 label 等宽字 +
+更深的墨色 + 0.9em 区分；围栏代码块是块级元素，栅格化正常，边框底色保留。对话页 `.hc-turn__body`
+的 chip 样式不动，那是 DOM 渲染不过 html2canvas。
+
+试过的另一条路（`display: inline-block; max-width: 100%`）能解决跨行盖字，但短片段的底框仍然上移错位，
+所以没采用。`/__share-preview` 的样例里永久留了一句带三个行内代码的话（其中一个宽于栏宽、必然跨行）当回归夹具，
+`chat-share-modal.test.ts` 钉住「行内代码无底色无圆角」与「围栏块保留边框」。
+
 ## verification
 
 - `bun run typecheck` 通过；`bun test --preload ./happydom.ts ./src ./public` 541 pass / 0 fail

@@ -599,11 +599,19 @@
 .hf-share-card-md .hf-markdown-code code span {
   color: #2d3735;
 }
+/* Inline code carries no painted box, on purpose. html2canvas gives an inline
+   element a single rectangle: the fill lands above the text it belongs to, and
+   a span that wraps across two lines is painted as one rectangle over the
+   neighbouring words — which is how a shared answer lost a line of text. The
+   card is rasterised before anyone reads it, so it distinguishes code with the
+   label face and a darker ink, never with inline geometry. Fenced blocks are
+   block-level and keep their frame. */
 .hf-share-card-md :not(pre) > code {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: #f1f0eb;
+  padding: 0;
+  background: transparent;
   color: #17201f;
   font-family: var(--hone-font-label);
-  font-size: 0.86em;
+  font-size: 0.9em;
+  font-weight: 500;
+  letter-spacing: 0.01em;
 }
