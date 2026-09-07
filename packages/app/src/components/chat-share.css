@@ -551,10 +551,16 @@
   border-left: 2px solid rgba(23, 32, 31, 0.18);
   color: #606c68;
 }
+/* A ledger, not a card: the foundation sheet frames every .hf-markdown table
+   in a 1rem-radius box, which the conversation page removes and the exported
+   card must remove too — the frame reads as a bubble around the numbers. */
 .hf-share-card-md table {
   width: 100%;
   margin: 0.7em 0;
+  border: 0;
+  border-radius: 0;
   border-collapse: collapse;
+  overflow: visible;
   font-size: 0.9em;
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
