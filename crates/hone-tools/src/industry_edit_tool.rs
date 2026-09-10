@@ -14,8 +14,9 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 use hone_core::industry_map::{
-    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryEdit, IndustryMember, IndustrySource, NewIndustry,
-    UPSTREAM_RELATIONS, UpstreamSignal,
+    CoreWatch, EDITABLE_FIELDS, EditOp, IndustryBrief, IndustryEdit, IndustryMember,
+    IndustrySource, NewIndustry, Subtype, UPSTREAM_RELATIONS, UpstreamSignal,
+    VALUATION_LIST_FIELDS, VALUATION_TEXT_FIELDS,
 };
 
 use crate::base::{Tool, ToolParameter};
@@ -54,14 +55,16 @@ impl Tool for IndustryMapEditTool {
     }
 
     fn description(&self) -> &str {
-        "【仅管理员可用】读写 AI 数据中心行业树（研究台「行业分析」用的那棵）。\
+        "【仅管理员可用；只在用户明确要求查看或修改行业树时调用】读写行业本体（研究台「行业分析」用的那棵树）。\
+        估值、研究、财报、持仓这类投研回答里不要调用它：那些轮次是只读的，写动作会被拒绝且不会执行；这一行的估值逻辑、子类型与上游信号已经随【本轮相关行业】注入，不需要用它来读。\
         改动立即对研究台和后续对话的行业注入生效，不需要重启或发版，并会记进改动日志（谁、何时、改了什么、为什么），\
         在研究台顶部的「最近改动」卡片里显示。\n\
         `action=\"show\"` 先读当前内容再改——不要凭记忆改，树的内容会被别的管理员改动。\n\
         可改字段：`one_liner`（这一行是什么，一句话）、`driver_chain`（从 AI 侧可观测量到这一行收入/价格的传导链，是这一行的第一性公式）、\
         `multiple_anchor` 与 `anti_pattern`（研究台页面看的长版）、`multiple_anchor_short` 与 `anti_pattern_short`（每轮注入模型的压缩版，各控制在 110 字以内）。\n\
+        **行业简报 brief** 是研究台页面第一块「当前重点」：用 `set_brief` 的 `question` 写现在值得研究的问题、`body` 写为什么是现在、`next` 写下一次验证；每季财报或口径变化后先改它，`clear_brief` 可清空。用 `set_watch` 把关注点里的数字更新到最新一季并带 `as_of`，省略的字段沿用原值，改名用 `new_what`。\n\
         成员公司只收美股与 ADR：带交易所后缀的代码（如 `000660.KS`）会被拒绝——它们取不到行情，也不在本产品的判断范围内。\n\
-        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
+        **上游信号**（`add_upstream_signal` / `remove_upstream_signal`）是这棵树的本体边：这一行的收入由哪家上市公司的最近行为决定、写这一行的公司之前该先取它的哪几个读数（例如存储 → NVDA 的数据中心收入与毛利率指引）。relation 只能是 demand_source / capex_source / supply_gate / peer_signal。**HOne Industry Map（V5.3）**：`set_valuation_field` 改这一行的文本字段（field 取 logic.summary / logic.state_note / anchor.upper_range_drivers / anchor.revision_optionality，以及 V5.3 的行级散文 upstream_summary（上游信号怎么传到本行）/ transmission（变量传导与证伪）/ subtype_intro（子类型怎么分）/ sources_note（研报与数据来源说明）），`set_valuation_list` 整表替换列表字段（logic.paragraphs / logic.forward_focus / anchor.paragraphs / anchor.forbidden），`upsert_subtype` / `remove_subtype` / `set_member_subtype` 维护子类型（哪些公司用哪个主锚、次锚与检查、适用阶段、角色边界；scope_note 写收哪些公司、不收哪些）——注入给模型的估值执行卡就来自命中公司所属的子类型。可观测变量表与全局技术口径、验收算例只在底稿里改。每季财报后用 `set_upstream_latest`（symbol + latest + as_of）把它「最近一季实际做了什么」写成带日期的一段——这一段会原样排在注入的最前面。\n\
         行业可以在线新增（`add_industry`，id 只用小写字母数字连字符）与移除（`remove_industry`，只是从树里隐藏，底稿不动）。不能改 `key_variables`（结构化表格，用散文覆盖会毁掉它）。\n\
         每次改动都要写 `note` 说明依据，例如引用的研报或财报口径变化；它会和改动一起展示给其它管理员。"
     }
@@ -71,7 +74,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "action".to_string(),
                 param_type: "string".to_string(),
-                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / remove_watch / add_upstream_signal / remove_upstream_signal / add_industry / remove_industry".to_string(),
+                description: "show（读当前内容）/ set_field / add_member / remove_member / set_member_role / add_source / remove_source / add_watch / set_watch / remove_watch / set_brief / clear_brief / add_upstream_signal / remove_upstream_signal / add_industry / remove_industry".to_string(),
                 required: true,
                 r#enum: Some(vec![
                     "show".into(),
@@ -82,10 +85,18 @@ impl Tool for IndustryMapEditTool {
                     "add_source".into(),
                     "remove_source".into(),
                     "add_watch".into(),
+                    "set_watch".into(),
                     "remove_watch".into(),
+                    "set_brief".into(),
+                    "clear_brief".into(),
                     "add_upstream_signal".into(),
                     "remove_upstream_signal".into(),
                     "set_upstream_latest".into(),
+                    "set_valuation_field".into(),
+                    "set_valuation_list".into(),
+                    "upsert_subtype".into(),
+                    "remove_subtype".into(),
+                    "set_member_subtype".into(),
                     "add_industry".into(),
                     "remove_industry".into(),
                 ]),
@@ -182,7 +193,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "what".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch / remove_watch 用：关注点本身".to_string(),
+                description: "add_watch / set_watch / remove_watch 用：关注点本身；set_watch 按现有标题定位".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -190,7 +201,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "why".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch 用：为什么它重要、怎么传导".to_string(),
+                description: "add_watch / set_watch 用：为什么它重要、怎么传导".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -198,7 +209,7 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "cadence".to_string(),
                 param_type: "string".to_string(),
-                description: "add_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
+                description: "add_watch / set_watch 用：什么频率出现（季度财报 / 月度出货 / 拍卖结果…）".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -214,7 +225,39 @@ impl Tool for IndustryMapEditTool {
             ToolParameter {
                 name: "as_of".to_string(),
                 param_type: "string".to_string(),
-                description: "add_upstream_signal / set_upstream_latest 用：latest 截至哪一天，如 2026-08-26".to_string(),
+                description: "add_watch / set_watch / set_brief / add_upstream_signal / set_upstream_latest 用：这段内容截至哪一天，如 2026-08-26（或 2026-06）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "new_what".to_string(),
+                param_type: "string".to_string(),
+                description: "set_watch 用：改名时的新标题，可选".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "question".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：现在值得研究的问题，一句".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "body".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：为什么是现在，一段".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "next".to_string(),
+                param_type: "string".to_string(),
+                description: "set_brief 用：接下来要确认什么，多条用「；」分隔".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,
@@ -267,6 +310,54 @@ impl Tool for IndustryMapEditTool {
                 r#enum: None,
                 items: None,
             },
+            ToolParameter {
+                name: "items".to_string(),
+                param_type: "string".to_string(),
+                description: "set_valuation_list 用：整表替换的条目，用「；」分隔（logic.paragraphs / logic.forward_focus / anchor.paragraphs / anchor.forbidden）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "subtype".to_string(),
+                param_type: "string".to_string(),
+                description: "set_member_subtype 用：目标子类型 id（如 nand-essd）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "members".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：所属公司代码，用「；」或「,」分隔".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "primary".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：主锚（前瞻财年 + 倍数族 + 权重，如「FY+2 Forward PE 约50% / FY+2 EV/Sales 约30% / EV/EBITDA 约20%」）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "secondary".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：次锚".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
+            ToolParameter {
+                name: "when".to_string(),
+                param_type: "string".to_string(),
+                description: "upsert_subtype 用：适用阶段（如「利润率尚未稳定时」「净利稳定转正后」）".to_string(),
+                required: false,
+                r#enum: None,
+                items: None,
+            },
         ]
     }
 
@@ -277,7 +368,11 @@ impl Tool for IndustryMapEditTool {
         if action == "show" {
             return Ok(match text(&args, "industry") {
                 Some(id) => match map.industry(&id) {
-                    Some(industry) => json!({ "ok": true, "industry": industry }),
+                    Some(industry) => {
+                        let mut row = json!(industry);
+                        row["content_as_of"] = json!(industry.content_as_of());
+                        json!({ "ok": true, "industry": row })
+                    }
                     None => json!({
                         "ok": false,
                         "error": format!("没有这个行业：{id}"),
@@ -291,6 +386,7 @@ impl Tool for IndustryMapEditTool {
                         "id": item.id,
                         "name": item.name,
                         "one_liner": item.one_liner,
+                        "content_as_of": item.content_as_of(),
                         "members": item.members.len(),
                         "sources": item.sources.len(),
                     })).collect::<Vec<_>>(),
@@ -313,6 +409,74 @@ impl Tool for IndustryMapEditTool {
                     return missing("field / value");
                 };
                 EditOp::SetField { field, value }
+            }
+            "set_valuation_field" => {
+                let (Some(field), Some(value)) = (text(&args, "field"), text(&args, "value"))
+                else {
+                    return missing("field / value");
+                };
+                if !VALUATION_TEXT_FIELDS.contains(&field.as_str()) {
+                    return Ok(json!({ "ok": false,
+                        "error": format!("field 只能是 {}", VALUATION_TEXT_FIELDS.join(" / ")) }));
+                }
+                EditOp::SetValuationField { field, value }
+            }
+            "set_valuation_list" => {
+                let (Some(field), Some(items)) = (text(&args, "field"), text(&args, "items"))
+                else {
+                    return missing("field / items");
+                };
+                if !VALUATION_LIST_FIELDS.contains(&field.as_str()) {
+                    return Ok(json!({ "ok": false,
+                        "error": format!("field 只能是 {}", VALUATION_LIST_FIELDS.join(" / ")) }));
+                }
+                EditOp::SetValuationList {
+                    field,
+                    items: split_list(&items),
+                }
+            }
+            "upsert_subtype" => {
+                let (Some(id), Some(name)) = (text(&args, "id"), text(&args, "name")) else {
+                    return missing("id / name");
+                };
+                EditOp::UpsertSubtype {
+                    subtype: Subtype {
+                        id: id.trim().to_ascii_lowercase(),
+                        name,
+                        scope_note: text(&args, "scope_note").unwrap_or_default(),
+                        members: text(&args, "members")
+                            .map(|v| {
+                                split_list(&v)
+                                    .into_iter()
+                                    .map(|m| m.to_ascii_uppercase())
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        inferred_members: Vec::new(),
+                        primary: text(&args, "primary").unwrap_or_default(),
+                        secondary: text(&args, "secondary").unwrap_or_default(),
+                        when: text(&args, "when").unwrap_or_default(),
+                        note: text(&args, "note").unwrap_or_default(),
+                    },
+                }
+            }
+            "remove_subtype" => {
+                let Some(id) = text(&args, "id") else {
+                    return missing("id");
+                };
+                EditOp::RemoveSubtype {
+                    id: id.trim().to_ascii_lowercase(),
+                }
+            }
+            "set_member_subtype" => {
+                let (Some(symbol), Some(subtype)) = (text(&args, "symbol"), text(&args, "subtype"))
+                else {
+                    return missing("symbol / subtype");
+                };
+                EditOp::SetMemberSubtype {
+                    symbol: symbol.to_ascii_uppercase(),
+                    subtype: subtype.trim().to_ascii_lowercase(),
+                }
             }
             "add_member" => {
                 let (Some(symbol), Some(name), Some(role)) = (
@@ -386,9 +550,62 @@ impl Tool for IndustryMapEditTool {
                         what,
                         why: text(&args, "why").unwrap_or_default(),
                         cadence: text(&args, "cadence").unwrap_or_default(),
+                        as_of: text(&args, "as_of").unwrap_or_default(),
                     },
                 }
             }
+            "set_watch" => {
+                let Some(what) = text(&args, "what") else {
+                    return missing("what");
+                };
+                // 工具接受局部更新，日志保留整条替换，避免重放时再依赖缺省字段的解释。
+                let mut watch = map
+                    .industry(&industry)
+                    .and_then(|item| {
+                        item.core_watch
+                            .iter()
+                            .find(|item| item.what.trim() == what.trim())
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| CoreWatch {
+                        what: what.clone(),
+                        why: String::new(),
+                        cadence: String::new(),
+                        as_of: String::new(),
+                    });
+                for (key, value) in [
+                    ("new_what", &mut watch.what),
+                    ("why", &mut watch.why),
+                    ("cadence", &mut watch.cadence),
+                    ("as_of", &mut watch.as_of),
+                ] {
+                    if let Some(fresh) = args.get(key).and_then(Value::as_str) {
+                        *value = fresh.trim().to_string();
+                    }
+                }
+                EditOp::SetWatch { what, watch }
+            }
+            "set_brief" => {
+                let Some(question) = text(&args, "question") else {
+                    return missing("question");
+                };
+                EditOp::SetBrief {
+                    brief: IndustryBrief {
+                        question,
+                        body: text(&args, "body").unwrap_or_default(),
+                        next: text(&args, "next")
+                            .map(|value| split_list(&value))
+                            .unwrap_or_default(),
+                        as_of: text(&args, "as_of").unwrap_or_else(|| {
+                            hone_core::local_now()
+                                .date_naive()
+                                .format("%Y-%m-%d")
+                                .to_string()
+                        }),
+                    },
+                }
+            }
+            "clear_brief" => EditOp::ClearBrief,
             "remove_watch" => {
                 let Some(what) = text(&args, "what") else {
                     return missing("what");
@@ -496,6 +713,14 @@ impl Tool for IndustryMapEditTool {
             },
         )
     }
+}
+
+/// 「；」「;」「,」「，」分隔的一串条目。
+fn split_list(raw: &str) -> Vec<String> {
+    raw.split(['；', ';', ',', '，'])
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -643,6 +868,208 @@ mod tests {
                 .0
                 .industry("cooling")
                 .is_none()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn set_brief_and_set_watch_work_through_the_tool() {
+        let dir = temp("brief-watch");
+        let t = tool(&dir);
+        let added = t
+            .execute(json!({
+                "action": "add_watch", "industry": "storage", "what": "测试季度读数",
+                "why": "原始读数", "cadence": "季度财报", "as_of": "2026-08-26"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(added["ok"], true, "{added}");
+        let changed = t.execute(json!({
+            "action": "set_watch", "industry": "storage", "what": " 测试季度读数 ", "why": "最新季度读数"
+        })).await.expect("tool");
+        assert_eq!(changed["ok"], true, "{changed}");
+        let (map, _) = hone_core::industry_map::load(&dir);
+        let watch = map.industry("storage").unwrap().core_watch.last().unwrap();
+        assert_eq!(watch.what, "测试季度读数");
+        assert_eq!(watch.why, "最新季度读数");
+        assert_eq!(watch.cadence, "季度财报");
+        assert_eq!(watch.as_of, "2026-08-26");
+
+        let renamed = t
+            .execute(json!({
+                "action": "set_watch", "industry": "storage", "what": "测试季度读数",
+                "new_what": "测试月度读数", "cadence": "月度", "as_of": "2026-09"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(renamed["ok"], true, "{renamed}");
+        let watch = renamed["industry_after"]["core_watch"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap();
+        assert_eq!(watch["what"], "测试月度读数");
+        assert_eq!(watch["why"], "最新季度读数");
+        assert_eq!(watch["cadence"], "月度");
+        assert_eq!(watch["as_of"], "2026-09");
+        let unknown = t
+            .execute(json!({
+                "action": "set_watch", "industry": "storage", "what": "不存在的关注点"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(unknown["ok"], false);
+        assert_eq!(unknown["error"], "这一行的关注点里没有「不存在的关注点」");
+        for (action, field) in [("set_watch", "what"), ("set_brief", "question")] {
+            let missing = t
+                .execute(json!({ "action": action, "industry": "storage" }))
+                .await
+                .expect("tool");
+            assert_eq!(missing["ok"], false);
+            assert_eq!(missing["error"], format!("缺少参数 {field}"));
+        }
+        assert_eq!(
+            hone_core::industry_map::load_log(&dir).edits.len(),
+            3,
+            "拒绝操作不写日志"
+        );
+
+        let today_before = hone_core::local_now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        let brief = t
+            .execute(json!({
+                "action": "set_brief", "industry": "storage", "question": " 现在研究什么？ ",
+                "next": " 下季财报验证 ； ；月度出货确认；"
+            }))
+            .await
+            .expect("tool");
+        let today_after = hone_core::local_now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        assert_eq!(brief["ok"], true, "{brief}");
+        let show = t
+            .execute(json!({ "action": "show", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(show["ok"], true, "{show}");
+        let row = &show["industry"];
+        assert_eq!(row["brief"]["question"], "现在研究什么？");
+        assert_eq!(row["brief"]["body"], "");
+        assert_eq!(
+            row["brief"]["next"],
+            json!(["下季财报验证", "月度出货确认"])
+        );
+        let as_of = row["brief"]["as_of"].as_str().expect("简报有日期");
+        assert!(as_of == today_before || as_of == today_after, "{as_of}");
+        let (map, _) = hone_core::industry_map::load(&dir);
+        let content_as_of = map.industry("storage").unwrap().content_as_of();
+        assert!(content_as_of.is_some());
+        assert_eq!(row["content_as_of"], json!(content_as_of));
+        let overview = t.execute(json!({ "action": "show" })).await.expect("tool");
+        let row = overview["industries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == "storage")
+            .unwrap();
+        assert_eq!(row["content_as_of"], json!(content_as_of));
+
+        let cleared = t
+            .execute(json!({ "action": "clear_brief", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(cleared["ok"], true, "{cleared}");
+        let show = t
+            .execute(json!({ "action": "show", "industry": "storage" }))
+            .await
+            .expect("tool");
+        assert_eq!(show["industry"].get("brief"), Some(&Value::Null));
+        assert!(
+            hone_core::industry_map::load(&dir)
+                .0
+                .industry("storage")
+                .unwrap()
+                .brief
+                .is_none()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn v3_subtype_and_valuation_actions_work_through_the_tool() {
+        let dir = temp("v3");
+        let t = tool(&dir);
+        let up = t
+            .execute(json!({
+                "action": "upsert_subtype", "industry": "storage", "id": "Test-Sub", "name": "测试子类型",
+                "members": "sndk；wdc", "primary": "FY+2 Forward PE 50% / EV/EBITDA 50%",
+                "when": "量增价平", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(up["ok"], true, "{up}");
+        let moved = t
+            .execute(json!({
+                "action": "set_member_subtype", "industry": "storage", "symbol": "mu",
+                "subtype": "test-sub", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(moved["ok"], true, "{moved}");
+        let field = t
+            .execute(json!({
+                "action": "set_valuation_field", "industry": "storage",
+                "field": "logic.state_note", "value": "Capacity Unlock", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(field["ok"], true, "{field}");
+        let list = t
+            .execute(json!({
+                "action": "set_valuation_list", "industry": "storage",
+                "field": "anchor.forbidden", "items": "峰值季度EPS×4；DCF默认禁用", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(list["ok"], true, "{list}");
+        let bad = t
+            .execute(json!({
+                "action": "set_valuation_field", "industry": "storage",
+                "field": "anchor.paragraphs", "value": "x", "note": "本地验证"
+            }))
+            .await
+            .expect("tool");
+        assert_eq!(bad["ok"], false, "{bad}");
+        let (map, edits) = hone_core::industry_map::load(&dir);
+        assert_eq!(edits.len(), 4, "the rejected field write is not logged");
+        let storage = map.industry("storage").expect("storage");
+        let sub = storage.valuation.subtype_of("MU").expect("MU moved");
+        assert_eq!(sub.id, "test-sub");
+        assert!(
+            sub.members.contains(&"SNDK".to_string()) && sub.members.contains(&"WDC".to_string())
+        );
+        assert_eq!(storage.valuation.logic.state_note, "Capacity Unlock");
+        assert_eq!(
+            storage.valuation.anchor.forbidden,
+            vec!["峰值季度EPS×4", "DCF默认禁用"]
+        );
+        let removed = t
+            .execute(json!({ "action": "remove_subtype", "industry": "storage", "id": "test-sub", "note": "撤回" }))
+            .await
+            .expect("tool");
+        assert_eq!(removed["ok"], true, "{removed}");
+        assert!(
+            hone_core::industry_map::load(&dir)
+                .0
+                .industry("storage")
+                .unwrap()
+                .valuation
+                .subtype_of("MU")
+                .map(|s| s.id != "test-sub")
+                .unwrap_or(true)
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

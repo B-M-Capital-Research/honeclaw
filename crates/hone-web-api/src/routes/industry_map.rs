@@ -280,6 +280,15 @@ pub(crate) async fn handle_get_industry_map(
         .is_web_admin(&user.user_id)
         .await
         .unwrap_or(false);
+    // 行业本体是研究底稿——传导链、倍数锚、上游信号与成员判断，都是内部先验而不是
+    // 已发布的结论。读和写走同一条门槛：普通读者不该拿到内容，前端也就不必靠隐藏
+    // 字段来假装它是公开的。
+    if !is_admin {
+        return crate::routes::json_error(
+            axum::http::StatusCode::FORBIDDEN,
+            "行业分析仅管理员可见".to_string(),
+        );
+    }
 
     let data_root = state.core.config.storage.data_root();
     let (map, edits) = hone_core::industry_map::load(&data_root);
@@ -301,8 +310,11 @@ pub(crate) async fn handle_get_industry_map(
                 "core_watch": industry.core_watch,
                 "sources": industry.sources,
                 "upstream_signals": industry.upstream_signals,
+                "valuation": industry.valuation,
                 "members": rank_members(&industry.members, &facts, &shares),
                 "last_edited_at": last_edited.get(&industry.id),
+                "brief": industry.brief,
+                "content_as_of": industry.content_as_of(),
             })
         })
         .collect::<Vec<_>>();
@@ -335,6 +347,7 @@ pub(crate) async fn handle_get_industry_map(
         "available": true,
         "schema_version": map.schema_version,
         "generated_at": map.generated_at,
+        "content_as_of": map.content_as_of(),
         "market_data_available": !facts.is_empty(),
         "official_shares_available": official_shares_available,
         "shares_policy": "shares_outstanding.official_shares_outstanding 是监管申报封面上的官方已发行股数，比提供方数字权威——提供方会整整落后一份申报。market_cap_basis 为 price_x_official_shares 的行，market_cap 已按现价 × 官方股本重算，同一行的 provider_market_cap 是提供方原样的市值，两个口径并列给出、排序用重算值；为 provider 的行只有提供方市值一个数。有官方股数却没重算的行会写出 recompute_blocked_reason：cover_stale（封面日期已过期）、basis_not_us_domestic_periodic（20-F 等外国私人发行人报的是本土普通股而非 ADR 股数）、basis_mismatch_suspected（官方股数与提供方隐含股数差到倍数级，通常是多类别股只统计其中一类）。这三种情况都不得用官方股数推算美股市值。",
@@ -343,6 +356,7 @@ pub(crate) async fn handle_get_industry_map(
         "recent_edits": recent,
         "edit_count": edits.len(),
         "is_admin": is_admin,
+        "methodology": map.methodology,
     }))
     .into_response()
 }
@@ -718,7 +732,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn industry_map_read_is_session_only_and_edits_remain_admin_only() {
+    async fn industry_map_read_and_edits_are_both_admin_only() {
         let state = access_test_state().await;
         let anonymous = handle_get_industry_map(State(state.clone()), HeaderMap::new()).await;
         assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
@@ -730,7 +744,8 @@ mod tests {
         .await;
         assert_eq!(anonymous_edit.status(), StatusCode::UNAUTHORIZED);
 
-        // An email account without an entitlement is still a logged-in reader.
+        // A logged-in reader is refused the ontology itself, not merely the
+        // editing controls: the payload never reaches a non-administrator.
         let unpaid_user = state
             .web_auth
             .ensure_international_email_user("industry-reader@example.com")
@@ -743,11 +758,9 @@ mod tests {
         );
         let unpaid_headers = session_headers(&state, &unpaid_user.user_id).await;
         let read = handle_get_industry_map(State(state.clone()), unpaid_headers.clone()).await;
-        assert_eq!(read.status(), StatusCode::OK);
-        let snapshot = response_json(read).await;
-        assert_eq!(snapshot["available"], true);
-        assert_eq!(snapshot["is_admin"], false);
-        assert!(!snapshot["industries"].as_array().unwrap().is_empty());
+        assert_eq!(read.status(), StatusCode::FORBIDDEN);
+        let refused = response_json(read).await;
+        assert!(refused["industries"].is_null());
 
         // An ordinary user with product access must fail before body parsing.
         let user = state
@@ -798,25 +811,32 @@ mod tests {
             "Administrator updated storage overview"
         );
 
+        // An administrator's edit does not open the ontology to a reader: the same
+        // non-admin session is refused again afterwards, so neither the edited
+        // content nor the private review note reaches a reader in any payload.
         let public_read = handle_get_industry_map(State(state.clone()), unpaid_headers).await;
-        assert_eq!(public_read.status(), StatusCode::OK);
-        let public_snapshot = response_json(public_read).await;
-        assert_eq!(public_snapshot["recent_edits"], json!([]));
-        let public_json = public_snapshot.to_string();
-        assert!(!public_json.contains(&user.user_id));
-        assert!(!public_json.contains("private-admin-review-note-3d-access"));
-        let public_storage = public_snapshot["industries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|industry| industry["id"] == "storage")
-            .expect("public storage industry");
-        assert_eq!(public_storage["one_liner"], storage["one_liner"]);
-        assert!(public_storage["last_edited_at"].is_string());
+        assert_eq!(public_read.status(), StatusCode::FORBIDDEN);
+        let refused_again = response_json(public_read).await.to_string();
+        assert!(!refused_again.contains(&user.user_id));
+        assert!(!refused_again.contains("private-admin-review-note-3d-access"));
+        assert!(!refused_again.contains("Administrator updated storage overview"));
 
         let admin_read = handle_get_industry_map(State(state.clone()), headers).await;
         assert_eq!(admin_read.status(), StatusCode::OK);
         let admin_snapshot = response_json(admin_read).await;
+        for snapshot in [&edited["snapshot"], &admin_snapshot] {
+            let content_as_of = snapshot.get("content_as_of").expect("全树有内容截至日期键");
+            assert!(content_as_of.is_string() || content_as_of.is_null());
+            for industry in snapshot["industries"].as_array().unwrap() {
+                assert!(
+                    industry.get("brief").is_some(),
+                    "{} 缺简报键",
+                    industry["id"]
+                );
+                let date = industry.get("content_as_of").expect("每行有内容截至日期键");
+                assert!(date.is_string() || date.is_null());
+            }
+        }
         assert_eq!(admin_snapshot["recent_edits"][0]["by"], user.user_id);
         assert_eq!(
             admin_snapshot["recent_edits"][0]["note"],
@@ -934,10 +954,19 @@ mod tests {
             r#"{"industry":"storage","op":{"kind":"add_source","source":{"house":"h","title":"t","date":"2026-09","url":"u","takeaway":"k"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_source","url":"u"}}"#,
             r#"{"industry":"storage","op":{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"add_watch","watch":{"what":"w","why":"y","cadence":"c","as_of":"2026-08-26"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_watch","what":"w","watch":{"what":"w2","why":"y2","cadence":"c","as_of":"2026-09"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_brief","brief":{"question":"现在研究什么","body":"为什么是现在","next":["下季财报验证"],"as_of":"2026-08-26"}}}"#,
+            r#"{"industry":"storage","op":{"kind":"clear_brief"}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_watch","what":"w"}}"#,
             r#"{"industry":"storage","op":{"kind":"add_upstream_signal","signal":{"symbol":"NVDA","name":"英伟达","relation":"demand_source","why":"y","pull":["a","b"],"cadence":"q"}}}"#,
             r#"{"industry":"storage","op":{"kind":"remove_upstream_signal","symbol":"NVDA"}}"#,
             r#"{"industry":"storage","op":{"kind":"set_upstream_latest","symbol":"NVDA","latest":"FY27Q2：数据中心 $89.0B","as_of":"2026-08-26"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_valuation_field","field":"logic.state_note","value":"量增价平"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_valuation_list","field":"anchor.forbidden","items":["峰值季度EPS×4","DCF"]}}"#,
+            r#"{"industry":"storage","op":{"kind":"upsert_subtype","subtype":{"id":"nand-essd","name":"纯NAND/eSSD","members":["SNDK"],"inferred_members":[],"primary":"FY+1/FY+2 Forward PE + EV/EBITDA","secondary":"","when":"","note":""}}}"#,
+            r#"{"industry":"storage","op":{"kind":"remove_subtype","id":"nand-essd"}}"#,
+            r#"{"industry":"storage","op":{"kind":"set_member_subtype","symbol":"WDC","subtype":"hdd"}}"#,
             r#"{"industry":"cooling","op":{"kind":"add_industry","industry":{"id":"cooling","name":"散热","one_liner":"","aliases":["散热"]}}}"#,
             r#"{"industry":"cooling","op":{"kind":"remove_industry"}}"#,
         ];

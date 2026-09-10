@@ -547,6 +547,12 @@ impl HoneBotCore {
             &self.config,
         )));
 
+        // 大V速报（研究台同款快照）对所有用户开放：只读数据目录里的 JSON，
+        // 让「MU 最近有什么消息」这类问题能把 Serenity 等作者近期观点当线索带上。
+        registry.register(Box::new(hone_tools::InfluencerViewsTool::new(
+            self.config.storage.data_root(),
+        )));
+
         // deep_research 是核心分析工具，对所有用户开放
         registry.register(Box::new(DeepResearchTool::from_env()));
         tracing::info!("[HoneBotCore] 已注册通用工具 deep_research");

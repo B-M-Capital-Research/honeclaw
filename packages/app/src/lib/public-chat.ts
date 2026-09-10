@@ -120,6 +120,9 @@ export type PublicChatMessage = {
   /** 运行期间模型的实时思考摘要（reasoning_delta 累积，截尾保留）。
    *  只在进度卡渲染，最终回答落地后不再展示。 */
   reasoningLog?: string;
+  /** When the run reached a terminal frame in this tab; with `startedAt` it
+   *  gives the folded work trail its "用时 Ns". Never carried by history. */
+  finishedAt?: number;
   attachments?: PublicChatAttachment[];
   financeCalendar?: HistoryFinanceCalendar;
   scheduledPush?: {
@@ -535,6 +538,35 @@ export function rekeyTrailingOptimisticIds<
   return next;
 }
 
+/**
+ * Keeps the work trail a tab collected for a turn when a history restore is
+ * about to overwrite that turn with its server copy.
+ *
+ * History never carries `steps`, `startedAt` or `finishedAt`, and the restore
+ * that follows every finished answer reconciles by id — so without this the
+ * folded "已完成 4 步 · 用时 23s" line vanished one round trip after it
+ * appeared. Only assistant turns the tab already knows, whose server copy has
+ * no trail of its own, take the local one.
+ */
+export function carryOverLocalRunTrail(
+  previous: readonly PublicChatMessage[],
+  next: PublicChatMessage[],
+): PublicChatMessage[] {
+  if (previous.length === 0) return next;
+  const local = new Map(previous.map((message) => [message.id, message]));
+  return next.map((message) => {
+    const known = local.get(message.id);
+    if (!known || message.role !== "assistant") return message;
+    if ((message.steps?.length ?? 0) > 0 || !(known.steps?.length)) return message;
+    return {
+      ...message,
+      steps: known.steps,
+      startedAt: message.startedAt ?? known.startedAt,
+      finishedAt: message.finishedAt ?? known.finishedAt,
+    };
+  });
+}
+
 export function shouldLoadOlderPublicMessages(input: {
   scrollTop: number;
   previousScrollTop: number;
@@ -563,6 +595,68 @@ export function shouldRecoverPinnedBottom(input: {
     input.scrollTop <= 24 &&
     input.distanceFromBottom > 120
   );
+}
+
+/**
+ * Whether a history restore may drag the viewport back to the newest message.
+ *
+ * A restore is requested right after a streamed answer finishes, but it only
+ * lands after a network round trip. The user often starts reading upward in
+ * that gap, and re-pinning on arrival yanks them back to the bottom just as
+ * the reconciled bubbles repaint. So the decision is made when the restore
+ * *lands*, from the live scroll state: stay pinned only while the user still
+ * sticks to the bottom (or is within a bubble of it). `resetWindow` is a new
+ * conversation window and always lands at the bottom.
+ */
+export function shouldKeepBottomAfterRestore(input: {
+  resetWindow: boolean;
+  stickToBottom: boolean;
+  distanceFromBottom: number;
+}) {
+  if (input.resetWindow) return true;
+  if (input.stickToBottom) return true;
+  return input.distanceFromBottom < 120;
+}
+
+/**
+ * Whether a raw input gesture on the message list expresses the intent to
+ * scroll away from the newest message. Programmatic pins (`pinToBottom`)
+ * deliberately ignore `scroll` events for a while, which is right for layout
+ * settling but wrong for a real wheel/touch/scrollbar gesture: those must
+ * cancel the pin at once, otherwise the pin's queued jumps swallow the gesture
+ * and snap the user back down.
+ *
+ * A wheel tick that scrolls down (or any gesture when there is nothing above
+ * to scroll to) is not an intent to leave the bottom.
+ */
+export function isLeaveBottomGesture(input: {
+  kind: "wheel" | "touch" | "pointer";
+  deltaY?: number;
+  scrollTop: number;
+}) {
+  if (input.scrollTop <= 0) return false;
+  if (input.kind === "wheel") return (input.deltaY ?? 0) < 0;
+  return true;
+}
+
+/**
+ * Whether an upward `scroll` event was produced by layout rather than by the
+ * reader.
+ *
+ * When a reconcile briefly empties the message list, the browser clamps
+ * `scrollTop` into the smaller range — all the way to 0 if the list collapsed —
+ * and that arrives as an ordinary upward scroll. Reading it as "the reader
+ * scrolled up" clears the stick-to-bottom intent for good: nothing follows the
+ * conversation afterwards and the view stays at the top. Only a wheel, touch or
+ * scrollbar gesture proves a scroll came from the reader; short of that, an
+ * upward scroll that arrives while the content is shrinking is layout.
+ */
+export function isLayoutDrivenScroll(input: {
+  scrolledUp: boolean;
+  contentShrank: boolean;
+  recentGesture: boolean;
+}) {
+  return input.scrolledUp && input.contentShrank && !input.recentGesture;
 }
 
 function isPublicChatQuotaCapped(dailyLimit: number | undefined) {

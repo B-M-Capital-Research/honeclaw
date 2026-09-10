@@ -2,6 +2,8 @@ import DOMPurify from "dompurify"
 import { Marked } from "marked"
 import { codeToHtml } from "shiki"
 
+import { normalizeMathToPlainText } from "./math-text"
+
 function escapeHtmlText(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -52,8 +54,12 @@ parser.use({
   },
 })
 
+export { normalizeMathToPlainText } from "./math-text"
+
 export async function parseMarkdown(markdown: string) {
-  const html = await parser.parse(markdown ?? "")
+  // LaTeX 先翻成纯文本算式：渲染层没有数学引擎，而投研正文里的 `$` 是货币符号，
+  // 装一个数学引擎也解析不了 `\mathbf{$1,216.00}` 这种被货币符号截断的公式。
+  const html = await parser.parse(normalizeMathToPlainText(markdown ?? ""))
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
   })

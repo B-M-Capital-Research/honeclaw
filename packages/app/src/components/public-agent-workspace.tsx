@@ -13,10 +13,6 @@ import { HoneBrand } from "@/components/hone-brand";
 import { CONTENT } from "@/lib/public-content"
 import { routePrefetchHandlers } from "@/lib/route-prefetch";
 import { groupResearchByDate } from "@/lib/public-agent-workspace";
-import type {
-  AgentWorkspaceEvent,
-  AgentWorkspaceInsight,
-} from "@/lib/public-agent-workspace";
 
 type ResearchItem = { id: string; title: string; at?: string };
 
@@ -52,7 +48,7 @@ export function AgentWorkspaceIcon(props: {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.8"
+      stroke-width="1.7"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"
@@ -84,6 +80,19 @@ export function AgentWorkspaceIcon(props: {
   );
 }
 
+/** One letter for the avatar: the generic user gets the brand initial. */
+function avatarInitial(userName: string) {
+  return userName === CONTENT.chat_page.workspace.default_user ||
+    userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
+    ? "H"
+    : userName.slice(-1);
+}
+
+/**
+ * Desktop rail: brand, 「新对话」, the five destinations, then the
+ * conversation history grouped by day. The same ordering as Codex / Claude
+ * Code desktop, where starting fresh is the first control.
+ */
 export function AgentWorkspaceSidebar(props: {
   userName: string;
   research: ResearchItem[];
@@ -106,10 +115,6 @@ export function AgentWorkspaceSidebar(props: {
   onAccount: () => void;
   onLogout: () => void;
 }) {
-  const avatar = () =>
-    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
-      ? "H"
-      : props.userName.slice(-1);
   const [query, setQuery] = createSignal("");
   const filteredResearch = createMemo(() => {
     const normalized = query().trim().toLowerCase();
@@ -121,46 +126,42 @@ export function AgentWorkspaceSidebar(props: {
   });
   return (
     <aside class="agent-workspace-sidebar" aria-label={CONTENT.chat_page.workspace.brand_aria}>
-      <button type="button" class="agent-workspace-brand" onClick={props.onNewResearch} aria-label={CONTENT.chat_page.workspace.brand_aria}>
+      <button type="button" class="agent-workspace-brand" onClick={props.onHome} aria-label={CONTENT.chat_page.workspace.brand_aria}>
         <HoneBrand />
       </button>
-      <nav class="agent-workspace-nav">
+      <button type="button" class="agent-workspace-new" onClick={props.onNewResearch}>
+        <AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span>
+      </button>
+      <nav class="agent-workspace-nav" aria-label={CONTENT.chat_page.workspace.main_nav}>
         <button type="button" classList={{ "is-active": props.activeSection === "agent" }} onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>{CONTENT.chat_page.workspace.assistant_nav}</span></button>
         <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} classList={{ "is-active": props.activeSection === "research" }} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
         <Show when={props.onPushes}>{(onPushes) => <button type="button" {...routePrefetchHandlers("pushes")} classList={{ "is-active": props.activeSection === "pushes" }} onClick={onPushes()} class="agent-workspace-nav-with-dot"><AgentWorkspaceIcon name="bell" /><span>{CONTENT.chat_page.workspace.pushes_tab}</span><Show when={(props.unreadPushCount ?? 0) > 0}><i /></Show></button>}</Show>
         <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-nav-with-dot" classList={{ "is-active": props.activeSection === "insights" }}><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
         <button type="button" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
       </nav>
-      <div class="agent-workspace-sidebar-rule" />
       <div class="agent-workspace-nav-label">{CONTENT.chat_page.workspace.history_label}</div>
-      <button type="button" class={`agent-workspace-new ${props.activeSection === "agent" && props.activeMode === "overview" ? "is-active" : ""}`} onClick={props.onNewResearch}>
-        <AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span>
-      </button>
       <label class="agent-workspace-history-search">
-        <AgentWorkspaceIcon name="search" size={16} />
+        <AgentWorkspaceIcon name="search" size={15} />
         <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder={CONTENT.chat_page.workspace.search_history} />
       </label>
       <section class="agent-workspace-history">
         <Show
           when={filteredResearch().length > 0}
           fallback={
-            <>
-              <div class="agent-workspace-history-label">{CONTENT.chat_page.workspace.recent}</div>
-              <p role="status">
-                {props.researchLoading
-                  ? CONTENT.chat_page.workspace.syncing_history
-                  : query().trim()
-                    ? CONTENT.chat_page.workspace.no_match
-                    : CONTENT.chat_page.workspace.history_empty}
-              </p>
-            </>
+            <p role="status">
+              {props.researchLoading
+                ? CONTENT.chat_page.workspace.syncing_history
+                : query().trim()
+                  ? CONTENT.chat_page.workspace.no_match
+                  : CONTENT.chat_page.workspace.history_empty}
+            </p>
           }
         >
           <For each={groupResearchByDate(filteredResearch())}>{(group) => (
             <>
               <div class="agent-workspace-history-label">{group.label}</div>
               <For each={group.items}>{(item) => (
-                <button type="button" onClick={() => props.onSelectResearch(item.id)}>{item.title}</button>
+                <button type="button" title={item.title} onClick={() => props.onSelectResearch(item.id)}>{item.title}</button>
               )}</For>
             </>
           )}</For>
@@ -173,7 +174,7 @@ export function AgentWorkspaceSidebar(props: {
       </section>
       <div class="agent-workspace-user">
         <button type="button" class="agent-workspace-user-main" {...routePrefetchHandlers("me")} classList={{ "is-active": props.activeSection === "me" }} onClick={props.onAccount}>
-          <span class="agent-workspace-avatar">{avatar()}</span>
+          <span class="agent-workspace-avatar">{avatarInitial(props.userName)}</span>
           <span><strong>{props.userName}</strong><small>{CONTENT.chat_page.workspace.personal_space}</small></span>
         </button>
         <button type="button" class="agent-workspace-logout" onClick={props.onLogout}>{CONTENT.chat_page.workspace.logout}</button>
@@ -186,6 +187,8 @@ export function AgentWorkspaceTopbar(props: {
   query: string;
   unreadPushCount: number;
   label?: string;
+  /** Quiet secondary line after the title, e.g. the product tagline. */
+  context?: string;
   placeholder?: string;
   showSearch?: boolean;
   preferences?: JSX.Element;
@@ -194,9 +197,12 @@ export function AgentWorkspaceTopbar(props: {
 }) {
   return (
     <header class="agent-workspace-topbar">
-      <span>{props.label ?? CONTENT.chat_page.workspace.agent_tagline}</span>
+      <span>
+        {props.label ?? CONTENT.chat_page.workspace.agent_tagline}
+        <Show when={props.context}>{(context) => <small>{context()}</small>}</Show>
+      </span>
       <div class="agent-workspace-topbar-actions">
-        <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={17} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? CONTENT.chat_page.workspace.search_all} /></label></Show>
+        <Show when={props.showSearch !== false}><label><AgentWorkspaceIcon name="search" size={16} /><input value={props.query} onInput={(event) => props.onQueryChange(event.currentTarget.value)} placeholder={props.placeholder ?? CONTENT.chat_page.workspace.search_all} /></label></Show>
         {props.preferences}
         <button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.open_pushes}>
           <AgentWorkspaceIcon name="bell" />
@@ -215,7 +221,7 @@ export function AgentWorkspaceLoadingState(props: {
     <div class="agent-workspace-loading" role="status" aria-live="polite">
       <div class="agent-workspace-loading-copy">
         <span class="agent-workspace-loading-mark" aria-hidden="true">
-          <AgentWorkspaceIcon name="agent" size={24} />
+          <AgentWorkspaceIcon name="agent" size={22} />
         </span>
         <div>
           <strong>{props.retrying ? CONTENT.chat_page.workspace.reconnecting : CONTENT.chat_page.workspace.restoring}</strong>
@@ -235,134 +241,6 @@ export function AgentWorkspaceLoadingState(props: {
   );
 }
 
-type QuickStart = {
-  icon: IconName;
-  title: string;
-  summary: string;
-  meta: string;
-  prompt: string;
-  action?: "tracking";
-};
-
-/// Built per call so the locale proxy is read at render time; a module-level
-/// const would freeze whichever language was active at import.
-const quickStarts = (): QuickStart[] => [
-  { icon: "invest", title: CONTENT.chat_page.workspace.qa_moves_title, summary: CONTENT.chat_page.workspace.qa_moves_summary, meta: CONTENT.chat_page.workspace.qa_moves_meta, prompt: CONTENT.chat_page.workspace.qa_moves_prompt },
-  { icon: "compare", title: CONTENT.chat_page.workspace.qa_compare_title, summary: CONTENT.chat_page.workspace.qa_compare_summary, meta: CONTENT.chat_page.workspace.qa_compare_meta, prompt: CONTENT.chat_page.workspace.qa_compare_prompt },
-  { icon: "paper", title: CONTENT.chat_page.workspace.qa_filing_title, summary: CONTENT.chat_page.workspace.qa_filing_summary, meta: CONTENT.chat_page.workspace.qa_filing_meta, prompt: CONTENT.chat_page.workspace.qa_filing_prompt },
-  { icon: "track", title: CONTENT.chat_page.workspace.qa_track_title, summary: CONTENT.chat_page.workspace.qa_track_summary, meta: CONTENT.chat_page.workspace.qa_track_meta, prompt: CONTENT.chat_page.workspace.qa_track_prompt, action: "tracking" },
-];
-
-export function AgentWorkspaceOverview(props: {
-  greeting: string;
-  insights: AgentWorkspaceInsight[];
-  events: AgentWorkspaceEvent[];
-  insightCount: number;
-  searchQuery: string;
-  onPrompt: (prompt: string) => void;
-  onTracking: () => void;
-  onInsights: () => void;
-  onCalendar: () => void;
-}) {
-  const fallbackInsights = (): AgentWorkspaceInsight[] => [
-    { id: "portfolio", eyebrow: CONTENT.chat_page.workspace.seed_portfolio_eyebrow, title: CONTENT.chat_page.workspace.seed_portfolio_title, summary: CONTENT.chat_page.workspace.seed_portfolio_summary },
-    { id: "event", eyebrow: CONTENT.chat_page.workspace.seed_event_eyebrow, title: CONTENT.chat_page.workspace.seed_event_title, summary: CONTENT.chat_page.workspace.seed_event_summary },
-    { id: "research", eyebrow: CONTENT.chat_page.workspace.seed_research_eyebrow, title: CONTENT.chat_page.workspace.seed_research_title, summary: CONTENT.chat_page.workspace.seed_research_summary },
-  ];
-  const visibleInsights = createMemo(() => {
-    const source = props.insights.length ? props.insights : fallbackInsights();
-    const query = props.searchQuery.trim().toLowerCase();
-    if (!query) return source;
-    return source.filter((item) => `${item.title} ${item.summary}`.toLowerCase().includes(query));
-  });
-  const promptForInsight = (item: AgentWorkspaceInsight) =>
-    CONTENT.chat_page.workspace.insight_prompt
-      .replace("{title}", item.title)
-      .replace("{summary}", item.summary);
-  return (
-    <main class="agent-workspace-overview">
-      <div class="agent-workspace-title-row">
-        <div><h1>投资助手</h1><div class="agent-workspace-context">{CONTENT.chat_page.workspace.context_prefix}<span>{CONTENT.chat_page.workspace.context_portfolio}</span><span>{CONTENT.chat_page.workspace.context_events}</span></div></div>
-      </div>
-      <section class="agent-workspace-greeting">
-        <span class="agent-workspace-agent-mark"><AgentWorkspaceIcon name="agent" size={25} /></span>
-        <div><h2>{props.greeting}</h2><p>{CONTENT.chat_page.workspace.insight_count.replace("{count}", String(props.insightCount))}</p></div>
-      </section>
-      <section class="agent-workspace-section">
-        <div class="agent-workspace-section-heading"><h2>{CONTENT.chat_page.workspace.quick_start}</h2><span>{CONTENT.chat_page.workspace.quick_start_hint}</span></div>
-        <div class="agent-workspace-quick-grid">
-          <For each={quickStarts()}>{(item) => (
-            <button type="button" onClick={() => item.action === "tracking" ? props.onTracking() : props.onPrompt(item.prompt)}>
-              <AgentWorkspaceIcon name={item.icon} />
-              <strong>{item.title}</strong><span>{item.summary}</span><small>{item.meta}</small>
-            </button>
-          )}</For>
-        </div>
-      </section>
-      <section class="agent-workspace-section agent-workspace-insights">
-        <div class="agent-workspace-section-heading"><h2>{CONTENT.chat_page.workspace.today_insights}</h2><button type="button" onClick={props.onInsights}>{CONTENT.chat_page.workspace.browse_community} <AgentWorkspaceIcon name="arrow" size={16} /></button></div>
-        <div class="agent-workspace-insight-list">
-          <Show when={visibleInsights().length > 0} fallback={<div class="agent-workspace-empty">{CONTENT.chat_page.workspace.no_insight_match}</div>}>
-            <For each={visibleInsights()}>{(item) => (
-              <button type="button" onClick={() => props.onPrompt(promptForInsight(item))}>
-                <i /><span><small>{item.eyebrow}</small><strong>{item.title}</strong><em>{item.summary}</em></span><AgentWorkspaceIcon name="arrow" />
-              </button>
-            )}</For>
-          </Show>
-        </div>
-      </section>
-      <section class="agent-workspace-section agent-workspace-mobile-events">
-        <div class="agent-workspace-section-heading">
-          <h2>{CONTENT.chat_page.workspace.key_events}</h2>
-          <button type="button" onClick={props.onCalendar}>
-            {CONTENT.chat_page.workspace.finance_calendar} <AgentWorkspaceIcon name="arrow" size={16} />
-          </button>
-        </div>
-        <button type="button" onClick={props.onCalendar}>
-          <span class="agent-workspace-mobile-event-icon">
-            <AgentWorkspaceIcon name="calendar" />
-          </span>
-          <span>
-            <strong>{props.events[0]?.title ?? CONTENT.chat_page.workspace.open_my_calendar}</strong>
-            <small>
-              {props.events[0]
-                ? `${props.events[0].date} ${props.events[0].time}`.trim()
-                : CONTENT.chat_page.workspace.calendar_summary}
-            </small>
-          </span>
-          <AgentWorkspaceIcon name="arrow" />
-        </button>
-      </section>
-    </main>
-  );
-}
-
-export function AgentWorkspaceRightRail(props: {
-  events: AgentWorkspaceEvent[];
-  research: ResearchItem[];
-  onCalendar: () => void;
-  onSelectResearch: (id: string) => void;
-}) {
-  return (
-    <aside class="agent-workspace-rail">
-      <section><div class="agent-workspace-rail-heading"><h2>{CONTENT.chat_page.workspace.upcoming_events}</h2><button type="button" onClick={props.onCalendar}>{CONTENT.chat_page.workspace.finance_calendar}</button></div>
-        <div class="agent-workspace-event-list">
-          <Show when={props.events.length > 0} fallback={<button type="button" onClick={props.onCalendar} class="agent-workspace-rail-empty"><AgentWorkspaceIcon name="calendar" /><span>{CONTENT.chat_page.workspace.open_your_calendar}</span></button>}>
-            <For each={props.events}>{(event) => <button type="button" onClick={props.onCalendar}><span><strong>{event.title}</strong><small>{event.date}{event.time ? ` ${event.time}` : ""}</small><em>{event.summary}</em></span><AgentWorkspaceIcon name="arrow" size={15} /></button>}</For>
-          </Show>
-        </div>
-      </section>
-      <section><div class="agent-workspace-rail-heading"><h2>{CONTENT.chat_page.workspace.recent_research}</h2></div>
-        <div class="agent-workspace-saved-list">
-          <Show when={props.research.length > 0} fallback={<p>{CONTENT.chat_page.workspace.research_empty}</p>}>
-            <For each={props.research.slice(0, 3)}>{(item) => <button type="button" onClick={() => props.onSelectResearch(item.id)}><strong>{item.title}</strong><small>{CONTENT.chat_page.workspace.continue_research}</small></button>}</For>
-          </Show>
-        </div>
-      </section>
-    </aside>
-  );
-}
-
 export function AgentWorkspaceMobileHeader(props: {
   userName: string;
   unreadPushCount: number;
@@ -373,11 +251,7 @@ export function AgentWorkspaceMobileHeader(props: {
   onMenu?: () => void;
   onAccount: () => void;
 }) {
-  const avatar = () =>
-    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
-      ? "H"
-      : props.userName.slice(-1);
-  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label={CONTENT.chat_page.workspace.open_menu} class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label={CONTENT.chat_page.workspace.history_title} class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.pushes}><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={CONTENT.chat_page.workspace.open_account.replace("{name}", props.userName)}>{avatar()}</button></div></header>;
+  return <header class="agent-workspace-mobile-header"><div class="agent-workspace-mobile-header-left"><Show when={props.onMenu}>{(onMenu) => <button type="button" onClick={onMenu()} aria-label={CONTENT.chat_page.workspace.open_menu} class="agent-workspace-mobile-menu-trigger"><AgentWorkspaceIcon name="menu" /></button>}</Show><HoneBrand /></div><div><Show when={props.onMenu ? undefined : props.onHistory}>{(onHistory) => <button type="button" onClick={onHistory()} aria-label={CONTENT.chat_page.workspace.history_title} class="agent-workspace-mobile-history-trigger"><AgentWorkspaceIcon name="history" /><Show when={(props.historyCount ?? 0) > 0}><span>{Math.min(props.historyCount ?? 0, 99)}</span></Show></button>}</Show>{props.preferences}<button type="button" onClick={props.onPushes} aria-label={CONTENT.chat_page.workspace.pushes}><AgentWorkspaceIcon name="bell" /><Show when={props.unreadPushCount > 0}><i /></Show></button><button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount} class="agent-workspace-mobile-avatar" aria-label={CONTENT.chat_page.workspace.open_account.replace("{name}", props.userName)}><span class="agent-workspace-avatar">{avatarInitial(props.userName)}</span></button></div></header>;
 }
 
 /**
@@ -403,10 +277,6 @@ export function AgentWorkspaceHistoryDrawer(props: {
   onAccount: () => void;
 }) {
   const [query, setQuery] = createSignal("");
-  const avatar = () =>
-    props.userName === CONTENT.chat_page.workspace.default_user || props.userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
-      ? "H"
-      : props.userName.slice(-1);
   const filteredResearch = createMemo(() => {
     const normalized = query().trim().toLowerCase();
     if (!normalized) return props.research;
@@ -486,12 +356,13 @@ export function AgentWorkspaceHistoryDrawer(props: {
         </header>
         <nav class="agent-workspace-drawer-nav" aria-label={CONTENT.chat_page.workspace.main_menu}>
           <button type="button" class="agent-workspace-drawer-new" onClick={props.onNewResearch}><AgentWorkspaceIcon name="new" /><span>{CONTENT.chat_page.workspace.new_chat}</span></button>
+          <button type="button" onClick={props.onHome}><AgentWorkspaceIcon name="agent" /><span>{CONTENT.chat_page.workspace.assistant_nav}</span></button>
           <Show when={props.onResearchDesk}>{(onResearchDesk) => <button type="button" {...routePrefetchHandlers("research")} onClick={onResearchDesk()}><AgentWorkspaceIcon name="research" /><span>{CONTENT.chat_page.workspace.research}</span></button>}</Show>
           <button type="button" {...routePrefetchHandlers("community")} onClick={props.onInsights} class="agent-workspace-drawer-with-dot"><AgentWorkspaceIcon name="insight" /><span>{CONTENT.chat_page.workspace.insights}</span><Show when={props.communityUnread}><i /></Show></button>
           <button type="button" {...routePrefetchHandlers("me")} onClick={props.onAccount}><AgentWorkspaceIcon name="me" /><span>{CONTENT.chat_page.workspace.me}</span></button>
         </nav>
         <label class="agent-workspace-history-search agent-workspace-drawer-search">
-          <AgentWorkspaceIcon name="search" size={16} />
+          <AgentWorkspaceIcon name="search" size={15} />
           <input value={query()} onInput={(event) => setQuery(event.currentTarget.value)} placeholder={CONTENT.chat_page.workspace.search_chats} />
         </label>
         <div class="agent-workspace-history-drawer-label">{CONTENT.chat_page.workspace.chat_records}</div>
@@ -527,7 +398,7 @@ export function AgentWorkspaceHistoryDrawer(props: {
           </Show>
         </div>
         <button type="button" class="agent-workspace-drawer-user" onClick={props.onAccount}>
-          <span class="agent-workspace-avatar">{avatar()}</span>
+          <span class="agent-workspace-avatar">{avatarInitial(props.userName)}</span>
           <span><strong>{props.userName}</strong><small>{CONTENT.chat_page.workspace.personal_space}</small></span>
         </button>
       </aside>

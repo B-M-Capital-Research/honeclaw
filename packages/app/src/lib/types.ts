@@ -1050,6 +1050,8 @@ export type IndustryKeyVariable = {
   name: string;
   why: string;
   where: string;
+  /** why 里的数字截至哪一天（"2026-08-26"）或哪个月（"2026-06"）；底稿没标时缺省。 */
+  as_of?: string;
 };
 
 export type IndustryAiValuationLogic = {
@@ -1066,6 +1068,19 @@ export type IndustryCoreWatch = {
   what: string;
   why: string;
   cadence: string;
+  /** why 里的数字截至哪一天或哪个月；旧后端与旧日志没有这个字段，读端按空串兜底。 */
+  as_of?: string;
+};
+
+/**
+ * 行业简报：页面第一块「当前重点」。question 是现在值得研究的问题，next 是下一次验证什么，
+ * as_of 是这份判断截至哪一天。管理员每季财报或口径变化后先改它；没写时页面用底稿派生。
+ */
+export type IndustryBrief = {
+  question: string;
+  body: string;
+  next: string[];
+  as_of: string;
 };
 
 export type IndustrySource = {
@@ -1160,6 +1175,85 @@ export type IndustryEdit = {
   note: string;
 };
 
+/** 一条公式：原文 + 一句说明。 */
+export type IndustryFormula = { formula: string; note: string };
+
+/** 底层估值逻辑：未来 1–3 年收入、利润、现金流为什么会变。 */
+export type IndustryValuationLogic = {
+  summary: string;
+  paragraphs: string[];
+  formulas: IndustryFormula[];
+  forward_focus: string[];
+  /** 这一行现在典型处在哪个 State；空串表示底稿没写。 */
+  state_note: string;
+};
+
+/** 倍数锚：在什么阶段用哪个前瞻财年、哪一族倍数、区间由什么决定、什么被禁止。 */
+export type IndustryValuationAnchor = {
+  paragraphs: string[];
+  upper_range_drivers: string;
+  revision_optionality: string;
+  forbidden: string[];
+};
+
+/**
+ * 子类型：同一行里价值链位置不同的公司，各自的主锚 / 次锚与适用阶段。
+ * inferred_members 是底稿按最近子类型推断、待人工确认的成员；members 是明确归入的。
+ */
+export type IndustrySubtype = {
+  /** 小写 kebab-case。 */
+  id: string;
+  name: string;
+  members: string[];
+  inferred_members: string[];
+  primary: string;
+  secondary: string;
+  when: string;
+  note: string;
+  /** V5.3：这个子类型收哪些公司、不收哪些（含没有代码的私有公司）；旧后端没有，读端按空串兜底。 */
+  scope_note?: string;
+};
+
+/** V5.3 可观测变量：定义与口径、去哪取、多久更新、怎么传到财务；数值本身不放这里（带日期的量在旧版变量表）。 */
+export type IndustryObservable = {
+  name: string;
+  definition: string;
+  source: string;
+  cadence: string;
+  transmission: string;
+};
+
+export type IndustryValuation = {
+  logic: IndustryValuationLogic;
+  anchor: IndustryValuationAnchor;
+  subtypes: IndustrySubtype[];
+  /** V5.3 新增的行级散文与变量表；后端与前端分开上线，旧后端没带时按空值渲染。 */
+  upstream_summary?: string;
+  transmission?: string;
+  observables?: IndustryObservable[];
+  subtype_intro?: string;
+  sources_note?: string;
+};
+
+/** 「规则名 → 执行要求」或「输出字段 → 输出要求」，两张表同一形状。 */
+export type IndustryMethodRule = { rule: string; requirement: string };
+
+/** HOne 前瞻估值执行版的通用部分，挂在树根上，所有行共用。 */
+export type IndustryMethodology = {
+  version: string;
+  positioning: string;
+  principle: string;
+  demand_chain: string[];
+  core_principle: string;
+  execution_rules: IndustryMethodRule[];
+  hindsight_error: string;
+  output_fields: IndustryMethodRule[];
+  /** V5.3：全局技术口径、估值引擎验收算例、方法与核验来源；旧后端没带时为空。 */
+  technical_conventions?: IndustryMethodRule[];
+  acceptance_cases?: IndustryMethodRule[];
+  references?: IndustryMethodRule[];
+};
+
 export type Industry = {
   id: string;
   name: string;
@@ -1173,12 +1267,24 @@ export type Industry = {
   sources: IndustrySource[];
   /** 这一行的需求源头与卡口；渲染时按空列表兜底，后端先后上线也不至于整页报错。 */
   upstream_signals: IndustryUpstreamSignal[];
+  /** 前瞻估值：底层逻辑、倍数锚与子类型；旧后端没带时读端按空结构兜底。 */
+  valuation: IndustryValuation;
+  /** 行业简报；底稿没写或旧后端没带时为 null / 缺省。 */
+  brief?: IndustryBrief | null;
+  /**
+   * 这一行内容里最新的事实截至日（简报、上游动作、关注点、来源里最大的那个日期，原样写法）。
+   * 与 last_edited_at 是两回事：那是编辑时钟，改个错别字也会前移。
+   */
+  content_as_of?: string | null;
 };
 
 export type IndustryMapSnapshot = {
   available: boolean;
   schema_version: number;
+  /** 底稿版本日期：整份底稿重新发版时才前移，不表示内容新鲜度；新鲜度看 content_as_of。 */
   generated_at: string;
+  /** 各行 content_as_of 的最大值；旧后端没带时缺省。 */
+  content_as_of?: string | null;
   /** false 表示本次没取到行情，成员仍然全部返回，只是失去市值排序。 */
   market_data_available: boolean;
   /** false 表示本次一家都没有官方股本（worker 还没跑过），全部行退回提供方市值。 */
@@ -1192,6 +1298,8 @@ export type IndustryMapSnapshot = {
   edit_count: number;
   /** true 时页面露出「编辑本体」开关；写入仍由后端按会话再核一次。 */
   is_admin: boolean;
+  /** 前瞻估值执行版的通用方法论；旧后端没带时读端按空结构兜底。 */
+  methodology: IndustryMethodology;
 };
 
 /** 管理员可就地改的文本字段；短版是每轮注入模型的压缩版。 */
@@ -1204,6 +1312,24 @@ export type IndustryEditField =
   | "anti_pattern_short";
 
 export type IndustryNewMember = Pick<IndustryMember, "symbol" | "name" | "role">;
+
+/** `set_valuation_field` 能改的文本字段。 */
+export type IndustryValuationTextField =
+  | "logic.summary"
+  | "logic.state_note"
+  | "anchor.upper_range_drivers"
+  | "anchor.revision_optionality"
+  | "upstream_summary"
+  | "transmission"
+  | "subtype_intro"
+  | "sources_note";
+
+/** `set_valuation_list` 能整表替换的列表字段。 */
+export type IndustryValuationListField =
+  | "logic.paragraphs"
+  | "logic.forward_focus"
+  | "anchor.paragraphs"
+  | "anchor.forbidden";
 
 /** 在线新增一个行业时提交的骨架；其余字段留空，之后用别的改动填。 */
 export type IndustryNewIndustry = {
@@ -1223,10 +1349,21 @@ export type IndustryEditOp =
   | { kind: "remove_source"; url: string }
   | { kind: "add_watch"; watch: IndustryCoreWatch }
   | { kind: "remove_watch"; what: string }
+  /** 整条替换一条关注点，按现有 what 定位（watch.what 可以是改后的新标题）。 */
+  | { kind: "set_watch"; what: string; watch: IndustryCoreWatch }
+  | { kind: "set_brief"; brief: IndustryBrief }
+  | { kind: "clear_brief" }
   | { kind: "add_upstream_signal"; signal: IndustryUpstreamSignal }
   | { kind: "remove_upstream_signal"; symbol: string }
   /** 只改一条上游信号的「最近动作」与它的截至日期，按 symbol 找到那条。 */
   | { kind: "set_upstream_latest"; symbol: string; latest: string; as_of: string }
+  | { kind: "set_valuation_field"; field: IndustryValuationTextField; value: string }
+  | { kind: "set_valuation_list"; field: IndustryValuationListField; items: string[] }
+  /** 新增或整体替换一个子类型（按 id 匹配）；id 须为小写 kebab-case，members 是代码。 */
+  | { kind: "upsert_subtype"; subtype: IndustrySubtype }
+  | { kind: "remove_subtype"; id: string }
+  /** 把一家公司挪到某个子类型，从其它子类型（含推断）里移出。 */
+  | { kind: "set_member_subtype"; symbol: string; subtype: string }
   /** 此时请求体的 industry 就是新行业的 id。 */
   | { kind: "add_industry"; industry: IndustryNewIndustry }
   | { kind: "remove_industry" };
@@ -1527,6 +1664,8 @@ export type InfluencerDigestSnapshot = {
   timezone: string;
   next_refresh_at: string;
   lookback_hours: number;
+  /** Worker cadence, so the panel prints "每 15 分钟同步" from data. */
+  refresh_interval_minutes?: number;
   model_version: string;
   status: string;
   summary: string;
@@ -1537,6 +1676,10 @@ export type InfluencerDigestSnapshot = {
     items: number;
     analyzed: number;
   };
+  latest_published_at?: string | null;
+  latest_published_at_local?: string;
+  /** Posts published in the last 24 hours. */
+  fresh_24h?: number;
   authors: Array<{
     id: string;
     name: string;
@@ -1546,6 +1689,8 @@ export type InfluencerDigestSnapshot = {
     source_status: string;
     item_count: number;
     last_published_at?: string | null;
+    /** The source failed this round; these posts are last round's. */
+    carried_over?: boolean;
   }>;
   items: InfluencerDigestItem[];
   disclaimer: string;

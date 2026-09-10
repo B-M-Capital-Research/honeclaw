@@ -44,6 +44,9 @@ import {
   stripAttachmentMarkers,
   toPublicChatMessages,
   unreadCountAfterScheduledPush,
+  shouldKeepBottomAfterRestore,
+  isLeaveBottomGesture,
+  isLayoutDrivenScroll,
 } from "@/lib/public-chat";
 import type { HistoryMsg } from "@/lib/types";
 
@@ -1006,5 +1009,127 @@ describe("public chat history window", () => {
         pinnedToBottom: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("chat scroll intent", () => {
+  it("a restore decides from the scroll state it lands in, not the one it was requested in", () => {
+    // 用户在请求飞行途中往上读了：落地时必须留在原处。
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: false,
+        distanceFromBottom: 900,
+      }),
+    ).toBe(false);
+    // 仍贴着底 / 只差一个气泡 / 新会话窗口：照常回到最新一条。
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: true,
+        distanceFromBottom: 900,
+      }),
+    ).toBe(true);
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: false,
+        stickToBottom: false,
+        distanceFromBottom: 60,
+      }),
+    ).toBe(true);
+    expect(
+      shouldKeepBottomAfterRestore({
+        resetWindow: true,
+        stickToBottom: false,
+        distanceFromBottom: 5000,
+      }),
+    ).toBe(true);
+  });
+
+  it("only an upward gesture with somewhere to go releases the bottom pin", () => {
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: -120, scrollTop: 800 })).toBe(true);
+    // 往下滚不是离开底部的意图。
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: 120, scrollTop: 800 })).toBe(false);
+    // 短对话上面没内容可滚时不解除，否则新回复就不跟随了。
+    expect(isLeaveBottomGesture({ kind: "wheel", deltaY: -120, scrollTop: 0 })).toBe(false);
+    expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 800 })).toBe(true);
+    expect(isLeaveBottomGesture({ kind: "touch", scrollTop: 0 })).toBe(false);
+    expect(isLeaveBottomGesture({ kind: "pointer", scrollTop: 800 })).toBe(true);
+  });
+
+  it("a clamp from shrinking content is not the reader scrolling up", () => {
+    // reconcile 让列表塌一下，浏览器把 scrollTop 夹到 0——这不是用户上滑，
+    // 当成上滑就会永久关掉"跟随最新消息"，视口从此停在顶部。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: true, recentGesture: false }),
+    ).toBe(true);
+    // 刚刚有滚轮/触摸/拖滚动条：用户的意图优先，即使内容同时在变短。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: true, recentGesture: true }),
+    ).toBe(false);
+    // 内容没变短的上滑，一律算用户的。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: true, contentShrank: false, recentGesture: false }),
+    ).toBe(false);
+    // 往下滚不适用这条规则。
+    expect(
+      isLayoutDrivenScroll({ scrolledUp: false, contentShrank: true, recentGesture: false }),
+    ).toBe(false);
+  });
+
+  it("a botched prepend compensation is what pages in yet more history", () => {
+    // 补偿没做对时视口停在顶端；再一个向上的动作就会继续翻页——用户看到的是「一直被拉到最顶上」。
+    const atTopAfterBadCompensation = {
+      scrollTop: 8,
+      previousScrollTop: 400,
+      distanceFromBottom: 4000,
+      hasOlderMessages: true,
+      loadingOlderMessages: false,
+      sendingOrStreaming: false,
+    };
+    expect(shouldLoadOlderPublicMessages(atTopAfterBadCompensation)).toBe(true);
+    // 锚定补偿把视口留在原来的阅读位置，就不会再触发翻页。
+    expect(
+      shouldLoadOlderPublicMessages({ ...atTopAfterBadCompensation, scrollTop: 620 }),
+    ).toBe(false);
+  });
+});
+
+import { carryOverLocalRunTrail } from "@/lib/public-chat";
+
+describe("public chat work trail survives the post-answer restore", () => {
+  const local = [
+    { id: "u1", role: "user" as const, content: "戴尔超预期吗", phase: "done" as const },
+    {
+      id: "a1",
+      role: "assistant" as const,
+      content: "结论……",
+      phase: "done" as const,
+      steps: ["核验实体", "读取财报口径"],
+      startedAt: 1000,
+      finishedAt: 24000,
+    },
+  ];
+
+  it("keeps the local steps and timing when the server copy has none", () => {
+    const restored = carryOverLocalRunTrail(local, [
+      { id: "u1", role: "user", content: "戴尔超预期吗", phase: "done", steps: [] },
+      { id: "a1", role: "assistant", content: "结论……", phase: "done", steps: [] },
+    ]);
+    expect(restored[1]?.steps).toEqual(["核验实体", "读取财报口径"]);
+    expect(restored[1]?.startedAt).toBe(1000);
+    expect(restored[1]?.finishedAt).toBe(24000);
+    // The user turn and unknown ids pass through untouched.
+    expect(restored[0]?.steps).toEqual([]);
+  });
+
+  it("prefers a trail the server sends and leaves unknown turns alone", () => {
+    const restored = carryOverLocalRunTrail(local, [
+      { id: "a1", role: "assistant", content: "", phase: "running", steps: ["服务端步骤"] },
+      { id: "a2", role: "assistant", content: "新回答", phase: "done", steps: [] },
+    ]);
+    expect(restored[0]?.steps).toEqual(["服务端步骤"]);
+    expect(restored[1]?.steps).toEqual([]);
+    expect(carryOverLocalRunTrail([], restored)).toBe(restored);
   });
 });

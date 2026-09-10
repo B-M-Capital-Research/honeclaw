@@ -8737,6 +8737,12 @@ fn append_agent_entity_discovery_context(
          对于确属的投研请求，保持标准的同一主 Agent function-calling loop：当前问题仍缺关键证据时只调用所需真实业务工具；合理取证完成，或必要来源经实际尝试后明确不可得时，直接返回一次完整自然终稿。工具结果原样留在当前上下文中；可能继续调用工具的轮次只形成工具调用，完整 Stop + Done 自然终稿一次发送并原样持久化。\n\
          本轮回答的时间锚点固定为{clock_label} {answer_time}，它与上方 Session 上下文来自同一次时钟读取。完成当前请求所需的工具调用后，在生成最终回答前自行检查表达：第一可见字符必须是“数”，第一条非空行必须严格以 `数据时间：{clock_label} {answer_time}；行情口径：` 开头（时区写人话，不要出现“运行时时区”“Asia/Shanghai”这类内部标识）。禁止在该行之前输出 `---`、Markdown 标题、代码围栏、问候、计划、免责声明或“结论”。\n\
          `行情口径：` 后的报价事实必须来自本轮 quote 字段；有 provider timestamp 时优先使用 hone_quote_time.local，并明确“最新可得、非逐笔”口径。涨跌幅一律引用服务端算好的 `hone_change_basis.pct`（扩展时段则引用 `extended_hours` 里 `hone_session_summaries` 对应窗口按 `canonical_change_basis` 指明的那个字段：常规日涨跌用 `pct_change_close_to_close`，盘前用 `pct_change_vs_previous_regular_close`，盘后用 `pct_change_vs_regular_close`；`pct_change_vs_prev_session_close` 只是相邻窗口之差，不是日涨跌），不要自己拿两个价格相除，也不要直接抄 provider 的 `changesPercentage`——它的基准时刻未必是你正在展示的那一个。引用时必须连同 `hone_change_basis.label` 给出的名称一起用：同一个差值在盘中是当日涨跌、在盘前只是最新价较上一常规收盘，改个名字充当另一个是错的。同一行里的价格与涨跌幅必须来自同一时刻、同一个对象；跨时刻必须分行或逐个标注时间戳。`hone_change_basis.cannot_prove` 出现时，说明本轮 quote 证明不了常规时段涨跌，缺这一项就按缺口如实说明或另取 extended_hours，不得用手头这个百分比顶替。market_date_new_york / new_york 只表示纽约时区日期 / 时间，不证明交易所、交易时段或已经收盘，禁止据此写‘纽交所’或‘收盘价’；交易所只取 exchange / exchangeShortName，交易时段只有工具明确提供时才写。若某个标的本轮 provider 确实没有覆盖（例如非美股上市、注册表查无此代码），不要因此把它从对比或结论里删掉，也不要写成\u{201c}无法核验\u{201d}就收尾：可以使用本轮公开检索得到的行情或财务数字，但必须逐条注明来源名称、原始 URL 与该数字的截至日期，并显式标注这是公开来源口径而非 provider 报价；这类数字不得写进 `行情口径：` 首行，也不得与 provider 报价并列在同一列而不加区分。实体 search/profile 只证明身份，不证明客户、供应商、投资、持股、合同或合作。宽泛关系题由主 Agent 按完整语义自主枚举相关维度，通常分别核查商业/客户供应/技术合同与投资持股，优先 SEC、公司 IR 或双方公告，不得泛搜索后凭记忆收口。每条关系事实的数字、方向、排名、角色、权利义务、型号与估值标签都必须直接来自本轮真实来源；终稿在事实旁内联来源标题与原始 URL。URL 只定位来源，不替代内容支持。超出原文的判断另起句以‘推断：’开头；缺失不能写成否定事实。没有足够原文前提时保持中性事实归纳，不扩写成核心、最大、大客户、高度依赖、锁定或多重绑定。首行之后按用户实际问题选择回答形状。克制的是断言强度而不是覆盖面：关系类判断保持最小充分，同时必须把本轮已取得的证据用足——凡是当前工具结果能支持的口径、时段、趋势、环比同比、利润率、现金流、资产负债结构、估值基准、催化剂与风险，都应当在与用户问题相关时展开并给出具体数字，不得因为惜字而把已核验的证据留在上下文里不用，也不得把已核验的口径写成\u{201c}本轮未核验\u{201d}。真正缺失的口径按缺口如实披露。\n\n\
+         【研究深度：每一问都是一次研究，篇幅跟着证据走】\n\
+         - 用户的问句再短，也按完整研究成品交付；篇幅由本轮取到的证据量决定，不由问句字数决定。终稿默认包含并逐块展开：结论段；已核验事实（每个关键数字带期间、单位、口径、相对谁的预期与差值）；分部与驱动拆解（收入从哪来、哪一块在变、为什么）；指引与管理层表述（新旧指引原值对照、引语出处与日期）；市场反应与时段口径；这次改写了哪个长期变量、原判断加强 / 削弱 / 失效；估值再锚定（本轮输入可得时算出区间与现价位置，不得用“要不要接着算”把它留给下一轮）；Bull / Bear / Base 各自的数字链；催化剂、风险与证伪条件；动作框架与触发条件。与问题无关的块可以合并，但不得整块省略；每块都要写到具体数字与因果链，禁止用一行标签式的话带过。\n\
+         - 发送前自查：把终稿与本轮工具结果逐项对照，凡是已取到却没写进正文的口径、分部、时段、指引、现金流与估值输入，补写进对应块再发送；这一步产生的是更长、更完整的终稿，不是更多免责声明。\n\
+         - 篇幅下限是硬要求，不是风格偏好：公司深度、财报解读、估值、板块产业链、宏观市场、持仓复核这几类终稿，中文正文不少于 1500 字，本轮证据充分时通常落在 2500–4000 字；英文按等量信息折算。行情速查、关系确认、单点事实不设下限，但也要带数据口径、当日语境与一句含义。简短只属于问候、记账追问、实体澄清与产品使用类问题。\n\
+         - 长度只能由已核验证据、算式、拆解与情景推演堆出来。禁止用复述问题、重复结论、罗列免责声明、堆通用投资常识或交代自己做过什么来凑字数；这类内容一句不写也不影响完整性。\n\
+         - 禁止把内容留到下一轮：不得以“需要的话我可以继续展开”“要不要接着算”“如需详细分析请告诉我”这类问句或承诺收尾。本轮能算的现在算完，能展开的现在展开。\n\
          【数字与财报的口径纪律：软引导，不是拒答门禁】\n\
          - 引用任何季度/年度财报数字前，先用 data_fetch(earnings_status) 或本轮已有工具结果对齐该季度的发布状态；未发布季度的数字一律明确标注为公司指引、一致预期或假设，不得写成已公布实际业绩。财报前瞻（preview）只能使用已发布历史财报+现行指引+明确标注的假设；财报分析（analysis）前先确认该季度已在官方渠道发布。\n\
          - 关键财务数字随手标注四要素：期间（哪个季度/财年/TTM）、单位（注意亿/百万换算，勿出现 10 倍量级错）、口径（GAAP/Non-GAAP）、性质（历史实际/公司指引/一致预期/分析师假设）。给估值结论时展示可复算要素：As-of 日期、现价、分母（哪个 EPS/FCF、哪个期间）与来源，让读者能用同样输入得到同样结果。\n\
@@ -14339,6 +14345,21 @@ mod tests {
         assert!(answer_contract.contains("不得因为惜字而把已核验的证据留在上下文里不用"));
         assert!(answer_contract.contains("也不得把已核验的口径写成“本轮未核验”"));
         assert!(answer_contract.contains("真正缺失的口径按缺口如实披露。"));
+        // Every investment question is a research deliverable: depth follows
+        // the evidence gathered this turn, never the length of the question.
+        assert!(answer_contract.contains("【研究深度：每一问都是一次研究，篇幅跟着证据走】"));
+        assert!(answer_contract.contains("篇幅由本轮取到的证据量决定，不由问句字数决定"));
+        assert!(answer_contract.contains("不得用“要不要接着算”把它留给下一轮"));
+        assert!(answer_contract.contains("不得整块省略"));
+        assert!(answer_contract.contains("补写进对应块再发送"));
+        assert!(answer_contract.contains("简短只属于问候、记账追问、实体澄清与产品使用类问题"));
+        // The floor is stated as a number so a one-line question cannot come
+        // back as a one-screen answer, and it may only be met with evidence.
+        assert!(answer_contract.contains("篇幅下限是硬要求，不是风格偏好"));
+        assert!(answer_contract.contains("中文正文不少于 1500 字"));
+        assert!(answer_contract.contains("2500–4000 字"));
+        assert!(answer_contract.contains("禁止用复述问题、重复结论、罗列免责声明"));
+        assert!(answer_contract.contains("禁止把内容留到下一轮"));
         // The user-facing language boundary closes the contract: internal
         // process words stay out of the answer, and partial gaps never turn
         // into a refusal.

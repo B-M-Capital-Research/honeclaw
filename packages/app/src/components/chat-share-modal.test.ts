@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import {
   ShareRenderError,
@@ -9,7 +10,10 @@ import {
   isShareAbortError,
   isShareRenderError,
   recentShareMessages,
-  shareUserBubbleStyle,
+  shareDateLabel,
+  sharePickerPreview,
+  shareQuestionStyle,
+  shareTextForClipboard,
 } from "./chat-share-export";
 
 async function expectCanvasEncodingError(
@@ -24,13 +28,38 @@ async function expectCanvasEncodingError(
 }
 
 describe("chat share export errors", () => {
-  test("centers exported user queries inside their dark bubble", () => {
-    const style = shareUserBubbleStyle(16.5);
+  test("renders the shared question as a quiet left-aligned block", () => {
+    const style = shareQuestionStyle(15);
 
-    expect(style.display).toBe("flex");
-    expect(style["align-items"]).toBe("center");
-    expect(style["justify-content"]).toBe("center");
-    expect(style["text-align"]).toBe("center");
+    expect(style["text-align"]).toBe("left");
+    expect(style["align-self"]).toBe("flex-end");
+    expect(style["font-size"]).toBe("15px");
+    // html2canvas cannot evaluate color-mix(); the fills stay literal.
+    expect(style.background).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  test("copies an exchange as labelled plain text with one attribution line", () => {
+    const text = shareTextForClipboard(
+      [
+        { role: "user", content: "  戴尔超预期吗 " },
+        { role: "assistant", content: "结论：营收与 EPS 双超预期。" },
+      ],
+      { user: "我", assistant: "HONE" },
+      "—— 来自 HONE",
+    );
+    expect(text).toBe("我：戴尔超预期吗\n\nHONE：结论：营收与 EPS 双超预期。\n\n—— 来自 HONE");
+  });
+
+  test("previews a message as prose, without markdown syntax", () => {
+    expect(
+      sharePickerPreview("**结论：营收与 EPS 双超预期。** 盘后股价\n\n## 已核验事实\n\n- 营收 `297.8 亿`\n1. 若冲高"),
+    ).toBe("结论：营收与 EPS 双超预期。 盘后股价 已核验事实 营收 297.8 亿 若冲高");
+    expect(sharePickerPreview("   ")).toBe("—");
+    expect(sharePickerPreview("x".repeat(100), 20)).toBe(`${"x".repeat(20)}…`);
+  });
+
+  test("stamps the card with a zero-padded local date", () => {
+    expect(shareDateLabel(new Date(2026, 8, 6))).toBe("2026-09-06");
   });
 
   test("reports canvas encoding failures as render errors", async () => {
@@ -141,5 +170,32 @@ describe("chat share export errors", () => {
       "m4",
     ]);
     expect(defaultShareMessageId(recent)).toBe("m4");
+  });
+});
+
+describe("share card raster safety", () => {
+  const css = readFileSync(new URL("./chat-share.css", import.meta.url), "utf8");
+  const rule = (selector: string) => {
+    const start = css.indexOf(`${selector} {`);
+    expect(start).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf("}", start));
+  };
+
+  test("leaves inline code unpainted so a wrapped span cannot cover its neighbours", () => {
+    // html2canvas paints an inline element from one bounding rectangle. A
+    // padded background therefore sits above its own text, and a span that
+    // wraps across two lines is drawn as a single rectangle over the words
+    // beside it — a shared answer lost a line of text that way.
+    const inlineCode = rule(".hf-share-card-md :not(pre) > code");
+    expect(inlineCode).toContain("background: transparent");
+    expect(inlineCode).toContain("padding: 0;");
+    expect(inlineCode).not.toContain("border-radius");
+    expect(inlineCode).toContain("font-family: var(--hone-font-label)");
+  });
+
+  test("keeps the fenced code block framed, since block elements rasterise correctly", () => {
+    const fenced = rule(".hf-share-card-md .hf-markdown-code pre,\n.hf-share-card-md .hf-markdown-code pre.shiki");
+    expect(fenced).toContain("background: #f1f0eb");
+    expect(fenced).toContain("border: 1px solid");
   });
 });

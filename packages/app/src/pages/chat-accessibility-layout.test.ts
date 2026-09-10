@@ -6,6 +6,7 @@ const css = readFileSync(
   new URL("./public-chat-accessibility.css", import.meta.url),
   "utf8",
 );
+const chatCss = readFileSync(new URL("./public-chat.css", import.meta.url), "utf8");
 
 const translatedSurfaces = [
   "../components/daily-signal-dashboard.tsx",
@@ -31,7 +32,7 @@ describe("chat accessibility layout", () => {
     // The daily research products live on /research. The chat page keeps one
     // tool row and must never re-grow eager-fetching dashboard mounts or the
     // old launcher rail.
-    expect(chat).toContain("<ChatToolsMenu isAdmin=");
+    expect(chat).toContain("<ChatToolsMenu");
     expect(chat).toContain('navigate("/research")');
     expect(chat).not.toContain("chat-feature-rail");
     // The eager dashboards must not come back; the on-demand panel mount is
@@ -46,7 +47,7 @@ describe("chat accessibility layout", () => {
     expect(css).not.toContain("chat-feature-rail");
     // The row is chrome, not a component zoo: tokens, no layout !important.
     expect(css).toContain("var(--hone-line)");
-    expect(css).not.toContain("width: 144px !important");
+    expect(css).not.toContain("!important");
   });
 
   it("no longer carries the retired ask-the-agent hand-off", () => {
@@ -55,22 +56,35 @@ describe("chat accessibility layout", () => {
     expect(chat).not.toContain('searchParams.ask');
   });
 
-  it("shows five personalized research hooks in a blank conversation", () => {
+  it("shows seven personalized research hooks in a blank conversation", () => {
     expect(chat).toContain("buildChatStarterPrompts");
     expect(chat).toContain('class="chat-empty-prompts"');
     expect(chat).toContain("CONTENT.chat_page.workspace.starter_kicker");
     expect(chat).toContain("visibleMessages().length === 0");
     expect(chat).toContain("setPendingAutoSend(prompt.question)");
     expect(chat).toContain("setConversationStartIndex(messages.length)");
-    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(chatCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
   });
 
-  it("uses larger readable defaults for messages, controls and tool cards", () => {
-    expect(css).toContain('data-chat-fs="m"');
-    expect(css).toContain("font-size: 18px !important");
-    expect(css).toContain("font-size: 17px !important");
-    expect(css).toContain("min-height: 44px");
-    expect(css).toContain("font-size: 16px !important");
+  it("reads at a research-report size, with a preference that scales only the text", () => {
+    // 18px / 800-weight answers were the loudest complaint: a research note
+    // has to fit a screen. The reader keeps a size preference, but it moves
+    // the answer, the question and the input only — the chrome never reflows.
+    expect(chatCss).toContain("--hc-answer-size: 15px");
+    expect(chatCss).toContain("--hc-answer-lh: 1.7");
+    const phone = chatCss.slice(chatCss.indexOf("@media (max-width: 820px)"));
+    expect(phone).toContain("--hc-answer-size: 16px");
+    expect(chatCss).toContain('[data-chat-fs="l"] .public-chat-page { --hc-answer-size: 17px');
+    expect(chatCss).toContain('[data-chat-fs="xl"] .public-chat-page { --hc-answer-size: 19px');
+    expect(chatCss).toContain("font-size: var(--hc-answer-size)");
+    expect(chatCss).toContain("font-size: var(--hc-input-size)");
+    // Native controls stay at 16px on phones so iOS Safari never zooms.
+    expect(phone).toContain("--hc-input-size: 16px");
+    expect(phone).toContain("  .public-chat-page input,\n  .public-chat-page textarea,\n  .public-chat-page select {\n    font-size: 16px;");
+    // Touch targets: 36px chips and send on phones, 54px tab-bar buttons.
+    expect(phone).toContain("  .hc-tool {\n    width: 36px;\n    height: 36px;");
+    expect(phone).toContain("  .public-chat-send-button {\n    width: 36px;\n    height: 36px;");
+    expect(chatCss).toContain("prefers-reduced-motion: reduce");
   });
 
   it("keeps visible navigation copy Chinese while retaining brand names", () => {

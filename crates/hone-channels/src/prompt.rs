@@ -31,6 +31,10 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 - 副作用写入确认约束：若当前 user turn 只用“这只 / 这一只 / 这个 / 它 / 上一个 ETF”之类模糊指代来要求记录持仓、更新成本、创建/修改心跳任务、建立/更新公司画像或其它会写入用户长期状态的操作，必须先短句确认唯一标的（至少确认 ticker 或唯一实体）再继续；在用户确认前，不得调用会写入 `portfolio`、`cron_job`、公司画像或其它持久化状态的工具，也不得先按上一轮最相关标的代写后再补一句“如果不是请纠正”。\n\
 - 持仓全集覆盖约束：当用户明确表达“以我这次给的为准”“只有这些股票/持仓，其他没有了”“把旧持仓都清掉，只保留这些”这类高确定性全集覆盖语义时，必须把它视为授权整体替换当前持仓，而不是只更新本轮提到的几只。此时应调用 `portfolio(action=\"replace_all\")` 并传入完整 holdings 列表；替换完成后的账户分析、持仓汇总和后续建议都只能基于这份新列表，不得继续沿用旧持仓、旧 watchlist、历史摘要或 compact summary 中未列出的标的。若用户本轮给出的列表不完整到无法安全替换，先指出缺项并确认，不得一边声称“已全部更新”一边继续把旧标的带入分析。\n\
 - 旧上下文漂移约束：在同一会话里，若当前 user turn 问的是新的板块、行业词或与上一轮不同的标的，工具调用（data_fetch / web_search 等）的首个目标必须由当前 user turn 直接推导；禁止把上一轮已讨论过的旧 ticker 或证券名称默认套用到当前请求上。若当前问题是行业/板块级，应先围绕板块关键词和代表性公司展开检索，而不是锁定单一旧 ticker。
+- 公式排版约束：终稿是给人读的成品，不是 LaTeX 源码。算式一律写成一行纯文本，用 × ÷ ≈ ≥ ≤ ± 和 / 表示运算，\
+例：「基准 = FY2E EPS 6.50 美元 × 18x = 117 美元」「Forward P/E = 881.26 / 33.17 = 26.6x」。\
+禁止 $$…$$、\\( \\)、\\[ \\]、\\frac{}{}、\\text{}、\\mathbf{} 这类 LaTeX 记法：渲染层不解析数学，\
+用户看到的会是原始代码；投研正文里 $ 只表示货币，写成数学分隔符会把金额从中间截断。\
 - 内部策略外泄约束：禁止以「底层系统纪律」「被禁止」「内部规定」「系统约束」等口吻将内部生成策略、提示规则或运行约束直接暴露给用户；若需要说明能力边界，应以中性的功能说明方式表达（例如当前不支持 XX 类内容），而不是引用内部政策文本或暗示系统有隐藏的外部限制。\n\
 - 报价字段一致性约束：同一条输出里引用的任何价格数字都必须来自同一合约标的、同一时间点、同一口径；不允许把现货价与期货合约价、不同合约月份（如 CLJ26 / CLK26）、不同时间窗口（如现价与日内高点/低点）混在一起当作同一个「现价」叙述。若确需对比不同口径，必须显式写出每个数值的合约名、时间点与口径（例如「WTI 连续合约盘中参考价 $X（运行时时区 HH:MM）」+「CME WTI May 合约结算价 $Y」），并保持数学一致性（日内低点 ≤ 最新价 ≤ 日内高点）。若最新现价与日内高低点互相矛盾、或数据源之间相差过大且无法核实，必须声明不确定并放弃给出精确数字，而不是把明显矛盾的数值拼成一条播报。\n\
 - 强时效行情建议约束：当用户问题包含「今天、刚刚、现在、盘前、盘后、夜盘、抄底、止损、加仓、减仓、买点、卖点」等强时效或操作语义时，必须优先核实最新可得价格、数据时间与交易时段口径，包括盘前/盘后可得行情。若工具只能返回常规交易收盘价、延迟价或缺少扩展时段数据，必须明确标注「未覆盖盘前/盘后实时价」或同等说明；不得把旧价作为当前决策锚点继续推导精确抄底区间、止损位或仓位动作。\n\
@@ -39,7 +43,8 @@ pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束�
 - 三类出处声明各自需要本轮对应工具：写“本轮已核验/已取得”需要真实返回的 payload；写“本轮检索到”并附 URL 需要本轮 web_search 结果（snapshot 不返回新闻链接）；写“据 SEC 文件/公司公告原文”需要本轮 sec_filings、press_releases 或已读到的搜索结果。跨轮复用旧报价只能作为历史标注原始日期（如“8/8 分析时价格 $82.10”），禁止改写成“现价”或重新打上本轮时间戳。这条同样管表格的「来源」列、图注和数字旁的行内标注——它们和正文一样是对用户的出处声明：行情与财报数据源汇总来的数字写成“交易所报价”“公司季报”“一致预期”即可，本轮没有真的取到该文件原文时，不得把它标成“10-Q”“SEC 官方披露文件”“交易所官方收盘价”“公司 IR 公告”这类一手文件出处。\n\
 - 多标的最新行情约束：用户要求比较多个股票、ETF 或基金的最新价格、盘后价、日内区间、估值倍数或据此给配置/抄底区间时，每个标的都必须有本轮独立核验的来源、时间戳和交易时段口径；不得把另一个标的的搜索结果、历史公司画像或未完成工具读取中的数字复用为精确行情锚点。若某个标的未完成稳定校验，只能说明“该标的最新行情未完成稳定校验”，不得给精确价格、Forward PE 或操作区间。\n\
 - 基金/ETF 披露口径约束：分析 ARK、ETF、基金或机构持仓时，必须区分单只基金持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期。除非本轮拿到可核验的 trade notification、交易流水或官方主动买卖披露，不得把持仓文件股数差异直接表述为「ARK/基金最近买入/卖出/减仓某标的」；只能说「持仓文件显示股数变化」，并说明该变化不等同于主动交易方向。\n\
-- 原油与大宗商品归因约束：任何地缘政治、供给、库存、航运、外交谈判、军事行动或 OPEC 等原因归因，都必须来自本轮工具明确返回的来源、发布时间和可追溯事实；若搜索/API 降级、来源不足、时间戳缺失或无法交叉核验，只能报告已核验价格与口径，并明确写「原因未核验/暂不归因」，不得把传闻、推测或旧上下文里的冲突/谈判/封锁/供应恢复叙述包装成确定性事实。";
+- 原油与大宗商品归因约束：任何地缘政治、供给、库存、航运、外交谈判、军事行动或 OPEC 等原因归因，都必须来自本轮工具明确返回的来源、发布时间和可追溯事实；若搜索/API 降级、来源不足、时间戳缺失或无法交叉核验，只能报告已核验价格与口径，并明确写「原因未核验/暂不归因」，不得把传闻、推测或旧上下文里的冲突/谈判/封锁/供应恢复叙述包装成确定性事实。\n\
+- 大V观点线索约束：用户问某只股票或某个环节最近的新闻、消息、传闻、市场/大V/推特上怎么看，或点名 Serenity/白毛/大V 时，加载 `influencer-views` Skill 并调用 `influencer_views`（按 symbol 或行业词取注册作者近期公开推文）；命中的观点写成带作者、日期与原链的独立一段「大V观点线索」，与本轮已核验事实分层，不改写成 HONE 结论，不据此给买卖或仓位建议；窗口内没有命中就如实写没有，不用搜索摘要或记忆替代。";
 pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架】\n\
 - 当前问题只要属于公司、证券、ETF、行业、产业供需、宏观、市场状态、基本面、护城河、估值、组合、仓位、投资复盘或红黄绿灯/评级，就必须在形成最终回答前实际加载并遵循 `hari-invest` Skill；不得只声称已使用。原生 Skill 运行时使用当前可用的原生 Skill 加载机制，函数调用运行时使用 `skill_tool(skill_name=\"hari-invest\")`。\n\
 - `hari-invest` 负责判断框架和输出纪律，不是实时事实源。涉及当前价格、财报、新闻、估值输入、产业状态或组合数据时，仍须按本轮问题调用真实行情、财报、公告、网页或持仓工具核验，并明确区分已核实事实、Hari 已确认逻辑、AI 推断和未知信息。\n\
@@ -49,6 +54,10 @@ pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架�
 - 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
 - 当系统提示中出现“历史公司研究基线”时，说明本轮命中了此前授权研究覆盖公司；必须在形成最终回答前实际加载 `company-thesis-ratings` Skill，同时加载 `hari-invest`。原生 Skill 运行时使用原生加载机制，函数调用运行时使用 `skill_tool(skill_name=\"company-thesis-ratings\")`。公司卡在商业模式、基本面结构、护城河、产业链位置、估值框架与方法选择、风险和证伪条件上优先于模型通用记忆；不得只声称已使用。\n\
 - 历史公司研究基线不是当前事实源。股价、最新财报、指引、订单、新闻、产业状态和估值输入仍须走原有工具链核验；最新一手证据与历史基线冲突时，以最新证据为准，并说明原逻辑加强、削弱或失效。不得向用户泄露逐字稿原文、内部文件名或 Skill 路径。\n\
+- 研究深度默认：每一次投研提问都是一次完整研究，篇幅由本轮取到的证据决定，不由问句字数决定。用户只写一句“X 超预期吗”“X 怎么看”“X 为什么跌”，也要交付完整的研究成品：结论段之后逐块展开已核验事实（每个关键数字带期间、单位、口径、相对谁的预期与差值）、分部与驱动拆解、指引与管理层表述（新旧指引原值对照、引语出处与日期）、市场反应与时段口径、这次改写了哪个长期变量、估值再锚定（输入可得时算出区间与现价位置，不得以“要不要接着算”收尾）、Bull / Bear / Base 的数字链、催化与证伪条件、动作框架。与问题无关的块可以合并，但不得整块省略；每块都要写到具体数字与因果链，不得用一行标签式的话带过。\n\
+- 篇幅下限是硬要求，不是风格偏好：公司深度、财报解读、估值、板块产业链、宏观市场、持仓复核这几类终稿，中文正文不少于 1500 字，本轮证据充分时通常落在 2500–4000 字；英文按等量信息折算。行情速查、关系确认、单点事实不设下限，但也要带数据口径、当日语境和一句含义，不能只报一个数。只有问候、记账追问、实体澄清与产品使用类问题才真正简短。\n\
+- 长度只能由已核验证据、算式、拆解和情景推演堆出来，不得靠复述问题、重复结论、罗列免责声明、堆通用投资常识或反复交代自己做了什么来凑。发送前若发现正文明显短于上述下限，回头补的是本轮已取到却没写进正文的口径、分部、时段、指引、现金流与估值输入，以及尚未展开的推演；补不出来时如实说明缺口，不得用套话填充。\n\
+- 禁止把内容留到下一轮：不得以“需要的话我可以继续展开”“要不要接着算”“如需详细分析请告诉我”这类问句或承诺收尾。本轮能算的现在就算完，能展开的现在就展开。\n\
 - 问候、写作、翻译、编程、产品使用等明显非投资问题不得加载 `hari-invest` 或套用其回答结构。内部 `laowang-investment-distiller` 只用于维护者蒸馏知识，绝不能在普通 HONE 问答中加载、披露或冒充对外 Skill。";
 pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略】\n\
 - 如用户要求在明确时间执行，请使用常规定时任务（daily / weekly / workday / trading_day / holiday / once）。\n\
@@ -244,37 +253,53 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
     let (map, _) = hone_core::industry_map::load(data_root);
     let mut sections = Vec::new();
     for industry in &map.industries {
-        if industry.ai_valuation_logic.driver_chain.trim().is_empty() {
+        if industry.ai_valuation_logic.driver_chain.trim().is_empty()
+            && industry.valuation.logic.summary.trim().is_empty()
+        {
             continue;
         }
-        let matched_members = industry
+        let matched = industry
             .members
             .iter()
             .filter(|member| {
                 explicit_symbol_match(user_input, &member.symbol)
                     || alias_match(user_input, &member.name)
             })
-            .map(|member| format!("{}（{}）", member.symbol, member.name))
             .collect::<Vec<_>>();
         let by_alias = industry
             .aliases
             .iter()
             .any(|alias| alias_match(user_input, alias));
-        if matched_members.is_empty() && !by_alias {
+        if matched.is_empty() && !by_alias {
             continue;
         }
 
         let logic = &industry.ai_valuation_logic;
-        let mut lines = vec![format!("- {}（{}）", industry.name, industry.id)];
-        if !matched_members.is_empty() {
-            lines.push(format!("  本轮命中的成员：{}", matched_members.join("、")));
+        let valuation = &industry.valuation;
+        // 命中公司所属的子类型：知识被消费的最小单位。多家命中时取第一家的子类型，
+        // 其余公司若在别的子类型里，只点名它们的子类型名，不整段重复。
+        let primary_member = matched.first();
+        let subtype = primary_member.and_then(|member| valuation.subtype_of(&member.symbol));
+        let mut head = format!("- {}（{}）", industry.name, industry.id);
+        if !matched.is_empty() {
+            head.push_str(&format!(
+                " · 本轮命中：{}",
+                matched
+                    .iter()
+                    .map(|member| {
+                        let tag = valuation
+                            .subtype_of(&member.symbol)
+                            .map(|s| format!("｜{}", s.name))
+                            .unwrap_or_default();
+                        format!("{}（{}{}）", member.symbol, member.name, tag)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("、")
+            ));
         }
-        // 本体的边：这一行由谁的最近行为决定。排在传导链之前，而且先给事实（它最近一季实际做了什么，
-        // 带日期），再给核对取法——上一版只给「去取什么」的指令，生产上 7 家成员公司的回答 0 家照做；
-        // 模型对拿到手的事实会直接用，对「去取」的指令常常不理。
-        //
-        // 只注入前两条（NVDA 永远排第一），读数各截到一句——完整的 `pull` / `why` 留给研究台页面和
-        // `industry-map` skill。
+        let mut lines = vec![head];
+
+        // 1) 本体的边：上游最近动作先给事实（带日期），再给核对取法。只带两条，NVDA 永远第一。
         let mut signals = industry.upstream_signals.iter().collect::<Vec<_>>();
         signals.sort_by_key(|signal| signal.symbol != "NVDA");
         for signal in signals.into_iter().take(MAX_PROJECTED_UPSTREAM_SIGNALS) {
@@ -312,23 +337,133 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
                 clip(&signal.why, 80)
             ));
         }
-        lines.push(format!("  需求传导链：{}", logic.driver_chain));
-        // 注入读短版：长版是给研究台页面看的，整段注入每轮要多花上千 token。
-        let anchor = if logic.multiple_anchor_short.trim().is_empty() {
-            &logic.multiple_anchor
+
+        // 2) 估值执行卡：这家公司该用哪个前瞻财年、哪一族倍数、区间由什么决定、什么被禁止。
+        //    先给子类型（命中公司专属），子类型缺失时退到行级倍数锚。
+        if let Some(subtype) = subtype {
+            let mut card = format!(
+                "  估值执行卡 · 子类型「{}」：主锚 {}",
+                subtype.name,
+                clip(&subtype.primary, 160)
+            );
+            if !subtype.secondary.trim().is_empty() {
+                card.push_str(&format!("；次锚 {}", clip(&subtype.secondary, 120)));
+            }
+            if !subtype.when.trim().is_empty() {
+                card.push_str(&format!("；适用阶段：{}", clip(&subtype.when, 120)));
+            }
+            if !subtype.note.trim().is_empty() {
+                card.push_str(&format!("；这家的特别提醒：{}", clip(&subtype.note, 200)));
+            }
+            lines.push(card);
+        } else if !valuation.anchor.paragraphs.is_empty() {
+            lines.push(format!(
+                "  估值执行卡 · 行级倍数锚：{}",
+                clip(&valuation.anchor.paragraphs[0], 300)
+            ));
         } else {
-            &logic.multiple_anchor_short
-        };
-        if !anchor.trim().is_empty() {
-            lines.push(format!("  倍数锚：{anchor}"));
+            let anchor = if logic.multiple_anchor_short.trim().is_empty() {
+                &logic.multiple_anchor
+            } else {
+                &logic.multiple_anchor_short
+            };
+            if !anchor.trim().is_empty() {
+                lines.push(format!("  倍数锚：{anchor}"));
+            }
         }
+        if !valuation.anchor.upper_range_drivers.trim().is_empty() {
+            lines.push(format!(
+                "  倍数上沿由什么决定：{}",
+                clip(&valuation.anchor.upper_range_drivers, 220)
+            ));
+        }
+        if !valuation.anchor.revision_optionality.trim().is_empty() {
+            lines.push(format!(
+                "  盈利上修期权（提高 FY+2 权重或取区间上半部的条件）：{}",
+                clip(&valuation.anchor.revision_optionality, 260)
+            ));
+        }
+        let mut forbidden = valuation
+            .anchor
+            .forbidden
+            .iter()
+            .take(4)
+            .map(|item| clip(item, 60))
+            .collect::<Vec<_>>();
         let anti = if logic.anti_pattern_short.trim().is_empty() {
             &logic.anti_pattern
         } else {
             &logic.anti_pattern_short
         };
-        if !anti.trim().is_empty() {
-            lines.push(format!("  这一行的估值反模式：{anti}"));
+        if forbidden.is_empty() && !anti.trim().is_empty() {
+            forbidden.push(anti.clone());
+        }
+        if !forbidden.is_empty() {
+            lines.push(format!("  这一行禁止的估值动作：{}", forbidden.join("；")));
+        }
+
+        // 3) 底层估值逻辑：第一性原理一句 + 公式 + 前瞻重点；再带上带日期的需求传导链。
+        if !valuation.logic.summary.trim().is_empty() {
+            lines.push(format!(
+                "  底层估值逻辑：{}",
+                clip(&valuation.logic.summary, 260)
+            ));
+        }
+        let formulas = valuation
+            .logic
+            .formulas
+            .iter()
+            .take(2)
+            .map(|f| clip(&f.formula, 110))
+            .collect::<Vec<_>>();
+        if !formulas.is_empty() {
+            lines.push(format!("  量化关系：{}", formulas.join("；")));
+        }
+        let focus = valuation
+            .logic
+            .forward_focus
+            .iter()
+            .take(3)
+            .map(|item| clip(item, 90))
+            .collect::<Vec<_>>();
+        if !focus.is_empty() {
+            lines.push(format!("  未来 1–3 年先看：{}", focus.join("；")));
+        }
+        if !valuation.logic.state_note.trim().is_empty() {
+            lines.push(format!(
+                "  这一行典型的 State：{}",
+                clip(&valuation.logic.state_note, 200)
+            ));
+        }
+        if !valuation.upstream_summary.trim().is_empty() {
+            lines.push(format!(
+                "  上游信号（需求怎么传到本行）：{}",
+                clip(&valuation.upstream_summary, 220)
+            ));
+        }
+        if !valuation.transmission.trim().is_empty() {
+            lines.push(format!(
+                "  变量传导与证伪：{}",
+                clip(&valuation.transmission, 200)
+            ));
+        }
+        let observables = valuation
+            .observables
+            .iter()
+            .take(5)
+            .map(|item| clip(&item.name, 16))
+            .collect::<Vec<_>>();
+        if !observables.is_empty() {
+            lines.push(format!(
+                "  可观测变量（每条绑定公司、期间、单位、出处，未公开的标缺失，不拿行业代理量冒充本公司实测）：{}",
+                observables.join("、")
+            ));
+        }
+        if !logic.driver_chain.trim().is_empty() {
+            lines.push(format!(
+                "  需求传导链（带日期的量）：{}",
+                logic.driver_chain
+            ));
         }
         let watch = industry
             .core_watch
@@ -353,12 +488,52 @@ pub(crate) fn industry_baseline(user_input: &str, data_root: &std::path::Path) -
     if sections.is_empty() {
         return None;
     }
+    // 通用执行规则的压缩版：只带能改变分母与倍数选择的那几条；全文在 `industry-map` skill。
+    let rules = map
+        .methodology
+        .execution_rules
+        .iter()
+        .filter(|rule| {
+            matches!(
+                rule.rule.as_str(),
+                "远期收入的证据等级"
+                    | "共识与市场起点"
+                    | "利润与普通股资本桥"
+                    | "估值贡献拆解"
+                    | "双重上修与不重估检验"
+                    | "结论与红绿灯边界"
+            )
+        })
+        .map(|rule| format!("{}：{}", rule.rule, clip(&rule.requirement, 170)))
+        .collect::<Vec<_>>();
+    let rules_block = if rules.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n全局规则（压缩版，全文在 `industry-map` skill）：{}。",
+            rules.join("；")
+        )
+    };
+    let fields_block = if map.methodology.output_fields.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n估值类终稿按 V5.3 的十二个执行字段落笔（就落在对账表、三问、三情景、反向估值、结论的现有位置里，不另起一套；缺的写「未取得 / 未完成」，不填虚构数字）：{}。",
+            map.methodology
+                .output_fields
+                .iter()
+                .map(|field| field.rule.clone())
+                .collect::<Vec<_>>()
+                .join("、")
+        )
+    };
     Some(format!(
-        "【本轮相关行业】\n以下来自 `industry-map` 的 AI 数据中心行业树，是这一行的**结构与先验**，不是当前事实。\
-需求侧照这条传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
-不得把行业增速直接当成公司增速。倍数先看公司卡的估值框架，公司卡没指定时才用这里的倍数锚当先验，仍要按 `valuation-audit` 的三问推导出本轮倍数；\
-行业反模式与公司卡的「不要…」同等对待，在真正选倍数或分母的那一句里点名对照。\
-带「上游最近动作」的行，那一行是本文的起点事实，要落进终稿已有的位置而不是另起一段：公司研究稿落在「行业位置与关键对手」一节的第一句，估值稿落在对账表的「上游最近动作」行、一问的增长来源第一句和基准情景的第一项经营输入——每处都就从那条最近动作写起（日期和数字都带上），再写它沿传导链怎么到这家公司（份额、认证、产能或合约哪道闸门决定这家拿到多少），最后用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。要展开这一行的完整变量表与研报来源时加载 `industry-map`。\n\n{}",
+        "【本轮相关行业 · HOne Industry Map V5.3】\n以下来自 `industry-map` 的行业本体（AI 数据中心八行 + 商业太空 + AI 应用与数据服务），是这一行的**结构与先验**，不是当前事实。\
+需求侧照底层估值逻辑与传导链写，不要另起一套 AI 叙事；链条上游的量对同一行所有公司共用，差异出现在份额、认证、产能或合约这些闸门上，\
+不得把行业增速直接当成公司增速。\
+带「上游最近动作」的行，那一行是本文的起点事实，要落进终稿已有的位置而不是另起一段：公司研究稿落在「行业位置与关键对手」一节的第一句，估值稿落在对账表的「上游最近动作」行、一问的增长来源第一句和基准情景的第一项经营输入——每处都就从那条最近动作写起（日期和数字都带上），再写它沿传导链怎么到这家公司，最后用本轮取到的更新一季覆盖它；没有更新就照本体这条写并注明截至日期。上游不得略过，也不得用记忆里的旧季度代替。\
+估值执行卡决定分母与倍数：先按这一行的典型经营状态判断这家处在哪个阶段；远期收入按项目 / 批次 / 客户群逐项评 A / B / C 级（A 按履约曲线进基准，B 部分进附条件基准，C 只进条件期权或乐观情景），FY+2 / FY+3 进基准要分别核需求、资格、供应链、建设验收、单位经济性、融资、许可，不因价格更低就换到更远财年；主锚次锚照子类型卡给，不强制 PE 优先，也不因利润暂低自动抬 Sales 倍数，EV/Sales 必须旁列同年度隐含 EV/EBIT；当前共识倍数与当前模型倍数分别标注，缺共识就把相对共识的上修标「未知」；盈利上修与倍数扩张分别举证并写交互项（总价差 = e + r + e×r），保留倍数不变结果；资本桥不闭合就只给条件 EV 与融资敏感性，不发正式每股目标价；DCF 定价权重为零但时间换算与资本回报检查照做。公司卡指定了估值框架时以公司卡为准，子类型卡做交叉检查。\
+永久规则不存放最新一季数字：下面带日期的量与上游最近动作是已核验的事实层，规则是方法层，两者不混，也不把行业代理量当成本公司的实测。{rules_block}{fields_block}\n\n{}",
         sections.join("\n\n")
     ))
 }
@@ -670,7 +845,7 @@ const TELEGRAM_FORMAT_GUIDANCE: &str = "【输出格式-Telegram】\n\
 - 文本中的 <、>、& 必须转义为 &lt;、&gt;、&amp;；除了官方支持标签外，不要使用其他 HTML 标签。\n\
 - 未文档化表格支持，避免表格；需要表格时用 <pre>/<code> 生成等宽伪表格，或改为分行列表。\n\
 - 如果原本想写 Markdown 标题或列表，请改成 HTML：标题用 <b>...</b>，列表用纯文本项目符号或分行，不要输出 Markdown 列表标记。\n\
-- 输出保持简洁，优先用短标题 + 分行列表 + 代码块/引用，避免过长段落。";
+- 段落粒度保持轻快，优先用短标题 + 分行列表 + 代码块/引用，避免一段写得过长。这是排版粒度要求，不是篇幅上限：投研终稿该有的研究深度与字数按投研约束执行，不得为了“看起来简洁”削减已核验证据、算式或展开。";
 
 const IMESSAGE_FORMAT_GUIDANCE: &str = "【输出格式-iMessage】\n\
 - iMessage 文本格式依赖客户端（加粗/斜体/下划线/删除线等），其他设备可能仅显示纯文本。\n\
@@ -679,7 +854,7 @@ const IMESSAGE_FORMAT_GUIDANCE: &str = "【输出格式-iMessage】\n\
 const FEISHU_FORMAT_GUIDANCE: &str = "【输出格式-飞书】\n\
 - 飞书富文本/卡片支持 Markdown 语法扩展，支持链接、图片、表格等元素，但有明确限制。\n\
 - 标题仅支持一级与二级；列表不支持缩进；表格有列数与数量上限。\n\
-- 当前渠道使用卡片渲染 Markdown，请保持简单：短段落 + 列表；表格尽量扁平，超过限制则改为列表或代码块。\n\
+- 当前渠道使用卡片渲染 Markdown，请保持结构简单：短段落 + 列表；表格尽量扁平，超过限制则改为列表或代码块。这是结构限制，不是篇幅上限：投研终稿的研究深度与字数按投研约束执行。\n\
 - 正文和列表请只写普通 Markdown；确实需要表格时，只写标准 Markdown 表格（`| 列1 | 列2 |`）。\n\
 - 不要手写飞书卡片标签或扩展组件，例如 `<table .../>`、`<chart .../>`、`<row>`、`<record .../>`、`<button ...>`。\n\
 - 运行时会自动把标准 Markdown 表格转换成飞书 JSON 2.0 原生表格组件；如果你手写原始飞书标签，渠道会降级为普通文本。";
@@ -693,6 +868,30 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn hari_invest_policy_defaults_every_investment_question_to_full_research_depth() {
+        // A one-line question ("戴尔超预期吗") must still come back as a full
+        // research note; brevity is reserved for greetings, ledger follow-ups,
+        // entity clarification and product usage.
+        assert!(
+            DEFAULT_HARI_INVEST_POLICY.contains("研究深度默认：每一次投研提问都是一次完整研究")
+        );
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅由本轮取到的证据决定，不由问句字数决定"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得以“要不要接着算”收尾"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得整块省略"));
+        assert!(
+            DEFAULT_HARI_INVEST_POLICY
+                .contains("只有问候、记账追问、实体澄清与产品使用类问题才真正简短")
+        );
+        // The floor is a hard requirement, and it may only be met with
+        // evidence — never with restated conclusions or disclaimers.
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅下限是硬要求，不是风格偏好"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("中文正文不少于 1500 字"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("2500–4000 字"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得靠复述问题、重复结论、罗列免责声明"));
+        assert!(DEFAULT_HARI_INVEST_POLICY.contains("禁止把内容留到下一轮"));
+    }
+
+    #[test]
     fn finance_policy_prioritizes_structured_market_data_without_a_completion_gate() {
         assert!(
             DEFAULT_FINANCE_DOMAIN_POLICY.contains("结构化行情是明确公司/证券问题的第一事实来源")
@@ -702,8 +901,14 @@ mod tests {
                 .contains("在开放网页搜索之前，优先对选中的全部标准 symbol")
         );
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("不是完成门禁"));
+        // 公式必须是纯文本：渲染层没有数学引擎，而正文里的 $ 是货币符号。
+        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("公式排版约束"));
+        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("$ 只表示货币"));
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("应继续使用当前可得证据与公开搜索"));
         assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("财报数字时效与准确性"));
+        // Channel formatting trims paragraph size, never research depth.
+        assert!(TELEGRAM_FORMAT_GUIDANCE.contains("这是排版粒度要求，不是篇幅上限"));
+        assert!(FEISHU_FORMAT_GUIDANCE.contains("这是结构限制，不是篇幅上限"));
         assert!(
             DEFAULT_FINANCE_DOMAIN_POLICY.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标")
         );
@@ -779,11 +984,14 @@ mod tests {
 
     #[tokio::test]
     async fn industry_baseline_stays_silent_until_a_driver_chain_is_written() {
-        // 传导链是这块内容存在的理由。只有成员名单的行业注入进去，等于用 token 换一句
-        // 「这家公司属于存储」——模型本来就知道。
+        // 传导链或估值逻辑是这块内容存在的理由。只有成员名单的行业注入进去，等于用 token 换一句
+        // 「这家公司属于存储」——模型本来就知道。V5.3 新加的行（商业太空、AI 应用）还没有带日期的
+        // 传导链，但有估值逻辑，所以照样注入；这里只盯两样都没有的行。
         let corpus = hone_core::industry_map::base_map();
         for industry in &corpus.industries {
-            if !industry.ai_valuation_logic.driver_chain.trim().is_empty() {
+            if !industry.ai_valuation_logic.driver_chain.trim().is_empty()
+                || !industry.valuation.logic.summary.trim().is_empty()
+            {
                 continue;
             }
             for member in &industry.members {
@@ -804,7 +1012,7 @@ mod tests {
 
     #[tokio::test]
     async fn industry_baseline_pulls_nvda_first_and_keeps_the_upstream_block_compact() {
-        // 存储行：底稿里有 4 条上游信号，注入只带 2 条且英伟达在前，每条的读数被截成一句。
+        // 存储行：上游最近动作在前（英伟达第一），估值执行卡带 SNDK 所属子类型的主锚，通用规则压缩版在头部。
         let text = industry_baseline(
             "SNDK 的合理估值是多少",
             std::path::Path::new("/nonexistent"),
@@ -821,20 +1029,42 @@ mod tests {
             upstream[0]
         );
         assert!(upstream[0].contains("截至 2026-08-26"), "{}", upstream[0]);
-        assert!(upstream[0].contains("$89.0B"), "{}", upstream[0]);
         assert!(text.contains("data_fetch(data_type=\"earnings_outlook\", ticker=\"NVDA\")"));
-        // 事实行必须排在传导链之前：模型先看到上游做了什么，再看链条。
         assert!(
-            text.find("上游最近动作 · NVDA").unwrap() < text.find("需求传导链").unwrap(),
+            text.find("上游最近动作 · NVDA").unwrap() < text.find("估值执行卡 · ").unwrap()
+                && text.find("估值执行卡 · ").unwrap() < text.find("需求传导链").unwrap(),
             "{text}"
         );
-        assert!(text.contains("就从那条最近动作写起"));
-        // 两行合计的注入体量要留在预算内（这里以字符数守住）。
         assert!(
-            text.chars().count() < 3000,
+            text.contains("SNDK（闪迪（SanDisk）｜"),
+            "命中行要带子类型名：{text}"
+        );
+        assert!(text.contains("估值执行卡 · 子类型「"), "{text}");
+        assert!(text.contains("Forward PE"), "{text}");
+        assert!(text.contains("这一行禁止的估值动作"), "{text}");
+        assert!(text.contains("A / B / C 级"), "{text}");
+        assert!(text.contains("十二个执行字段"), "{text}");
+        assert!(text.contains("变量传导与证伪"), "{text}");
+        // 单行命中的注入体量守在 4,600 字以内（约 2,300 token）：头部规则约 1,400 字，行内约 3,000 字。
+        assert!(
+            text.chars().count() < 5600,
             "注入过长：{} 字",
             text.chars().count()
         );
+    }
+
+    #[tokio::test]
+    async fn industry_baseline_falls_back_to_the_row_anchor_for_industry_level_questions() {
+        let text = industry_baseline(
+            "光通信这一行现在怎么看",
+            std::path::Path::new("/nonexistent"),
+        )
+        .expect("optical alias");
+        assert!(
+            text.contains("估值执行卡 · 行级倍数锚") || text.contains("估值执行卡 · 子类型"),
+            "{text}"
+        );
+        assert!(!text.contains("本轮命中："), "no member hit: {text}");
     }
 
     #[tokio::test]

@@ -62,6 +62,10 @@ async function installPublicMocks(
     if (path === "/api/public/industry-map") {
       state.industryReads += 1;
       if (options.industryStatus === 401) return json(route, { error: "登录已过期" }, 401);
+      // The ontology is research draft, not published output: the server refuses
+      // it to non-administrators, and the mock mirrors that so no reader path can
+      // accidentally assert on admin-only content.
+      if (!user.is_admin) return json(route, { error: "行业分析仅管理员可见" }, 403);
       return json(route, {
         ...industryMap, is_admin: user.is_admin,
         // A rolling frontend deploy must hide internal metadata even if an older
@@ -128,17 +132,46 @@ async function geometryDigest(page: Page) {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
-  test(`data center is reachable and all zones work at ${viewport.width}px`, async ({ page }, testInfo) => {
+  test(`chat opens the online demo and local data center zones work at ${viewport.width}px`, async ({ page, context }, testInfo) => {
     await page.setViewportSize(viewport);
-    const state = await installPublicMocks(page);
+    // Run as an administrator: this test walks every zone dialog including the
+    // links into each industry, and those links exist only for administrators
+    // now that the ontology is admin-only. What a reader sees instead has its
+    // own test below.
+    const state = await installPublicMocks(page, { admin: true });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
 
+    const demoUrl = "https://b-m-capital-research.github.io/nexus-datacenter-ceo/";
+    await context.route(demoUrl, (route) => route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>NEXUS demo</title>",
+    }));
     await page.goto("/chat");
-    const entry = page.getByRole("link", { name: "3D 数据中心", exact: true });
-    await expect(entry).toBeVisible();
-    await entry.click();
-    await expect(page).toHaveURL(/\/data-center$/);
+    const draft = page.locator(".public-chat-composer textarea");
+    await draft.fill("保留这条尚未发送的问题");
+    const demoPagePromise = context.waitForEvent("page");
+    // Both composer layouts open the external demo without leaving the chat.
+    if (viewport.width <= 820) {
+      await page.getByRole("button", { name: "添加与工具", exact: true }).click();
+      const entry = page.getByRole("menuitem", { name: /^3D 数据中心/ });
+      await expect(entry).toBeVisible();
+      await entry.click();
+    } else {
+      const entry = page.getByRole("button", { name: "3D 数据中心", exact: true });
+      await expect(entry).toBeVisible();
+      await entry.click();
+    }
+    const demoPage = await demoPagePromise;
+    await expect(demoPage).toHaveURL(demoUrl);
+    await demoPage.waitForLoadState("domcontentloaded");
+    expect(await demoPage.evaluate(() => window.opener === null)).toBe(true);
+    await expect(page).toHaveURL(/\/chat$/);
+    await expect(draft).toHaveValue("保留这条尚未发送的问题");
+    await demoPage.close();
+
+    // The existing HONE scene remains available by its own route and research desk.
+    await page.goto("/data-center");
     await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
     await expect(page.locator(".dc-scene-svg polygon").first()).toBeVisible();
     await expectNoHorizontalOverflow(page);
@@ -277,9 +310,43 @@ test("drag rotates the geometry while dark and reduced-motion preferences remain
   await expect(optical).toBeFocused();
 });
 
-test("ordinary readers follow a zone into its industry and retain selection through browser history", async ({ page }, testInfo) => {
+test("ordinary readers get the scene but never the industry ontology", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await installPublicMocks(page);
+  await page.goto("/data-center");
+  // The 3D scene stays public …
+  await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
+  await page.locator(".dc-hotspot").filter({ hasText: "光通信与互联" }).click();
+  const zone = page.getByRole("dialog", { name: "光通信与互联", exact: true });
+  await expect(zone).toBeVisible();
+  await expect(zone.getByText("研究时，关注什么")).toBeVisible();
+  // … but a public page must not hand a reader a door that answers 403.
+  await expect(zone.locator('a[href^="/industry-map"]')).toHaveCount(0);
+  await expect(page.locator("a.dc-all-industries")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("data-center-reader-no-industry-link.png"), fullPage: true });
+
+  // Typing the URL is refused by the server, and the page says why.
+  await page.goto("/industry-map?industry=optical");
+  await expect(page.getByText("行业分析仅管理员可见，当前账号没有查看权限。")).toBeVisible();
+  await expect(page.locator(".industry-detail > h2")).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "编辑本体" })).toHaveCount(0);
+  await expect(page.getByText("internal-note", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("internal-admin", { exact: true })).toHaveCount(0);
+
+  // The desk offers the scene, never the ontology.
+  await page.goto("/research?group=industry");
+  const industryEntries = page.getByRole("region", { name: "产业研究入口", exact: true });
+  await expect(industryEntries.getByRole("button", { name: /3D 数据中心/ })).toBeVisible();
+  await expect(industryEntries.getByRole("button", { name: /行业分析/ })).toHaveCount(0);
+  await industryEntries.getByRole("button", { name: /3D 数据中心/ }).click();
+  await expect(page).toHaveURL(/\/data-center$/);
+  await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
+  expect(state.edits).toBe(0);
+});
+
+test("administrators follow a zone into its industry and retain selection through browser history", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await installPublicMocks(page, { admin: true });
   await page.goto("/data-center");
   await page.locator(".dc-hotspot").filter({ hasText: "光通信与互联" }).click();
   await page.getByRole("dialog", { name: "光通信与互联", exact: true })
@@ -287,12 +354,7 @@ test("ordinary readers follow a zone into its industry and retain selection thro
   await expect(page).toHaveURL(/\/industry-map\?industry=optical$/);
   const selectedHeading = page.locator(".industry-detail > h2");
   await expect(selectedHeading).toHaveText("光通信");
-  await expect(page.getByRole("switch", { name: "编辑本体" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "移除此行业" })).toHaveCount(0);
-  await expect(page.locator(".industry-detail textarea")).toHaveCount(0);
-  await expect(page.getByText("internal-note", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("internal-admin", { exact: true })).toHaveCount(0);
-  await page.screenshot({ path: testInfo.outputPath("industry-optical-reader-mobile.png"), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("industry-optical-admin-mobile.png"), fullPage: true });
 
   await page.getByRole("navigation", { name: "行业树" }).getByRole("button", { name: /^存储/ }).click();
   await expect(page).toHaveURL(/industry=storage$/);
@@ -304,6 +366,7 @@ test("ordinary readers follow a zone into its industry and retain selection thro
   await expect(selectedHeading).toHaveText("光通信");
   await page.goForward();
   await expect(selectedHeading).toHaveText("存储");
+  // Reading never writes.
   expect(state.edits).toBe(0);
 
   await page.goto("/industry-map?industry=missing-industry");
@@ -316,7 +379,6 @@ test("ordinary readers follow a zone into its industry and retain selection thro
   await expect(industryEntries.getByRole("button", { name: /行业分析/ })).toBeVisible();
   await industryEntries.getByRole("button", { name: /3D 数据中心/ }).click();
   await expect(page).toHaveURL(/\/data-center$/);
-  await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
 });
 
 test("the existing administrator editor remains available", async ({ page }) => {

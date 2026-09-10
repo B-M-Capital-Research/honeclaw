@@ -4231,6 +4231,47 @@ fn registered_tool_call_is_known_read_only(
         })
 }
 
+/// A registered call whose effect is known to be a persistent write
+/// (portfolio add, cron create, ontology edit, executable skill …). Inside a
+/// read-only finance round such a call is rejected on its own, with a
+/// structured tool result the Agent can read, while its read-only siblings
+/// still execute. Only calls whose effect is *unknown* keep blocking the whole
+/// batch: an admin asking for a valuation must not lose the quote and the
+/// financials because the model also reached for the ontology editor.
+fn registered_tool_call_is_known_persistent_write(
+    tool_call: &ToolCall,
+    registered_tool_names: &BTreeSet<String>,
+) -> bool {
+    registered_tool_names.contains(&tool_call.function.name)
+        && serde_json::from_str::<Value>(&tool_call.function.arguments).is_ok_and(|arguments| {
+            tool_call_has_persistent_side_effect(&tool_call.function.name, &arguments)
+        })
+}
+
+fn read_only_round_write_rejection_result(tool_call: &ToolCall) -> Value {
+    let action = serde_json::from_str::<Value>(&tool_call.function.arguments)
+        .ok()
+        .and_then(|arguments| {
+            arguments
+                .get("action")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    let label = match action.as_deref() {
+        Some(action) => format!("{} 的 {action}", tool_call.function.name),
+        None => tool_call.function.name.clone(),
+    };
+    serde_json::json!({
+        "status": "rejected",
+        "error": "read_only_research_round",
+        "tool": tool_call.function.name,
+        "action": action,
+        "message": format!(
+            "投研回答轮次只读：{label} 会修改持久状态，本轮没有执行，也没有产生任何改动。请继续用本轮已取得和仍可取得的只读证据回答用户的问题；如果用户明确要求这项改动，在回答里说明它尚未执行，等用户在本轮回答之后单独提出再处理。"
+        ),
+    })
+}
+
 fn malformed_read_only_tool_result(tool_call: &ToolCall) -> Value {
     let arguments = serde_json::from_str::<Value>(&tool_call.function.arguments).ok();
     let data_type = arguments
@@ -7224,18 +7265,32 @@ impl Agent for FunctionCallingAgent {
                     }
 
                     // A finance/read-only turn must never execute an
-                    // unregistered, unknown-effect, or write-capable batch.
-                    // A registered, known-read-only batch is handled per call
-                    // below: malformed siblings receive a structured rejection
-                    // while valid searches and evidence reads still execute.
-                    // Blocking an unsafe batch is not authority to refuse the
-                    // user's business question, so the same Agent receives one
-                    // tools-disabled continuation from evidence already held.
-                    if finance_round_is_read_only && !finance_round_is_known_read_only {
+                    // unregistered or unknown-effect batch. Registered calls
+                    // are handled per call below: known persistent writes and
+                    // malformed read-only calls each receive a structured
+                    // rejection while valid searches and evidence reads still
+                    // execute. Blocking an unsafe batch is not authority to
+                    // refuse the user's business question, so the same Agent
+                    // receives one tools-disabled continuation from evidence
+                    // already held.
+                    let finance_round_has_unknown_effect_call =
+                        actionable_tool_calls.iter().any(|tool_call| {
+                            !registered_tool_call_is_known_read_only(
+                                tool_call,
+                                &registered_tool_names,
+                            ) && !registered_tool_call_is_known_persistent_write(
+                                tool_call,
+                                &registered_tool_names,
+                            )
+                        });
+                    if finance_round_is_read_only && finance_round_has_unknown_effect_call {
                         let blocked_calls = actionable_tool_calls
                             .iter()
                             .filter(|tool_call| {
-                                !registered_read_only_tool_call_is_well_formed(
+                                !registered_tool_call_is_known_read_only(
+                                    tool_call,
+                                    &registered_tool_names,
+                                ) && !registered_tool_call_is_known_persistent_write(
                                     tool_call,
                                     &registered_tool_names,
                                 )
@@ -7458,6 +7513,35 @@ impl Agent for FunctionCallingAgent {
                             match serde_json::from_str::<Value>(tool_args_str) {
                                 Ok(tool_args) => {
                                     self.dbg(&format!("[Agent] tool_call name={tool_name}"));
+                                    if finance_round_is_read_only
+                                        && registered_tool_call_is_known_persistent_write(
+                                            tc,
+                                            &registered_tool_names,
+                                        )
+                                    {
+                                        let error_result =
+                                            read_only_round_write_rejection_result(tc);
+                                        tracing::warn!(
+                                            target: "hone_agent::ttft",
+                                            session_id = %context.session_id,
+                                            iteration = iterations,
+                                            tool = %tool_name,
+                                            "rejected one persistent write call inside a read-only finance round while executing its read-only siblings"
+                                        );
+                                        tool_calls_made.push(ToolCallMade {
+                                            name: tool_name.clone(),
+                                            arguments: tool_args,
+                                            result: error_result.clone(),
+                                            tool_call_id: Some(tool_call_id.clone()),
+                                        });
+                                        context.add_tool_result(
+                                            tool_call_id,
+                                            tool_name,
+                                            &serde_json::to_string(&error_result)
+                                                .unwrap_or_default(),
+                                        );
+                                        continue;
+                                    }
                                     if finance_round_is_read_only
                                         && !registered_read_only_tool_call_is_well_formed(
                                             tc,
@@ -17077,7 +17161,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_owned_finance_loop_blocks_persistent_tool_and_still_answers() {
+    async fn agent_owned_finance_loop_rejects_persistent_tool_per_call_and_still_answers() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮只使用已取得的实体证据\n\nCRWV 尚未加入持仓；先核对标的和数量，再执行写入。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![ChatStreamEvent::ToolCallDelta {
@@ -17114,8 +17198,14 @@ mod tests {
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 3);
         assert_eq!(stream_calls.load(Ordering::SeqCst), 3);
-        assert_eq!(response.tool_calls_made.len(), 1);
+        // The write is rejected on its own with a structured result the Agent
+        // can read; it never reaches the observer or the registry.
+        assert_eq!(response.tool_calls_made.len(), 2);
         assert_eq!(portfolio_calls.load(Ordering::SeqCst), 0);
+        let rejected = &response.tool_calls_made[1];
+        assert_eq!(rejected.name, "portfolio");
+        assert_eq!(rejected.result["error"], "read_only_research_round");
+        assert_eq!(rejected.result["action"], "add");
         assert_eq!(
             tool_observer
                 .events
@@ -17125,17 +17215,17 @@ mod tests {
             ["start:data_fetch", "done:data_fetch:true"],
             "the persistent call must be rejected before observer or registry execution"
         );
-        assert!(context.messages.iter().all(|message| {
-            message.tool_calls.as_ref().is_none_or(|tool_calls| {
-                tool_calls.iter().all(|tool_call| {
-                    tool_call.get("id").and_then(Value::as_str) != Some("tc_portfolio_add")
-                })
-            })
+        assert!(context.messages.iter().any(|message| {
+            message.tool_call_id.as_deref() == Some("tc_portfolio_add")
+                && message
+                    .content
+                    .as_deref()
+                    .is_some_and(|content| content.contains("read_only_research_round"))
         }));
     }
 
     #[tokio::test]
-    async fn finance_discovery_round_blocks_executable_skill_and_still_answers() {
+    async fn finance_discovery_round_rejects_executable_skill_per_call_and_still_answers() {
         let answer = "数据时间：北京时间 2026-07-19 09:31；行情口径：本轮没有执行脚本\n\nCRWV：先给出不依赖脚本的核对框架。";
         let llm = StreamingMockLlmProvider::with_rounds(vec![
             vec![
@@ -17173,23 +17263,131 @@ mod tests {
         assert!(response.success, "{:?}", response.error);
         assert_eq!(response.content, answer);
         assert_eq!(response.iterations, 2);
-        assert!(response.tool_calls_made.is_empty());
+        // The entity search still runs; only the executable skill is rejected.
+        assert_eq!(response.tool_calls_made.len(), 2);
+        assert_eq!(response.tool_calls_made[0].name, "data_fetch");
+        assert_eq!(response.tool_calls_made[1].name, "skill_tool");
+        assert_eq!(
+            response.tool_calls_made[1].result["error"],
+            "read_only_research_round"
+        );
         assert_eq!(skill_calls.load(Ordering::SeqCst), 0);
-        assert!(
+        assert_eq!(
             tool_observer
                 .events
                 .lock()
                 .expect("tool observer events")
-                .is_empty(),
-            "the mixed discovery/write round must fail before any observer or registry call"
+                .as_slice(),
+            ["start:data_fetch", "done:data_fetch:true"],
+            "the write sibling must be rejected before any observer or registry call"
         );
-        assert!(context.messages.iter().all(|message| {
-            message.tool_calls.as_ref().is_none_or(|tool_calls| {
-                tool_calls.iter().all(|tool_call| {
-                    tool_call.get("id").and_then(Value::as_str) != Some("tc_executable_skill")
-                })
-            })
+        assert!(context.messages.iter().any(|message| {
+            message.tool_call_id.as_deref() == Some("tc_executable_skill")
+                && message
+                    .content
+                    .as_deref()
+                    .is_some_and(|content| content.contains("read_only_research_round"))
         }));
+    }
+
+    struct CountingIndustryMapEditTool {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Tool for CountingIndustryMapEditTool {
+        fn name(&self) -> &str {
+            "industry_map_edit"
+        }
+
+        fn description(&self) -> &str {
+            "admin ontology editor that must never run inside a research round"
+        }
+
+        fn parameters(&self) -> Vec<ToolParameter> {
+            vec![]
+        }
+
+        async fn execute(&self, _args: Value) -> hone_core::HoneResult<Value> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(json!({"ok": true}))
+        }
+    }
+
+    /// 2026-09-07 production: an admin asked for Micron's valuation, the model
+    /// batched `industry_map_edit` with the quote and financials, the whole
+    /// batch was blocked and the answer became "数据不足". The evidence reads
+    /// must survive; only the editor call is rejected.
+    #[tokio::test]
+    async fn finance_batch_rejects_industry_map_edit_per_call_and_keeps_the_evidence_reads() {
+        let answer = "数据时间：北京时间 2026-09-07 13:16；行情口径：本轮只使用已取得的只读证据
+
+MU：报价与财报已取到，行业树没有改动。";
+        let llm = StreamingMockLlmProvider::with_rounds(vec![
+            vec![ChatStreamEvent::ToolCallDelta {
+                index: 0,
+                id: Some("tc_search_crwv".to_string()),
+                name: Some("data_fetch".to_string()),
+                arguments: r#"{"data_type":"search","query":"CRWV","entity_route":"crwv","identity_match":"exact_symbol"}"#.to_string(),
+            }],
+            vec![
+                ChatStreamEvent::ToolCallDelta {
+                    index: 0,
+                    id: Some("tc_quote_crwv".to_string()),
+                    name: Some("data_fetch".to_string()),
+                    arguments: r#"{"data_type":"quote","ticker":"CRWV","entity_route":"crwv"}"#.to_string(),
+                },
+                ChatStreamEvent::ToolCallDelta {
+                    index: 1,
+                    id: Some("tc_ontology_edit".to_string()),
+                    name: Some("industry_map_edit".to_string()),
+                    arguments: r#"{"action":"set_upstream_latest","industry":"storage","symbol":"NVDA","latest":"…","as_of":"2026-09-07"}"#.to_string(),
+                },
+            ],
+            vec![ChatStreamEvent::ContentDelta(answer.to_string())],
+        ]);
+        let edit_calls = Arc::new(AtomicUsize::new(0));
+        let tool_observer = Arc::new(MockToolObserver::default());
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(FinanceEvidenceTool));
+        registry.register(Box::new(CountingIndustryMapEditTool {
+            calls: edit_calls.clone(),
+        }));
+        let agent =
+            FunctionCallingAgent::new(Arc::new(llm), Arc::new(registry), String::new(), 3, None)
+                .with_agent_owned_finance_loop(true)
+                .with_tool_observer(Some(tool_observer.clone()));
+        let mut context = AgentContext::new("finance-ontology-edit-sibling".to_string());
+
+        let response = agent.run("CRWV 现在的估值怎么看", &mut context).await;
+
+        assert!(response.success, "{:?}", response.error);
+        assert_eq!(response.content, answer);
+        assert_eq!(response.iterations, 3);
+        assert_eq!(edit_calls.load(Ordering::SeqCst), 0);
+        let names = response
+            .tool_calls_made
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["data_fetch", "data_fetch", "industry_map_edit"]);
+        let rejected = &response.tool_calls_made[2];
+        assert_eq!(rejected.result["error"], "read_only_research_round");
+        assert_eq!(rejected.result["action"], "set_upstream_latest");
+        let events = tool_observer.events.lock().expect("tool observer events");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.starts_with("start:"))
+                .count(),
+            2,
+            "both evidence reads reach the registry; the editor never does: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| !event.contains("industry_map_edit"))
+        );
     }
 
     #[test]

@@ -1,0 +1,735 @@
+/* Quick-action dialogs opened from the composer toolbar: holdings tracking
+   tips, the admin earnings workflows and the finance calendar. Same tokens
+   and radii as the conversation surface; the calendar keeps its fixed
+   1080×1350 artboard geometry because the exported image depends on it. */
+
+.public-chat-proactive-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(23, 32, 31, 0.32);
+  animation: hone-proactive-backdrop 0.14s ease-out;
+}
+@keyframes hone-proactive-backdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.public-chat-proactive-modal {
+  position: relative;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 40px));
+  overflow: auto;
+  /* iOS Safari: without containment, inner scroll chains to the page behind
+     the fixed backdrop and drags the document along with it. */
+  overscroll-behavior: contain;
+  padding: 22px;
+  border: 1px solid var(--hone-line);
+  border-radius: 14px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  box-shadow: var(--hone-shadow-md);
+  animation: hone-proactive-pop 0.16s ease-out;
+}
+@keyframes hone-proactive-pop {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.public-chat-proactive-modal h2 {
+  margin: 0 36px 6px 0;
+  color: var(--hone-ink-950);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+}
+.public-chat-proactive-intro {
+  margin: 0 0 16px;
+  color: var(--hone-ink-600);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.public-chat-proactive-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.public-chat-proactive-close:hover {
+  background: color-mix(in srgb, var(--hone-ink-950) 6%, var(--hone-paper-50));
+  color: var(--hone-ink-950);
+}
+.public-chat-proactive-primary {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--hone-ink-950);
+  color: var(--hone-paper-50);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.public-chat-proactive-primary:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+/* Holdings tracking tips */
+.public-chat-proactive-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.public-chat-proactive-item {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.public-chat-proactive-item-mark {
+  width: 7px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--hone-coral-500);
+}
+.public-chat-proactive-item strong {
+  display: block;
+  margin: 0 0 2px;
+  color: var(--hone-ink-950);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.public-chat-proactive-item small {
+  display: block;
+  color: var(--hone-ink-600);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.public-chat-proactive-examples {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--hone-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--hone-ink-950) 4%, var(--hone-paper-50));
+}
+.public-chat-proactive-examples div {
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+.public-chat-proactive-example-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: start;
+  gap: 8px;
+  color: var(--hone-ink-800);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.public-chat-proactive-example-row span {
+  color: var(--hone-ink-800);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.public-chat-proactive-copy {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hone-line);
+  border-radius: 6px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-600);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, transform 0.06s ease;
+}
+.public-chat-proactive-copy:hover {
+  border-color: var(--hone-line-strong);
+  color: var(--hone-ink-950);
+}
+.public-chat-proactive-copy:active {
+  transform: scale(0.96);
+}
+
+/* Earnings workflows (administrators) */
+.public-chat-earnings-kicker {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+.public-chat-earnings-modal { width: min(500px, calc(100vw - 32px)); }
+.public-chat-earnings-field { display: grid; gap: 6px; margin-top: 14px; }
+.public-chat-earnings-field > span { color: var(--hone-ink-800); font-size: 12.5px; font-weight: 600; }
+.public-chat-earnings-field > input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--hone-line);
+  border-radius: 9px;
+  outline: none;
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.public-chat-earnings-field > input:focus {
+  border-color: var(--hone-line-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hone-ink-950) 9%, transparent);
+}
+.public-chat-earnings-file-picker {
+  width: 100%;
+  min-height: 62px;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--hone-line-strong);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--hone-ink-950) 3%, var(--hone-paper-50));
+  color: var(--hone-ink-950);
+  cursor: pointer;
+  text-align: left;
+}
+.public-chat-earnings-file-picker span { font-size: 13px; font-weight: 600; }
+.public-chat-earnings-file-picker small {
+  overflow: hidden;
+  color: var(--hone-ink-600);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.public-chat-earnings-error { margin: 12px 0 0; color: var(--hone-error-600); font-size: 12.5px; }
+.public-chat-earnings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.public-chat-earnings-actions > button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--hone-line);
+  border-radius: 9px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-800);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.public-chat-earnings-actions > .public-chat-proactive-primary {
+  width: auto;
+  padding: 0 16px;
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-paper-50);
+}
+.public-chat-earnings-actions > button:disabled,
+.public-chat-earnings-file-picker:disabled { cursor: progress; opacity: 0.58; }
+
+/* Finance calendar */
+.public-chat-calendar-modal {
+  width: min(980px, calc(100vw - 32px));
+  height: min(780px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--hone-paper-100);
+}
+.public-chat-calendar-modal-header {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 64px 14px 20px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+  box-sizing: border-box;
+}
+.public-chat-calendar-modal-header h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  line-height: 1.3;
+}
+.public-chat-calendar-modal-header > div { min-width: 0; }
+.public-chat-calendar-modal-header p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--hone-ink-600);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.public-chat-calendar-modal-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hone-line);
+  border-radius: 9px;
+  background: var(--hone-paper-50);
+  color: var(--hone-coral-600);
+}
+.public-chat-calendar-modal .public-chat-proactive-close {
+  top: 19px;
+  right: 18px;
+}
+.public-chat-calendar-modal-body {
+  min-height: 0;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: 22px;
+  overflow: auto;
+  box-sizing: border-box;
+}
+.public-chat-calendar-preview-pane {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.public-chat-calendar-preview-frame,
+.public-chat-calendar-preview-loading {
+  width: 454px;
+  height: 567px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--hone-line);
+  border-radius: 8px;
+  background: var(--hone-surface-raised);
+  box-shadow: var(--hone-shadow-sm);
+  box-sizing: content-box;
+}
+.public-chat-calendar-preview-frame {
+  position: relative;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.public-chat-calendar-preview-frame:focus-visible {
+  outline: 2px solid var(--hone-focus-ring);
+  outline-offset: 2px;
+}
+.public-chat-calendar-preview-artboard {
+  width: 1080px;
+  height: 1350px;
+  transform: scale(0.42);
+  transform-origin: top left;
+  pointer-events: none;
+}
+.public-chat-calendar-preview-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(23, 32, 31, 0.86);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.public-chat-calendar-large-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #111719;
+  color: #fff;
+}
+.public-chat-calendar-large-preview > header {
+  min-height: 56px;
+  padding: max(8px, env(safe-area-inset-top)) 10px 8px 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 36px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(17, 23, 25, 0.98);
+}
+.public-chat-calendar-large-preview > header > strong {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.public-chat-calendar-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.public-chat-calendar-zoom-controls button,
+.public-chat-calendar-large-close {
+  height: 32px;
+  min-width: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+}
+.public-chat-calendar-zoom-controls button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+.public-chat-calendar-zoom-controls button.is-fit {
+  font-size: 11px;
+}
+.public-chat-calendar-zoom-controls > span {
+  min-width: 42px;
+  color: #b9c3c6;
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.public-chat-calendar-large-close {
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+.public-chat-calendar-large-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #20282b;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+.public-chat-calendar-large-canvas-shell {
+  position: relative;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #eef2f3;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.28);
+}
+.public-chat-calendar-large-canvas {
+  width: 1080px;
+  height: 1350px;
+  transform-origin: top left;
+}
+.public-chat-calendar-preview-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--hone-ink-600);
+  font-size: 13px;
+}
+.public-chat-calendar-preview-failed > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--hone-error-600);
+  border-radius: 50%;
+  color: var(--hone-error-600);
+  font-size: 18px;
+  font-weight: 700;
+}
+.public-chat-calendar-loading-ring {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--hone-line);
+  border-top-color: var(--hone-coral-500);
+  border-radius: 50%;
+  animation: hone-calendar-spin 0.8s linear infinite;
+}
+@keyframes hone-calendar-spin {
+  to { transform: rotate(360deg); }
+}
+.public-chat-calendar-controls {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.public-chat-calendar-month-label {
+  margin: 2px 0 8px;
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+.public-chat-calendar-month-nav {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  gap: 6px;
+  align-items: center;
+}
+.public-chat-calendar-month-nav button,
+.public-chat-calendar-month-nav select {
+  min-height: 36px;
+  border: 1px solid var(--hone-line);
+  border-radius: 8px;
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.public-chat-calendar-month-nav button {
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+.public-chat-calendar-month-nav select {
+  width: 100%;
+  padding: 0 10px;
+  text-align: center;
+}
+.public-chat-calendar-month-nav button:hover:not(:disabled),
+.public-chat-calendar-month-nav select:hover:not(:disabled) {
+  border-color: var(--hone-line-strong);
+}
+.public-chat-calendar-month-nav button:disabled,
+.public-chat-calendar-month-nav select:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.public-chat-calendar-current-month {
+  align-self: flex-start;
+  margin: 8px 0 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hone-link);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.public-chat-calendar-current-month:disabled {
+  color: var(--hone-ink-500);
+  cursor: default;
+}
+.public-chat-calendar-stat-list {
+  border-top: 1px solid var(--hone-line);
+  border-bottom: 1px solid var(--hone-line);
+}
+.public-chat-calendar-stat-list > div {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--hone-line);
+  color: var(--hone-ink-600);
+  font-size: 12.5px;
+}
+.public-chat-calendar-stat-list > div:last-child { border-bottom: 0; }
+.public-chat-calendar-stat-list strong {
+  color: var(--hone-ink-950);
+  font-family: var(--hone-font-label);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.public-chat-calendar-data-state {
+  margin: 16px 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+.public-chat-calendar-state-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--hone-signal-green);
+}
+.public-chat-calendar-data-state[data-degraded="true"] .public-chat-calendar-state-dot {
+  background: var(--hone-signal-yellow);
+}
+.public-chat-calendar-data-state strong,
+.public-chat-calendar-data-state span {
+  display: block;
+}
+.public-chat-calendar-data-state strong {
+  color: var(--hone-ink-950);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.public-chat-calendar-data-state div > span {
+  margin-top: 3px;
+  color: var(--hone-ink-600);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.public-chat-calendar-send {
+  margin-top: auto;
+  min-height: 40px;
+}
+.public-chat-calendar-error {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--hone-error-600) 24%, transparent);
+  border-radius: 9px;
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red-ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.public-chat-calendar-error strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-chat-proactive-modal-backdrop,
+  .public-chat-proactive-modal,
+  .public-chat-calendar-loading-ring { animation: none; }
+}
+
+/* ── Phones ── */
+@media (max-width: 820px) {
+  .public-chat-proactive-modal-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+  .public-chat-proactive-modal {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 20px;
+    border-radius: 16px;
+  }
+  .public-chat-proactive-modal h2 {
+    font-size: 17px;
+  }
+  .public-chat-calendar-modal {
+    padding: 0;
+    border-radius: 16px;
+  }
+  .public-chat-calendar-modal-header {
+    min-height: 64px;
+    gap: 10px;
+    padding: 12px 52px 12px 14px;
+  }
+  .public-chat-calendar-modal-header h2 {
+    margin-bottom: 2px;
+    font-size: 15.5px;
+  }
+  .public-chat-calendar-modal-header p {
+    font-size: 11px;
+  }
+  .public-chat-calendar-modal-mark {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+  .public-chat-calendar-modal .public-chat-proactive-close {
+    top: 17px;
+    right: 12px;
+  }
+  .public-chat-calendar-modal-body {
+    min-height: 0;
+    max-height: calc(100dvh - 92px);
+    padding: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .public-chat-calendar-preview-frame,
+  .public-chat-calendar-preview-loading {
+    width: min(300px, calc(100vw - 48px));
+    height: min(375px, calc((100vw - 48px) * 1.25));
+  }
+  .public-chat-calendar-preview-artboard {
+    transform: scale(0.2778);
+  }
+  .public-chat-calendar-preview-hint {
+    right: 8px;
+    bottom: 8px;
+    min-height: 26px;
+    max-width: calc(100% - 16px);
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .public-chat-calendar-controls {
+    min-height: 0;
+  }
+  .public-chat-calendar-stat-list {
+    display: none;
+  }
+  .public-chat-calendar-data-state {
+    margin: 10px 0;
+  }
+  .public-chat-calendar-current-month {
+    margin-bottom: 8px;
+  }
+  .public-chat-calendar-send {
+    margin-top: 8px;
+  }
+  .public-chat-calendar-large-preview > header {
+    grid-template-columns: minmax(0, 1fr) auto 34px;
+    gap: 6px;
+    padding-inline: 10px 8px;
+  }
+  .public-chat-calendar-large-preview > header > strong {
+    display: none;
+  }
+  .public-chat-calendar-zoom-controls {
+    grid-column: 1 / 3;
+    justify-self: start;
+  }
+  .public-chat-calendar-zoom-controls button,
+  .public-chat-calendar-large-close {
+    height: 32px;
+    min-width: 32px;
+  }
+  .public-chat-calendar-large-viewport {
+    padding: 8px;
+  }
+}

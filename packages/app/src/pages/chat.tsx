@@ -12,10 +12,11 @@ import {
   onMount,
   Show,
   Switch,
+  type JSX,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { Portal } from "solid-js/web";
-import { A, useNavigate, useSearchParams } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
@@ -62,12 +63,14 @@ import "./public-foundation.css";
 import "./public-site.css";
 import "./public-polish.css";
 import "./public-chat.css";
+import "./public-chat-modals.css";
 import "./public-agent-workspace.css";
 import "./public-chat-accessibility.css";
 import {
   getPublicChatBootstrap,
   getPublicCommunity,
   getPublicFinanceCalendar,
+  getPublicInfluencerDigest,
   getPublicHistory,
   getPublicPushes,
   getPublicGeneratedFileBlob,
@@ -118,6 +121,10 @@ import {
   shouldRecoverPublicChatAfterEof,
   shouldRetryPublicRestore,
   shouldRecoverPinnedBottom,
+  shouldKeepBottomAfterRestore,
+  isLeaveBottomGesture,
+  isLayoutDrivenScroll,
+  carryOverLocalRunTrail,
   shouldPreventPublicChatPinch,
   shouldSubmitPublicChatEnter,
   shouldLoadOlderPublicMessages,
@@ -136,10 +143,15 @@ import {
   daySeparatorLabel,
   workspaceUserName,
 } from "@/lib/public-agent-workspace";
-import { buildChatStarterPrompts } from "@/lib/chat-empty-prompts";
+import {
+  buildChatStarterPrompts,
+  type ChatStarterPrompt,
+} from "@/lib/chat-empty-prompts";
+import { buildPublicChatDemo } from "@/lib/public-chat-demo";
 import { useLocale } from "@/lib/i18n";
 import type {
   FinanceCalendarPayload,
+  InfluencerDigestSnapshot,
   PublicCommunityContent,
   PublicAuthUserInfo,
   PublicPushDetail,
@@ -487,7 +499,6 @@ function AssistantBody(props: {
 function ImageMosaic(props: {
   images: PublicChatAttachment[];
   onOpen: (index: number) => void;
-  inUserBubble?: boolean;
 }) {
   const count = () => props.images.length;
 
@@ -496,30 +507,16 @@ function ImageMosaic(props: {
       when={count() === 1}
       fallback={
         <div
-          style={{
-            display: "grid",
-            "grid-template-columns": `repeat(2, 1fr)`,
-            gap: "4px",
-            "border-radius": "var(--hone-radius-md)",
-            overflow: "hidden",
-            "max-width": "420px",
-            "aspect-ratio": count() === 2 ? "2 / 1" : "1 / 1",
+          class="hc-mosaic"
+          classList={{
+            "is-two": count() === 2,
+            "is-three": count() === 3,
+            "is-many": count() >= 3,
           }}
         >
           <For each={props.images.slice(0, 4)}>
             {(img, index) => (
-              <div
-                onClick={() => props.onOpen(index())}
-                style={{
-                  position: "relative",
-                  cursor: "zoom-in",
-                  overflow: "hidden",
-                  background: "var(--hone-paper-200)",
-                  ...(count() === 3 && index() === 0
-                    ? { "grid-row": "span 2" }
-                    : {}),
-                }}
-              >
+              <div onClick={() => props.onOpen(index())}>
                 <ProgressiveMessageImage
                   testId="user-attachment-image"
                   src={publicAttachmentUrl(img)}
@@ -535,17 +532,7 @@ function ImageMosaic(props: {
         </div>
       }
     >
-      <div
-        onClick={() => props.onOpen(0)}
-        style={{
-          "border-radius": "var(--hone-radius-md)",
-          overflow: "hidden",
-          cursor: "zoom-in",
-          "max-width": "420px",
-          "line-height": "0",
-          position: "relative",
-        }}
-      >
+      <div class="hc-mosaic--single" onClick={() => props.onOpen(0)}>
         <ProgressiveMessageImage
           testId="user-attachment-image"
           src={publicAttachmentUrl(props.images[0]!)}
@@ -559,22 +546,12 @@ function ImageMosaic(props: {
   );
 }
 
-function FileCard(props: {
-  file: PublicChatAttachment;
-  inUserBubble?: boolean;
-}) {
+function FileCard(props: { file: PublicChatAttachment }) {
   const [downloadState, setDownloadState] = createSignal<
     "idle" | "working" | "done" | "error"
   >("idle");
   const [downloadError, setDownloadError] = createSignal("");
   const ext = () => publicAttachmentFileLabel(props.file.name);
-  const iconBg = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.2)" : "rgba(23, 32, 31, 0.05)";
-  const iconColor = () => (props.inUserBubble ? "#fff" : "var(--hone-ink-800)");
-  const textColor = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.95)" : "var(--hone-ink-950)";
-  const subColor = () =>
-    props.inUserBubble ? "rgba(255,255,255,0.7)" : "var(--hone-ink-600)";
   const downloadStatus = () => {
     if (downloadState() === "working") {
       return CONTENT.chat_page.attachments.downloading;
@@ -613,89 +590,33 @@ function FileCard(props: {
     }
   };
   const card = (
-    <div
-      style={{
-        display: "flex",
-        "align-items": "center",
-        gap: "14px",
-        padding: "12px 14px",
-        background: props.inUserBubble ? "rgba(255,255,255,0.12)" : "#fff",
-        border: props.inUserBubble
-          ? "1.5px solid rgba(255,255,255,0.2)"
-          : "1.5px solid var(--hone-paper-200)",
-        "border-radius": "var(--hone-radius-md)",
-        "min-width": "260px",
-      }}
-    >
-      <div
-        style={{
-          width: "44px",
-          height: "44px",
-          "border-radius": "var(--hone-radius-sm)",
-          background: iconBg(),
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          "font-family": "var(--hone-font-label)",
-          "font-size": "11px",
-          "font-weight": "800",
-          color: iconColor(),
-          "letter-spacing": "0.05em",
-          "flex-shrink": "0",
-        }}
-      >
-        {ext()}
-      </div>
-      <div style={{ flex: "1", "min-width": "0" }}>
-        <div
-          style={{
-            "font-size": "15px",
-            "font-weight": "700",
-            color: textColor(),
-            "white-space": "nowrap",
-            overflow: "hidden",
-            "text-overflow": "ellipsis",
-          }}
-        >
-          {props.file.name}
-        </div>
-        <div
+    <span class="hc-file">
+      <span class="hc-file__ext">{ext()}</span>
+      <span class="hc-file__copy">
+        <span class="hc-file__name">{props.file.name}</span>
+        <span
+          class="hc-file__meta"
+          classList={{ "is-error": downloadState() === "error" }}
           role={downloadState() === "error" ? "alert" : "status"}
           aria-live="polite"
-          style={{
-            "font-family": "var(--hone-font-label)",
-            "font-size": "12px",
-            color:
-              downloadState() === "error" ? "var(--hone-error-600)" : subColor(),
-            "margin-top": "3px",
-          }}
         >
           <Show when={props.file.size}>
             {formatPublicAttachmentBytes(props.file.size)} · {" "}
           </Show>
           {downloadStatus()}
-        </div>
-      </div>
-    </div>
+        </span>
+      </span>
+    </span>
   );
   if (props.file.kind === "image") return card;
   return (
     <button
       type="button"
+      class="hc-file-button"
       aria-label={`${CONTENT.chat_page.attachments.click_download} ${props.file.name}`}
       aria-busy={downloadState() === "working"}
       disabled={downloadState() === "working"}
       onClick={() => void download()}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "0",
-        border: "0",
-        background: "transparent",
-        color: "inherit",
-        "text-align": "left",
-        cursor: downloadState() === "working" ? "wait" : "pointer",
-      }}
     >
       {card}
     </button>
@@ -719,54 +640,19 @@ function UserBubble(props: {
     images().length > 0 && !hasText() && files().length === 0;
 
   return (
-    <div
-      class="pub-msg-in pub-msg-row"
-      style={{
-        display: "flex",
-        "justify-content": "flex-end",
-        "margin-bottom": "20px",
-      }}
-    >
-      <div
-        class="pub-msg-bubble pub-msg-bubble--user"
-        style={{
-          "max-width": "80%",
-          background: "var(--hone-ink-950)",
-          color: "#fff",
-          "border-radius": "24px 24px 4px 24px",
-          padding: imageOnly() ? "6px" : "14px 20px",
-          "font-size": "16px",
-          "line-height": "1.7",
-          "box-shadow": "0 10px 30px rgba(23, 32, 31, 0.1)",
-          "white-space": "pre-wrap",
-          "word-break": "break-word",
-        }}
-      >
+    <div class="hc-turn hc-turn--user">
+      <div class="hc-user" classList={{ "is-media-only": imageOnly() }}>
         <Show when={images().length > 0}>
-          <div
-            style={{
-              "margin-bottom": hasText() || files().length > 0 ? "10px" : "0",
-            }}
-          >
+          <div class="hc-user__media">
             <ImageMosaic
               images={images()}
-              inUserBubble
               onOpen={(index) => props.onOpenImage(images(), index)}
             />
           </div>
         </Show>
         <Show when={files().length > 0}>
-          <div
-            style={{
-              display: "flex",
-              "flex-direction": "column",
-              gap: "8px",
-              "margin-bottom": hasText() ? "10px" : "0",
-            }}
-          >
-            <For each={files()}>
-              {(file) => <FileCard file={file} inUserBubble />}
-            </For>
+          <div class="hc-user__files">
+            <For each={files()}>{(file) => <FileCard file={file} />}</For>
           </div>
         </Show>
         <Show when={hasText()}>{cleaned()}</Show>
@@ -774,6 +660,66 @@ function UserBubble(props: {
       </div>
     </div>
   );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
+}
+
+/** The step list of a run: done rows take a check, the live row a spinner. */
+function TrailList(props: { steps: string[]; pending: boolean }) {
+  return (
+    <ul class="hc-trail__list">
+      <For each={props.steps}>
+        {(step, index) => {
+          const done = () =>
+            index() < props.steps.length - 1 || !props.pending;
+          return (
+            <li
+              class="hc-trail__row"
+              classList={{ "is-done": done(), "is-current": !done() }}
+            >
+              <span class="hc-trail__icon">
+                <Show when={done()} fallback={<span class="hc-spin" />}>
+                  <CheckIcon />
+                </Show>
+              </span>
+              <span>{step}</span>
+            </li>
+          );
+        }}
+      </For>
+    </ul>
+  );
+}
+
+/** Local wall-clock time for a persisted turn; the day is on the separator. */
+function turnTimeLabel(at: string | undefined, locale: "zh" | "en") {
+  if (!at) return undefined;
+  const parsed = new Date(at);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** The byline already says HONE; the status only needs its verb. */
+function shortStatus(text: string) {
+  return text.replace(/^HONE\s*(is\s+)?/i, "").trim();
 }
 
 function AssistantBubble(props: {
@@ -801,6 +747,9 @@ function AssistantBubble(props: {
     props.message.phase !== "done" && props.message.phase !== "error";
   const terminal = () => props.message.phase === "error";
   const hasContent = () => !!props.message.content.trim();
+  const steps = () => props.message.steps ?? [];
+  const reasoning = () => props.message.reasoningLog?.trim() ?? "";
+  const hasTrail = () => steps().length > 0 || reasoning().length > 0;
   const [elapsed, setElapsed] = createSignal(0);
   const [copied, setCopied] = createSignal(false);
 
@@ -821,19 +770,29 @@ function AssistantBubble(props: {
     onCleanup(() => window.clearInterval(timer));
   });
 
-  const statusLabel = () => {
-    if (terminal()) return CONTENT.chat_page.status.error;
-    if (hasContent()) return "HONE";
-    const currentStatus = props.message.statusText?.trim();
-    if (currentStatus) return currentStatus;
-    switch (props.message.phase) {
-      case "running":
-        return CONTENT.chat_page.status.running;
-      case "streaming":
-        return CONTENT.chat_page.status.streaming;
-      default:
-        return CONTENT.chat_page.status.thinking;
+  const metaLabel = () => {
+    if (terminal()) return shortStatus(CONTENT.chat_page.status.error);
+    if (pending()) {
+      if (hasContent()) return shortStatus(CONTENT.chat_page.status.streaming);
+      const current = props.message.statusText?.trim();
+      return shortStatus(current || CONTENT.chat_page.status.thinking);
     }
+    return turnTimeLabel(props.message.at, useLocale());
+  };
+  const trailSummary = () => {
+    const count = String(steps().length);
+    const start = props.message.startedAt;
+    const end = props.message.finishedAt;
+    if (!pending() && start && end && end > start) {
+      return CONTENT.chat_page.trail.summary
+        .replace("{count}", count)
+        .replace("{seconds}", String(Math.max(1, Math.round((end - start) / 1000))));
+    }
+    return CONTENT.chat_page.trail.summary_untimed.replace("{count}", count);
+  };
+  const reasoningTail = () => {
+    const log = reasoning();
+    return log.length > 150 ? `…${log.slice(-150)}` : log;
   };
   const handleCopy = () => {
     const text = stripAttachmentMarkers(props.message.content);
@@ -843,221 +802,201 @@ function AssistantBubble(props: {
     });
   };
   return (
-    <div
-      class="pub-msg-in pub-msg-row"
+    <article
+      class="hc-turn hc-turn--assistant"
       data-testid="assistant-turn"
       data-phase={props.message.phase ?? "done"}
-      style={{
-        display: "flex",
-        "justify-content": "flex-start",
-        "margin-bottom": "20px",
-      }}
     >
-      <div
-        class="pub-msg-bubble pub-msg-bubble--assistant"
-        style={{
-          "max-width": "85%",
-          background: "rgba(255, 255, 255, 0.9)",
-          "backdrop-filter": "blur(10px)",
-          border: "1.5px solid var(--hone-line)",
-          "border-radius": "4px 24px 24px 24px",
-          padding: "16px 20px",
-          color: "var(--hone-ink-800)",
-          "box-shadow": "0 4px 20px rgba(23, 32, 31, 0.04)",
-          position: "relative",
-        }}
-      >
-        <Show when={!props.isContinuation || pending() || terminal()}>
-          <div
-            class="pub-msg-bubble__brand pub-assistant-turn-status"
-            classList={{
-              "is-thinking": pending() && !hasContent(),
-              "is-error": terminal(),
-            }}
-          >
-            <span class="pub-assistant-turn-dot" />
-            <span class="pub-assistant-turn-label">{statusLabel()}</span>
-            <Show when={pending() && !hasContent()}>
-              <span class="pub-assistant-turn-time">{elapsed()}s</span>
-            </Show>
-            <span class="pub-assistant-turn-spacer" />
-            <Show when={pending() && props.onStop}>
-              <button
-                type="button"
-                class="pub-assistant-turn-stop"
-                onClick={() => props.onStop?.()}
-              >
-                {CONTENT.chat_page.status.stop}
-              </button>
-            </Show>
-            <Show when={terminal() && props.onDismiss}>
-              <button
-                type="button"
-                class="pub-assistant-turn-dismiss"
-                aria-label={CONTENT.chat_page.actions.dismiss_aria}
-                onClick={() => props.onDismiss?.()}
-              >
-                ×
-              </button>
-            </Show>
-          </div>
-        </Show>
-        <Show when={pending() && !hasContent() && runStartedAtLabel()}>
-          <div class="pub-assistant-turn-started-at">
-            {runStartedAtLabel()}
-          </div>
-        </Show>
-        <Show when={pending() && !hasContent()}>
-          <div class="pub-assistant-thinking-body" aria-hidden="true">
-            <i /><i /><i />
-          </div>
-        </Show>
-        <Show when={(props.message.steps?.length ?? 0) > 0 && !hasContent()}>
-          <ul class="pub-assistant-turn-steps">
-            <For each={props.message.steps}>
-              {(step, index) => (
-                <li
-                  classList={{
-                    "is-done":
-                      index() < (props.message.steps?.length ?? 0) - 1 ||
-                      !pending(),
-                  }}
-                >
-                  {step}
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
-        <Show
-          when={
-            pending() &&
-            !hasContent() &&
-            (props.message.reasoningLog?.length ?? 0) > 0
-          }
+      <Show when={!props.isContinuation || pending() || terminal()}>
+        <header
+          class="hc-turn__head"
+          classList={{ "is-live": pending(), "is-error": terminal() }}
         >
-          <div class="pub-assistant-reasoning">
-            <p class="pub-assistant-reasoning-live">
-              {(() => {
-                const log = props.message.reasoningLog ?? "";
-                return log.length > 150 ? `…${log.slice(-150)}` : log;
-              })()}
-            </p>
-            <details class="pub-assistant-reasoning-trace">
-              <summary>查看完整思考轨迹</summary>
-              <p>{props.message.reasoningLog}</p>
-            </details>
-          </div>
-        </Show>
-        <Show when={hasContent()}>
-          <div class="pub-assistant-turn-content">
-            <AssistantBody
-              content={props.message.content}
-              financeCalendar={props.message.financeCalendar}
-            />
-            <Show when={pending()}>
-              <span class="pub-cursor" />
-            </Show>
-          </div>
-        </Show>
-        <Show when={terminal()}>
-          <p class="pub-assistant-turn-error">
-            {props.message.statusText || CONTENT.chat_page.status.fallback_error}
-          </p>
-        </Show>
-        <Show when={nonImageAttachments().length > 0}>
-          <div
-            style={{
-              display: "flex",
-              "flex-direction": "column",
-              gap: "8px",
-              "margin-top": "16px",
-            }}
-          >
-            <For each={nonImageAttachments()}>
-              {(file) => <FileCard file={file} />}
-            </For>
-          </div>
-        </Show>
-        <Show when={props.message.phase === "done" && !isCalendarMessage()}>
-          <div class="pub-msg-actions">
+          <span class="hc-turn__dot" aria-hidden="true" />
+          <span class="hc-turn__who">HONE</span>
+          <Show when={metaLabel()}>
+            {(label) => (
+              <>
+                <span class="hc-turn__sep" aria-hidden="true">·</span>
+                <span class="hc-turn__meta">{label()}</span>
+              </>
+            )}
+          </Show>
+          <Show when={pending() && props.message.startedAt}>
+            <span class="hc-turn__elapsed">{elapsed()}s</span>
+          </Show>
+          <span class="hc-turn__spacer" />
+          <Show when={pending() && props.onStop}>
             <button
               type="button"
-              class="pub-msg-action"
-              aria-label={CONTENT.chat_page.actions.copy_aria}
-              title={
-                copied()
-                  ? CONTENT.chat_page.actions.copied
-                  : CONTENT.chat_page.actions.copy_aria
-              }
-              onClick={handleCopy}
-              data-copied={copied() ? "true" : undefined}
+              class="hc-turn__stop"
+              onClick={() => props.onStop?.()}
             >
-              <Show
-                when={copied()}
-                fallback={
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                }
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              </Show>
+              <i aria-hidden="true" />
+              {CONTENT.chat_page.status.stop}
             </button>
-            <Show when={props.onShare}>
-              <button
-                type="button"
-                class="pub-msg-action"
-                aria-label={CONTENT.chat_page.actions.share_aria}
-                title={CONTENT.chat_page.actions.share_aria}
-                onClick={() => props.onShare?.()}
-              >
+          </Show>
+          <Show when={terminal() && props.onDismiss}>
+            <button
+              type="button"
+              class="hc-turn__dismiss"
+              aria-label={CONTENT.chat_page.actions.dismiss_aria}
+              onClick={() => props.onDismiss?.()}
+            >
+              ×
+            </button>
+          </Show>
+        </header>
+      </Show>
+      <Show when={pending() && !hasContent() && runStartedAtLabel()}>
+        <p class="hc-turn__started">{runStartedAtLabel()}</p>
+      </Show>
+      <Show when={pending() && !hasContent() && !hasTrail()}>
+        <div class="hc-turn__thinking" aria-hidden="true">
+          <i /><i /><i />
+        </div>
+      </Show>
+      <Show when={!hasContent() && hasTrail()}>
+        <div class="hc-trail" aria-label={CONTENT.chat_page.trail.working}>
+          <Show when={steps().length > 0}>
+            <TrailList steps={steps()} pending={pending()} />
+          </Show>
+          <Show when={pending() && reasoning()}>
+            {(log) => (
+              <div class="hc-trail__think">
+                <b>{CONTENT.chat_page.trail.think_label}</b>
+                <p>{reasoningTail()}</p>
+                <details>
+                  <summary>{CONTENT.chat_page.trail.expand}</summary>
+                  <p>{log()}</p>
+                </details>
+              </div>
+            )}
+          </Show>
+        </div>
+      </Show>
+      <Show when={hasContent() && steps().length > 0}>
+        <details class="hc-trail hc-trail--summary">
+          <summary>
+            <CheckIcon />
+            <span>{trailSummary()}</span>
+            <svg
+              class="hc-trail__chev"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </summary>
+          <TrailList steps={steps()} pending={pending()} />
+        </details>
+      </Show>
+      <Show when={hasContent()}>
+        <div class="hc-turn__body">
+          <AssistantBody
+            content={props.message.content}
+            financeCalendar={props.message.financeCalendar}
+          />
+          <Show when={pending()}>
+            <span class="hc-caret" aria-hidden="true" />
+          </Show>
+        </div>
+      </Show>
+      <Show when={terminal()}>
+        <p class="hc-turn__error">
+          {props.message.statusText || CONTENT.chat_page.status.fallback_error}
+        </p>
+      </Show>
+      <Show when={nonImageAttachments().length > 0}>
+        <div class="hc-turn__files">
+          <For each={nonImageAttachments()}>
+            {(file) => <FileCard file={file} />}
+          </For>
+        </div>
+      </Show>
+      <Show when={props.message.phase === "done" && !isCalendarMessage()}>
+        <div class="hc-turn__actions">
+          <button
+            type="button"
+            class="hc-turn__action"
+            aria-label={CONTENT.chat_page.actions.copy_aria}
+            title={
+              copied()
+                ? CONTENT.chat_page.actions.copied
+                : CONTENT.chat_page.actions.copy_aria
+            }
+            onClick={handleCopy}
+            data-copied={copied() ? "true" : undefined}
+          >
+            <Show
+              when={copied()}
+              fallback={
                 <svg
-                  width="14"
-                  height="14"
+                  width="15"
+                  height="15"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="2"
+                  stroke-width="1.8"
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   aria-hidden="true"
                 >
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-              </button>
+              }
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
             </Show>
-          </div>
-        </Show>
-      </div>
-    </div>
+          </button>
+          <Show when={props.onShare}>
+            <button
+              type="button"
+              class="hc-turn__action"
+              aria-label={CONTENT.chat_page.actions.share_aria}
+              title={CONTENT.chat_page.actions.share_aria}
+              onClick={() => props.onShare?.()}
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </button>
+          </Show>
+        </div>
+      </Show>
+    </article>
   );
 }
 
@@ -1067,88 +1006,27 @@ function AttachPreview(props: {
 }) {
   return (
     <Show when={props.items.length > 0}>
-      <div
-        data-testid="composer-attach-preview"
-        style={{
-          display: "flex",
-          gap: "10px",
-          padding: "12px 16px",
-          "flex-wrap": "wrap",
-          "border-bottom": "1.5px solid var(--hone-paper-100)",
-        }}
-      >
+      <div class="hc-attach" data-testid="composer-attach-preview">
         <For each={props.items}>
           {(item, index) => (
-            <div style={{ position: "relative" }}>
+            <div class="hc-attach__item">
               <Show
                 when={item.kind === "image"}
                 fallback={
-                  <div
-                    style={{
-                      width: "200px",
-                      height: "72px",
-                      padding: "0 12px",
-                      display: "flex",
-                      "align-items": "center",
-                      gap: "12px",
-                      "border-radius": "var(--hone-radius-md)",
-                      border: "1.5px solid var(--hone-paper-200)",
-                      background: "var(--hone-paper-100)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "40px",
-                        height: "40px",
-                        "border-radius": "var(--hone-radius-sm)",
-                        background:
-                          "color-mix(in srgb, var(--hone-coral-500) 10%, transparent)",
-                        display: "flex",
-                        "align-items": "center",
-                        "justify-content": "center",
-                        "font-family": "var(--hone-font-label)",
-                        "font-size": "11px",
-                        "font-weight": "800",
-                        color: "var(--hone-coral-600)",
-                      }}
-                    >
+                  <div class="hc-attach__file">
+                    <span class="hc-file__ext">
                       {publicAttachmentFileLabel(item.name)}
-                    </div>
-                    <div style={{ flex: "1", "min-width": "0" }}>
-                      <div
-                        style={{
-                          "font-size": "13px",
-                          "font-weight": "700",
-                          color: "var(--hone-ink-950)",
-                          overflow: "hidden",
-                          "text-overflow": "ellipsis",
-                          "white-space": "nowrap",
-                        }}
-                      >
-                        {item.name}
-                      </div>
-                      <div
-                        style={{
-                          "font-family": "var(--hone-font-label)",
-                          "font-size": "11px",
-                          color: "var(--hone-ink-400)",
-                        }}
-                      >
+                    </span>
+                    <span class="hc-file__copy">
+                      <span class="hc-file__name">{item.name}</span>
+                      <span class="hc-file__meta">
                         {formatPublicAttachmentBytes(item.size)}
-                      </div>
-                    </div>
+                      </span>
+                    </span>
                   </div>
                 }
               >
-                <div
-                  style={{
-                    width: "72px",
-                    height: "72px",
-                    "border-radius": "var(--hone-radius-md)",
-                    overflow: "hidden",
-                    border: "1.5px solid var(--hone-paper-200)",
-                  }}
-                >
+                <div class="hc-attach__image">
                   <img
                     src={publicAttachmentUrl(item)}
                     alt={item.name}
@@ -1161,33 +1039,14 @@ function AttachPreview(props: {
                         event.currentTarget.src = fallback;
                       }
                     }}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      "object-fit": "cover",
-                    }}
                   />
                 </div>
               </Show>
               <button
+                type="button"
+                class="hc-attach__remove"
+                aria-label={`${CONTENT.chat_page.attachments.remove_aria} ${item.name}`}
                 onClick={() => props.onRemove(index())}
-                style={{
-                  position: "absolute",
-                  top: "-8px",
-                  right: "-8px",
-                  width: "24px",
-                  height: "24px",
-                  "border-radius": "12px",
-                  background: "var(--hone-ink-950)",
-                  color: "#fff",
-                  border: "2.5px solid #fff",
-                  cursor: "pointer",
-                  "font-size": "12px",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "center",
-                  "box-shadow": "0 4px 10px rgba(23, 32, 31, 0.2)",
-                }}
               >
                 ✕
               </button>
@@ -1208,34 +1067,27 @@ function AttachMenu(props: {
   return (
     <Show when={props.open}>
       <div class="pub-attach-backdrop" onClick={props.onClose} />
-      <div
-        class="pub-attach-menu"
-        style={{
-          "border-radius": "var(--hone-radius-lg)",
-          padding: "8px",
-          "min-width": "240px",
-          bottom: "80px",
-          "box-shadow": "0 20px 50px rgba(23, 32, 31, 0.15)",
-        }}
-      >
+      <div class="pub-attach-menu" role="menu">
         <button
           type="button"
           class="pub-attach-item"
+          role="menuitem"
           onClick={() => {
             props.onPickImage();
             props.onClose();
           }}
         >
-          <span class="pub-attach-icon" style={{ background: "var(--hone-paper-200)" }}>
+          <span class="pub-attach-icon">
             <svg
-              width="20"
-              height="20"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
             >
               <rect x="3" y="5" width="18" height="14" rx="2.5" />
               <circle cx="8.5" cy="10" r="1.5" />
@@ -1243,10 +1095,7 @@ function AttachMenu(props: {
             </svg>
           </span>
           <span class="pub-attach-label">
-            <span
-              class="pub-attach-label-title"
-              style={{ "font-size": "15px" }}
-            >
+            <span class="pub-attach-label-title">
               {CONTENT.chat_page.attachments.image_title}
             </span>
             <span class="pub-attach-label-sub">
@@ -1257,21 +1106,23 @@ function AttachMenu(props: {
         <button
           type="button"
           class="pub-attach-item"
+          role="menuitem"
           onClick={() => {
             props.onPickFile();
             props.onClose();
           }}
         >
-          <span class="pub-attach-icon" style={{ background: "var(--hone-paper-200)" }}>
+          <span class="pub-attach-icon">
             <svg
-              width="20"
-              height="20"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
             >
               <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
               <path d="M14 3v5h5" />
@@ -1279,10 +1130,7 @@ function AttachMenu(props: {
             </svg>
           </span>
           <span class="pub-attach-label">
-            <span
-              class="pub-attach-label-title"
-              style={{ "font-size": "15px" }}
-            >
+            <span class="pub-attach-label-title">
               {CONTENT.chat_page.attachments.file_title}
             </span>
             <span class="pub-attach-label-sub">
@@ -1311,28 +1159,18 @@ function useModalScrollLock(open: () => boolean) {
   });
 }
 
-function DataCenterQuickAction() {
-  return (
-    <A href="/data-center" class="public-chat-proactive-tip" {...routePrefetchHandlers("data-center")}>
-      <svg class="public-chat-proactive-tip-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-        <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
-        <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
-      </svg>
-      <span>3D 数据中心</span>
-    </A>
-  );
-}
-
 type EarningsWorkflowStart = {
   kind: PublicEarningsWorkflowKind;
   company: string;
   files: File[];
 };
 
-function EarningsResearchQuickAction(props: {
+function EarningsResearchDialog(props: {
   kind: PublicEarningsWorkflowKind;
   disabled: boolean;
   onStart: (input: EarningsWorkflowStart) => Promise<void>;
+  /** Bumped by whichever control opens this dialog. */
+  openRequest: number;
 }) {
   const [open, setOpen] = createSignal(false);
   const [company, setCompany] = createSignal("");
@@ -1342,6 +1180,13 @@ function EarningsResearchQuickAction(props: {
   let fileInputRef: HTMLInputElement | undefined;
   let companyInputRef: HTMLInputElement | undefined;
   useModalScrollLock(open);
+  let handledOpenRequest = props.openRequest;
+  createEffect(() => {
+    const request = props.openRequest;
+    if (request <= handledOpenRequest) return;
+    handledOpenRequest = request;
+    if (!props.disabled) setOpen(true);
+  });
 
   // Focusing at open pops the mobile keyboard while the sheet is still
   // animating in; on iOS Safari that scroll-jumps the page behind the fixed
@@ -1400,31 +1245,6 @@ function EarningsResearchQuickAction(props: {
 
   return (
     <>
-      <button
-        type="button"
-        class="public-chat-proactive-tip public-chat-earnings-action"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        disabled={props.disabled}
-        onClick={() => setOpen(true)}
-      >
-        <svg
-          class="public-chat-proactive-tip-icon"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.1"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
-          <path d={isPreview() ? "m4 6 5-3 5 4 6-4" : "m3 8 5 4 5-6 7 3"} />
-        </svg>
-        <span>{label()}</span>
-      </button>
       <Portal>
         <Show when={open()}>
           <div
@@ -1526,8 +1346,9 @@ function EarningsResearchQuickAction(props: {
   );
 }
 
-function FinanceCalendarQuickAction(props: {
+function FinanceCalendarDialog(props: {
   onSent: () => void;
+  /** Bumped by whichever control opens this dialog. */
   openRequest?: number;
 }) {
   const [open, setOpen] = createSignal(false);
@@ -1731,34 +1552,6 @@ function FinanceCalendarQuickAction(props: {
 
   return (
     <>
-      <button
-        type="button"
-        class="public-chat-proactive-tip"
-        aria-haspopup="dialog"
-        aria-expanded={open()}
-        disabled={busy()}
-        onClick={openCalendar}
-      >
-        <svg
-          class="public-chat-proactive-tip-icon"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M8 2v4" />
-          <path d="M16 2v4" />
-          <rect x="3" y="4" width="18" height="18" rx="3" />
-          <path d="M3 10h18" />
-          <path d="m9 16 2 2 4-5" />
-        </svg>
-        <span>{CONTENT.chat_page.composer.finance_calendar_tip}</span>
-      </button>
       <Show when={open()}>
         <Portal>
           <div
@@ -2084,13 +1877,133 @@ function FinanceCalendarQuickAction(props: {
  * on phones the menu was being laid out correctly and then cut away entirely,
  * so tapping 工具 looked like nothing happened.
  */
-function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) => void }) {
+/** One shortcut the composer offers: a chip on a desktop, a labelled row in
+ *  the phone sheet, and for administrators an entry in the tools menu. */
+type ComposerAction = {
+  id: string;
+  label: string;
+  hint: string;
+  icon: () => JSX.Element;
+  run: () => void;
+  adminOnly?: boolean;
+  /** Reachable from 工具 and the phone sheet, but not shown as a desktop chip. */
+  secondary?: boolean;
+  dot?: boolean;
+};
+
+const PHONE_LAYOUT_QUERY = "(max-width: 820px)";
+
+/** True on the phone layout; tracks the viewport so a rotated tablet swaps. */
+function usePhoneLayout() {
+  const query = () =>
+    typeof window !== "undefined" ? window.matchMedia(PHONE_LAYOUT_QUERY) : undefined;
+  const [phone, setPhone] = createSignal(query()?.matches ?? false);
+  onMount(() => {
+    const media = query();
+    if (!media) return;
+    const sync = () => setPhone(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    onCleanup(() => media.removeEventListener("change", sync));
+  });
+  return phone;
+}
+
+function ToolIcon(props: {
+  name:
+    | "data-center"
+    | "influencer"
+    | "calendar"
+    | "earnings-preview"
+    | "earnings-analysis"
+    | "community"
+    | "image"
+    | "file"
+    | "plus";
+}) {
+  return (
+    <svg
+      class="hc-tool__icon"
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <Switch>
+        <Match when={props.name === "data-center"}>
+          <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
+          <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+        </Match>
+        <Match when={props.name === "influencer"}>
+          <path d="M3 10.5v3a1.5 1.5 0 0 0 1.5 1.5H7l5.5 4V5L7 9H4.5A1.5 1.5 0 0 0 3 10.5Z" />
+          <path d="M16 9.5a3.5 3.5 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10" />
+        </Match>
+        <Match when={props.name === "calendar"}>
+          <path d="M8 2v4M16 2v4" />
+          <rect x="3" y="4" width="18" height="18" rx="3" />
+          <path d="M3 10h18M9 16l2 2 4-5" />
+        </Match>
+        <Match when={props.name === "earnings-preview"}>
+          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          <path d="m4 6 5-3 5 4 6-4" />
+        </Match>
+        <Match when={props.name === "earnings-analysis"}>
+          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+          <path d="m3 8 5 4 5-6 7 3" />
+        </Match>
+        <Match when={props.name === "community"}>
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-9-8.4 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4Z" />
+          <path d="M8 11h8M8 15h5" />
+        </Match>
+        <Match when={props.name === "image"}>
+          <rect x="3" y="5" width="18" height="14" rx="2.5" />
+          <circle cx="8.5" cy="10" r="1.5" />
+          <path d="M21 15l-5-5-8 9" />
+        </Match>
+        <Match when={props.name === "file"}>
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5M9 13h6M9 17h4" />
+        </Match>
+        <Match when={props.name === "plus"}>
+          <path d="M12 5v14M5 12h14" />
+        </Match>
+      </Switch>
+    </svg>
+  );
+}
+
+/**
+ * The composer's menu. Two guises over one list:
+ * - `tools` is the desktop 工具 popover: the daily research products, plus
+ *   the administrators' earnings workflows.
+ * - `plus` is the phone's single sheet behind the 「+」: attachments, the
+ *   research products, every shortcut with a label and a line of explanation,
+ *   and the suggested questions — so nothing on a phone is an unlabelled icon.
+ */
+function ChatToolsMenu(props: {
+  isAdmin: boolean;
+  onOpenPanel: (panel: string) => void;
+  variant: "tools" | "plus";
+  actions: ComposerAction[];
+  actionsDisabled?: boolean;
+  onPickImage?: () => void;
+  onPickFile?: () => void;
+  suggestions?: ChatStarterPrompt[];
+  onSuggestion?: (question: string) => void;
+}) {
   const navigate = useNavigate();
   const [open, setOpen] = createSignal(false);
   const [anchor, setAnchor] = createSignal<DOMRect>();
   let triggerRef: HTMLButtonElement | undefined;
 
-  const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
+  const isPhone = () => window.matchMedia(PHONE_LAYOUT_QUERY).matches;
+  const isSheet = () => props.variant === "plus" || isPhone();
+  const isPlus = () => props.variant === "plus";
 
   createEffect(() => {
     if (!open()) return;
@@ -2117,17 +2030,16 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
     setOpen(true);
   };
 
-  const go = (href: string) => {
+  const run = (action: () => void) => {
     setOpen(false);
-    navigate(href);
+    action();
   };
+
+  const go = (href: string) => run(() => navigate(href));
 
   // A research product opens where the reader already is. Navigating to the
   // desk for it would drop the conversation they were in the middle of.
-  const openHere = (panel: string) => {
-    setOpen(false);
-    props.onOpenPanel(panel);
-  };
+  const openHere = (panel: string) => run(() => props.onOpenPanel(panel));
 
   const activate = (item: { href: string; panel?: string }) =>
     item.panel ? openHere(item.panel) : go(item.href);
@@ -2141,6 +2053,8 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
       items: [
         { href: "/research", title: copy().research_desk_entry, desc: copy().tools_research_desc },
         { href: "/research?panel=daily-signal-macro", panel: "daily-signal-macro", title: copy().tools_macro_title, desc: copy().tools_macro_desc },
+        // The commentator digest is a composer shortcut now, so it is not
+        // repeated here.
       ],
     },
     // Everything below the macro light is still being polished, so it stays
@@ -2152,7 +2066,6 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
             items: [
               { href: "/research?panel=daily-signal-ai", panel: "daily-signal-ai", title: copy().tools_ai_title, desc: copy().tools_ai_desc },
               { href: "/research?panel=company-ratings", panel: "company-ratings", title: copy().tools_ratings_title, desc: copy().tools_ratings_desc },
-              { href: "/research?panel=influencer-digest", panel: "influencer-digest", title: copy().tools_influencer_title, desc: copy().tools_influencer_desc },
               { href: "/research?panel=key-event-chain", panel: "key-event-chain", title: copy().tools_chain_title, desc: copy().tools_chain_desc },
               { href: "/research?panel=weekly-brief", panel: "weekly-brief", title: copy().tools_weekly_title, desc: copy().tools_weekly_desc },
               { href: "/research?panel=portfolio-news", panel: "portfolio-news", title: copy().tools_news_title, desc: copy().tools_news_desc },
@@ -2165,33 +2078,61 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
       : []),
   ];
 
+  /** The desktop menu carries the admin workflows and the secondary tools
+      that lost their chip; the phone sheet lists every shortcut, since it is
+      the only place a phone shows them. */
+  const shortcutActions = () =>
+    isPlus() ? props.actions : props.actions.filter((action) => action.adminOnly || action.secondary);
+  const shortcutsLabel = () =>
+    isPlus() ? CONTENT.chat_page.composer.actions_group : copy().tools_group_workflows;
+
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        class="chat-tools__trigger"
-        aria-haspopup="menu"
-        aria-expanded={open()}
-        {...routePrefetchHandlers("research")}
-        onClick={toggle}
+      <Show
+        when={isPlus()}
+        fallback={
+          <button
+            ref={triggerRef}
+            type="button"
+            class="chat-tools__trigger hc-tool hc-tool--filled"
+            aria-haspopup="menu"
+            aria-expanded={open()}
+            {...routePrefetchHandlers("research")}
+            onClick={toggle}
+          >
+            <AgentWorkspaceIcon name="research" size={16} />
+            <span class="hc-tool__label">{copy().tools_label}</span>
+          </button>
+        }
       >
-        <AgentWorkspaceIcon name="research" size={15} />
-        <span>{CONTENT.chat_page.workspace.tools_label}</span>
-      </button>
+        <button
+          ref={triggerRef}
+          data-testid="composer-attach-button"
+          type="button"
+          class="hc-tool hc-tool--icon"
+          data-open={open() ? "true" : undefined}
+          aria-haspopup="menu"
+          aria-expanded={open()}
+          aria-label={CONTENT.chat_page.composer.sheet_title}
+          title={CONTENT.chat_page.composer.sheet_title}
+          onClick={toggle}
+        >
+          <ToolIcon name="plus" />
+        </button>
+      </Show>
       <Show when={open()}>
         <Portal>
           <div
             class="chat-tools__backdrop"
-            classList={{ "is-sheet-backdrop": isPhone() }}
+            classList={{ "is-sheet-backdrop": isSheet() }}
             onClick={() => setOpen(false)}
           >
             <div
               class="chat-tools__menu"
-              classList={{ "is-sheet": isPhone() }}
+              classList={{ "is-sheet": isSheet() }}
               role="menu"
               style={
-                isPhone()
+                isSheet()
                   ? undefined
                   : {
                       left: `${Math.round(anchor()?.left ?? 16)}px`,
@@ -2200,13 +2141,67 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
               }
               onClick={(event) => event.stopPropagation()}
             >
-              <Show when={isPhone()}>
+              <Show when={isSheet()}>
                 <div class="chat-tools__sheet-head">
-                  <strong>{CONTENT.chat_page.workspace.tools_group_research}</strong>
+                  <strong>
+                    {isPlus()
+                      ? CONTENT.chat_page.composer.sheet_title
+                      : copy().tools_group_research}
+                  </strong>
                   <button type="button" onClick={() => setOpen(false)}>
-                    {CONTENT.chat_page.workspace.tools_close}
+                    {copy().tools_close}
                   </button>
                 </div>
+              </Show>
+              <Show when={isPlus()}>
+                <p class="chat-tools__group">{CONTENT.chat_page.composer.attach_group}</p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chat-tools__item"
+                  onClick={() => run(() => props.onPickImage?.())}
+                >
+                  <span class="chat-tools__item-icon"><ToolIcon name="image" /></span>
+                  <span>
+                    <b>{CONTENT.chat_page.attachments.image_title}</b>
+                    <small>{CONTENT.chat_page.attachments.image_subtitle}</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chat-tools__item"
+                  onClick={() => run(() => props.onPickFile?.())}
+                >
+                  <span class="chat-tools__item-icon"><ToolIcon name="file" /></span>
+                  <span>
+                    <b>{CONTENT.chat_page.attachments.file_title}</b>
+                    <small>{CONTENT.chat_page.attachments.file_subtitle}</small>
+                  </span>
+                </button>
+              </Show>
+              <Show when={shortcutActions().length > 0}>
+                <p class="chat-tools__group">{shortcutsLabel()}</p>
+                <For each={shortcutActions()}>
+                  {(action) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="chat-tools__item"
+                      disabled={action.adminOnly && props.actionsDisabled}
+                      onClick={() => run(action.run)}
+                    >
+                      <span class="chat-tools__item-icon">{action.icon()}</span>
+                      <span>
+                        <b>
+                          {action.label}
+                          <Show when={action.dot}><i class="chat-tools__dot" aria-hidden="true" /></Show>
+                        </b>
+                        <small>{action.hint}</small>
+                      </span>
+                    </button>
+                  )}
+                </For>
               </Show>
               <For each={groups()}>
                 {(group) => (
@@ -2214,15 +2209,36 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
                     <p class="chat-tools__group">{group.label}</p>
                     <For each={group.items}>
                       {(item) => (
-                        <button type="button" role="menuitem" onClick={() => activate(item)}>
-                          <b>{item.title}</b>
-                          <small>{item.desc}</small>
+                        <button type="button" role="menuitem" class="chat-tools__item" onClick={() => activate(item)}>
+                          <span class="chat-tools__item-icon"><AgentWorkspaceIcon name="research" size={16} /></span>
+                          <span>
+                            <b>{item.title}</b>
+                            <small>{item.desc}</small>
+                          </span>
                         </button>
                       )}
                     </For>
                   </>
                 )}
               </For>
+              <Show when={isPlus() && (props.suggestions?.length ?? 0) > 0}>
+                <p class="chat-tools__group">{CONTENT.chat_page.composer.suggest_title}</p>
+                <For each={props.suggestions}>
+                  {(prompt) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="chat-tools__item chat-tools__item--suggest"
+                      onClick={() => run(() => props.onSuggestion?.(prompt.question))}
+                    >
+                      <span>
+                        <small>{prompt.eyebrow}</small>
+                        <b>{prompt.title}</b>
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </Show>
             </div>
           </div>
         </Portal>
@@ -2231,36 +2247,7 @@ function ChatToolsMenu(props: { isAdmin: boolean; onOpenPanel: (panel: string) =
   );
 }
 
-function CommunityQuickAction(props: { unread: boolean; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      class="public-chat-proactive-tip public-chat-community-action"
-      onClick={props.onOpen}
-      aria-label={props.unread ? CONTENT.chat_page.community.open_aria_unread : CONTENT.chat_page.community.open_aria}
-    >
-      <svg
-        class="public-chat-proactive-tip-icon"
-        width="15"
-        height="15"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-9-8.4 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 9 8.4Z" />
-        <path d="M8 11h8M8 15h5" />
-      </svg>
-      <span>查看社区动态</span>
-      <Show when={props.unread}>
-        <i class="public-chat-community-unread" aria-hidden="true" />
-      </Show>
-    </button>
-  );
-}
+const SUGGEST_HIDDEN_KEY = "hone.public.suggest.hidden";
 
 function Composer(props: {
   draft: string;
@@ -2270,6 +2257,8 @@ function Composer(props: {
   onPickFiles: (files: File[]) => void;
   uploading: boolean;
   onSend: () => void;
+  /** Present only while this tab owns an abortable stream. */
+  onStop?: () => void;
   onCalendarSent: () => void;
   communityUnread: boolean;
   onOpenCommunity: () => void;
@@ -2280,9 +2269,19 @@ function Composer(props: {
   isAdmin: boolean;
   onOpenPanel: (panel: string) => void;
   onStartEarnings: (input: EarningsWorkflowStart) => Promise<void>;
+  /** Personalised starter questions; shown as a strip once a conversation
+      has content, and inside the phone sheet. */
+  suggestions: ChatStarterPrompt[];
+  onSuggestion: (question: string) => void;
+  showSuggestions: boolean;
 }) {
+  const navigate = useNavigate();
+  const isPhone = usePhoneLayout();
   const [focused, setFocused] = createSignal(false);
   const [menuOpen, setMenuOpen] = createSignal(false);
+  const [calendarSeq, setCalendarSeq] = createSignal(0);
+  const [previewSeq, setPreviewSeq] = createSignal(0);
+  const [analysisSeq, setAnalysisSeq] = createSignal(0);
   let taRef: HTMLTextAreaElement | undefined;
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
@@ -2303,12 +2302,16 @@ function Composer(props: {
       remaining: props.remaining,
       dailyLimit: props.dailyLimit,
     });
-  const isMobileViewport = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 768px)").matches;
+  const quotaLabel = () =>
+    props.dailyLimit && props.dailyLimit > 0 && props.remaining !== undefined
+      ? CONTENT.chat_page.composer.quota_remaining.replace(
+          "{count}",
+          String(Math.max(0, props.remaining)),
+        )
+      : undefined;
   const syncTextareaHeight = () => {
     if (!taRef) return;
-    const maxHeight = isMobileViewport() ? 132 : 180;
+    const maxHeight = isPhone() ? 132 : 180;
     taRef.style.height = "auto";
     const nextHeight = Math.min(taRef.scrollHeight, maxHeight);
     taRef.style.height = `${nextHeight}px`;
@@ -2332,47 +2335,201 @@ function Composer(props: {
   });
 
   createEffect(() => {
-    if (!props.isSending && taRef && !isMobileViewport()) {
+    if (!props.isSending && taRef && !isPhone()) {
       taRef.focus();
       syncTextareaHeight();
     }
   });
 
-  return (
-    <div
-      class="public-chat-composer"
-      style={{
-        padding: "16px 24px 32px",
-        background: "transparent",
-        "flex-shrink": "0",
-        position: "relative",
-        "z-index": "20",
+  // The suggestion strip can be put away for the day; it comes back with a
+  // new day, or in the phone sheet, where it costs no height.
+  const today = () => new Date().toISOString().slice(0, 10);
+  const readSuggestHidden = () => {
+    try {
+      return localStorage.getItem(SUGGEST_HIDDEN_KEY) === today();
+    } catch {
+      return false;
+    }
+  };
+  const [suggestHidden, setSuggestHidden] = createSignal(readSuggestHidden());
+  const hideSuggestions = () => {
+    setSuggestHidden(true);
+    try {
+      localStorage.setItem(SUGGEST_HIDDEN_KEY, today());
+    } catch {
+      // Storage may be unavailable; the strip still hides for this view.
+    }
+  };
+  const showSuggestStrip = () =>
+    props.showSuggestions &&
+    props.suggestions.length > 0 &&
+    !suggestHidden() &&
+    !props.draft.trim() &&
+    !props.isSending;
+
+  const workflowsDisabled = () => props.isSending || props.uploading;
+  const actions = createMemo<ComposerAction[]>(() => [
+    {
+      id: "data-center",
+      label: CONTENT.chat_page.workspace.data_center_tip,
+      hint: CONTENT.chat_page.composer.data_center_hint,
+      icon: () => <ToolIcon name="data-center" />,
+      run: () => {
+        window.open(
+          "https://b-m-capital-research.github.io/nexus-datacenter-ceo/",
+          "_blank",
+          "noopener,noreferrer",
+        );
+      },
+    },
+    {
+      id: "influencer-digest",
+      label: CONTENT.chat_page.composer.influencer_tip,
+      hint: CONTENT.chat_page.composer.influencer_hint,
+      icon: () => <ToolIcon name="influencer" />,
+      // Opens over the conversation, the way the 工具 menu does, so the
+      // reader keeps their place instead of being sent to the research desk.
+      run: () => props.onOpenPanel("influencer-digest"),
+    },
+    {
+      id: "community",
+      label: CONTENT.chat_page.workspace.community_action,
+      hint: CONTENT.chat_page.composer.community_hint,
+      icon: () => <ToolIcon name="community" />,
+      run: props.onOpenCommunity,
+      dot: props.communityUnread,
+    },
+    {
+      id: "calendar",
+      label: CONTENT.chat_page.composer.finance_calendar_tip,
+      hint: CONTENT.chat_page.composer.finance_calendar_hint,
+      icon: () => <ToolIcon name="calendar" />,
+      run: () => setCalendarSeq((seq) => seq + 1),
+      // Its chip slot went to the commentator digest; the calendar stays
+      // reachable from 工具 on desktop and the 「+」 sheet on phones.
+      secondary: true,
+    },
+    ...(props.isAdmin
+      ? [
+          {
+            id: "earnings-preview",
+            label: CONTENT.chat_page.earnings.preview_label,
+            hint: CONTENT.chat_page.earnings.preview_short,
+            icon: () => <ToolIcon name="earnings-preview" />,
+            run: () => setPreviewSeq((seq) => seq + 1),
+            adminOnly: true,
+          },
+          {
+            id: "earnings-analysis",
+            label: CONTENT.chat_page.earnings.analysis_label,
+            hint: CONTENT.chat_page.earnings.analysis_short,
+            icon: () => <ToolIcon name="earnings-analysis" />,
+            run: () => setAnalysisSeq((seq) => seq + 1),
+            adminOnly: true,
+          },
+        ]
+      : []),
+  ]);
+  /** Desktop chips: the everyday shortcuts. Admin workflows and secondary
+      tools sit in 工具. */
+  const chipActions = () => actions().filter((action) => !action.adminOnly && !action.secondary);
+
+  const renderTextarea = () => (
+    <textarea
+      ref={taRef}
+      class="public-chat-composer-input"
+      rows={1}
+      placeholder={
+        quotaExhausted()
+          ? CONTENT.chat_page.composer.quota_exhausted
+          : CONTENT.chat_page.composer.placeholder
+      }
+      value={props.draft}
+      disabled={props.isSending}
+      onInput={(e) => {
+        props.onDraftChange(e.currentTarget.value);
+        requestAnimationFrame(syncTextareaHeight);
       }}
+      onCompositionStart={() => {
+        compositionActive = true;
+      }}
+      onCompositionEnd={() => {
+        compositionActive = false;
+        // Safari can report isComposing=false on the Enter keydown that
+        // commits a Chinese candidate. Ignore that same keystroke.
+        suppressEnterUntil = Date.now() + 120;
+      }}
+      onKeyDown={(e) => {
+        const shouldSubmit = shouldSubmitPublicChatEnter({
+          key: e.key,
+          shiftKey: e.shiftKey,
+          eventIsComposing: e.isComposing,
+          compositionActive,
+          keyCode: e.keyCode,
+          now: Date.now(),
+          suppressEnterUntil,
+        });
+        if (shouldSubmit) {
+          e.preventDefault();
+          if (canSend()) props.onSend();
+        } else if (
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          !e.isComposing &&
+          !compositionActive &&
+          e.keyCode !== 229 &&
+          Date.now() < suppressEnterUntil
+        ) {
+          e.preventDefault();
+        }
+      }}
+      onPaste={handlePaste}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    />
+  );
+
+  const renderSend = () => (
+    <Show
+      when={props.isSending && props.onStop}
+      fallback={
+        <button
+          data-testid="composer-send-button"
+          type="button"
+          class="public-chat-send-button"
+          aria-label={CONTENT.chat_page.composer.send_aria}
+          title={CONTENT.chat_page.composer.send_aria}
+          onClick={() => canSend() && props.onSend()}
+          disabled={!canSend()}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      }
     >
-      <div class="public-chat-proactive-tip-wrap">
-        <ChatToolsMenu isAdmin={props.isAdmin} onOpenPanel={props.onOpenPanel} />
-        <DataCenterQuickAction />
-        <Show when={props.isAdmin}>
-          <EarningsResearchQuickAction
-            kind="preview"
-            disabled={props.isSending || props.uploading}
-            onStart={props.onStartEarnings}
-          />
-          <EarningsResearchQuickAction
-            kind="analysis"
-            disabled={props.isSending || props.uploading}
-            onStart={props.onStartEarnings}
-          />
-        </Show>
-        <FinanceCalendarQuickAction
-          onSent={props.onCalendarSent}
-          openRequest={props.calendarOpenRequest}
-        />
-        <CommunityQuickAction
-          unread={props.communityUnread}
-          onOpen={props.onOpenCommunity}
-        />
-      </div>
+      <button
+        type="button"
+        class="public-chat-send-button is-stop"
+        aria-label={CONTENT.chat_page.composer.stop_aria}
+        title={CONTENT.chat_page.composer.stop_aria}
+        onClick={() => props.onStop?.()}
+      >
+        <i aria-hidden="true" />
+      </button>
+    </Show>
+  );
+
+  return (
+    <div class="public-chat-composer">
       <input
         data-testid="composer-image-input"
         ref={imgInputRef}
@@ -2402,170 +2559,169 @@ function Composer(props: {
         }}
       />
 
+      <Show when={showSuggestStrip()}>
+        <div class="hc-suggest" role="group" aria-label={CONTENT.chat_page.composer.suggest_title}>
+          <div class="hc-suggest__scroller">
+            <For each={props.suggestions}>
+              {(prompt) => (
+                <button
+                  type="button"
+                  class="hc-suggest__chip"
+                  title={prompt.title}
+                  onClick={() => props.onSuggestion(prompt.question)}
+                >
+                  <small>{prompt.eyebrow}</small>
+                  <span>{prompt.title}</span>
+                </button>
+              )}
+            </For>
+          </div>
+          <button
+            type="button"
+            class="hc-suggest__hide"
+            aria-label={CONTENT.chat_page.composer.suggest_hide}
+            title={CONTENT.chat_page.composer.suggest_hide}
+            onClick={hideSuggestions}
+          >
+            ×
+          </button>
+        </div>
+      </Show>
+
       <div class="public-chat-composer-frame">
-        <AttachMenu
-          open={menuOpen()}
-          onClose={() => setMenuOpen(false)}
-          onPickImage={() => imgInputRef?.click()}
-          onPickFile={() => fileInputRef?.click()}
-        />
+        <Show when={!isPhone()}>
+          <AttachMenu
+            open={menuOpen()}
+            onClose={() => setMenuOpen(false)}
+            onPickImage={() => imgInputRef?.click()}
+            onPickFile={() => fileInputRef?.click()}
+          />
+        </Show>
 
         <div
           class="public-chat-composer-box"
-          style={{
-            position: "relative",
-            "border-radius": "var(--hone-radius-lg)",
-            border: focused() ? "2px solid var(--hone-ink-950)" : "2px solid var(--hone-paper-200)",
-            background: "#fff",
-            "box-shadow": focused()
-              ? "0 20px 60px rgba(23, 32, 31, 0.08)"
-              : "0 10px 30px rgba(23, 32, 31, 0.03)",
-            transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-            overflow: "hidden",
-          }}
+          classList={{ "is-focused": focused(), "is-phone": isPhone() }}
         >
-        <AttachPreview
-          items={props.attachments}
-          onRemove={props.onRemoveAttachment}
-        />
-        <div
-          class="public-chat-composer-row"
-          style={{
-            display: "flex",
-            "align-items": "center",
-            gap: "6px",
-            padding: "6px 10px",
-          }}
-        >
-          <button
-            data-testid="composer-attach-button"
-            type="button"
-            class="pub-attach-btn"
-            data-open={menuOpen() ? "true" : undefined}
-            aria-label={CONTENT.chat_page.recovery.attach_aria}
-            title={CONTENT.chat_page.recovery.attach_aria}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen()}
-            style={{ width: "36px", height: "36px", "flex-shrink": "0" }}
-            onClick={() => setMenuOpen(!menuOpen())}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 11-8.49-8.49l9.19-9.19a4 4 0 115.66 5.66l-9.2 9.19a2 2 0 11-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
-          <textarea
-            ref={taRef}
-            class="public-chat-composer-input"
-            rows={1}
-            placeholder={
-              quotaExhausted()
-                ? CONTENT.chat_page.composer.quota_exhausted
-                : CONTENT.chat_page.composer.placeholder
-            }
-            value={props.draft}
-            disabled={props.isSending}
-            onInput={(e) => {
-              props.onDraftChange(e.currentTarget.value);
-              requestAnimationFrame(syncTextareaHeight);
-            }}
-            onCompositionStart={() => {
-              compositionActive = true;
-            }}
-            onCompositionEnd={() => {
-              compositionActive = false;
-              // Safari can report isComposing=false on the Enter keydown that
-              // commits a Chinese candidate. Ignore that same keystroke.
-              suppressEnterUntil = Date.now() + 120;
-            }}
-            onKeyDown={(e) => {
-              const shouldSubmit = shouldSubmitPublicChatEnter({
-                key: e.key,
-                shiftKey: e.shiftKey,
-                eventIsComposing: e.isComposing,
-                compositionActive,
-                keyCode: e.keyCode,
-                now: Date.now(),
-                suppressEnterUntil,
-              });
-              if (shouldSubmit) {
-                e.preventDefault();
-                if (canSend()) props.onSend();
-              } else if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.isComposing &&
-                !compositionActive &&
-                e.keyCode !== 229 &&
-                Date.now() < suppressEnterUntil
-              ) {
-                e.preventDefault();
-              }
-            }}
-            onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            style={{
-              flex: "1",
-              resize: "none",
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              padding: "6px 6px",
-              "font-size": "16px",
-              "font-weight": "500",
-              "line-height": "1.5",
-              color: "var(--hone-ink-950)",
-              "max-height": "180px",
-              "min-height": "32px",
-              overflow: "hidden auto",
-            }}
+          <AttachPreview
+            items={props.attachments}
+            onRemove={props.onRemoveAttachment}
           />
-          <button
-            data-testid="composer-send-button"
-            type="button"
-            class="public-chat-send-button"
-            aria-label={CONTENT.chat_page.composer.send_aria}
-            title={CONTENT.chat_page.composer.send_aria}
-            onClick={() => canSend() && props.onSend()}
-            disabled={!canSend()}
-            style={{
-              width: "36px",
-              height: "36px",
-              "border-radius": "var(--hone-radius-md)",
-              background: canSend() ? "var(--hone-ink-950)" : "var(--hone-paper-200)",
-              border: "none",
-              cursor: canSend() ? "pointer" : "default",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              "flex-shrink": "0",
-              transition: "all 0.2s",
-            }}
+          <Show
+            when={isPhone()}
+            fallback={
+              <>
+                {renderTextarea()}
+                <div class="hc-toolbar">
+                  <div class="hc-toolbar__tools">
+                    <button
+                      data-testid="composer-attach-button"
+                      type="button"
+                      class="hc-tool hc-tool--icon"
+                      data-open={menuOpen() ? "true" : undefined}
+                      aria-label={CONTENT.chat_page.recovery.attach_aria}
+                      title={CONTENT.chat_page.recovery.attach_aria}
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen()}
+                      onClick={() => setMenuOpen(!menuOpen())}
+                    >
+                      <ToolIcon name="plus" />
+                    </button>
+                    <ChatToolsMenu
+                      variant="tools"
+                      isAdmin={props.isAdmin}
+                      onOpenPanel={props.onOpenPanel}
+                      actions={actions()}
+                      actionsDisabled={workflowsDisabled()}
+                    />
+                    <For each={chipActions()}>
+                      {(action) => (
+                        <button
+                          type="button"
+                          class="hc-tool"
+                          title={action.hint}
+                          aria-label={action.label}
+                          onClick={action.run}
+                        >
+                          {action.icon()}
+                          <span class="hc-tool__label">{action.label}</span>
+                          <Show when={action.dot}>
+                            <i class="hc-tool__dot" aria-hidden="true" />
+                          </Show>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <div class="hc-toolbar__end">
+                    <Show when={quotaLabel()}>
+                      {(label) => <span class="hc-quota">{label()}</span>}
+                    </Show>
+                    {renderSend()}
+                  </div>
+                </div>
+              </>
+            }
           >
-            <svg
-              viewBox="0 0 20 20"
-              width="16"
-              height="16"
-              fill={canSend() ? "white" : "#94a3b8"}
-            >
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </button>
+            {/* One row on a phone: the 「+」 sheet holds attachments, tools,
+                shortcuts and suggestions with labels; nothing is an icon alone. */}
+            <div class="hc-composer-row">
+              <ChatToolsMenu
+                variant="plus"
+                isAdmin={props.isAdmin}
+                onOpenPanel={props.onOpenPanel}
+                actions={actions()}
+                actionsDisabled={workflowsDisabled()}
+                onPickImage={() => imgInputRef?.click()}
+                onPickFile={() => fileInputRef?.click()}
+                suggestions={props.suggestions}
+                onSuggestion={props.onSuggestion}
+              />
+              {renderTextarea()}
+              {renderSend()}
+            </div>
+          </Show>
         </div>
       </div>
-      </div>
+
+      <Show when={props.isAdmin}>
+        <EarningsResearchDialog
+          kind="preview"
+          disabled={workflowsDisabled()}
+          onStart={props.onStartEarnings}
+          openRequest={previewSeq()}
+        />
+        <EarningsResearchDialog
+          kind="analysis"
+          disabled={workflowsDisabled()}
+          onStart={props.onStartEarnings}
+          openRequest={analysisSeq()}
+        />
+      </Show>
+      <FinanceCalendarDialog
+        onSent={props.onCalendarSent}
+        openRequest={props.calendarOpenRequest + calendarSeq()}
+      />
     </div>
   );
 }
+
+/**
+ * When to re-apply a viewport anchor after the list changes.
+ *
+ * Bubbles render their Markdown asynchronously and code blocks are highlighted
+ * later still, so a single correction on the next frame measures a list that
+ * has not finished growing. These passes cover the frame, the parse and the
+ * highlight without ever animating: each one only nudges `scrollTop` by the
+ * drift it actually measures, and stops once the drift is under a pixel.
+ */
+const ANCHOR_SETTLE_DELAYS_MS = [60, 150, 320, 600];
+
+/**
+ * How long a real gesture keeps ownership of the scroll position.
+ *
+ * Long enough to cover the inertia of one trackpad flick, short enough that a
+ * reconcile arriving a second later is judged on its own.
+ */
+const GESTURE_OWNERSHIP_MS = 1200;
 
 export default function PublicChatPage() {
   const navigate = useNavigate();
@@ -2609,11 +2765,15 @@ export default function PublicChatPage() {
   >([]);
   const [workspaceCalendar, setWorkspaceCalendar] =
     createSignal<FinanceCalendarPayload>();
+  const [workspaceInfluencer, setWorkspaceInfluencer] =
+    createSignal<InfluencerDigestSnapshot | null>(null);
   const [calendarOpenRequest, setCalendarOpenRequest] = createSignal(0);
   const [conversationStartIndex, setConversationStartIndex] = createSignal<number | null>(null);
   // True when the user has scrolled up far enough to lose track of the latest
   // reply — drives the floating scroll-to-bottom affordance above the composer.
   const [awayFromBottom, setAwayFromBottom] = createSignal(false);
+  // True while this tab owns an abortable stream; drives the composer stop.
+  const [canStop, setCanStop] = createSignal(false);
   // When set, the server has authoritatively reported an active assistant run
   // for which this tab has no streaming context, usually after a refresh.
   // Poll bootstrap until that run reaches a persisted terminal answer.
@@ -2626,12 +2786,17 @@ export default function PublicChatPage() {
   let restoreController: AbortController | null = null;
   let restoreRetryTimer: number | undefined;
   let scrollRef: HTMLDivElement | undefined;
-  let messagesInnerRef: HTMLDivElement | undefined;
+  const [messagesInner, setMessagesInner] = createSignal<HTMLDivElement>();
+  const [composerDock, setComposerDock] = createSignal<HTMLDivElement>();
   let sessionSyncGeneration = 0;
   let localSendGeneration = 0;
   let stickToBottom = true;
   let lastScrollTop = 0;
   let suppressScrollUntil = 0;
+  /** 上一次 scroll 事件时的内容高度，用来区分"内容缩短"与"用户上滑"。 */
+  let lastScrollHeight = 0;
+  /** 最近一次滚轮 / 触摸 / 拖滚动条的时刻。只有它能证明滚动来自用户。 */
+  let lastGestureAt = 0;
   let pinBottomUntil = 0;
   let shareReturnScrollTop: number | null = null;
   let shareReturnAtBottom = true;
@@ -2678,6 +2843,10 @@ export default function PublicChatPage() {
       getPublicFinanceCalendar(defaultFinanceCalendarMonth()).then(
         setWorkspaceCalendar,
       ),
+      // The newest commentator post, so the blank conversation can offer
+      // "Serenity just said …" as a concrete question rather than a generic
+      // one. Three rows are enough; the panel reads the full window itself.
+      getPublicInfluencerDigest(undefined, { limit: 3 }).then(setWorkspaceInfluencer),
     ]);
   };
 
@@ -2697,6 +2866,9 @@ export default function PublicChatPage() {
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
       if (!scrollRef) return;
+      // A pin can be released by a user gesture while its queued jumps are
+      // still in flight; those late jumps must not fire.
+      if (!stickToBottom) return;
       suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 180);
       scrollRef.scrollTop = Math.max(
         0,
@@ -2732,6 +2904,89 @@ export default function PublicChatPage() {
     scrollRef
       ? scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight
       : 0;
+  /**
+   * The user reached for the list with a wheel, finger or scrollbar. That is
+   * the one signal that outranks every programmatic pin: drop the pin window
+   * and the scroll-event suppression so the gesture is honoured immediately
+   * and `handleMessagesScroll` sees the real scroll that follows.
+   */
+  const releaseBottomPin = () => {
+    lastGestureAt = Date.now();
+    stickToBottom = false;
+    pinBottomUntil = 0;
+    suppressScrollUntil = 0;
+    if (scrollRef) lastScrollTop = scrollRef.scrollTop;
+  };
+  const handleMessagesWheel = (event: WheelEvent) => {
+    if (!scrollRef) return;
+    if (
+      isLeaveBottomGesture({
+        kind: "wheel",
+        deltaY: event.deltaY,
+        scrollTop: scrollRef.scrollTop,
+      })
+    ) {
+      releaseBottomPin();
+    }
+  };
+  const handleMessagesTouchStart = () => {
+    if (!scrollRef) return;
+    if (isLeaveBottomGesture({ kind: "touch", scrollTop: scrollRef.scrollTop })) {
+      lastGestureAt = Date.now();
+      // A touch only cancels the pin window; the scroll handler decides from
+      // the actual drag whether the user left the bottom.
+      pinBottomUntil = 0;
+      suppressScrollUntil = 0;
+      lastScrollTop = scrollRef.scrollTop;
+    }
+  };
+  const handleMessagesPointerDown = (event: PointerEvent) => {
+    if (!scrollRef || event.pointerType === "touch") return;
+    // A mouse press on the list itself (not on a bubble) is a scrollbar grab.
+    if (event.target !== scrollRef) return;
+    if (isLeaveBottomGesture({ kind: "pointer", scrollTop: scrollRef.scrollTop })) {
+      lastGestureAt = Date.now();
+      pinBottomUntil = 0;
+      suppressScrollUntil = 0;
+      lastScrollTop = scrollRef.scrollTop;
+    }
+  };
+
+  /**
+   * Pins one message to the screen position it currently occupies, and keeps
+   * it there while the content above finishes settling.
+   *
+   * Every bubble renders its Markdown asynchronously, so a list that just
+   * grew (older history prepended) or was reconciled is still near-zero height
+   * for a frame or more. Measuring `scrollHeight` once on the next frame —
+   * what the delta-based compensation did — therefore under-measures, the
+   * viewport lands near the top of the new content, and the next upward nudge
+   * pages in yet more history: the "jumped to the very top" the user sees.
+   * Re-reading one element's offset instead is self-correcting, because each
+   * pass measures whatever has settled by then.
+   */
+  const anchorViewportTo = (anchorId: string | undefined) => {
+    if (!scrollRef || !anchorId) return () => {};
+    const element = () => document.getElementById(`public-chat-message-${anchorId}`);
+    const before = element()?.getBoundingClientRect().top;
+    if (before === undefined) return () => {};
+    return () => {
+      if (!scrollRef) return;
+      const now = element()?.getBoundingClientRect().top;
+      if (now === undefined) return;
+      const drift = now - before;
+      if (Math.abs(drift) < 1) return;
+      // Our own correction must not read as the user reaching the top.
+      suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 120);
+      scrollRef.scrollTop += drift;
+      lastScrollTop = scrollRef.scrollTop;
+    };
+  };
+  /** Re-apply an anchor while asynchronous bubble content keeps landing. */
+  const holdAnchor = (restore: () => void) => {
+    requestAnimationFrame(restore);
+    for (const delay of ANCHOR_SETTLE_DELAYS_MS) window.setTimeout(restore, delay);
+  };
   const visibleMessages = createMemo(() => {
     const start = conversationStartIndex();
     return start === null ? messages : messages.slice(Math.min(start, messages.length));
@@ -2759,6 +3014,7 @@ export default function PublicChatPage() {
       holdings: workspaceCalendar()?.holdings ?? [],
       events: workspaceCalendar()?.events ?? [],
       today: workspaceCalendar()?.today,
+      influencer: workspaceInfluencer(),
       locale: useLocale(),
     }),
   );
@@ -2859,8 +3115,9 @@ export default function PublicChatPage() {
     if (!hasOlderMessages() || loadingOlderMessages()) return;
     const before = historyNextBefore();
     if (before === undefined) return;
-    const previousScrollHeight = scrollRef?.scrollHeight;
-    const previousScrollTop = scrollRef?.scrollTop;
+    // Anchor on the oldest bubble already on screen, captured before the
+    // prepend changes anything.
+    const restoreAnchor = anchorViewportTo(visibleMessages()[0]?.id ?? messages[0]?.id);
     setLoadingOlderMessages(true);
     try {
       const page = await getPublicHistory(before);
@@ -2870,14 +3127,8 @@ export default function PublicChatPage() {
         setHistoryStart(page.history_start);
         setHistoryNextBefore(page.next_before ?? undefined);
       });
-      requestAnimationFrame(() => {
-        if (scrollRef && previousScrollHeight !== undefined && previousScrollTop !== undefined) {
-          suppressScrollUntil = Date.now() + 180;
-          scrollRef.scrollTop =
-            previousScrollTop + (scrollRef.scrollHeight - previousScrollHeight);
-          lastScrollTop = scrollRef.scrollTop;
-        }
-      });
+      suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 180);
+      holdAnchor(restoreAnchor);
     } catch {
       // Keep the current window intact; the next upward gesture can retry.
     } finally {
@@ -2889,6 +3140,13 @@ export default function PublicChatPage() {
     if (!scrollRef) return;
     const top = scrollRef.scrollTop;
     const dist = distanceFromBottom();
+    // Measured on a seeded 120-message session: a reconcile collapses the list,
+    // the browser clamps `scrollTop` to 0 without any script writing to it, and
+    // the clamp then reads as a user scroll. See `isLayoutDrivenScroll`.
+    const height = scrollRef.scrollHeight;
+    const contentShrank = height < lastScrollHeight - 1;
+    lastScrollHeight = height;
+    const recentGesture = Date.now() - lastGestureAt < GESTURE_OWNERSHIP_MS;
     // Ignore scroll events produced by our own bottom pinning/history
     // compensation. Mobile browsers can emit these while keyboard/layout
     // metrics settle; treating them as user scrolls can jump to older messages.
@@ -2919,6 +3177,15 @@ export default function PublicChatPage() {
       return;
     }
     if (top < lastScrollTop - 2) {
+      if (
+        isLayoutDrivenScroll({ scrolledUp: true, contentShrank, recentGesture })
+      ) {
+        // Layout, not intent: keep following if we were, and let the pin's
+        // own jumps put the viewport back where it belongs.
+        if (stickToBottom) scrollToBottom();
+        lastScrollTop = top;
+        return;
+      }
       // user-initiated scroll up
       stickToBottom = dist < 80;
     } else if (dist < 80) {
@@ -2967,11 +3234,33 @@ export default function PublicChatPage() {
   // When the inner messages content grows (streaming, new message), keep the
   // viewport glued to the bottom unless the user has explicitly scrolled away.
   createEffect(() => {
-    if (!messagesInnerRef || typeof ResizeObserver === "undefined") return;
+    // Depends on the signal, so it runs when the list is actually mounted.
+    // The container renders behind `authState() === "ready"`, so a plain `let`
+    // ref was still undefined the one time a non-reactive effect ran — the
+    // observer was never attached, and nothing pulled the view down as the
+    // asynchronously rendered bubbles grew. A long session therefore opened
+    // at scrollTop 0: the initial pin had already fired all its jumps against
+    // an empty list.
+    const inner = messagesInner();
+    if (!inner || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (stickToBottom) scrollToBottom();
     });
-    ro.observe(messagesInnerRef);
+    ro.observe(inner);
+    onCleanup(() => ro.disconnect());
+  });
+
+  createEffect(() => {
+    const dock = composerDock();
+    if (!dock || typeof ResizeObserver === "undefined") return;
+    const shell = dock.parentElement;
+    const apply = () => {
+      shell?.style.setProperty("--hc-dock-height", `${dock.offsetHeight}px`);
+      if (stickToBottom) scrollToBottom();
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(dock);
+    apply();
     onCleanup(() => ro.disconnect());
   });
 
@@ -3084,7 +3373,6 @@ export default function PublicChatPage() {
   const restoreSession = async (
     options: {
       resetWindow?: boolean;
-      keepAtBottom?: boolean;
       retryOnFailure?: boolean;
       attempt?: number;
       onExhausted?: (message: string) => void;
@@ -3144,12 +3432,18 @@ export default function PublicChatPage() {
       if (recovery.message) {
         merged.messages.push(recovery.message);
       }
-      const previousScrollTop = scrollRef?.scrollTop;
-      const shouldKeepBottom =
-        options.resetWindow ||
-        options.keepAtBottom ||
-        stickToBottom ||
-        distanceFromBottom() < 120;
+      // Decided now, from the live scroll state, not from a flag captured when
+      // the restore was requested: the user may have scrolled up while the
+      // request was in flight, and the reconciled repaint must then stay put
+      // instead of snapping back to the newest message.
+      const restoreAnchor = anchorViewportTo(
+        visibleMessages()[0]?.id ?? messages[0]?.id,
+      );
+      const shouldKeepBottom = shouldKeepBottomAfterRestore({
+        resetWindow: !!options.resetWindow,
+        stickToBottom,
+        distanceFromBottom: distanceFromBottom(),
+      });
       if (shouldKeepBottom) pinToBottom(1200);
       // Keep optimistic UUIDs on the just-sent pair so reconcile patches the
       // bubbles in place instead of swapping the DOM nodes for the next
@@ -3157,6 +3451,7 @@ export default function PublicChatPage() {
       // enough for the browser to clamp scrollTop "to the top of the
       // conversation" before settleAtBottom can pull it back.
       rekeyTrailingOptimisticIds(messages, merged.messages);
+      merged.messages = carryOverLocalRunTrail(messages, merged.messages);
       batch(() => {
         applyPublicUser(user);
         setMessages(reconcile(merged.messages, { key: "id" }));
@@ -3171,13 +3466,12 @@ export default function PublicChatPage() {
       });
       if (shouldKeepBottom) {
         pinToBottom(1200);
-      } else if (previousScrollTop !== undefined) {
-        requestAnimationFrame(() => {
-          if (scrollRef) {
-            scrollRef.scrollTop = previousScrollTop;
-            lastScrollTop = scrollRef.scrollTop;
-          }
-        });
+      } else {
+        // The reconcile above can momentarily shrink the list and let the
+        // browser clamp scrollTop; that synthetic scroll must not read as the
+        // user reaching the top (which would page in older history).
+        suppressScrollUntil = Math.max(suppressScrollUntil, Date.now() + 260);
+        holdAnchor(restoreAnchor);
       }
       // Keep polling when this tab did not start the run. The placeholder is
       // part of the timeline, so the eventual server reply can re-use its id
@@ -3311,6 +3605,22 @@ export default function PublicChatPage() {
     void refreshPushUnread();
   });
 
+  /** Dev-only review fixture: `/chat?demo=1` renders every turn state. */
+  const seedDemoConversation = () => {
+    const demo = buildPublicChatDemo();
+    batch(() => {
+      setCurrentUser(demo.user);
+      setSessionInfo({
+        userId: demo.user.user_id,
+        remainingToday: demo.user.remaining_today,
+        dailyLimit: demo.user.daily_limit,
+      });
+      setMessages(reconcile(demo.messages, { key: "id" }));
+      setAuthState("ready");
+      setRestoreStatus(null);
+    });
+  };
+
   onMount(() => {
     initPublicPrefs();
     const viewportMeta = document.querySelector<HTMLMetaElement>(
@@ -3350,7 +3660,14 @@ export default function PublicChatPage() {
       loadWorkspaceAside();
       void refreshPushUnread();
     }
-    void restoreSession({ resetWindow: true });
+    if (
+      import.meta.env.DEV &&
+      new URLSearchParams(window.location.search).get("demo") === "1"
+    ) {
+      seedDemoConversation();
+    } else {
+      void restoreSession({ resetWindow: true });
+    }
     onCleanup(() => {
       if (viewportMeta) {
         if (previousViewport === null) {
@@ -3520,6 +3837,7 @@ export default function PublicChatPage() {
 
     const controller = new AbortController();
     activeController = controller;
+    setCanStop(true);
     let reachedStreamEof = false;
     let sawTerminalEvent = false;
     let recoverAfterDisconnect = false;
@@ -3670,14 +3988,14 @@ export default function PublicChatPage() {
             flushAssistantDelta();
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0) {
-              setMessages(
-                index,
-                publicChatTerminalEventPatch(
+              setMessages(index, {
+                ...publicChatTerminalEventPatch(
                   ev.data,
                   lastRunErrorMessage,
                   CONTENT.chat_page.status.fallback_error,
                 ),
-              );
+                finishedAt: Date.now(),
+              });
             }
             pinToBottom(1400);
           }
@@ -3694,7 +4012,7 @@ export default function PublicChatPage() {
           if (ev.event === "done") {
             const index = messages.findIndex((m) => m.id === assistantId);
             if (index >= 0 && messages[index].phase !== "error") {
-              setMessages(index, { phase: "done", statusText: undefined });
+              setMessages(index, { phase: "done", statusText: undefined, finishedAt: Date.now() });
             }
           }
           if (isPublicChatTerminalStreamEvent(ev.event)) {
@@ -3738,9 +4056,9 @@ export default function PublicChatPage() {
       const shouldStayAtBottom =
         stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
       if (shouldStayAtBottom) pinToBottom(1600);
+      setCanStop(false);
       setIsSending(false);
       void restoreSession({
-        keepAtBottom: shouldStayAtBottom,
         retryOnFailure: recoverAfterDisconnect,
         onExhausted: recoverAfterDisconnect
           ? () => {
@@ -3821,13 +4139,12 @@ export default function PublicChatPage() {
     const shouldStayAtBottom =
       stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
     if (shouldStayAtBottom) pinToBottom(1400);
-    void restoreSession({ keepAtBottom: shouldStayAtBottom });
+    void restoreSession();
   };
 
   return (
     <div
-      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()} ${authState() !== "logged_out" ? "public-chat-page--ready" : ""}`}
-      style={{ height: "100dvh", display: "flex", "flex-direction": "column" }}
+      class={`hone-landing-v4 public-chat-page public-chat-page--${authState()} ${authState() !== "logged_out" ? "public-chat-page--ready" : ""} ${visibleMessages().length === 0 ? "is-empty" : ""}`}
     >
       <AnimatedBackground />
       <Show when={authState() === "logged_out"}>
@@ -3877,224 +4194,226 @@ export default function PublicChatPage() {
           />
         </Match>
         <Match when={authState() !== "logged_out"}>
-              <>
-                <AgentWorkspaceSidebar
-                  userName={workspaceDisplayName()}
-                  research={workspaceResearch()}
-                  researchLoading={authState() === "loading"}
-                  activeMode="conversation"
-                  activeSection="agent"
-                  communityUnread={communityUnread()}
-                  hasOlder={hasOlderMessages()}
-                  loadingOlder={loadingOlderMessages()}
-                  onLoadOlder={() => void loadOlderMessages()}
-                  onNewResearch={startNewConversation}
-                  onSelectResearch={openWorkspaceResearch}
-                  /* 当前区块的导航项被再次点击时只回到对话底部；开新分段
-                     是「新对话」按钮的职责，误触不该截断正在看的记录。 */
-                  onHome={settleAtBottom}
-                  onResearchDesk={() => navigate("/research")}
-                  onInsights={() => navigate("/community")}
-                  onPushes={() => navigate("/pushes")}
-                  unreadPushCount={pushUnreadCount()}
-                  onAccount={() => navigate("/me")}
-                  onLogout={logoutPublicChat}
-                />
-                <div class="agent-workspace-stage">
-                  <AgentWorkspaceTopbar
-                    query=""
-                    unreadPushCount={pushUnreadCount()}
-                    showSearch={false}
-                    onQueryChange={() => {}}
-                    preferences={<PublicPrefsButton />}
-                    onPushes={openPushCenter}
-                  />
-                  <AgentWorkspaceMobileHeader
-                    userName={workspaceDisplayName()}
-                    unreadPushCount={pushUnreadCount()}
-                    historyCount={workspaceResearch().length}
-                    preferences={<PublicPrefsButton />}
-                    onMenu={() => setHistoryDrawerOpen(true)}
-                    onPushes={openPushCenter}
-                    onAccount={() => navigate("/me")}
-                  />
-                  <Show when={restoreStatus()?.mode === "failed"}>
-                    <div class="agent-workspace-restore-notice" role="status">
-                      <span>会话暂时未同步，你仍可查看当前页面。</span>
-                      <button type="button" onClick={() => restoreSession({ resetWindow: true, retryOnFailure: true, attempt: 1 })}>重新连接</button>
-                    </div>
-                  </Show>
-                  <Show
-                    when={
-                      authState() === "loading" ||
-                      (restoreStatus()?.mode === "retrying" && !currentUser())
+          <>
+            <AgentWorkspaceSidebar
+              userName={workspaceDisplayName()}
+              research={workspaceResearch()}
+              researchLoading={authState() === "loading"}
+              activeMode="conversation"
+              activeSection="agent"
+              communityUnread={communityUnread()}
+              hasOlder={hasOlderMessages()}
+              loadingOlder={loadingOlderMessages()}
+              onLoadOlder={() => void loadOlderMessages()}
+              onNewResearch={startNewConversation}
+              onSelectResearch={openWorkspaceResearch}
+              /* 当前区块的导航项被再次点击时只回到对话底部；开新分段
+                 是「新对话」按钮的职责，误触不该截断正在看的记录。 */
+              onHome={settleAtBottom}
+              onResearchDesk={() => navigate("/research")}
+              onInsights={() => navigate("/community")}
+              onPushes={() => navigate("/pushes")}
+              unreadPushCount={pushUnreadCount()}
+              onAccount={() => navigate("/me")}
+              onLogout={logoutPublicChat}
+            />
+            <div class="agent-workspace-stage">
+              <AgentWorkspaceTopbar
+                query=""
+                unreadPushCount={pushUnreadCount()}
+                label={CONTENT.chat_page.workspace.assistant_nav}
+                context={CONTENT.chat_page.workspace.agent_tagline}
+                showSearch={false}
+                onQueryChange={() => {}}
+                preferences={<PublicPrefsButton />}
+                onPushes={openPushCenter}
+              />
+              <AgentWorkspaceMobileHeader
+                userName={workspaceDisplayName()}
+                unreadPushCount={pushUnreadCount()}
+                historyCount={workspaceResearch().length}
+                preferences={<PublicPrefsButton />}
+                onMenu={() => setHistoryDrawerOpen(true)}
+                onPushes={openPushCenter}
+                onAccount={() => navigate("/me")}
+              />
+              <Show when={restoreStatus()?.mode === "failed"}>
+                <div class="agent-workspace-restore-notice" role="status">
+                  <span>{CONTENT.chat_page.workspace.restore_notice}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      restoreSession({ resetWindow: true, retryOnFailure: true, attempt: 1 })
                     }
                   >
-                    <AgentWorkspaceLoadingState
-                      retrying={restoreStatus()?.mode === "retrying"}
-                      attempt={restoreStatus()?.attempt}
-                    />
-                  </Show>
-                  <div class="agent-workspace-body">
-                    <div
-                      class="public-chat-shell is-conversation"
-                      style={{
-                        flex: "1",
-                        display: "flex",
-                        "flex-direction": "column",
-                        position: "relative",
-                        "z-index": "10",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                            ref={scrollRef}
-                            class="public-chat-messages"
-                            onScroll={handleMessagesScroll}
-                            style={{ flex: "1", "overflow-y": "auto", padding: "20px 0" }}
-                          >
-                            <div
-                              ref={messagesInnerRef}
-                              style={{ "max-width": "900px", margin: "0 auto", padding: "0 24px" }}
-                            >
-                              <Show when={authState() === "ready" && visibleMessages().length === 0}>
-                                <section class="chat-empty-prompts" aria-label={CONTENT.chat_page.workspace.starter_aria}>
-                                  <header>
-                                    <span>{CONTENT.chat_page.workspace.starter_kicker}</span>
-                                    <h2>{CONTENT.chat_page.workspace.starter_title}</h2>
-                                    <p>{CONTENT.chat_page.workspace.starter_desc}</p>
-                                  </header>
-                                  <div>
-                                    <For each={starterPrompts()}>
-                                      {(prompt) => (
-                                        <button
-                                          type="button"
-                                          data-prompt-kind={prompt.id}
-                                          onClick={() => setPendingAutoSend(prompt.question)}
-                                        >
-                                          <small>{prompt.eyebrow}</small>
-                                          <strong>{prompt.title}</strong>
-                                          <i aria-hidden="true">↗</i>
-                                        </button>
-                                      )}
-                                    </For>
-                                  </div>
-                                </section>
-                              </Show>
-                              <Show when={hasOlderMessages()}>
-                                <div class="public-chat-history-status">
-                                  {loadingOlderMessages()
-                                    ? CONTENT.chat_page.history.loading_older
-                                    : CONTENT.chat_page.history.load_older}
-                                </div>
-                              </Show>
-                              <For each={visibleMessages()}>
-                                {(msg, i) => (
-                                  <div id={`public-chat-message-${msg.id}`}>
-                                    <Show when={daySeparatorLabel(i() > 0 ? visibleMessages()[i() - 1]?.at : undefined, msg.at)}>
-                                      {(label) => <div class="public-chat-date-chip"><span>{label()}</span></div>}
-                                    </Show>
-                                    <Switch>
-                                      <Match when={msg.role === "user"}>
-                                        <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, index) => setLightbox({ images: imgs, index })} />
-                                      </Match>
-                                      <Match when={msg.role === "assistant" && msg.scheduledPush}>
-                                        <ScheduledPushCard push={msg.scheduledPush!} onOpen={openScheduledPush} />
-                                      </Match>
-                                      <Match when={msg.role === "assistant" && !msg.scheduledPush}>
-                                        <AssistantBubble
-                                          message={msg}
-                                          isContinuation={i() > 0 && visibleMessages()[i() - 1]?.role === "assistant"}
-                                          onShare={() => openShareModal(i())}
-                                          onStop={msg.id === "_background" ? undefined : () => activeController?.abort()}
-                                          onDismiss={() => setMessages(reconcile(messages.filter((item) => item.id !== msg.id), { key: "id" }))}
-                                        />
-                                      </Match>
-                                    </Switch>
-                                  </div>
-                                )}
-                              </For>
-                            </div>
+                    {CONTENT.chat_page.workspace.reconnect}
+                  </button>
+                </div>
+              </Show>
+              <Show
+                when={
+                  authState() === "loading" ||
+                  (restoreStatus()?.mode === "retrying" && !currentUser())
+                }
+              >
+                <AgentWorkspaceLoadingState
+                  retrying={restoreStatus()?.mode === "retrying"}
+                  attempt={restoreStatus()?.attempt}
+                />
+              </Show>
+              <div class="agent-workspace-body">
+                <div class="public-chat-shell is-conversation">
+                  <div
+                    ref={scrollRef}
+                    class="public-chat-messages"
+                    onScroll={handleMessagesScroll}
+                    onWheel={handleMessagesWheel}
+                    onTouchStart={handleMessagesTouchStart}
+                    onPointerDown={handleMessagesPointerDown}
+                  >
+                    <div ref={setMessagesInner} class="hc-column">
+                      <Show when={authState() === "ready" && visibleMessages().length === 0}>
+                        <section class="chat-empty-prompts" aria-label={CONTENT.chat_page.workspace.starter_aria}>
+                          <header>
+                            <span>{CONTENT.chat_page.workspace.starter_kicker}</span>
+                            <h2>{CONTENT.chat_page.workspace.starter_title}</h2>
+                            <p>{CONTENT.chat_page.workspace.starter_desc}</p>
+                          </header>
+                          <div>
+                            <For each={starterPrompts()}>
+                              {(prompt) => (
+                                <button
+                                  type="button"
+                                  data-prompt-kind={prompt.id}
+                                  onClick={() => setPendingAutoSend(prompt.question)}
+                                >
+                                  <small>{prompt.eyebrow}</small>
+                                  <strong>{prompt.title}</strong>
+                                  <i aria-hidden="true">↗</i>
+                                </button>
+                              )}
+                            </For>
                           </div>
-                      <div class="public-chat-composer-dock" style={{ position: "relative" }}>
-                        <Show when={awayFromBottom()}>
-                          <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
-                          </button>
-                        </Show>
-                        <Composer
-                          draft={draft()}
-                          onDraftChange={setDraft}
-                          attachments={pendingAttachments}
-                          onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
-                          onPickFiles={async (files) => {
-                            setUploading(true);
-                            try {
-                              const uploaded = await uploadPublicAttachments(files);
-                              setPendingAttachments([...pendingAttachments, ...uploaded.map((item) => ({ ...item, kind: item.kind as any }))]);
-                            } finally {
-                              setUploading(false);
-                            }
-                          }}
-                          uploading={uploading()}
-                          onSend={handleSend}
-                          onCalendarSent={handleCalendarSent}
-                          communityUnread={communityUnread()}
-                          onOpenCommunity={() => navigate("/community")}
-                          isSending={isSendingOrStreaming()}
-                          remaining={sessionInfo()?.remainingToday}
-                          dailyLimit={sessionInfo()?.dailyLimit}
-                          calendarOpenRequest={calendarOpenRequest()}
-                          isAdmin={currentUser()?.is_admin === true}
-                          onOpenPanel={openChatPanel}
-                          onStartEarnings={startEarningsWorkflow}
-                        />
-                        <p class="public-chat-disclaimer">HONE 可能出错。内容仅供研究参考，不构成投资建议。</p>
-                      </div>
+                        </section>
+                      </Show>
+                      <Show when={hasOlderMessages()}>
+                        <div class="public-chat-history-status">
+                          {loadingOlderMessages()
+                            ? CONTENT.chat_page.history.loading_older
+                            : CONTENT.chat_page.history.load_older}
+                        </div>
+                      </Show>
+                      <For each={visibleMessages()}>
+                        {(msg, i) => (
+                          <div id={`public-chat-message-${msg.id}`} class="hc-entry">
+                            <Show when={daySeparatorLabel(i() > 0 ? visibleMessages()[i() - 1]?.at : undefined, msg.at)}>
+                              {(label) => <div class="public-chat-date-chip"><span>{label()}</span></div>}
+                            </Show>
+                            <Switch>
+                              <Match when={msg.role === "user"}>
+                                <UserBubble content={msg.content} attachments={msg.attachments} onOpenImage={(imgs, index) => setLightbox({ images: imgs, index })} />
+                              </Match>
+                              <Match when={msg.role === "assistant" && msg.scheduledPush}>
+                                <ScheduledPushCard push={msg.scheduledPush!} onOpen={openScheduledPush} />
+                              </Match>
+                              <Match when={msg.role === "assistant" && !msg.scheduledPush}>
+                                <AssistantBubble
+                                  message={msg}
+                                  isContinuation={i() > 0 && visibleMessages()[i() - 1]?.role === "assistant"}
+                                  onShare={() => openShareModal(i())}
+                                  onStop={msg.id === "_background" ? undefined : () => activeController?.abort()}
+                                  onDismiss={() => setMessages(reconcile(messages.filter((item) => item.id !== msg.id), { key: "id" }))}
+                                />
+                              </Match>
+                            </Switch>
+                          </div>
+                        )}
+                      </For>
                     </div>
                   </div>
+                  <div ref={setComposerDock} class="public-chat-composer-dock">
+                    <Show when={awayFromBottom()}>
+                      <button type="button" class="public-chat-scroll-down" aria-label={CONTENT.chat_page.actions.scroll_to_bottom_aria} title={CONTENT.chat_page.actions.scroll_to_bottom_aria} onClick={settleAtBottom}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
+                      </button>
+                    </Show>
+                    <Composer
+                      draft={draft()}
+                      onDraftChange={setDraft}
+                      attachments={pendingAttachments}
+                      onRemoveAttachment={(i) => setPendingAttachments(pendingAttachments.filter((_, j) => j !== i))}
+                      onPickFiles={async (files) => {
+                        setUploading(true);
+                        try {
+                          const uploaded = await uploadPublicAttachments(files);
+                          setPendingAttachments([...pendingAttachments, ...uploaded.map((item) => ({ ...item, kind: item.kind as any }))]);
+                        } finally {
+                          setUploading(false);
+                        }
+                      }}
+                      uploading={uploading()}
+                      onSend={handleSend}
+                      onStop={canStop() ? () => activeController?.abort() : undefined}
+                      onCalendarSent={handleCalendarSent}
+                      communityUnread={communityUnread()}
+                      onOpenCommunity={() => navigate("/community")}
+                      isSending={isSendingOrStreaming()}
+                      remaining={sessionInfo()?.remainingToday}
+                      dailyLimit={sessionInfo()?.dailyLimit}
+                      calendarOpenRequest={calendarOpenRequest()}
+                      isAdmin={currentUser()?.is_admin === true}
+                      onOpenPanel={openChatPanel}
+                      onStartEarnings={startEarningsWorkflow}
+                      suggestions={starterPrompts()}
+                      onSuggestion={(question) => setPendingAutoSend(question)}
+                      showSuggestions={visibleMessages().length > 0}
+                    />
+                    <p class="public-chat-disclaimer">{CONTENT.chat_page.misc.disclaimer}</p>
+                  </div>
                 </div>
-                <AgentWorkspaceMobileNav
-                  activeMode="conversation"
-                  activeSection="agent"
-                  communityUnread={communityUnread()}
-                  unreadPushCount={pushUnreadCount()}
-                  onHome={settleAtBottom}
-                  onInsights={() => navigate("/community")}
-                  onAgent={settleAtBottom}
-                  onResearchDesk={() => navigate("/research")}
-                  onPushesTab={() => navigate("/pushes")}
-                  onAccount={() => navigate("/me")}
-                />
-                <Show when={chatPanel()}>
-                  {(panel) => (
-                    <ResearchPanelFor panel={panel()} onClose={() => setChatPanel(undefined)} />
-                  )}
-                </Show>
-                <AgentWorkspaceHistoryDrawer
-                  open={historyDrawerOpen()}
-                  userName={workspaceDisplayName()}
-                  research={workspaceResearch()}
-                  hasOlder={hasOlderMessages()}
-                  loadingOlder={loadingOlderMessages()}
-                  communityUnread={communityUnread()}
-                  onOpen={() => setHistoryDrawerOpen(true)}
-                  onClose={() => setHistoryDrawerOpen(false)}
-                  onSelectResearch={openWorkspaceResearch}
-                  onLoadOlder={() => void loadOlderMessages()}
-                  onNewResearch={() => {
-                    setHistoryDrawerOpen(false);
-                    startNewConversation();
-                  }}
-                  onHome={() => {
-                    setHistoryDrawerOpen(false);
-                    settleAtBottom();
-                  }}
-                  onResearchDesk={() => navigate("/research")}
-                  onInsights={() => navigate("/community")}
-                  onAccount={() => navigate("/me")}
-                />
-              </>
+              </div>
+            </div>
+            <AgentWorkspaceMobileNav
+              activeMode="conversation"
+              activeSection="agent"
+              communityUnread={communityUnread()}
+              unreadPushCount={pushUnreadCount()}
+              onHome={settleAtBottom}
+              onInsights={() => navigate("/community")}
+              onAgent={settleAtBottom}
+              onResearchDesk={() => navigate("/research")}
+              onPushesTab={() => navigate("/pushes")}
+              onAccount={() => navigate("/me")}
+            />
+            <Show when={chatPanel()}>
+              {(panel) => (
+                <ResearchPanelFor panel={panel()} onClose={() => setChatPanel(undefined)} />
+              )}
+            </Show>
+            <AgentWorkspaceHistoryDrawer
+              open={historyDrawerOpen()}
+              userName={workspaceDisplayName()}
+              research={workspaceResearch()}
+              hasOlder={hasOlderMessages()}
+              loadingOlder={loadingOlderMessages()}
+              communityUnread={communityUnread()}
+              onOpen={() => setHistoryDrawerOpen(true)}
+              onClose={() => setHistoryDrawerOpen(false)}
+              onSelectResearch={openWorkspaceResearch}
+              onLoadOlder={() => void loadOlderMessages()}
+              onNewResearch={() => {
+                setHistoryDrawerOpen(false);
+                startNewConversation();
+              }}
+              onHome={() => {
+                setHistoryDrawerOpen(false);
+                settleAtBottom();
+              }}
+              onResearchDesk={() => navigate("/research")}
+              onInsights={() => navigate("/community")}
+              onAccount={() => navigate("/me")}
+            />
+          </>
         </Match>
       </Switch>
 
@@ -4120,7 +4439,7 @@ export default function PublicChatPage() {
             }}
             class="lightbox-img"
           />
-          <button class="lightbox-close">×</button>
+          <button type="button" class="lightbox-close" aria-label={CONTENT.chat_page.actions.dismiss_aria}>×</button>
         </div>
       </Show>
 

@@ -1,6 +1,27 @@
 # Archive Index
 
-Last updated: 2026-09-05
+Last updated: 2026-09-07
+
+## 2026-09-07
+
+### 3D 数据中心在线试玩入口上线
+
+- Status: done / deployed
+- Plan: `docs/archive/plans/data-center-online-demo-deploy.md`
+- Handoff: `docs/handoffs/2026-09-07-data-center-online-demo.md`
+- Commit: `00ea36e01b8d35d4fbd0912fd6a836ce83c1b09b`
+- Verification: 646 Web tests、typecheck、public build、桌面/手机新标签回归、生产 Pages/origin hashes 与真实 Chrome 点击验收。
+- Conclusion: 聊天框「3D 数据中心」新标签打开 NEXUS 官方试玩，聊天保留；前端部署未重启后端。旧 E2E 行业名断言与完整 PostgreSQL 回归限制见 handoff；回滚入口和完整 manifest 链接已留存。
+
+### User Product README Refresh
+
+- Status: done; delivery target is the GitHub default branch `main`
+- Plan: `docs/archive/plans/readme-user-product-2026-09-07.md`
+- Handoff: `docs/handoffs/2026-09-07-readme-user-product.md`
+- Deliverables: `README.md`, `README_EN.md`, `README_ZH.md`, `resources/readme/`
+- Verification: local links, image signatures/dimensions, live Serenity mobile viewport, English copy equality, `git diff --check`
+- Current conclusion: bilingual homepage now introduces AI infrastructure Q&A, roughly 50-company research coverage without revealing ontology content, company following and professional financial data, Serenity updates, and macro transmission into AI infrastructure.
+- Next entry point: review README; refresh screenshots and both languages when the user-facing product changes.
 
 ## 2026-09-05
 
@@ -2750,3 +2771,5 @@ Use this file as the historical entry point for completed or paused work that sh
 - Related regressions: `hone-integrations` local HTTP contract tests; `hone-core` config tests
 - Current conclusion: `nano_banana` keeps OpenRouter as its default and can optionally select Atlas Cloud credentials, submit one paid generation request, and perform bounded GET-only prediction polling while preserving the existing output/download contract.
 - Next entry point: `crates/hone-integrations/src/nano_banana.rs`; verify the live model schema before adding any model-specific request fields.
+
+- 2026-09-08：流式 HTTP 529 有界重试，状态 `done`；[plan](plans/stream-http-529-retry-2026-09-08.md) / [handoff](../handoffs/stream-http-529-retry-2026-09-08.md) / [bug](../bugs/scheduler_heartbeat_minimax_http_transport_failure_no_retry.md)。41 测试与编译通过，P1 PostgreSQL/runtime 恢复留待运维。

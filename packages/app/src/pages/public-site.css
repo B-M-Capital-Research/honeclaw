@@ -1533,14 +1533,8 @@ html {
     gap: 8px;
     flex: 0 0 auto;
   }
-  .pub-nav {
-    top: max(8px, env(safe-area-inset-top)) !important;
-    right: max(10px, env(safe-area-inset-right)) !important;
-    left: max(10px, env(safe-area-inset-left)) !important;
-    height: 60px !important;
-    padding: 0 8px 0 12px !important;
-    border-radius: 20px;
-  }
+  /* The floating pill used to be forced here with !important, which silently
+     defeated the flat product bar public-polish.css draws on phones. */
   .pub-nav-brand {
     min-width: 0 !important;
     flex: 1 1 auto !important;

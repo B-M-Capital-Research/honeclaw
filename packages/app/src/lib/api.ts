@@ -2168,8 +2168,12 @@ export async function getPublicPositionManagement(
 
 export async function getPublicInfluencerDigest(
   signal?: AbortSignal,
+  options: { limit?: number } = {},
 ): Promise<InfluencerDigestSnapshot> {
-  const response = await apiFetch("/api/public/influencer-digest", { signal });
+  // The chat home only needs the newest post to phrase a question; the panel
+  // reads the whole window.
+  const query = options.limit ? `?limit=${options.limit}` : "";
+  const response = await apiFetch(`/api/public/influencer-digest${query}`, { signal });
   return parseJson<InfluencerDigestSnapshot>(response);
 }
 

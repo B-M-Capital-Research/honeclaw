@@ -1,5 +1,5 @@
 import { Title } from "@solidjs/meta";
-import { useSearchParams } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import {
   For,
   Show,
@@ -7,7 +7,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  on,
   onCleanup,
   onMount,
 } from "solid-js";
@@ -20,18 +19,44 @@ import {
   getPublicIndustryMap,
   postPublicIndustryMapEdit,
 } from "@/lib/api";
-import { resolveIndustryMapSelection } from "@/lib/industry-map-navigation";
+import { contentAsOf, deriveIndustryBrief } from "@/lib/industry-brief";
+import {
+  resolveIndustryMapLens,
+  resolveIndustryMapSelection,
+} from "@/lib/industry-map-navigation";
+import {
+  askHoneHref,
+  askHonePrompt,
+  findMember,
+  matchLabel,
+  methodologyOf,
+  subtypeOf,
+  valuationOf,
+} from "@/lib/industry-valuation";
+import type { MemberMatch } from "@/lib/industry-valuation";
 import { cachedPublicUser, setCachedPublicUser } from "@/lib/public-session-cache";
 import type {
   Industry,
   IndustryEditField,
-  IndustryEditOp,
-  IndustryKeyVariable,
   IndustryMapSnapshot,
-  IndustryUpstreamRelation,
-  IndustryUpstreamSignal,
+  IndustryMember,
   PublicAuthUserInfo,
 } from "@/lib/types";
+
+import { IndustryForm } from "./public-industry-map/admin-editors";
+import { IndustryBriefSection } from "./public-industry-map/brief";
+import { RecentChanges } from "./public-industry-map/changes";
+import { CompanyLensCard, MembersTable } from "./public-industry-map/company-lens";
+import { DOSSIER_IDS, ResearchDossier } from "./public-industry-map/dossier";
+import {
+  FieldEditor,
+  editedAt,
+  type DetailJump,
+  type Editor,
+  type Flash,
+  type Lens,
+} from "./public-industry-map/shared";
+import { SourcesList, WatchList } from "./public-industry-map/watch-sources";
 
 import "./public-foundation.css";
 import "./public-site.css";
@@ -40,685 +65,14 @@ import "./public-industry-map.css";
 
 type ViewState = "loading" | "ready" | "login" | "forbidden" | "error";
 
-/** 一次保存的回执：成功回显后端的一行摘要，失败原样回显后端给的拒绝理由。 */
-type Flash = { kind: "ok" | "error"; text: string };
-
 /**
- * 详情面板里每个可改块共用的一组回调，由页面组件注入。改动说明与「保存中」是全页共用的
- * 状态，所以各块只问「现在能不能存」「存」，不各自握着 note。
+ * 行业分析：每个行业按「当前重点 → 最近变化 → 相关公司与影响 → 接下来重点看什么 →
+ * 完整研究底稿（折叠）→ 研报与数据来源」的顺序读。URL 拥有两个选择：`?industry=` 是哪一行，
+ * `?symbol=` 是公司视角；刷新、分享与浏览器历史都跟着 URL 走。
  */
-type Editor = {
-  /** 编辑模式开着、改动说明已填、且没有别的保存在跑。 */
-  canSave: () => boolean;
-  busy: () => boolean;
-  noteMissing: () => boolean;
-  /** 成功返回 true；页面已用返回的快照整体替换本地状态并回显 applied。 */
-  submit: (industry: string, op: IndustryEditOp) => Promise<boolean>;
-};
-
-const RELATION_LABELS: Record<IndustryUpstreamRelation, string> = {
-  demand_source: "需求来源",
-  capex_source: "资本开支来源",
-  supply_gate: "供给卡口",
-  peer_signal: "同业信号",
-};
-
-function relationLabel(value: string) {
-  return (RELATION_LABELS as Record<string, string>)[value] ?? value;
-}
-
-/** 行业树只收美股与 ADR：带交易所后缀（0700.HK）或前缀（NYSE:TSM）的代码在前端就拒掉。 */
-const NON_US_SYMBOL_MESSAGE = "只收美股与 ADR";
-
-function isNonUsSymbol(symbol: string) {
-  return symbol.includes(".") || symbol.includes(":");
-}
-
-/** 后端与前端分开上线；旧后端还没带这块时按空列表渲染，而不是整页报错。 */
-function upstreamSignals(industry: Industry): IndustryUpstreamSignal[] {
-  return industry.upstream_signals ?? [];
-}
-
-function splitLines(text: string) {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function splitAliases(text: string) {
-  return text
-    .split(/[,，]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-/** 市值只用于排序与规模感，给到两位有效小数就够，不做币种换算（树里全是美元计价的美股）。 */
-function marketCap(value: number | undefined) {
-  if (value == null || !Number.isFinite(value)) return "—";
-  if (value >= 1e12) return `${(value / 1e12).toFixed(2)} 万亿`;
-  if (value >= 1e8) return `${(value / 1e8).toFixed(0)} 亿`;
-  return `${(value / 1e8).toFixed(2)} 亿`;
-}
-
-/** 改动时间只给到分钟：卡片要的是「什么时候改的」，不是精确时刻。 */
-function editedAt(value: string | undefined) {
-  if (!value) return "";
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return value;
-  return at.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function changePercent(value: number | undefined) {
-  if (value == null || !Number.isFinite(value)) return "";
-  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-}
-
-/**
- * 一段文本的就地编辑：textarea + 保存。草稿只在源值变了（切换行业、或这一段刚被保存）时
- * 跟着重置，别的块保存引起的快照替换不会冲掉正在改的内容。
- */
-function FieldEditor(props: {
-  label?: string;
-  ariaLabel?: string;
-  value: string;
-  rows?: number;
-  editor: Editor;
-  onSave: (value: string) => Promise<boolean>;
-}) {
-  const [draft, setDraft] = createSignal(props.value);
-  createEffect(on(() => props.value, (value) => setDraft(value), { defer: true }));
-  const dirty = () => draft().trim() !== props.value.trim();
-  return (
-    <div class="industry-field">
-      <Show when={props.label}>
-        <span class="industry-field-label">{props.label}</span>
-      </Show>
-      <textarea
-        class="industry-textarea"
-        rows={props.rows ?? 3}
-        aria-label={props.ariaLabel ?? props.label}
-        value={draft()}
-        disabled={props.editor.busy()}
-        onInput={(event) => setDraft(event.currentTarget.value)}
-      />
-      <div class="industry-field-actions">
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !dirty()}
-          onClick={() => void props.onSave(draft().trim())}
-        >
-          保存
-        </button>
-        <Show when={dirty()}>
-          <span class="industry-field-dirty">未保存</span>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
-/**
- * 上游信号「最近动作」的就地编辑：一段动作 + 截至日期，两个字段一起存成一个改动。
- * 草稿的重置规则与 FieldEditor 相同：只在源值变了时跟着重置。
- */
-function LatestEditor(props: {
-  symbol: string;
-  latest: string;
-  asOf: string;
-  editor: Editor;
-  onSave: (latest: string, asOf: string) => Promise<boolean>;
-}) {
-  const [latest, setLatest] = createSignal(props.latest);
-  const [asOf, setAsOf] = createSignal(props.asOf);
-  createEffect(on(() => props.latest, (value) => setLatest(value), { defer: true }));
-  createEffect(on(() => props.asOf, (value) => setAsOf(value), { defer: true }));
-  const dirty = () =>
-    latest().trim() !== props.latest.trim() || asOf().trim() !== props.asOf.trim();
-  return (
-    <div class="industry-field industry-signal-latest-editor">
-      <span class="industry-field-label">最近动作</span>
-      <textarea
-        class="industry-textarea"
-        rows={3}
-        aria-label={`${props.symbol} 最近动作`}
-        placeholder="它最近一次有日期的动作：哪一期、何时发布、关键数字与下季指引"
-        value={latest()}
-        disabled={props.editor.busy()}
-        onInput={(event) => setLatest(event.currentTarget.value)}
-      />
-      <label class="industry-signal-latest-asof">
-        截至
-        <input
-          class="industry-input"
-          aria-label={`${props.symbol} 最近动作截至`}
-          placeholder="2026-08-26"
-          value={asOf()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setAsOf(event.currentTarget.value)}
-        />
-      </label>
-      <div class="industry-field-actions">
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !dirty()}
-          onClick={() => void props.onSave(latest().trim(), asOf().trim())}
-        >
-          保存
-        </button>
-        <Show when={dirty()}>
-          <span class="industry-field-dirty">未保存</span>
-        </Show>
-        <Show when={dirty() && props.editor.noteMissing()}>
-          <span class="industry-form-hint">先在面板顶部填改动说明</span>
-        </Show>
-      </div>
-    </div>
-  );
-}
-
-function VariablesTable(props: { variables: IndustryKeyVariable[] }) {
-  return (
-    <table class="industry-variables">
-      <thead>
-        <tr>
-          <th>可观测变量</th>
-          <th>它在链条哪一环</th>
-          <th>去哪取</th>
-        </tr>
-      </thead>
-      <tbody>
-        <For each={props.variables}>
-          {(variable) => (
-            <tr>
-              <td>{variable.name}</td>
-              <td>{variable.why}</td>
-              <td class="industry-where">{variable.where}</td>
-            </tr>
-          )}
-        </For>
-      </tbody>
-    </table>
-  );
-}
-
-/** 公司表表尾的「加入公司」。symbol 带 . 或 : 的在这里就拒掉，不必等后端。 */
-function AddMemberRow(props: { industry: string; editor: Editor }) {
-  const [symbol, setSymbol] = createSignal("");
-  const [name, setName] = createSignal("");
-  const [role, setRole] = createSignal("");
-  const [error, setError] = createSignal("");
-  const ready = () => symbol().trim() !== "" && name().trim() !== "";
-  const add = async () => {
-    const code = symbol().trim().toUpperCase();
-    if (isNonUsSymbol(code)) {
-      setError(NON_US_SYMBOL_MESSAGE);
-      return;
-    }
-    setError("");
-    const ok = await props.editor.submit(props.industry, {
-      kind: "add_member",
-      member: { symbol: code, name: name().trim(), role: role().trim() },
-    });
-    if (ok) {
-      setSymbol("");
-      setName("");
-      setRole("");
-    }
-  };
-  return (
-    <tr class="industry-members-add">
-      <td>
-        <input
-          class="industry-input"
-          aria-label="代码"
-          placeholder="代码"
-          value={symbol()}
-          disabled={props.editor.busy()}
-          onInput={(event) => {
-            setSymbol(event.currentTarget.value);
-            setError("");
-          }}
-        />
-        <Show when={error()}>
-          <span class="industry-members-error" role="alert">
-            {error()}
-          </span>
-        </Show>
-      </td>
-      <td>
-        <input
-          class="industry-input"
-          aria-label="公司"
-          placeholder="公司"
-          value={name()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setName(event.currentTarget.value)}
-        />
-      </td>
-      <td class="industry-members-add-hint">加入公司</td>
-      <td class="industry-members-add-hint">市值与现价由行情补齐</td>
-      <td>
-        <input
-          class="industry-input"
-          aria-label="在这一行的位置"
-          placeholder="在这一行的位置"
-          value={role()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setRole(event.currentTarget.value)}
-        />
-      </td>
-      <td>
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !ready()}
-          onClick={() => void add()}
-        >
-          加入
-        </button>
-      </td>
-    </tr>
-  );
-}
-
-function SignalForm(props: { industry: string; editor: Editor }) {
-  const [symbol, setSymbol] = createSignal("");
-  const [name, setName] = createSignal("");
-  const [relation, setRelation] = createSignal<IndustryUpstreamRelation>("demand_source");
-  const [why, setWhy] = createSignal("");
-  const [pull, setPull] = createSignal("");
-  const [cadence, setCadence] = createSignal("");
-  const [latest, setLatest] = createSignal("");
-  const [latestAsOf, setLatestAsOf] = createSignal("");
-  const ready = () => symbol().trim() !== "";
-  const add = async () => {
-    const ok = await props.editor.submit(props.industry, {
-      kind: "add_upstream_signal",
-      signal: {
-        symbol: symbol().trim().toUpperCase(),
-        name: name().trim(),
-        relation: relation(),
-        why: why().trim(),
-        pull: splitLines(pull()),
-        cadence: cadence().trim(),
-        latest: latest().trim(),
-        latest_as_of: latestAsOf().trim(),
-      },
-    });
-    if (ok) {
-      setSymbol("");
-      setName("");
-      setRelation("demand_source");
-      setWhy("");
-      setPull("");
-      setCadence("");
-      setLatest("");
-      setLatestAsOf("");
-    }
-  };
-  return (
-    <div class="industry-form" role="group" aria-label="新增上游信号">
-      <p class="industry-form-title">新增上游信号</p>
-      <label>
-        代码
-        <input
-          class="industry-input"
-          placeholder="如 NVDA"
-          value={symbol()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setSymbol(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        公司
-        <input
-          class="industry-input"
-          value={name()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setName(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        关系
-        <select
-          class="industry-select"
-          value={relation()}
-          disabled={props.editor.busy()}
-          onChange={(event) =>
-            setRelation(event.currentTarget.value as IndustryUpstreamRelation)
-          }
-        >
-          <option value="demand_source">{RELATION_LABELS.demand_source}（它买本行的东西）</option>
-          <option value="capex_source">{RELATION_LABELS.capex_source}（它的资本开支是需求源头）</option>
-          <option value="supply_gate">{RELATION_LABELS.supply_gate}（本行供给受它卡口）</option>
-          <option value="peer_signal">{RELATION_LABELS.peer_signal}（同业龙头，最早的景气读数）</option>
-        </select>
-      </label>
-      <label>
-        节奏
-        <input
-          class="industry-input"
-          placeholder="如 每季财报后"
-          value={cadence()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setCadence(event.currentTarget.value)}
-        />
-      </label>
-      <label class="is-wide">
-        为什么看它
-        <textarea
-          class="industry-textarea"
-          rows={2}
-          value={why()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setWhy(event.currentTarget.value)}
-        />
-      </label>
-      <label class="is-wide">
-        最近动作
-        <textarea
-          class="industry-textarea"
-          rows={3}
-          placeholder="它最近一次有日期的动作：哪一期、何时发布、关键数字与下季指引"
-          value={latest()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setLatest(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        截至
-        <input
-          class="industry-input"
-          placeholder="2026-08-26"
-          value={latestAsOf()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setLatestAsOf(event.currentTarget.value)}
-        />
-      </label>
-      <label class="is-wide">
-        去取它的哪几个读数（一行一条）
-        <textarea
-          class="industry-textarea"
-          rows={3}
-          value={pull()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setPull(event.currentTarget.value)}
-        />
-      </label>
-      <div class="industry-form-actions">
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !ready()}
-          onClick={() => void add()}
-        >
-          新增
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function WatchForm(props: { industry: string; editor: Editor }) {
-  const [what, setWhat] = createSignal("");
-  const [why, setWhy] = createSignal("");
-  const [cadence, setCadence] = createSignal("");
-  const ready = () => what().trim() !== "";
-  const add = async () => {
-    const ok = await props.editor.submit(props.industry, {
-      kind: "add_watch",
-      watch: { what: what().trim(), why: why().trim(), cadence: cadence().trim() },
-    });
-    if (ok) {
-      setWhat("");
-      setWhy("");
-      setCadence("");
-    }
-  };
-  return (
-    <div class="industry-form" role="group" aria-label="新增关注点">
-      <p class="industry-form-title">新增关注点</p>
-      <label>
-        看什么
-        <input
-          class="industry-input"
-          value={what()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setWhat(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        节奏
-        <input
-          class="industry-input"
-          placeholder="如 每季 / 每月"
-          value={cadence()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setCadence(event.currentTarget.value)}
-        />
-      </label>
-      <label class="is-wide">
-        为什么
-        <textarea
-          class="industry-textarea"
-          rows={2}
-          value={why()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setWhy(event.currentTarget.value)}
-        />
-      </label>
-      <div class="industry-form-actions">
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !ready()}
-          onClick={() => void add()}
-        >
-          新增
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SourceForm(props: { industry: string; editor: Editor }) {
-  const [house, setHouse] = createSignal("");
-  const [title, setTitle] = createSignal("");
-  const [date, setDate] = createSignal("");
-  const [url, setUrl] = createSignal("");
-  const [takeaway, setTakeaway] = createSignal("");
-  // url 是这条来源的身份（移除按它找），所以和机构、标题一起必填。
-  const ready = () => house().trim() !== "" && title().trim() !== "" && url().trim() !== "";
-  const add = async () => {
-    const ok = await props.editor.submit(props.industry, {
-      kind: "add_source",
-      source: {
-        house: house().trim(),
-        title: title().trim(),
-        date: date().trim(),
-        url: url().trim(),
-        takeaway: takeaway().trim(),
-      },
-    });
-    if (ok) {
-      setHouse("");
-      setTitle("");
-      setDate("");
-      setUrl("");
-      setTakeaway("");
-    }
-  };
-  return (
-    <div class="industry-form" role="group" aria-label="新增来源">
-      <p class="industry-form-title">新增来源</p>
-      <label>
-        机构
-        <input
-          class="industry-input"
-          value={house()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setHouse(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        标题
-        <input
-          class="industry-input"
-          value={title()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setTitle(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        日期
-        <input
-          class="industry-input"
-          placeholder="YYYY-MM-DD"
-          value={date()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setDate(event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        链接
-        <input
-          class="industry-input"
-          placeholder="https://"
-          value={url()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setUrl(event.currentTarget.value)}
-        />
-      </label>
-      <label class="is-wide">
-        要点
-        <textarea
-          class="industry-textarea"
-          rows={2}
-          value={takeaway()}
-          disabled={props.editor.busy()}
-          onInput={(event) => setTakeaway(event.currentTarget.value)}
-        />
-      </label>
-      <div class="industry-form-actions">
-        <button
-          type="button"
-          class="industry-btn is-primary"
-          disabled={!props.editor.canSave() || !ready()}
-          onClick={() => void add()}
-        >
-          新增
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** 树顶部的「新增行业」。请求体的 industry 就是新 id，成功后页面切到它。 */
-function IndustryForm(props: { editor: Editor }) {
-  const [open, setOpen] = createSignal(false);
-  const [id, setId] = createSignal("");
-  const [name, setName] = createSignal("");
-  const [oneLiner, setOneLiner] = createSignal("");
-  const [aliases, setAliases] = createSignal("");
-  const ready = () => id().trim() !== "" && name().trim() !== "";
-  const add = async () => {
-    const newId = id().trim();
-    const ok = await props.editor.submit(newId, {
-      kind: "add_industry",
-      industry: {
-        id: newId,
-        name: name().trim(),
-        one_liner: oneLiner().trim(),
-        aliases: splitAliases(aliases()),
-      },
-    });
-    if (ok) {
-      setId("");
-      setName("");
-      setOneLiner("");
-      setAliases("");
-      setOpen(false);
-    }
-  };
-  return (
-    <div class="industry-tree-add">
-      <button
-        type="button"
-        class="industry-btn"
-        aria-expanded={open()}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {open() ? "收起" : "新增行业"}
-      </button>
-      <Show when={open()}>
-        <div class="industry-form" role="group" aria-label="新增行业">
-          <label>
-            id
-            <input
-              class="industry-input"
-              placeholder="如 optics"
-              value={id()}
-              disabled={props.editor.busy()}
-              onInput={(event) => setId(event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            名称
-            <input
-              class="industry-input"
-              value={name()}
-              disabled={props.editor.busy()}
-              onInput={(event) => setName(event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            一句话
-            <textarea
-              class="industry-textarea"
-              rows={2}
-              value={oneLiner()}
-              disabled={props.editor.busy()}
-              onInput={(event) => setOneLiner(event.currentTarget.value)}
-            />
-          </label>
-          <label>
-            别名（逗号分隔）
-            <input
-              class="industry-input"
-              value={aliases()}
-              disabled={props.editor.busy()}
-              onInput={(event) => setAliases(event.currentTarget.value)}
-            />
-          </label>
-          <div class="industry-form-actions">
-            <button
-              type="button"
-              class="industry-btn is-primary"
-              disabled={!props.editor.canSave() || !ready()}
-              onClick={() => void add()}
-            >
-              保存
-            </button>
-            <Show when={props.editor.noteMissing()}>
-              <span class="industry-form-hint">先在右侧面板顶部填改动说明</span>
-            </Show>
-          </div>
-        </div>
-      </Show>
-    </div>
-  );
-}
-
 export default function PublicIndustryMapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [user, setUser] = createSignal<PublicAuthUserInfo | null>(cachedPublicUser());
   const [view, setView] = createSignal<ViewState>("loading");
   const [snapshot, setSnapshot] = createSignal<IndustryMapSnapshot>();
@@ -726,10 +80,11 @@ export default function PublicIndustryMapPage() {
   const selected = createMemo(() =>
     resolveIndustryMapSelection(snapshot()?.industries ?? [], searchParams.industry),
   );
+  // 切行业时把公司视角一起清掉：setSearchParams 是合并语义，不显式清 symbol 会残留。
   const selectIndustry = (id: string | undefined, replace = false) => {
     const next = resolveIndustryMapSelection(snapshot()?.industries ?? [], id);
     if (searchParams.industry === next) return;
-    setSearchParams({ industry: next }, { replace, scroll: false });
+    setSearchParams({ industry: next, symbol: undefined }, { replace, scroll: false });
   };
   // Normalize stale links only after an authorized snapshot is available. Missing
   // parameters keep the existing default view without adding a history entry.
@@ -746,6 +101,36 @@ export default function PublicIndustryMapPage() {
   const [busy, setBusy] = createSignal(false);
   const [flash, setFlash] = createSignal<Flash>();
   let controller: AbortController | undefined;
+  // 找公司：输入即匹配；命中后 URL 跟着切到那一行并进入公司视角（replace，不堆历史），
+  // 底稿里的估值执行卡切到它的子类型，公司表里那一行亮几秒。
+  const [query, setQuery] = createSignal("");
+  const [match, setMatch] = createSignal<MemberMatch>();
+  const [highlight, setHighlight] = createSignal<string>();
+  // 估值执行卡里选中的子类型，按行业记：切到别的行业时自然失效，回到第一个。
+  const [subtypePick, setSubtypePick] = createSignal<{ industry: string; id: string }>();
+  // 完整研究底稿默认折起；编辑态默认展开；点目录或子类型标签时先展开再滚。
+  const [dossierOpen, setDossierOpen] = createSignal(false);
+  let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+  let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  const pickSubtype = (industry: string, id: string) => setSubtypePick({ industry, id });
+  const flashRow = (symbol: string) => {
+    setHighlight(symbol);
+    clearTimeout(highlightTimer);
+    highlightTimer = setTimeout(() => setHighlight(undefined), 4000);
+  };
+  const scrollTo = (selector: string) => {
+    clearTimeout(scrollTimer);
+    // 行业切换后详情才重画，等一拍再把目标滚进视野。
+    scrollTimer = setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(selector)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 60);
+  };
+  const jump: DetailJump = (id) => {
+    if ((DOSSIER_IDS as readonly string[]).includes(id)) setDossierOpen(true);
+    scrollTo(`#${id}`);
+  };
 
   const bootstrap = async () => {
     try {
@@ -785,12 +170,93 @@ export default function PublicIndustryMapPage() {
     }
   };
 
-  onMount(() => void bootstrap());
-  onCleanup(() => controller?.abort());
+  onMount(() => {
+    if ((DOSSIER_IDS as readonly string[]).includes(window.location.hash.slice(1))) {
+      setDossierOpen(true);
+    }
+    void bootstrap();
+  });
+  onCleanup(() => {
+    controller?.abort();
+    clearTimeout(highlightTimer);
+    clearTimeout(scrollTimer);
+  });
 
   const current = createMemo<Industry | undefined>(() =>
     snapshot()?.industries.find((item) => item.id === selected()),
   );
+  const valuation = createMemo(() => valuationOf(current()));
+  /** 估值执行卡里选中的子类型：按行业记的选择只在还是这一行时生效，否则回到第一个。 */
+  const activeSubtype = createMemo(() => {
+    const industry = current();
+    const subtypes = valuation().subtypes;
+    const pick = subtypePick();
+    const picked =
+      industry && pick && pick.industry === industry.id
+        ? subtypes.find((subtype) => subtype.id === pick.id)
+        : undefined;
+    return picked ?? subtypes[0];
+  });
+  const briefView = createMemo(() => {
+    const industry = current();
+    return industry ? deriveIndustryBrief(industry) : undefined;
+  });
+
+  // 公司视角：`?symbol=` 只在它是当前行成员时生效；不是就从 URL 里规范化掉。
+  const lensSymbol = createMemo(() => resolveIndustryMapLens(current(), searchParams.symbol));
+  const lensMember = createMemo<IndustryMember | undefined>(() => {
+    const symbol = lensSymbol();
+    return symbol ? current()?.members.find((member) => member.symbol === symbol) : undefined;
+  });
+  createEffect(() => {
+    if (!snapshot() || searchParams.symbol === undefined) return;
+    if (lensSymbol() === undefined) {
+      setSearchParams({ symbol: undefined }, { replace: true, scroll: false });
+    }
+  });
+  const lens: Lens = {
+    member: lensMember,
+    enter: (symbol, options) => {
+      if (searchParams.symbol === symbol) return;
+      setSearchParams({ symbol }, { replace: options?.replace ?? false, scroll: false });
+    },
+    exit: () => {
+      if (searchParams.symbol === undefined) return;
+      setSearchParams({ symbol: undefined }, { scroll: false });
+    },
+  };
+  // 行业与公司一次写进 URL：分两次 setSearchParams 时第二次会与还没更新的旧参数合并，
+  // 得到「旧行业 + 新公司」，随后被规范化成没有公司视角。
+  const viewMember = (industryId: string, symbol: string, replace = false) => {
+    const industries = snapshot()?.industries ?? [];
+    const industry = industries.find((item) => item.id === industryId);
+    const subtype = industry ? subtypeOf(industry, symbol) : undefined;
+    batch(() => {
+      setSearchParams(
+        { industry: resolveIndustryMapSelection(industries, industryId), symbol },
+        { replace, scroll: false },
+      );
+      if (subtype) pickSubtype(industryId, subtype.id);
+      flashRow(symbol);
+    });
+    scrollTo("#company-lens");
+  };
+
+  const runSearch = (text: string) => {
+    setQuery(text);
+    const hit = findMember(snapshot()?.industries ?? [], text);
+    setMatch(hit);
+    if (!hit) return;
+    viewMember(hit.industry.id, hit.member.symbol, true);
+  };
+  /** 「问 HONE」：带着这一行的本体去开一轮前瞻估值；没归入子类型的公司明说，让模型按行级锚走。 */
+  const askHone = (industry: Industry, member: IndustryMember) => {
+    const subtype = subtypeOf(industry, member.symbol);
+    navigate(
+      askHoneHref(askHonePrompt(member.symbol, member.name, subtype?.name ?? "未分子类型")),
+    );
+  };
+  const onAsk = (href: string) => navigate(href);
 
   /** 开关只在后端说 is_admin 时渲染，这里再核一次快照，而不是只信本地开关。 */
   const editMode = () => editing() && snapshot()?.is_admin === true;
@@ -864,7 +330,9 @@ export default function PublicIndustryMapPage() {
           <PublicWorkspaceShell active="research" topbarLabel="行业分析">
             <Show
               when={view() !== "forbidden"}
-              fallback={<p class="industry-map-empty">暂时无法查看行业分析，请确认账户权限后重试。</p>}
+              fallback={
+                <p class="industry-map-empty">行业分析仅管理员可见，当前账号没有查看权限。</p>
+              }
             >
               <Show
                 when={view() !== "error"}
@@ -877,7 +345,10 @@ export default function PublicIndustryMapPage() {
                         <h1>{data().root.name}</h1>
                         <p>{data().root.summary}</p>
                         <p class="industry-map-meta">
-                          研究底稿更新：{data().generated_at}
+                          研究底稿基线：{data().generated_at}
+                          <span class="industry-map-meta-note">
+                            各行内容的截至日看该行详情；管理员的小改动不会推进这个基线日期
+                          </span>
                           <Show when={!data().market_data_available}>
                             <span class="industry-map-warn">
                               本次未取到行情，公司暂按维护顺序排列
@@ -902,7 +373,7 @@ export default function PublicIndustryMapPage() {
                           <p>
                             {editing()
                               ? "改动直接写进研究底稿，研究台与后续对话的行业注入同时生效；每次保存都要写明为什么改。"
-                              : "打开后可就地改这一页的每一块：一句话、公司、上游信号、估值逻辑、关注点与来源。"}
+                              : "打开后可就地改这一页的每一块：简报、一句话、公司、上游信号、关注点、估值逻辑与来源。"}
                           </p>
                         </div>
                       </Show>
@@ -946,6 +417,34 @@ export default function PublicIndustryMapPage() {
 
                       <div class="industry-map-body">
                         <nav class="industry-tree" aria-label="行业树">
+                          <div class="industry-search">
+                            <input
+                              class="industry-input"
+                              type="search"
+                              aria-label="找公司"
+                              placeholder="找公司：SNDK / 闪迪"
+                              autocomplete="off"
+                              value={query()}
+                              onInput={(event) => {
+                                if (event.isComposing) return;
+                                runSearch(event.currentTarget.value);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") runSearch(event.currentTarget.value);
+                              }}
+                            />
+                            <Show when={query().trim()}>
+                              <p
+                                class="industry-search-result"
+                                classList={{ "is-hit": match() !== undefined }}
+                                role="status"
+                              >
+                                <Show when={match()} fallback="没有匹配的公司">
+                                  {(hit) => matchLabel(hit())}
+                                </Show>
+                              </p>
+                            </Show>
+                          </div>
                           <div class="industry-tree-root">{data().root.name}</div>
                           <Show when={editMode()}>
                             <IndustryForm editor={editor} />
@@ -977,405 +476,199 @@ export default function PublicIndustryMapPage() {
                           </ul>
                         </nav>
 
-                        <Show
-                          when={current()}
-                          fallback={<p class="industry-map-empty">选择左侧的一个行业。</p>}
-                        >
-                          {(industry) => (
-                            <section class="industry-detail" id="industry-detail">
-                              <h2>
-                                {industry().name}
-                                <Show when={industry().last_edited_at}>
-                                  <span class="industry-detail-edited">
-                                    最近改动 {editedAt(industry().last_edited_at)}
+                        <div class="industry-detail-column">
+                          <Show
+                            when={current()}
+                            fallback={<p class="industry-map-empty">选择左侧的一个行业。</p>}
+                          >
+                            {(industry) => (
+                              <section class="industry-detail" id="industry-detail">
+                                <h2>
+                                  {industry().name}
+                                  <Show when={editMode()}>
+                                    <button
+                                      type="button"
+                                      class="industry-btn is-danger industry-detail-remove"
+                                      disabled={!editor.canSave()}
+                                      onClick={() => void removeIndustry(industry())}
+                                    >
+                                      移除此行业
+                                    </button>
+                                  </Show>
+                                </h2>
+                                <p class="industry-detail-dates">
+                                  <span>
+                                    内容截至 {industry().content_as_of ?? contentAsOf(industry()) ?? "—"}
                                   </span>
-                                </Show>
+                                  <span>
+                                    {industry().last_edited_at
+                                      ? `本行最近改动 ${editedAt(industry().last_edited_at)}`
+                                      : "本行自基线后未改动"}
+                                  </span>
+                                </p>
+
                                 <Show when={editMode()}>
-                                  <button
-                                    type="button"
-                                    class="industry-btn is-danger industry-detail-remove"
-                                    disabled={!editor.canSave()}
-                                    onClick={() => void removeIndustry(industry())}
-                                  >
-                                    移除此行业
-                                  </button>
-                                </Show>
-                              </h2>
-
-                              <Show when={editMode()}>
-                                <div class="industry-editbar">
-                                  <label>
-                                    改动说明
-                                    <input
-                                      class="industry-input"
-                                      placeholder="为什么改（必填，展示给其它管理员）"
-                                      value={note()}
-                                      onInput={(event) => setNote(event.currentTarget.value)}
-                                    />
-                                  </label>
-                                  <Show when={flash()}>
-                                    {(item) => (
-                                      <p
-                                        class="industry-flash"
-                                        classList={{
-                                          "is-ok": item().kind === "ok",
-                                          "is-error": item().kind === "error",
-                                        }}
-                                        role="status"
-                                      >
-                                        {item().text}
-                                      </p>
-                                    )}
-                                  </Show>
-                                  <Show when={editor.noteMissing()}>
-                                    <p class="industry-editbar-hint">
-                                      先写明为什么改，各块的保存按钮才会亮；说明会和改动一起记进「最近改动」。
-                                    </p>
-                                  </Show>
-                                </div>
-                              </Show>
-
-                              <Show
-                                when={editMode()}
-                                fallback={<p class="industry-detail-lead">{industry().one_liner}</p>}
-                              >
-                                <FieldEditor
-                                  label="一句话"
-                                  value={industry().one_liner}
-                                  rows={2}
-                                  editor={editor}
-                                  onSave={(value) => setField(industry().id, "one_liner", value)}
-                                />
-                              </Show>
-
-                              <h3>相关公司</h3>
-                              <p class="industry-detail-note">按市值降序；本轮未取到行情的排在最后。树里只收美股与 ADR。标着「官方股本口径」的行，市值是现价 × 最近一期定期报告封面上的官方股本；提供方的股本会整整落后一份申报，所以并列给出提供方市值供对照。</p>
-                              <table class="industry-members">
-                                <thead>
-                                  <tr>
-                                    <th>代码</th>
-                                    <th>公司</th>
-                                    <th>市值（美元）</th>
-                                    <th>现价</th>
-                                    <th>在这一行的位置</th>
-                                    <Show when={editMode()}>
-                                      <th>操作</th>
-                                    </Show>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <For each={industry().members}>
-                                    {(member) => (
-                                      <tr>
-                                        <td class="industry-symbol">{member.symbol}</td>
-                                        <td>{member.name}</td>
-                                        <td>
-                                          {marketCap(member.market_cap)}
-                                          <Show
-                                            when={member.market_cap_basis === "price_x_official_shares"}
-                                          >
-                                            <span class="industry-basis" title="提供方的 sharesOutstanding 会整整落后一份申报，这里按最近一期定期报告封面上的官方股本重算；括号里是提供方原样的市值，便于与外部站点对照。">
-                                              官方股本口径
-                                              <Show when={member.provider_market_cap != null}>
-                                                {" · 提供方 "}
-                                                {marketCap(member.provider_market_cap)}
-                                              </Show>
-                                            </span>
-                                          </Show>
-                                        </td>
-                                        <td>
-                                          <Show when={member.price != null} fallback="—">
-                                            {member.price?.toFixed(2)}
-                                            <span
-                                              class="industry-change"
-                                              classList={{ "is-down": (member.change_percent ?? 0) < 0 }}
-                                            >
-                                              {changePercent(member.change_percent)}
-                                            </span>
-                                          </Show>
-                                        </td>
-                                        <td class="industry-role">
-                                          <Show when={editMode()} fallback={member.role}>
-                                            <FieldEditor
-                                              ariaLabel={`${member.symbol} 在这一行的位置`}
-                                              value={member.role}
-                                              rows={2}
-                                              editor={editor}
-                                              onSave={(role) =>
-                                                editor.submit(industry().id, {
-                                                  kind: "set_member_role",
-                                                  symbol: member.symbol,
-                                                  role,
-                                                })
-                                              }
-                                            />
-                                          </Show>
-                                        </td>
-                                        <Show when={editMode()}>
-                                          <td>
-                                            <button
-                                              type="button"
-                                              class="industry-btn is-danger"
-                                              disabled={!editor.canSave()}
-                                              onClick={() =>
-                                                void editor.submit(industry().id, {
-                                                  kind: "remove_member",
-                                                  symbol: member.symbol,
-                                                })
-                                              }
-                                            >
-                                              移出
-                                            </button>
-                                          </td>
-                                        </Show>
-                                      </tr>
-                                    )}
-                                  </For>
-                                </tbody>
-                                <Show when={editMode()}>
-                                  <tfoot>
-                                    <AddMemberRow industry={industry().id} editor={editor} />
-                                  </tfoot>
-                                </Show>
-                              </table>
-
-                              <h3>上游信号</h3>
-                              <p class="industry-detail-note">这一行的收入最终由哪家上市公司的最近行为决定，以及写这一行的公司之前该先去取它的哪几个读数。</p>
-                              <Show
-                                when={upstreamSignals(industry()).length > 0}
-                                fallback={<p class="industry-detail-note">尚未定稿。</p>}
-                              >
-                                <ul class="industry-signals">
-                                  <For each={upstreamSignals(industry())}>
-                                    {(signal) => (
-                                      <li>
-                                        <div class="industry-signal-head">
-                                          <strong>{signal.symbol}</strong>
-                                          <Show when={signal.name}>
-                                            <span class="industry-signal-name">{signal.name}</span>
-                                          </Show>
-                                          <Show when={signal.relation}>
-                                            <span class="industry-relation">
-                                              {relationLabel(signal.relation)}
-                                            </span>
-                                          </Show>
-                                          <Show when={signal.cadence}>
-                                            <span class="industry-cadence">{signal.cadence}</span>
-                                          </Show>
-                                          <Show when={editMode()}>
-                                            <button
-                                              type="button"
-                                              class="industry-btn is-danger"
-                                              disabled={!editor.canSave()}
-                                              onClick={() =>
-                                                void editor.submit(industry().id, {
-                                                  kind: "remove_upstream_signal",
-                                                  symbol: signal.symbol,
-                                                })
-                                              }
-                                            >
-                                              移除
-                                            </button>
-                                          </Show>
-                                        </div>
-                                        <Show
-                                          when={editMode()}
-                                          fallback={
-                                            <Show when={signal.latest}>
-                                              <div class="industry-signal-latest">
-                                                <div class="industry-signal-latest-head">
-                                                  <span class="industry-signal-latest-label">
-                                                    最近动作
-                                                  </span>
-                                                  <Show when={signal.latest_as_of}>
-                                                    <span class="industry-signal-asof">
-                                                      截至 {signal.latest_as_of}
-                                                    </span>
-                                                  </Show>
-                                                </div>
-                                                <p class="industry-signal-latest-text">{signal.latest}</p>
-                                              </div>
-                                            </Show>
-                                          }
-                                        >
-                                          <LatestEditor
-                                            symbol={signal.symbol}
-                                            latest={signal.latest ?? ""}
-                                            asOf={signal.latest_as_of ?? ""}
-                                            editor={editor}
-                                            onSave={(latest, asOf) =>
-                                              editor.submit(industry().id, {
-                                                kind: "set_upstream_latest",
-                                                symbol: signal.symbol,
-                                                latest,
-                                                as_of: asOf,
-                                              })
-                                            }
-                                          />
-                                        </Show>
-                                        <Show when={signal.why}>
-                                          <p>{signal.why}</p>
-                                        </Show>
-                                        <Show when={(signal.pull ?? []).length > 0}>
-                                          <ul class="industry-signal-pull">
-                                            <For each={signal.pull}>{(item) => <li>{item}</li>}</For>
-                                          </ul>
-                                        </Show>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </Show>
-                              <Show when={editMode()}>
-                                <SignalForm industry={industry().id} editor={editor} />
-                              </Show>
-
-                              <h3>底层估值逻辑（结合 AI）</h3>
-                              <Show
-                                when={editMode()}
-                                fallback={
-                                  <Show
-                                    when={industry().ai_valuation_logic.driver_chain}
-                                    fallback={<p class="industry-detail-note">这一行的传导链尚未定稿。</p>}
-                                  >
-                                    <p class="industry-chain">
-                                      {industry().ai_valuation_logic.driver_chain}
-                                    </p>
-                                    <Show when={industry().ai_valuation_logic.key_variables.length > 0}>
-                                      <VariablesTable
-                                        variables={industry().ai_valuation_logic.key_variables}
+                                  <div class="industry-editbar">
+                                    <label>
+                                      改动说明
+                                      <input
+                                        class="industry-input"
+                                        placeholder="为什么改（必填，展示给其它管理员）"
+                                        value={note()}
+                                        onInput={(event) => setNote(event.currentTarget.value)}
                                       />
+                                    </label>
+                                    <Show when={flash()}>
+                                      {(item) => (
+                                        <p
+                                          class="industry-flash"
+                                          classList={{
+                                            "is-ok": item().kind === "ok",
+                                            "is-error": item().kind === "error",
+                                          }}
+                                          role="status"
+                                        >
+                                          {item().text}
+                                        </p>
+                                      )}
                                     </Show>
-                                    <dl class="industry-anchor">
-                                      <dt>倍数锚</dt>
-                                      <dd>{industry().ai_valuation_logic.multiple_anchor || "—"}</dd>
-                                      <dt>这一行最常见的估值错法</dt>
-                                      <dd>{industry().ai_valuation_logic.anti_pattern || "—"}</dd>
-                                    </dl>
-                                  </Show>
-                                }
-                              >
-                                <FieldEditor
-                                  label="传导链"
-                                  value={industry().ai_valuation_logic.driver_chain}
-                                  rows={4}
-                                  editor={editor}
-                                  onSave={(value) => setField(industry().id, "driver_chain", value)}
-                                />
-                                <Show when={industry().ai_valuation_logic.key_variables.length > 0}>
-                                  <p class="industry-detail-note">可观测变量表暂不在页面上改。</p>
-                                  <VariablesTable
-                                    variables={industry().ai_valuation_logic.key_variables}
+                                    <Show when={editor.noteMissing()}>
+                                      <p class="industry-editbar-hint">
+                                        先写明为什么改，各块的保存按钮才会亮；说明会和改动一起记进「最近改动」。
+                                      </p>
+                                    </Show>
+                                  </div>
+                                </Show>
+
+                                <Show
+                                  when={editMode()}
+                                  fallback={<p class="industry-detail-lead">{industry().one_liner}</p>}
+                                >
+                                  <FieldEditor
+                                    label="一句话"
+                                    value={industry().one_liner}
+                                    rows={2}
+                                    editor={editor}
+                                    onSave={(value) => setField(industry().id, "one_liner", value)}
                                   />
                                 </Show>
-                                <FieldEditor
-                                  label="倍数锚（长版，研究台看）"
-                                  value={industry().ai_valuation_logic.multiple_anchor}
-                                  editor={editor}
-                                  onSave={(value) => setField(industry().id, "multiple_anchor", value)}
-                                />
-                                <FieldEditor
-                                  label="倍数锚（短版，每轮注入模型，110 字内）"
-                                  value={industry().ai_valuation_logic.multiple_anchor_short ?? ""}
-                                  rows={2}
-                                  editor={editor}
-                                  onSave={(value) =>
-                                    setField(industry().id, "multiple_anchor_short", value)
+                                <Show
+                                  when={editMode()}
+                                  fallback={
+                                    <Show when={valuation().logic.state_note}>
+                                      <p class="industry-state-note">
+                                        <span class="industry-state-label">什么情况下适用</span>
+                                        {valuation().logic.state_note}
+                                      </p>
+                                    </Show>
                                   }
-                                />
-                                <FieldEditor
-                                  label="这一行最常见的估值错法（长版，研究台看）"
-                                  value={industry().ai_valuation_logic.anti_pattern}
-                                  editor={editor}
-                                  onSave={(value) => setField(industry().id, "anti_pattern", value)}
-                                />
-                                <FieldEditor
-                                  label="估值错法（短版，每轮注入模型，110 字内）"
-                                  value={industry().ai_valuation_logic.anti_pattern_short ?? ""}
-                                  rows={2}
-                                  editor={editor}
-                                  onSave={(value) =>
-                                    setField(industry().id, "anti_pattern_short", value)
-                                  }
-                                />
-                              </Show>
+                                >
+                                  <FieldEditor
+                                    label="什么情况下适用（典型 State）"
+                                    value={valuation().logic.state_note}
+                                    rows={2}
+                                    editor={editor}
+                                    onSave={(value) =>
+                                      editor.submit(industry().id, {
+                                        kind: "set_valuation_field",
+                                        field: "logic.state_note",
+                                        value,
+                                      })
+                                    }
+                                  />
+                                </Show>
 
-                              <h3>核心关注点</h3>
-                              <Show
-                                when={industry().core_watch.length > 0}
-                                fallback={<p class="industry-detail-note">尚未定稿。</p>}
-                              >
-                                <ul class="industry-watch">
-                                  <For each={industry().core_watch}>
-                                    {(watch) => (
-                                      <li>
-                                        <Show when={editMode()}>
-                                          <button
-                                            type="button"
-                                            class="industry-btn is-danger industry-item-remove"
-                                            disabled={!editor.canSave()}
-                                            onClick={() =>
-                                              void editor.submit(industry().id, {
-                                                kind: "remove_watch",
-                                                what: watch.what,
-                                              })
-                                            }
-                                          >
-                                            移除
-                                          </button>
-                                        </Show>
-                                        <strong>{watch.what}</strong>
-                                        <span class="industry-cadence">{watch.cadence}</span>
-                                        <p>{watch.why}</p>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </Show>
-                              <Show when={editMode()}>
-                                <WatchForm industry={industry().id} editor={editor} />
-                              </Show>
+                                <Show when={lensMember()}>
+                                  {(member) => (
+                                    <CompanyLensCard
+                                      industry={industry()}
+                                      member={member()}
+                                      onExit={lens.exit}
+                                      onAsk={() => askHone(industry(), member())}
+                                      onLocate={() => {
+                                        flashRow(member().symbol);
+                                        scrollTo(`.industry-members tr[data-symbol="${member().symbol}"]`);
+                                      }}
+                                      jump={jump}
+                                    />
+                                  )}
+                                </Show>
 
-                              <h3>研报与数据来源</h3>
-                              <Show
-                                when={industry().sources.length > 0}
-                                fallback={<p class="industry-detail-note">尚未定稿。</p>}
-                              >
-                                <ul class="industry-sources">
-                                  <For each={industry().sources}>
-                                    {(source) => (
-                                      <li>
-                                        <Show when={editMode()}>
-                                          <button
-                                            type="button"
-                                            class="industry-btn is-danger industry-item-remove"
-                                            disabled={!editor.canSave()}
-                                            onClick={() =>
-                                              void editor.submit(industry().id, {
-                                                kind: "remove_source",
-                                                url: source.url,
-                                              })
-                                            }
-                                          >
-                                            移除
-                                          </button>
-                                        </Show>
-                                        <a href={source.url} target="_blank" rel="noreferrer">
-                                          {source.house}｜{source.title}
-                                        </a>
-                                        <span class="industry-source-date">{source.date}</span>
-                                        <p>{source.takeaway}</p>
-                                      </li>
-                                    )}
-                                  </For>
-                                </ul>
-                              </Show>
-                              <Show when={editMode()}>
-                                <SourceForm industry={industry().id} editor={editor} />
-                              </Show>
-                            </section>
-                          )}
-                        </Show>
+                                <IndustryBriefSection
+                                  industry={industry()}
+                                  view={briefView()}
+                                  editMode={editMode()}
+                                  editor={editor}
+                                  onAsk={onAsk}
+                                  jump={jump}
+                                />
+
+                                <RecentChanges
+                                  industry={industry()}
+                                  editMode={editMode()}
+                                  editor={editor}
+                                  lens={lens}
+                                  onAsk={onAsk}
+                                />
+
+                                <section
+                                  class="industry-members-section"
+                                  id="members"
+                                  aria-labelledby="industry-members-title"
+                                >
+                                  <div class="industry-section-head">
+                                    <h3 id="industry-members-title">相关公司与影响</h3>
+                                    <span class="industry-section-sub">点「查看」让整页围绕它重排</span>
+                                  </div>
+                                  <p class="industry-detail-note">按市值降序；本轮未取到行情的排在最后。树里只收美股与 ADR。标着「官方股本口径」的行，市值是现价 × 最近一期定期报告封面上的官方股本；提供方的股本会整整落后一份申报，所以并列给出提供方市值供对照。「问 HONE」会带着这一行的本体去开一轮前瞻估值。</p>
+                                  <MembersTable
+                                    industry={industry()}
+                                    editMode={editMode()}
+                                    editor={editor}
+                                    highlight={highlight()}
+                                    lensSymbol={lensSymbol()}
+                                    onPickSubtype={(id) => {
+                                      pickSubtype(industry().id, id);
+                                      jump("valuation-card");
+                                    }}
+                                    onAsk={(member) => askHone(industry(), member)}
+                                    onView={(symbol) => viewMember(industry().id, symbol)}
+                                  />
+                                </section>
+
+                                <WatchList
+                                  industry={industry()}
+                                  editMode={editMode()}
+                                  editor={editor}
+                                  lens={lens}
+                                  onAsk={onAsk}
+                                />
+
+                                <ResearchDossier
+                                  industry={industry()}
+                                  valuation={valuation()}
+                                  methodology={methodologyOf(data())}
+                                  activeSubtype={activeSubtype()}
+                                  onSelectSubtype={(id) => pickSubtype(industry().id, id)}
+                                  editMode={editMode()}
+                                  editor={editor}
+                                  setField={(field, value) => setField(industry().id, field, value)}
+                                  open={dossierOpen() || editMode()}
+                                  onToggle={setDossierOpen}
+                                  jump={jump}
+                                  member={lensMember()}
+                                />
+
+                                <SourcesList
+                                  industry={industry()}
+                                  editMode={editMode()}
+                                  editor={editor}
+                                  lens={lens}
+                                />
+                              </section>
+                            )}
+                          </Show>
+                        </div>
                       </div>
                     </div>
                   )}
