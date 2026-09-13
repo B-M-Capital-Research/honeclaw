@@ -1376,13 +1376,27 @@ impl AgentSession {
             );
         }
         let investment_context = if options.dedicated_earnings_workflow {
-            PreparedInvestmentContext {
-                contract: None,
-                runtime_suffix: String::new(),
-                prompt_time_local,
-                reexecution_policy: PreparedTurnReexecutionPolicy::Allowed,
-                main_agent_entity_discovery_input: None,
-                preloaded_evidence_calls: 0,
+            if let Some(prepared) = prepared_investment {
+                runtime_input.push_str(&prepared.runtime_suffix);
+                prepared.clone()
+            } else {
+                self.emit(session_progress_event(
+                    "earnings.materials",
+                    Some("正在自动获取财报和电话会原文".to_string()),
+                ))
+                .await;
+                let tool = hone_tools::WebSearchTool::from_config(&self.core.config);
+                let (runtime_suffix, preloaded_evidence_calls) =
+                    crate::earnings_materials::prepare(&tool, runtime_user_input).await;
+                runtime_input.push_str(&runtime_suffix);
+                PreparedInvestmentContext {
+                    contract: None,
+                    runtime_suffix,
+                    prompt_time_local,
+                    reexecution_policy: PreparedTurnReexecutionPolicy::Allowed,
+                    main_agent_entity_discovery_input: None,
+                    preloaded_evidence_calls,
+                }
             }
         } else if let Some(prepared) = prepared_investment {
             runtime_input.push_str(&prepared.runtime_suffix);

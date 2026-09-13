@@ -245,8 +245,35 @@ fn isolated_opencode_config_omits_provider_override_when_base_url_empty() {
         serde_json::from_str(&isolated_opencode_config(&config)).expect("valid opencode json");
     assert!(payload.get("provider").is_none());
     assert!(payload.get("model").is_none());
+    assert!(payload.get("enabled_providers").is_none());
+    assert!(payload.get("disabled_providers").is_none());
     assert_eq!(payload["permission"]["bash"], "deny");
     assert_eq!(payload["permission"]["task"], "deny");
+}
+
+#[test]
+fn explicit_openrouter_route_overrides_global_provider_filters() {
+    let config = OpencodeAcpConfig {
+        model: "google/gemini-3.1-pro-preview".to_string(),
+        api_base_url: "https://openrouter.ai/api/v1".to_string(),
+        ..OpencodeAcpConfig::default()
+    };
+    let payload: Value = serde_json::from_str(&isolated_opencode_config(&config)).unwrap();
+    assert_eq!(
+        payload["enabled_providers"],
+        serde_json::json!(["openrouter"])
+    );
+    assert_eq!(payload["disabled_providers"], serde_json::json!([]));
+    assert_eq!(payload["model"], "openrouter/google/gemini-3.1-pro-preview");
+    assert_eq!(
+        payload["provider"]["openrouter"]["options"]["baseURL"],
+        config.api_base_url
+    );
+    assert!(
+        payload["provider"]["openrouter"]["options"]
+            .get("apiKey")
+            .is_none()
+    );
 }
 
 #[test]

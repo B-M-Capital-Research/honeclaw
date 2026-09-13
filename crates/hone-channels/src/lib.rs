@@ -60,3 +60,5 @@ pub use outbound::{
     OutboundAdapter, OutboundRunSummary, StreamActivityProbe, attach_stream_activity_probe,
     run_session_with_outbound,
 };
+
+mod earnings_materials;

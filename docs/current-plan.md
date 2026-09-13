@@ -16,6 +16,11 @@
 
 ## 活跃任务
 
+- **财报工作流重构与 TEM 验收**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/earnings-workflow-refactor-20260913.md`
+  - 摘要：公司输入弹窗、原 Dify Prompt/阶段对齐、PDF 稳定性与 TEM 双模式真实验收后上线。
+
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/company-major-push-cost-2026-08-16.md`

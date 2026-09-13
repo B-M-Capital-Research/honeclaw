@@ -1162,7 +1162,6 @@ function useModalScrollLock(open: () => boolean) {
 type EarningsWorkflowStart = {
   kind: PublicEarningsWorkflowKind;
   company: string;
-  files: File[];
 };
 
 function EarningsResearchDialog(props: {
@@ -1174,10 +1173,8 @@ function EarningsResearchDialog(props: {
 }) {
   const [open, setOpen] = createSignal(false);
   const [company, setCompany] = createSignal("");
-  const [files, setFiles] = createSignal<File[]>([]);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string>();
-  let fileInputRef: HTMLInputElement | undefined;
   let companyInputRef: HTMLInputElement | undefined;
   useModalScrollLock(open);
   let handledOpenRequest = props.openRequest;
@@ -1222,10 +1219,8 @@ function EarningsResearchDialog(props: {
       await props.onStart({
         kind: props.kind,
         company: normalizedCompany,
-        files: files(),
       });
       setCompany("");
-      setFiles([]);
       setOpen(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : CONTENT.chat_page.earnings.start_failed);
@@ -1291,37 +1286,6 @@ function EarningsResearchDialog(props: {
                   onInput={(event) => setCompany(event.currentTarget.value)}
                 />
               </label>
-              <Show when={!isPreview()}>
-                <label class="public-chat-earnings-field">
-                  <span>财报材料（可选）</span>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    hidden
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,image/*"
-                    disabled={busy()}
-                    onChange={(event) => {
-                      setFiles(event.currentTarget.files ? Array.from(event.currentTarget.files) : []);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    class="public-chat-earnings-file-picker"
-                    disabled={busy()}
-                    onClick={() => fileInputRef?.click()}
-                  >
-                    <span>{files().length
-                        ? CONTENT.chat_page.earnings.selected_files.replace(
-                            "{count}",
-                            String(files().length),
-                          )
-                        : CONTENT.chat_page.earnings.pick_files}</span>
-                    <small>{files().length ? files().map((file) => file.name).join("、") : CONTENT.chat_page.earnings.file_hint}</small>
-                  </button>
-                </label>
-              </Show>
               <Show when={error()}>
                 {(message) => <p class="public-chat-earnings-error" role="alert">{message()}</p>}
               </Show>
@@ -4106,28 +4070,10 @@ export default function PublicChatPage() {
       throw new Error(CONTENT.chat_page.earnings.busy);
     }
 
-    let attachments: PublicChatAttachment[] = [];
-    if (input.files.length) {
-      setUploading(true);
-      try {
-        const uploaded = await uploadPublicAttachments(input.files);
-        attachments = uploaded.map((item) => ({
-          ...item,
-          kind: item.kind,
-        }));
-      } finally {
-        setUploading(false);
-      }
-    }
-
-    const text = publicEarningsWorkflowMessage(
-      input.kind,
-      input.company,
-      attachments.length > 0,
-    );
+    const text = publicEarningsWorkflowMessage(input.kind, input.company);
     void sendChatTurn({
       text,
-      attachments,
+      attachments: [],
       earningsWorkflow: {
         kind: input.kind,
         company: input.company,

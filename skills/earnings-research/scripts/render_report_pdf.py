@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from datetime import date
 from pathlib import Path
 
 
 MAX_REPORT_CHARS = 240_000
+RENDER_ATTEMPTS = 2
+RENDER_TIMEOUT_SECONDS = 40
 def emit(payload: dict) -> int:
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -64,7 +69,7 @@ def validate_report(report: str) -> None:
 
 
 def inline_markup(value: str) -> str:
-    escaped = html.escape(value, quote=False)
+    escaped = html.escape(value, quote=True)
     escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
     escaped = re.sub(
@@ -215,41 +220,91 @@ def chromium_candidates() -> list[Path]:
     return available
 
 
+def run_chromium(command: list[str]) -> subprocess.CompletedProcess:
+    # The script's host deadline is 120s. Two bounded attempts leave time for
+    # cleanup and JSON delivery; never leave browser children running on timeout.
+    output = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf=")))
+    deadline = time.monotonic() + RENDER_TIMEOUT_SECONDS
+    with subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, start_new_session=True,
+    ) as process:
+        try:
+            while True:
+                try:
+                    stdout, stderr = process.communicate(timeout=min(1, max(0.01, deadline - time.monotonic())))
+                    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+                except subprocess.TimeoutExpired:
+                    # Some Chrome builds finish printing but keep background
+                    # children/pipes alive. The complete local PDF is the
+                    # artifact boundary; teardown must not discard it.
+                    if is_complete_pdf(output):
+                        return subprocess.CompletedProcess(command, 0, "", "")
+                    if time.monotonic() >= deadline:
+                        raise
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+
+
+def is_complete_pdf(path: Path) -> bool:
+    if not path.is_file() or path.stat().st_size < 1_000:
+        return False
+    with path.open("rb") as stream:
+        if stream.read(5) != b"%PDF-":
+            return False
+        stream.seek(max(0, path.stat().st_size - 1024))
+        return stream.read().rstrip().endswith(b"%%EOF")
+
+
 def render_pdf_with_chromium(rendered_html: str, pdf_path: Path) -> None:
     browsers = chromium_candidates()
     if not browsers:
         raise RuntimeError("Chromium/Chrome executable not found")
     failures: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="hone-earnings-pdf-") as temp_dir:
+    # Only atomically publish a completed PDF. Failed attempts cannot expose
+    # partially written artifacts or overwrite an already delivered report.
+    with tempfile.TemporaryDirectory(prefix=".hone-earnings-pdf-", dir=pdf_path.parent) as temp_dir:
         html_path = Path(temp_dir) / "report.html"
         html_path.write_text(rendered_html, encoding="utf-8")
-        for chrome in browsers:
-            for attempt in range(2):
-                command = [
-                    str(chrome),
-                    "--headless",
-                    "--disable-gpu",
-                    "--disable-dev-shm-usage",
-                    "--disable-extensions",
-                    "--no-sandbox",
-                    "--no-first-run",
-                    "--allow-file-access-from-files",
-                    "--no-pdf-header-footer",
-                    "--print-to-pdf-no-header",
-                    f"--print-to-pdf={pdf_path}",
-                    html_path.as_uri(),
-                ]
-                try:
-                    completed = subprocess.run(command, capture_output=True, text=True, timeout=45)
-                except subprocess.TimeoutExpired:
-                    failures.append(f"{chrome.name} attempt {attempt + 1} timed out")
-                    pdf_path.unlink(missing_ok=True)
-                    continue
-                if completed.returncode == 0 and pdf_path.is_file() and pdf_path.stat().st_size >= 1_000:
-                    return
-                detail = (completed.stderr or completed.stdout).strip()[-500:]
-                failures.append(f"{chrome.name} exited {completed.returncode}: {detail}")
-                pdf_path.unlink(missing_ok=True)
+        staged_pdf = Path(temp_dir) / "report.pdf"
+        for attempt in range(RENDER_ATTEMPTS):
+            chrome = browsers[min(attempt, len(browsers) - 1)]
+            command = [
+                str(chrome),
+                "--headless",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-extensions",
+                "--no-sandbox",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-background-networking",
+                f"--user-data-dir={Path(temp_dir) / f'profile-{attempt}'}",
+                "--no-pdf-header-footer",
+                "--print-to-pdf-no-header",
+                f"--print-to-pdf={staged_pdf}",
+                html_path.as_uri(),
+            ]
+            try:
+                completed = run_chromium(command)
+            except subprocess.TimeoutExpired:
+                failures.append(f"{chrome.name} attempt {attempt + 1} timed out")
+                staged_pdf.unlink(missing_ok=True)
+                continue
+            except OSError as exc:
+                failures.append(f"{chrome.name} could not start: {exc}")
+                staged_pdf.unlink(missing_ok=True)
+                continue
+            if completed.returncode == 0 and is_complete_pdf(staged_pdf):
+                os.replace(staged_pdf, pdf_path)
+                return
+            detail = (completed.stderr or completed.stdout).strip()[-500:]
+            failures.append(f"{chrome.name} exited {completed.returncode}: {detail}")
+            staged_pdf.unlink(missing_ok=True)
     raise RuntimeError("Chromium PDF render failed: " + " | ".join(failures[-4:]))
 
 
@@ -271,12 +326,12 @@ def output_directory() -> Path:
 def build_html(company: str, mode_label: str, report: str, share_image: Path | None) -> str:
     title, body = split_report_title(report)
     share_block = (
-        f'<img src="{share_image.as_uri()}" alt="知识星球分享图">'
+        f'<img src="data:image/jpeg;base64,{base64.b64encode(share_image.read_bytes()).decode()}" alt="知识星球分享图">'
         if share_image
         else '<div class="share-fallback">知识星球 · 深度投研社区</div>'
     )
     return f"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><style>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"><style>
 @page {{ size: A4; margin: 19mm 18mm 20mm; @top-left {{ content: "{html.escape(mode_label)}"; color: #777; font-size: 9pt; }} @top-right {{ content: "HONE  {date.today().isoformat()}"; color: #555; font-size: 9pt; }} @bottom-left {{ content: "HONE 深度研究"; color: #999; font-size: 8pt; }} @bottom-right {{ content: "第 " counter(page) " 页 / 共 " counter(pages) " 页"; color: #777; font-size: 8pt; }} }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; color: #202b3a; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; font-size: 11.5pt; line-height: 1.72; text-align: justify; }}
@@ -292,8 +347,9 @@ p {{ margin: 0 0 4mm; orphans: 3; widows: 3; }}
 ul, ol {{ margin: 2mm 0 4mm; padding-left: 1.6em; }} li {{ margin: 1.2mm 0; }}
 blockquote {{ margin: 3mm 0; padding: 2.5mm 3mm; border-left: 3px solid #8ab6af; background: #f2f7f6; }}
 a {{ color: #245d73; word-break: break-word; }} code {{ padding: 1px 4px; background: #eef2f1; }}
-.table-wrap {{ margin: 3mm 0 5mm; border: 1px solid #d9e4e1; border-radius: 2mm; overflow: hidden; break-inside: avoid; }}
-table {{ width: 100%; border-collapse: collapse; font-size: 8.8pt; line-height: 1.45; }}
+.table-wrap {{ margin: 3mm 0 5mm; }}
+table {{ width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.8pt; line-height: 1.45; }}
+thead {{ display: table-header-group; }} tr {{ break-inside: avoid; }}
 th, td {{ padding: 2mm; border-right: 1px solid #d9e4e1; border-bottom: 1px solid #d9e4e1; text-align: left; vertical-align: top; overflow-wrap: anywhere; }}
 th {{ background: #eaf3f1; color: #174f47; }} th:last-child, td:last-child {{ border-right: 0; }} tbody tr:last-child td {{ border-bottom: 0; }}
 .share-page {{ break-before: page; min-height: 230mm; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 8mm; text-align: center; }}

@@ -448,6 +448,10 @@ pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
 
     let api_base_url = config.api_base_url.trim();
     if !api_base_url.is_empty() {
+        // OPENCODE_CONFIG is merged with the operator's global config. A
+        // global enabled_providers allowlist must not hide this explicit route.
+        payload["enabled_providers"] = serde_json::json!(["openrouter"]);
+        payload["disabled_providers"] = serde_json::json!([]);
         payload["provider"] = serde_json::json!({
             "openrouter": {
                 "options": {

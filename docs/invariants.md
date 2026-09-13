@@ -331,3 +331,10 @@ Last updated: 2026-08-22
 - 题库只在前端定义，后端只做结构校验（键的字符集与长度、题数、选项数、类型）。后端不认识任何选项文本，所以改题、加题、调整选项都不需要动后端与数据库。超长开放题截断而不是拒绝——一段认真写的长回答不该整条丢失。
 - 提交限流分三层：同 IP 冷却、进程内每小时配额、按摘要的落库计数。只有最后一层跨副本且能在重启后存活，前两层是快速拒绝而不是保证。落库计数失败时放行并记 warn，不能因为计不了数就丢掉一个正常用户的回答。
 - 问卷页面上对隐私的承诺与实现是同一件事的两面：改动存储行为时必须同步改 `CONTENT.survey.privacy`。
+
+### Earnings workflow material and renderer boundary (2026-09-13)
+
+- Both earnings shortcuts require only a company/ticker. Original Dify content prompts and mode separation remain authoritative; automatic retrieval replaces uploaded material inputs. Missing public source material is disclosed by the research process, never a new deterministic content gate.
+- Explicit public-page reading never sends credentials/cookies or accesses non-public IPs. Resolve and pin addresses before connecting and repeat the check for each redirect; fail within the shared time/size bounds. A search synthesis/snippet must not be labelled as the retrieved original page.
+- Chromium process exit is not the sole PDF completion signal: a complete staged PDF may precede process shutdown. Reap its process group, verify the PDF envelope, and atomically publish the file. Partial output must not overwrite an earlier artifact. Retry budgets must fit the host's 120-second script deadline; these are technical checks, not editorial validation.
+- Dedicated earnings source acquisition is a best-effort input phase, not an output gate. It must preserve retrieval errors as context, keep source text separate from generated search summaries, and reuse prepared inputs during recovery instead of repeating the full acquisition.

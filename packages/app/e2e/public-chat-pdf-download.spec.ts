@@ -116,11 +116,10 @@ test("assistant PDF card resolves PDF bytes and triggers a named download", asyn
   await page.setViewportSize({ width: 1440, height: 1024 })
   await page.goto("/chat")
 
-  const pdfCard = page.getByRole("link", { name: PDF_NAME })
+  const pdfCard = page.getByRole("button", { name: `Download ${PDF_NAME}`, exact: true })
   await expect(pdfCard).toBeVisible()
   await expect(pdfCard).toContainText("PDF")
-  const href = await pdfCard.getAttribute("href")
-  expect(href).toContain("/api/public/file?path=")
+  const href = `/api/public/file?path=${encodeURIComponent(PDF_PATH)}`
 
   const fetched = await page.evaluate(async (url) => {
     const response = await fetch(url)
@@ -150,3 +149,35 @@ test("assistant PDF card resolves PDF bytes and triggers a named download", asyn
   const download = await downloadPromise
   expect(download.suggestedFilename()).toBe(PDF_NAME)
 })
+
+for (const [kind, label] of [["preview", "财报前瞻"], ["analysis", "财报分析"]] as const) {
+  test(`${label} starts from company alone without requesting uploads`, async ({ page }) => {
+    await installPdfConversation(page)
+    await page.addInitScript(() => localStorage.setItem("hone-public-locale", "zh"))
+    let requestBody: Record<string, unknown> | undefined
+    let uploadCalls = 0
+    await page.route("**/api/public/upload", async (route) => {
+      uploadCalls++
+      await route.abort()
+    })
+    await page.route("**/api/public/chat", async (route) => {
+      requestBody = route.request().postDataJSON()
+      await route.fulfill({ status: 200, contentType: "text/event-stream", body: "event: done\ndata: {}\n\n" })
+    })
+    await page.goto("/chat")
+    await page.getByRole("button", { name: "工具", exact: true }).click()
+    await page.getByRole("menuitem", { name: label }).click()
+    const dialog = page.getByRole("dialog", { name: label })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.locator('input[type="file"]')).toHaveCount(0)
+    await expect(dialog.getByText("财报材料（可选）")).toHaveCount(0)
+    await expect(page.getByTestId(`earnings-${kind}-start`)).toBeDisabled()
+    await page.getByTestId(`earnings-${kind}-company`).fill(" TEM ")
+    await page.getByTestId(`earnings-${kind}-start`).click()
+    await expect.poll(() => requestBody).toBeDefined()
+    expect(requestBody!.earnings_workflow).toEqual({ kind, company: "TEM" })
+    expect(requestBody!.attachments ?? []).toEqual([])
+    expect(uploadCalls).toBe(0)
+    await expect(dialog).toBeHidden()
+  })
+}

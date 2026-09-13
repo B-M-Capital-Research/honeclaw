@@ -1780,3 +1780,19 @@ implementation work.
 - Decision: 新鲜度来自逐条 `as_of`（`core_watch[].as_of`、`key_variables[].as_of`、`brief.as_of`，与既有 `latest_as_of` / `sources[].date` 同口径），行级 `content_as_of` 由后端派生、前端缺失时自算；`generated_at` 只表示底稿版本。每个行业可带管理员写的 `brief`（问题 / 为什么是现在 / 下一次确认什么 / 截至日），页面首屏用它，没有则派生并标明。线上改动内容逐字折回底稿；`AddSource` 按 url 幂等、`AddWatch` 拒重复，日志保留原样不迁移。
 - Consequence: 底稿里 AVGO / DELL 的 `role` 必须与线上日志逐字一致（`SetMemberRole` 重放覆盖底稿），改这两段走 op 不改底稿；`SetWatch` 是关注点唯一的就地修改口径，只改日期不改数字被刻意排除。
 - Deferred: `previous_latest`（base 重新发版即归零，改用来源与每日快照）；brief 注入模型 prompt（需复测）；`SetUpstreamLatest` 的日期回溯校验。
+
+## D-2026-09-13-01 Company-only earnings workflows and reliable PDF completion
+
+- title: 财报输入改为公司单项，内置原文获取，按 PDF 完整落盘完成渲染
+- status: accepted
+- created_at: 2026-09-13
+- updated_at: 2026-09-13
+- owner: Codex / user-requested refactor
+- related_files: `skills/earnings-research/`; `crates/hone-tools/src/public_page.rs`; `crates/hone-tools/src/web_search.rs`; `crates/hone-channels/src/runners/opencode_acp.rs`; `packages/app/src/pages/chat.tsx`
+- related_docs: `skills/earnings-research/references/workflow-source.md`; `docs/handoffs/2026-09-13-earnings-workflow-refactor.md`
+- Decision: 财报前瞻与分析保留弹窗，仅传公司名/代码；工作流自动获取财报及电话会。以用户指定 Dify 当前 Prompt 与阶段为真相源，恢复原示例及独立新闻查询 Prompt，移除后来添加的发布/单位自检指令。原 Prompt 内的结构/示例保留为生成指令，不代码化为内容门禁。
+- Source retrieval: 原有搜索只返回摘要，线上可配置代理也可能返回模型综合结果。搜索显式支持原文与结果数；公开 URL 读取作为同一只读工具分支，以公网 DNS 固定、逐跳检查、标准端口和资源限制保障边界。缺失材料由模型披露，未取到的原文不得伪称已读。
+- Runtime decision: 显式 OpenRouter 路由覆盖 OpenCode 全局 provider 过滤器；无显式路由时保持原行为。Chromium 使用独立 profile、40 秒 × 2 技术尝试、完整输出识别与进程组回收，临时 PDF 校验成功后原子替换目的文件。
+- Verification: 见 handoff 的自动化与 TEM 真实 canary；不以来源数、数字覆盖或报告篇幅判定通过。
+- Risks: 来源站点可能限制访问；搜索代理综合内容仍需回到原始页面；PDF envelope 检查只证明技术完整性，排版需要真实逐页检查。
+- Implementation follow-through: 真实 canary 显示模型可能跳过提示中的原文读取，因此在 `earnings_materials.rs` 启动阶段自动获取候选原文，原研究 Prompt 决定公司/季度是否对应并补缺。取材失败作为上下文返回，不评分、不拒绝终稿；重试复用已取得输入。

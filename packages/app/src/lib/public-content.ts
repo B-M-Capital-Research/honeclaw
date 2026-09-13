@@ -1361,11 +1361,11 @@ const CONTENT_ZH = {
       preview_label: "财报前瞻",
       analysis_label: "财报分析",
       preview_hint:
-        "输入公司后，HONE 会核验实体、预期和关键变量，并生成带品牌水印的分享 PDF。",
+        "输入公司名称或代码，自动查找财务数据、业绩指引和近期新闻，生成财报前瞻与 PDF。",
       analysis_hint:
-        "输入公司并可上传财报、公告或电话会材料；HONE 会先读取材料，再完成分析和分享 PDF。",
-      preview_short: "核验预期与关键变量，生成可分享 PDF",
-      analysis_short: "读取财报材料，完成分析与可分享 PDF",
+        "输入公司名称或代码，自动查找最新财报和电话会议原文，生成财报分析与 PDF。",
+      preview_short: "自动获取财务信息，生成前瞻与 PDF",
+      analysis_short: "自动查找财报和电话会，生成分析与 PDF",
       company_placeholder: "例如：NVIDIA / NVDA",
       company_required: "请输入公司名称或股票代码",
       pick_files: "选择财报文件",
@@ -4049,11 +4049,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       preview_label: "Earnings preview",
       analysis_label: "Earnings analysis",
       preview_hint:
-        "Enter a company and HONE verifies the entity, expectations and key variables, then renders a watermarked shareable PDF.",
+        "Enter a company name or ticker. HONE finds financial data, guidance and recent news, then creates an earnings preview and PDF.",
       analysis_hint:
-        "Enter a company and optionally upload filings, releases or call materials; HONE reads them first, then completes the analysis and the shareable PDF.",
-      preview_short: "Verify expectations and key variables, export a PDF",
-      analysis_short: "Read the filings, finish the analysis and export a PDF",
+        "Enter a company name or ticker. HONE finds the latest earnings release and call transcript, then creates an earnings analysis and PDF.",
+      preview_short: "Find financial data, create a preview and PDF",
+      analysis_short: "Find the release and call, create an analysis and PDF",
       company_placeholder: "For example: NVIDIA / NVDA",
       company_required: "Enter a company name or ticker",
       pick_files: "Choose earnings files",

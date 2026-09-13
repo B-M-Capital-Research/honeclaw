@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-09-05
+Last updated: 2026-09-13
 
 ## When to Use
 
@@ -267,6 +267,24 @@ acceptance must show `runner=opencode_acp` and transport model
 complete the forced `earnings-research` skill and persist/download its PDF.
 Missing credentials, an unsupported workflow runner, a different response
 model, or fallback to the global model is a stop condition.
+
+An explicit OpenRouter route must remain enabled even when the operator's global
+OpenCode config filters providers. The isolated runtime config sets
+`enabled_providers=["openrouter"]` and clears `disabled_providers` only when an
+explicit API base URL is configured; do not change the operator's global config.
+
+For an isolated earnings canary, resolve the configured search endpoint as well
+as model/data credentials. A loopback search proxy on the managed host is not
+reachable at the same address on a workstation. Use a loopback-only SSH forward
+for that approved proxy and override only the isolated canary config. Never copy
+production user/session/database state. Verify one search response and direct
+public source reading before judging a report produced from missing inputs.
+
+The renderer stages output with per-attempt Chromium profiles and a total budget
+below the host's 120-second script timeout. It recognizes a complete PDF even
+when Chromium has not exited, kills/reaps that process group and publishes the
+file atomically. A technical retry uses a clean profile. Keep source reading and
+content assessment outside the renderer; do not add content rejection conditions.
 
 The earnings PDF renderer also needs a Linux Chromium executable and a CJK font
 available to the service account. On a Debian managed host, install and verify

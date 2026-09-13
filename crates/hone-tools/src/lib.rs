@@ -15,6 +15,7 @@ pub mod local_files;
 pub mod missed_events_tool;
 pub mod notification_prefs_tool;
 pub mod portfolio_tool;
+mod public_page;
 pub mod registry;
 pub mod restart_hone;
 pub mod schedule_view;

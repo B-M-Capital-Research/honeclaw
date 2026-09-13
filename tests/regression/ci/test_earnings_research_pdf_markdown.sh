@@ -8,6 +8,8 @@ RENDERER_PATH="$renderer" python3 - <<'PY'
 import importlib.util
 import os
 import subprocess
+import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -68,7 +70,7 @@ for invalid, expected in [("", "required"), ("x" * 240_001, "exceeds")]:
 # Keep the technical Chromium retry deterministic without requiring a browser
 # in the CI-safe contract test.
 original_candidates = module.chromium_candidates
-original_run = module.subprocess.run
+original_run = module.run_chromium
 render_calls = []
 try:
     module.chromium_candidates = lambda: [Path("/fake/chrome")]
@@ -78,20 +80,66 @@ try:
         if len(render_calls) == 1:
             return subprocess.CompletedProcess(command, 21, "", "")
         output = next(item.split("=", 1)[1] for item in command if item.startswith("--print-to-pdf="))
-        Path(output).write_bytes(b"%PDF-1.4\n" + b"x" * 1200)
+        Path(output).write_bytes(b"%PDF-1.4\n" + b"x" * 1200 + b"\n%%EOF\n")
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    module.subprocess.run = fake_run
+    module.run_chromium = fake_run
     with tempfile.TemporaryDirectory(prefix="hone-earnings-render-test-") as temp_dir:
         output = Path(temp_dir) / "report.pdf"
         module.render_pdf_with_chromium(workflow_html, output)
         assert output.stat().st_size >= 1000
 finally:
     module.chromium_candidates = original_candidates
-    module.subprocess.run = original_run
+    module.run_chromium = original_run
 
 assert len(render_calls) == 2
 assert "--disable-extensions" in render_calls[0]
+profiles = [next(arg for arg in call if arg.startswith("--user-data-dir=")) for call in render_calls]
+assert len(set(profiles)) == 2
+assert module.RENDER_ATTEMPTS * module.RENDER_TIMEOUT_SECONDS < 120
+
+# A failed browser must neither publish a partial artifact nor replace an
+# existing artifact. A zero exit with HTML/truncated PDF is still a failure.
+original_run = module.run_chromium
+original_candidates = module.chromium_candidates
+try:
+    module.chromium_candidates = lambda: [Path("/fake/chrome")]
+    for invalid_pdf in (b"<html>" + b"x" * 1200, b"%PDF-1.7\n" + b"x" * 1200):
+        def incomplete(command):
+            target = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
+            Path(target).write_bytes(invalid_pdf)
+            return subprocess.CompletedProcess(command, 0, "", "")
+        module.run_chromium = incomplete
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "delivered.pdf"
+            output.write_bytes(b"existing delivered artifact")
+            try:
+                module.render_pdf_with_chromium(workflow_html, output)
+                raise AssertionError("partial PDF must fail")
+            except RuntimeError:
+                pass
+            assert output.read_bytes() == b"existing delivered artifact"
+            assert list(Path(directory).iterdir()) == [output]
+finally:
+    module.run_chromium = original_run
+    module.chromium_candidates = original_candidates
+
+# Attribute-looking text cannot turn a report link into executable HTML.
+injected = module.inline_markup('[source](https://example.com/" onclick="alert)')
+assert ' onclick="' not in injected
+# Regression for Chrome writing a complete report but never closing its pipes.
+with tempfile.TemporaryDirectory() as directory:
+    target = Path(directory) / "report.pdf"
+    script = "import sys,time;from pathlib import Path;Path(sys.argv[1].split('=',1)[1]).write_bytes(b'%PDF-1.7\\n'+b'x'*1200+b'\\n%%EOF\\n');time.sleep(60)"
+    started = time.monotonic()
+    result = module.run_chromium([sys.executable, "-c", script, f"--print-to-pdf={target}"])
+    assert result.returncode == 0
+    assert module.is_complete_pdf(target)
+    assert time.monotonic() - started < 5
+
+assert "table-layout: fixed" in workflow_html
+assert "table-header-group" in workflow_html
+assert "overflow: hidden; break-inside: avoid" not in workflow_html
 PY
 
 echo "earnings PDF content-preserving renderer regression passed"

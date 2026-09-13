@@ -330,3 +330,10 @@ The public-chat page also fences bootstrap reconciliation with sync/send generat
 4. `docs/current-plan.md`
 5. The matching `docs/current-plans/*.md`
 6. The relevant entry files and tests
+
+### Earnings source retrieval and PDF execution (2026-09-13)
+
+- The public chat earnings dialogs submit only `kind` and `company`; `earnings-research` resolves the latest released quarter and obtains release/call materials internally. Original Dify prompt provenance and stage mapping live in `skills/earnings-research/references/workflow-source.md`.
+- `crates/hone-tools/src/web_search.rs` keeps lightweight search defaults and supports optional body extraction / 1–10 results. Its `url` branch delegates to `public_page.rs` to read public HTML/text directly, including when a configured search proxy only returns summaries. The reader pins public DNS addresses per redirect, disables ambient proxies and credentials, and bounds duration/body size; extracted content remains untrusted source data.
+- `skills/earnings-research/scripts/render_report_pdf.py` stages each PDF beside its destination, uses isolated Chromium profiles and a bounded retry budget, terminates the process group once a complete PDF is available, then atomically installs the file. Skill artifact registration and actor persistence remain the host's responsibility.
+- `crates/hone-channels/src/earnings_materials.rs` prepares release/call source candidates before the dedicated runner starts. It fetches actual public bodies, separates search synthesis from source text, and reuses the prepared suffix on retry. Missing sources are passed as gaps without rejecting the workflow.
