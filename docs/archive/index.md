@@ -1,6 +1,19 @@
 # Archive Index
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
+
+## 2026-09-14
+
+### 公司完整分析原 Prompt 迁移、持久进度和完整 PDF 上线
+
+- Status: done / deployed
+- Plan: `docs/archive/plans/company-full-analysis-20260913.md`
+- Handoff: `docs/handoffs/2026-09-14-company-full-analysis.md`
+- Decision: `docs/decisions.md#d-2026-09-14-01-company-full-analysis-as-a-durable-staged-task`
+- Commit: `9a2f27c7c37f694ae3ac63ca1c5f7db71f0cd62d` (application), `bbe1b88b` (changed-file fmt fix)
+- Runbook: `docs/runbooks/company-full-analysis.md`
+- Verification: 原 Dify 全跑完-美链路逐字 Prompt、管理员/actor 隔离、检查点恢复、386 API / 649 Web / 45 Worker / 5 E2E、PDF 回归、两轮隔离 TEM 和一次线上 TEM、完整逐页 PDF 与正式页面下载。全仓历史失败详见 handoff。
+- Conclusion: 管理员只填公司，生成 task id 并显示真实阶段进度，任务可关闭重开与技术失败恢复，完整 PDF 保存并校验后才显示 100%；部署采用精确 immutable runtime 与匹配 frontend/renderer，无内容门禁、未改核心 Prompt。
 
 ## 2026-09-13
 
