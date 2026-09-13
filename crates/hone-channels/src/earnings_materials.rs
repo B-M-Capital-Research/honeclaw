@@ -33,7 +33,7 @@ pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u3
     let mut urls = Vec::new();
     let mut pages = Vec::new();
     let mut seen = Vec::new();
-    let url_pattern = regex::Regex::new(r#"https?://[^\s)<>\"\]]+"#).expect("static URL pattern");
+    let url_pattern = regex::Regex::new(r#"https?://[^\s)<>\"\]`]+"#).expect("static URL pattern");
     for result in &mut results {
         if let Some(rows) = result.get_mut("results").and_then(Value::as_array_mut) {
             // Grounding proxies may put direct links in their synthesis while
@@ -143,7 +143,7 @@ mod tests {
                 );
             }
             Ok(
-                json!({"results":[{"url":"", "content":"Generated discovery summary"},
+                json!({"results":[{"url":"", "content":"Generated discovery summary with `https://ir.example/release`"},
                 {"url":"https://ir.example/release", "content":"Discovery snippet"}]}),
             )
         }
