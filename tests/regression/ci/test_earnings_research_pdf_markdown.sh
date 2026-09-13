@@ -137,6 +137,48 @@ with tempfile.TemporaryDirectory() as directory:
     assert module.is_complete_pdf(target)
     assert time.monotonic() - started < 5
 
+# Company diagrams run offline; code and quoted assumptions survive any
+# diagram parsing failure. Completion requires the browser's layout signal.
+company_report = "# TEM 公司完整分析\n\n> 估值假设保留\n\n```mermaid\ngraph TD\n A[临床数据] --> B[人工智能分析]\n```\n\n```python\nprint('原始代码')\n```"
+company_html = module.build_html("TEM", "公司完整分析", company_report, None)
+assert 'hone-mermaid' in company_html and 'print(&#x27;原始代码&#x27;)' in company_html
+assert '估值假设保留' in company_html
+assert 'securityLevel' in company_html and "'strict'" in company_html
+assert 'data:text/javascript;base64,' in company_html
+assert '<script src="http' not in company_html
+assert module.inline_markup('first<br>second') == 'first<br>second'
+assert '&lt;br onclick=' in module.inline_markup('first<br onclick="bad">second')
+assert module.inline_markup('$65 to $70') == '$65 to $70'
+math_html = module.build_html("TEM", "公司完整分析", "# TEM\n\n" + r"箭头 $\rightarrow$ 与 $$\frac{1}{2}$$", None)
+assert 'class="hone-math"' in math_html and 'katex.render' in math_html
+assert 'data:font/woff2;base64,' in math_html
+assert 'trust: false' in math_html
+original_run, original_candidates = module.run_chromium, module.chromium_candidates
+try:
+    module.chromium_candidates = lambda: [Path("/fake/chrome")]
+    for ready in (False, True):
+        def diagram_result(command):
+            target = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
+            Path(target).write_bytes(b"%PDF-1.7\n" + b"x" * 1200 + b"\n%%EOF\n")
+            dom = '<html data-hone-diagrams="ready" data-hone-diagram-fallbacks="1">' if ready else '<html>'
+            return subprocess.CompletedProcess(command, 0, dom, "")
+        module.run_chromium = diagram_result
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "report.pdf"
+            target.write_bytes(b"previous report")
+            if ready:
+                warnings = module.render_pdf_with_chromium(company_html, target)
+                assert warnings and module.is_complete_pdf(target)
+            else:
+                try:
+                    module.render_pdf_with_chromium(company_html, target)
+                    raise AssertionError("unfinished diagram layout must not replace the PDF")
+                except RuntimeError:
+                    pass
+                assert target.read_bytes() == b"previous report"
+finally:
+    module.run_chromium, module.chromium_candidates = original_run, original_candidates
+
 assert "table-layout: fixed" in workflow_html
 assert "table-header-group" in workflow_html
 assert "overflow: hidden; break-inside: avoid" not in workflow_html

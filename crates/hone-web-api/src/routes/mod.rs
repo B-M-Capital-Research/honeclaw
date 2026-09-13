@@ -3,6 +3,7 @@ pub(crate) mod billing;
 pub(crate) mod channel_settings;
 pub(crate) mod chat;
 pub(crate) mod community_forum;
+mod company_analysis;
 pub(crate) mod company_facts;
 pub(crate) mod company_profiles;
 pub(crate) mod company_ratings;
@@ -408,6 +409,22 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             get(community_forum::handle_attachment),
         )
         .route("/chat", post(public::handle_chat))
+        .route(
+            "/company-analysis/tasks",
+            get(company_analysis::list).post(company_analysis::start),
+        )
+        .route(
+            "/company-analysis/tasks/{id}",
+            get(company_analysis::status),
+        )
+        .route(
+            "/company-analysis/tasks/{id}/resume",
+            post(company_analysis::resume),
+        )
+        .route(
+            "/company-analysis/tasks/{id}/pdf",
+            get(company_analysis::download),
+        )
         .route(
             "/v1/chat/completions",
             post(public::handle_openai_chat_completions),

@@ -1796,3 +1796,18 @@ implementation work.
 - Verification: 见 handoff 的自动化与 TEM 真实 canary；不以来源数、数字覆盖或报告篇幅判定通过。
 - Risks: 来源站点可能限制访问；搜索代理综合内容仍需回到原始页面；PDF envelope 检查只证明技术完整性，排版需要真实逐页检查。
 - Implementation follow-through: 真实 canary 显示模型可能跳过提示中的原文读取，因此在 `earnings_materials.rs` 启动阶段自动获取候选原文，原研究 Prompt 决定公司/季度是否对应并补缺。取材失败作为上下文返回，不评分、不拒绝终稿；重试复用已取得输入。
+
+## D-2026-09-14-01 Company full analysis as a durable staged task
+
+- title: 公司完整分析按原 Dify 全跑完-美链路执行，提供持久任务与完整 PDF
+- status: accepted
+- created_at: 2026-09-14
+- updated_at: 2026-09-14
+- owner: Codex / user-requested workflow
+- related_files: `crates/hone-web-api/src/routes/company_analysis/`; `packages/app/src/components/company-analysis-dialog.tsx`; `skills/earnings-research/scripts/`
+- related_docs: `docs/runbooks/company-full-analysis.md`; `crates/hone-web-api/src/routes/company_analysis/original/README.md`
+- Decision: 用 HONE 独立阶段执行器迁移指定分支；原 system/user Prompt、分支依赖和组装顺序不改。金融与搜索工具替换原子流程的数据接口；进度回调写入 HONE PostgreSQL，前端按服务端 UUID 读取。原 Dify 的鉴权码、外部上传与外部进度服务不作为运行依赖。
+- Durability: 每节点保存正文及用量；两分钟执行租约每 20 秒续期，恢复更换 attempt token。PDF 每个 attempt 使用独立 actor OSS key，回读 hash 后才完成，部署 drain 包含这些研究任务。
+- Rendering: 保留全报告和 quote 中的假设；不执行原清理节点的 blockquote 删除。离线 Mermaid 仅作排版；无法绘制的图保留源文并标注技术提示，不删除正文、不触发内容改写。macOS 优先使用 headless shell 解决桌面 Chrome 的 CJK 打印缺字。
+- Verification: 自动化检查与真实 TEM canary 见对应 handoff；不以固定章节数量、来源覆盖或数字门禁评判内容。
+- Risks: 原 Prompt 的分析质量取决于模型与来源，进度百分比是原阶段权重而非时间预测。标题节点采用同一配置模型替代原 qwen-plus 传输。

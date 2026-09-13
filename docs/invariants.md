@@ -339,3 +339,10 @@ Last updated: 2026-08-22
 - Chromium process exit is not the sole PDF completion signal: a complete staged PDF may precede process shutdown. Reap its process group, verify the PDF envelope, and atomically publish the file. Partial output must not overwrite an earlier artifact. Retry budgets must fit the host's 120-second script deadline; these are technical checks, not editorial validation.
 - Dedicated earnings source acquisition is a best-effort input phase, not an output gate. It must preserve retrieval errors as context, keep source text separate from generated search summaries, and reuse prepared inputs during recovery instead of repeating the full acquisition.
 - Original earnings prompts must not compete with the general investment soul or other recommended skills. Dedicated execution supplies only its own system boundary, original mode prompt, current task/time and source inputs; ordinary conversation policies remain unchanged.
+
+## Company full analysis
+
+- The administrator flag is checked in the database on every start/list/status/resume/PDF request. Task lookups are actor scoped; neither task IDs nor artifact paths supplied by another actor confer access.
+- The original Dify `全跑完-美` prompts and DAG are owned by `routes/company_analysis/original/`; change source retrieval or transport deliberately without adding a second content validator or silently editing those prompts.
+- Task progress comes from completed stages. 100% requires a complete PDF persisted to the current actor/attempt object and verified by readback hash. Old attempts cannot overwrite newer objects or checkpoints. A lost POST response is reconciled through GET, never blindly retried.
+- Restart/failure retains completed stage outputs. Resume uses a new lease token and the task creation date; it does not replay completed model calls. Renderer failures preserve Markdown and allow a technical retry without regenerating research.

@@ -1,0 +1,13 @@
+.company-analysis-dialog { max-height: calc(100dvh - 40px); overflow: auto; }
+.company-analysis-progress { margin-top: 20px; padding: 18px; border: 1px solid var(--public-border, #e4e8e5); border-radius: 14px; background: var(--public-surface-soft, #f5f8f6); }
+.company-analysis-progress-heading { display: flex; justify-content: space-between; gap: 12px; }
+.company-analysis-progress progress { width: 100%; height: 10px; margin: 12px 0; accent-color: #247463; }
+.company-analysis-progress p { margin: 4px 0 10px; font-size: 14px; }
+.company-analysis-progress small { display: block; color: #65736c; margin: 7px 0; line-height: 1.5; }
+.company-analysis-task-id { overflow-wrap: anywhere; font-size: 11px; }
+.company-analysis-stages { display: flex; flex-wrap: wrap; gap: 7px 14px; margin: 14px 0; padding: 0; list-style: none; color: #386a58; font-size: 12px; }
+.company-analysis-history { margin-top: 18px; font-size: 13px; }
+.company-analysis-history summary { cursor: pointer; padding: 8px 0; }
+.company-analysis-history button { display: block; width: 100%; padding: 10px 0; border: 0; background: transparent; text-align: left; color: inherit; cursor: pointer; }
+.company-analysis-reconnecting { font-size: 13px; color: #86704b; }
+@media (max-width: 640px) { .company-analysis-dialog { max-height: calc(100dvh - 24px); } }

@@ -320,6 +320,9 @@ pub struct AgentConfig {
     pub opencode: OpencodeAcpConfig,
     #[serde(default)]
     pub earnings_workflow: EarningsWorkflowConfig,
+    /// Original company-analysis nodes run in isolated, checkpointed stages.
+    #[serde(default = "default_earnings_workflow_model")]
+    pub company_analysis_model: String,
     #[serde(default)]
     pub hone_cloud: HoneCloudConfig,
 }
@@ -481,6 +484,7 @@ impl Default for AgentConfig {
             codex_acp: CodexAcpConfig::default(),
             opencode: OpencodeAcpConfig::default(),
             earnings_workflow: EarningsWorkflowConfig::default(),
+            company_analysis_model: default_earnings_workflow_model(),
             hone_cloud: HoneCloudConfig::default(),
         }
     }

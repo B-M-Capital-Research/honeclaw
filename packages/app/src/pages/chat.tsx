@@ -20,6 +20,7 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
+import { CompanyAnalysisDialog } from "@/components/company-analysis-dialog";
 import {
   AgentWorkspaceHistoryDrawer,
   AgentWorkspaceIcon,
@@ -2246,6 +2247,7 @@ function Composer(props: {
   const [calendarSeq, setCalendarSeq] = createSignal(0);
   const [previewSeq, setPreviewSeq] = createSignal(0);
   const [analysisSeq, setAnalysisSeq] = createSignal(0);
+  const [companyAnalysisSeq, setCompanyAnalysisSeq] = createSignal(0);
   let taRef: HTMLTextAreaElement | undefined;
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
@@ -2389,6 +2391,14 @@ function Composer(props: {
             hint: CONTENT.chat_page.earnings.analysis_short,
             icon: () => <ToolIcon name="earnings-analysis" />,
             run: () => setAnalysisSeq((seq) => seq + 1),
+            adminOnly: true,
+          },
+          {
+            id: "company-analysis",
+            label: CONTENT.chat_page.earnings.company_label,
+            hint: CONTENT.chat_page.earnings.company_short,
+            icon: () => <ToolIcon name="earnings-analysis" />,
+            run: () => setCompanyAnalysisSeq((seq) => seq + 1),
             adminOnly: true,
           },
         ]
@@ -2647,6 +2657,7 @@ function Composer(props: {
       </div>
 
       <Show when={props.isAdmin}>
+        <CompanyAnalysisDialog disabled={workflowsDisabled()} openRequest={companyAnalysisSeq()} />
         <EarningsResearchDialog
           kind="preview"
           disabled={workflowsDisabled()}

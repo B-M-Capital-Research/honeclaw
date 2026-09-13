@@ -18,6 +18,7 @@ hone-llm       = { workspace = true }
 anyhow         = { workspace = true }
 tokio          = { workspace = true }
 tokio-stream   = { workspace = true }
+tokio-postgres = { workspace = true }
 tracing        = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "registry"] }
 tracing-appender = { workspace = true }

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-09-13
-状态：有 15 个活跃任务
+状态：有 16 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **公司完整分析与任务进度**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/company-full-analysis-20260913.md`
+  - 摘要：迁移原 Dify 全跑完-美链路；管理员公司名称入口、task id 进度、完整 PDF 与 TEM 验收。
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`

@@ -1359,6 +1359,8 @@ const CONTENT_ZH = {
     },
     earnings: {
       preview_label: "财报前瞻",
+      company_label: "公司完整分析",
+      company_short: "公司深度研究与完整 PDF",
       analysis_label: "财报分析",
       preview_hint:
         "输入公司名称或代码，自动查找财务数据、业绩指引和近期新闻，生成财报前瞻与 PDF。",
@@ -4047,6 +4049,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     },
     earnings: {
       preview_label: "Earnings preview",
+      company_label: "Full company analysis",
+      company_short: "Company research and complete PDF",
       analysis_label: "Earnings analysis",
       preview_hint:
         "Enter a company name or ticker. HONE finds financial data, guidance and recent news, then creates an earnings preview and PDF.",

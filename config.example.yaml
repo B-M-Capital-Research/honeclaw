@@ -768,6 +768,8 @@ agent:
     api_base_url: ""
     # Optional Hone-side API key override; leave empty to inherit local opencode auth/provider config
     api_key: ""
+  # Administrator-only full company analysis. Core Dify prompts are compiled unchanged.
+  company_analysis_model: "google/gemini-3.1-pro-preview"
   earnings_workflow:
     # Administrator-only earnings preview/analysis route. This does not change
     # the runner or model used by ordinary conversations.

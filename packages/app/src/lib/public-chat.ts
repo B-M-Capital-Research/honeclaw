@@ -55,7 +55,7 @@ export type PublicEarningsWorkflowKind = "preview" | "analysis";
 export function publicEarningsWorkflowMessage(
   kind: PublicEarningsWorkflowKind,
   company: string,
-  hasAttachments: boolean,
+  hasAttachments = false,
 ): string {
   const name = company.trim();
   if (kind === "preview") {
