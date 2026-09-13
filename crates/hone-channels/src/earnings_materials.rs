@@ -14,8 +14,12 @@ pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u3
         return (String::new(), 0);
     };
     let queries = [
-        format!("{company} latest reported quarterly earnings release investor relations"),
-        format!("{company} latest reported quarter earnings call transcript prepared remarks Q&A"),
+        format!(
+            "{company} latest reported quarterly earnings release investor relations. Include the full direct URL of the original release page, not only the investor homepage."
+        ),
+        format!(
+            "{company} latest reported quarter earnings call transcript prepared remarks Q&A. Include the full direct original transcript page URL."
+        ),
     ];
     let mut results = futures::future::join_all(queries.iter().map(|query| async move {
         let args = json!({"query":query, "max_results":3, "include_raw_content":true});
@@ -29,8 +33,27 @@ pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u3
     let mut urls = Vec::new();
     let mut pages = Vec::new();
     let mut seen = Vec::new();
+    let url_pattern = regex::Regex::new(r#"https?://[^\s)<>\"\]]+"#).expect("static URL pattern");
     for result in &mut results {
         if let Some(rows) = result.get_mut("results").and_then(Value::as_array_mut) {
+            // Grounding proxies may put direct links in their synthesis while
+            // result URLs are provider redirects. These are only candidates:
+            // actually fetch them before treating anything as a source body.
+            for url in rows
+                .iter()
+                .filter_map(|row| row.get("content").and_then(Value::as_str))
+                .flat_map(|text| {
+                    url_pattern
+                        .find_iter(text)
+                        .map(|found| found.as_str().to_string())
+                })
+                .take(2)
+            {
+                if !seen.contains(&url) {
+                    seen.push(url.clone());
+                    urls.push(url);
+                }
+            }
             for row in rows
                 .iter()
                 .filter(|row| {

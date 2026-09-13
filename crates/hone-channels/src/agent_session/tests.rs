@@ -4615,6 +4615,7 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
     let session =
         AgentSession::new(core, actor.clone(), "direct").with_prompt_options(PromptOptions {
             is_admin: true,
+            extra_sections: vec!["GENERAL_RESEARCH_POLICY_SENTINEL".to_string()],
             ..PromptOptions::default()
         });
     let user_task = "请为 AAOI 执行财报前瞻";
@@ -4655,6 +4656,8 @@ async fn database_admin_earnings_override_uses_opencode_prompt_ownership() {
         .replay_parts()
         .expect("OpenCode replay input");
     assert!(runtime_input.contains("STRICT EARNINGS WORKFLOW"));
+    assert!(!runtime_input.contains("【本轮相关技能提示】"));
+    assert!(!system_prompt.contains("GENERAL_RESEARCH_POLICY_SENTINEL"));
     assert!(runtime_input.contains(user_task));
     assert!(runtime_input.contains("【Session 上下文】"));
     assert!(system_prompt.contains("【管理员财报工作流系统覆盖】"));
