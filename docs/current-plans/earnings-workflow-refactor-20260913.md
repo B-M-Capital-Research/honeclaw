@@ -26,6 +26,8 @@
 
 - [ ] 第三轮发现通用 system prompt 仍强制其它投研技能；专用财报使用独立系统提示与原 Skill 上下文，去掉通用技能推荐/模板干扰并回归证明。
 
+- [ ] Linux 原文 canary 定位到 IR CDN 对请求 User-Agent 的兼容差异；修复公开读取客户端标识并保留真实原文回归，再重跑双模式。
+
 ## Validation
 
 - [ ] 相关前端、Rust、PDF 技术回归与仓库 CI 契约。

@@ -115,13 +115,15 @@ async fn read_page(raw_url: &str) -> HoneResult<Value> {
         if addresses.is_empty() || addresses.iter().any(|address| !public_ip(address.ip())) {
             return Err(failure("拒绝非公网地址"));
         }
+        // Some public IR CDNs reset requests for unrecognized client families.
+        // Advertise HTTP-client compatibility while retaining our own identity.
         let client = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .resolve_to_addrs(host, &addresses)
             .connect_timeout(Duration::from_secs(8))
             .timeout(Duration::from_secs(25))
-            .user_agent("HONE Research/1.0 (public earnings source reader)")
+            .user_agent("curl/compatible HONE-Research/1.0")
             .build()
             .map_err(|_| failure("无法建立读取客户端"))?;
         let mut response = client
@@ -200,6 +202,25 @@ async fn read_page(raw_url: &str) -> HoneResult<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    #[ignore = "Manual public-network canary; requires HONE_PUBLIC_SOURCE_CANARY_URL"]
+    async fn reads_real_public_source_body() {
+        let url = std::env::var("HONE_PUBLIC_SOURCE_CANARY_URL").expect("public source URL");
+        let page = read_public_page(&url).await.expect("public source body");
+        let body = page["raw_content"].as_str().expect("body text");
+        assert!(!body.trim().is_empty());
+        if let Ok(expected) = std::env::var("HONE_PUBLIC_SOURCE_CANARY_TEXT") {
+            assert!(
+                body.contains(&expected),
+                "expected original text was not retrieved"
+            );
+        }
+        println!(
+            "public source canary: {} chars, {} links",
+            body.chars().count(),
+            page["links"].as_array().unwrap().len()
+        );
+    }
     #[test]
     fn rejects_private_metadata_tunnels_and_reserved_addresses() {
         for ip in [
