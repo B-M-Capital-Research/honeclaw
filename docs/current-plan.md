@@ -1,6 +1,6 @@
 # Current Plan Index
 
-最后更新：2026-09-05
+最后更新：2026-09-13
 状态：有 15 个活跃任务
 
 ## 说明
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **财报工作流重构与 TEM 验收**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/earnings-workflow-refactor-20260913.md`
-  - 摘要：公司输入弹窗、原 Dify Prompt/阶段对齐、PDF 稳定性与 TEM 双模式真实验收后上线。
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`

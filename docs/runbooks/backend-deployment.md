@@ -225,10 +225,18 @@ because the new binary image is active. Before cutover:
    finding a `SKILL.md` on disk is insufficient.
 4. When a renderer resolves a repository-relative public asset, verify that
    asset separately. The earnings renderer accepts an explicit
-   `HONE_ZSXQ_SHARE_IMAGE`; otherwise it expects
-   `packages/app/public/membership_zsxq.jpg` relative to its installed skill.
+   `HONE_ZSXQ_SHARE_IMAGE` for direct invocation, but the skill subprocess clears
+   non-allowlisted environment variables. Production therefore uses an immutable
+   repository-shaped tree: `<release>/skills/earnings-research/` with the matching
+   `<release>/packages/app/public/membership_zsxq.jpg`. The live skill directory
+   can point to that versioned skill with a symlink. Validate the asset lookup
+   using the renderer as the service user under `env -i`, and inspect the actual
+   workflow PDF sharing page; a direct shell smoke with inherited environment
+   does not prove the skill subprocess can find it.
 
 ### Earnings workflow OpenRouter route
+
+The 2026-09-13 TEM comparison selected Claude Opus 4.8 for the production earnings route, using the unchanged original Dify prompts. The repository default remains configurable; explicitly set the reviewed model when provisioning a host.
 
 The administrator-only earnings preview and earnings analysis turns have a
 dedicated runner/model route. They do not inherit the global chat model:
@@ -237,7 +245,7 @@ dedicated runner/model route. They do not inherit the global chat model:
 agent:
   earnings_workflow:
     runner: "opencode_acp"
-    model: "google/gemini-3.1-pro-preview"
+    model: "anthropic/claude-opus-4.8"
 ```
 
 The OpenRouter credential remains in canonical config under
@@ -253,7 +261,7 @@ Before restart, validate only non-secret fields and credential presence:
 
 ```text
 agent.earnings_workflow.runner = opencode_acp
-agent.earnings_workflow.model = google/gemini-3.1-pro-preview
+agent.earnings_workflow.model = anthropic/claude-opus-4.8
 llm.providers.openrouter.kind = openrouter
 llm.providers.openrouter.base_url = https://openrouter.ai/api/v1
 llm.providers.openrouter.api_key/api_keys has at least one non-placeholder value
@@ -263,7 +271,7 @@ Also require a real authenticated probe to the exact model and a complete
 OpenCode ACP `initialize -> session/new -> session/prompt` probe. HTTP `200`
 from the models endpoint or ACP `initialize` alone is insufficient. Runtime
 acceptance must show `runner=opencode_acp` and transport model
-`openrouter/google/gemini-3.1-pro-preview` without logging the credential, then
+`openrouter/anthropic/claude-opus-4.8` without logging the credential, then
 complete the forced `earnings-research` skill and persist/download its PDF.
 Missing credentials, an unsupported workflow runner, a different response
 model, or fallback to the global model is a stop condition.

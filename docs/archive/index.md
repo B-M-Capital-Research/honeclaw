@@ -1,6 +1,19 @@
 # Archive Index
 
-Last updated: 2026-09-07
+Last updated: 2026-09-13
+
+## 2026-09-13
+
+### 财报分析 / 财报前瞻公司输入重构与 TEM 验收上线
+
+- Status: done / deployed
+- Plan: `docs/archive/plans/earnings-workflow-refactor-20260913.md`
+- Handoff: `docs/handoffs/2026-09-13-earnings-workflow-refactor.md`
+- Decision: `docs/decisions.md#d-2026-09-13-01-company-only-earnings-workflows-and-reliable-pdf-completion`
+- Commit: `161fe4b30e84860a7da4f6d536a89d7d4c379d13`
+- Runbook: `docs/runbooks/backend-deployment.md`
+- Verification: 原 Dify Prompt 逐节点对照、相关 Rust/Web/PDF 回归、TEM 双模式真实 canary、逐页 PDF、线上浏览器公司输入及 OSS 附件下载/服务重启后同哈希；全仓历史失败详见 handoff。
+- Conclusion: 只填公司，自动取材，原 Prompt 独立执行；Opus 4.8 财报专用配置改善真实样本，PDF 进程回收/原子发布与版本化分享图布局已上线，未加入内容门禁。
 
 ## 2026-09-07
 
