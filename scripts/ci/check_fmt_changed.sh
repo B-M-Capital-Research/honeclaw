@@ -43,4 +43,4 @@ fi
 
 echo "[INFO] rustfmt --check on changed files:"
 printf ' - %s\n' "${rs_files[@]}"
-rustfmt --edition 2024 --check "${rs_files[@]}"
+rustfmt --edition 2024 --config skip_children=true --check "${rs_files[@]}"

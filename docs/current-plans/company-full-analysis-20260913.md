@@ -38,3 +38,9 @@
 ## Implementation decision
 
 采用 HONE 本地分阶段任务执行器：逐节点绑定原 Prompt 与输入，保持搜索/财务子流程、研究并行依赖和完整组装顺序。任务及阶段检查点保存在 PostgreSQL；进度由实际阶段回调驱动，按 task id 读取；PDF 持久化到 actor 所属 OSS 后才完成。采用独立管理员 API 与弹窗，避免原 Prompt 与普通聊天策略混合。重启或技术失败允许从已完成阶段继续，不采用内容 validator。
+
+## Validation follow-through
+
+- TEM 首轮和最终轮均完成，最终轮 202.5 秒、20 页、9 个模型节点，原 Prompt 不变。
+- 发现修改 `routes/mod.rs` 会让 changed-file rustfmt 脚本递归检查未修改子模块；同步修复脚本遵守其“仅改动文件”契约，补独立临时仓库回归证明。
+- 完成前增加 Linux PDF 验证、不可变产物部署及线上入口检查。
