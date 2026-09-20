@@ -19,7 +19,7 @@
 - **Public API 性能优化上线与隔离验证**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-api-connection-performance.md`
-  - 摘要：已撤下候选并恢复服务；已复现同步桥与连接池的跨运行时死锁，最小修复验证及持续监测中
+  - 摘要：已复现并修复同步桥与连接池的跨运行时死锁；42ed74f5 已上线并通过初始验收；持久只读监测已启用，长窗口验收继续跟踪
 
 - **公司完整分析与任务进度**
   - 状态：`in_progress`

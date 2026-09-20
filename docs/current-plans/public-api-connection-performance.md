@@ -1,7 +1,7 @@
 # Public API Connection Performance
 
 - title: Reduce shared API CPU cost with isolated PostgreSQL connection reuse
-- status: in_progress (service restored; cross-runtime defect reproduced; repair validation and monitoring active)
+- status: in_progress (repair deployed; persistent monitoring accepted; long-window observation pending)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -44,7 +44,7 @@ User authorized: “发上线测一下看看”. No formal version/tag requested
 - [x] Re-read live revision, service topology, active chats and rollback target; capture matched pre-deploy API timings.
 - [x] Create an isolated production-based checkout containing only this optimization, regression tests and matching documentation. Review diff and run candidate checks.
 - [x] Publish the reviewed candidate branch and build the exact immutable Linux GHCR artifact through Runtime Image; no macOS binary or production-host compilation.
-- [x] Add a bounded Runtime Image export mode using job-scoped package read permission and a checksummed Actions artifact, because the operator credential cannot pull the private registry. Do not expand operator token scopes or transfer a broad credential to production.
+- [x] Add bounded Runtime Image export using job-scoped package read permission and a checksummed Actions artifact because the operator credential cannot pull the private registry; do not expand operator token scopes or transfer broad credentials.
 - [x] Verify bundle, environment, free disk and two idle-chat reads; atomically switch and restart with rollback on failed acceptance.
 - [x] Validate exact live revision, PostgreSQL/object-store authority, expected channel workers, account/session isolation and before/after API latency.
 - [x] Append rollout evidence to the same-day handoff, update decision/archive index, archive this plan and remove the active index entry.
@@ -56,7 +56,7 @@ Completion: deployed exact `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; authentic
 - [x] Restore the previous runtime and verify the public API and existing browser history.
 - [x] Withdraw the earlier deployment acceptance in the handoff, decision and archive index; keep detailed operator evidence outside version control.
 - [x] Reproduce the HTTP responsiveness regression in isolation and identify the cause before modifying runtime code. A two-worker old/new control confirms a cross-runtime driver wait cycle; this is a proven candidate defect, with incomplete historical production stacks.
-- [ ] Add a cause-specific regression and validate sustained responsiveness plus account/session isolation before another rollout.
+- [x] Add a cause-specific regression and validate sustained responsiveness plus account/session isolation before another rollout; production observation remains a separate gate below.
 - [ ] Archive only after the causal investigation and required fix/verification are complete; the performance rollout remains withdrawn.
 
 Affected files: cloud_runtime.rs, cloud_runtime/query_pool.rs and tests if implicated; the same-day handoff, decisions, current-plan index and archive index. No speculative runtime change was made during recovery.
@@ -83,4 +83,20 @@ The isolated two-worker reproduction confirmed a candidate-introduced cross-runt
 - [x] Verify the independently deployed read-only sampler, document its bounded retention and heartbeat behavior in a reusable runbook, and preserve detailed production evidence privately.
 - [x] Update repo map/invariants/decision and same-day handoff with the confirmed runtime ownership constraint. Keep rollout withdrawn until sustained candidate validation; do not archive this active task yet.
 
-Latest validation: candidate workspace all-target compilation passed; explicit formatting/diff checks passed; core default optimized suite 13 passed / 3 ignored; real skill registry suite 5 passed; response-finalizer suite 8 passed; sampler suite 11 passed; 2,048 same-runtime dedicated bridge queries completed with response namespace checks and no tracked backend accumulation. These complete local causal regression coverage, not long-duration production acceptance. Production rollout and final archival remain pending; continuous read-only monitoring is active.
+Latest validation: candidate workspace all-target compilation passed; explicit formatting/diff checks passed; core default optimized suite 13 passed / 3 ignored; real skill registry suite 5 passed; response-finalizer suite 8 passed; sampler suite 11 passed; 2,048 same-runtime dedicated bridge queries completed with response namespace checks and no tracked backend accumulation. These complete local causal regression coverage, not long-duration production acceptance. At this local-validation checkpoint production rollout was pending; the subsequent repair-rollout section records its deployment. Final archival still requires observation closure.
+
+## Repair rollout and sustained observation — 2026-09-20
+
+User now requests resolving the problem and continuing monitoring. Deploy the already-reproduced and locally verified repair through an immutable Linux bundle; keep actor/session/storage invariants and an immediately usable rollback target.
+
+- [x] Verify current production revision, liveness sampler, storage authority, free space, active chats and browser/history baseline.
+- [x] Complete candidate workspace regressions and relevant CI checks; distinguish documented baseline failures from regressions. Publish only reviewed candidate changes, with private operator evidence excluded.
+- [x] Build/export exact candidate Linux artifact, verify manifest/checksums, stage without changing current, and verify the retained old bundle.
+- [x] Check active chats idle, perform bounded managed cutover with rollback on failed acceptance, then verify exact revision/actual HTTP child/storage plus independent no-cookie/auth-isolation checks. The existing stop policy is not a lossless drain protocol.
+- [x] Validate real existing browser history and actual formerly-deadlocking skill read paths without creating test messages or changing business records: 13 messages unchanged and 12 concurrent skill reads passed.
+- [ ] Finish the 32-round/64-read bounded canary beyond the original roughly 30-minute failure window, then retain continuous sampling and check the first full 24-hour window. Do not claim these elapsed-time milestones before their completion records.
+- [x] Update deployment evidence privately, append sanitized acceptance and limitations to the same handoff/decision/runbook as appropriate, and update the existing heartbeat to monitor the repaired revision. Authenticated-log recurring export remains pending explicit destination consent; do not bypass that rejection.
+- [x] Persist the existing bounded server sampler with automatic daily observation-window renewal and boot activation; verify one instance, unchanged privacy/resource limits and two fresh samples. Mount-namespace snapshot access also passed; actual reboot/daily renewal are not yet exercised. This removes desktop availability from continuous sampling, not from task notifications.
+- [ ] Archive the active rollout plan only once deployment acceptance is complete; preserve monitoring follow-up separately if long-duration observation is still in progress.
+
+Affected artifacts: immutable candidate 42ed74f5; local temporary deployment scripts; existing sampler; docs/current-plan.md, this plan, docs/handoffs/2026-09-20-public-api-latency-diagnosis.md, docs/decisions.md and docs/archive/index.md. No source change is planned unless validation reveals a new defect.

@@ -5,7 +5,7 @@ Last updated: 2026-09-20
 ## D-2026-09-20-02 Exclusive Query Connections and Optimized Source Runtime
 
 - title: Reuse ordinary PostgreSQL connections without sharing transaction state
-- status: provisional (optimization withdrawn; cross-runtime repair verified locally; long-duration acceptance pending)
+- status: provisional (repaired candidate deployed and initially accepted; sustained observation pending)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -16,7 +16,7 @@ Last updated: 2026-09-20
 - Runtime ownership: skill-registry read/write and company-profile sync use `with_dedicated_query_connections`, bypassing both cached query drivers and semaphore permits. Do not solve ownership only by adding runtime IDs to a process-global map (short-lived runtime entries accumulate) or by filtering cached drivers while still waiting for caller-held permits. No actor/session/SQL predicates or write-retry policy changes.
 - Decision: source-runtime retains dev's overflow checks/debug assertions and adds opt-level=3 while preserving debug=1, incremental=false and its existing deployment output/provenance.
 - Verification: real PostgreSQL concurrency, namespace/actor isolation, transaction cancellation/rollback, advisory lock, reuse/bounds and disconnect tests; full results and performance comparison are in the handoff.
-- Risks: a failed write may have committed before transport failure, so automatic replay is prohibited. Dedicated/cached connections are additional to the four ordinary-query leases. Initial low-volume samples improved, but 3e26eb4f later became unresponsive and was rolled back to 9a2f27c7. An isolated old/new control now proves that process-global query reuse can form a cross-runtime wait cycle with synchronous bridges; optimized compilation is not necessary to reproduce it. The repaired candidate gives all existing Web PostgreSQL sync bridges independent fresh drivers and capacity. The original production child stack was not captured, so unique historical attribution remains bounded. Deployment remains withdrawn pending sustained candidate acceptance; a synchronous bridge can still block while its own database request stalls.
+- Risks: a failed write may have committed before transport failure, so automatic replay is prohibited. Dedicated/cached connections are additional to the four ordinary-query leases. Initial low-volume samples improved, but 3e26eb4f later became unresponsive and was rolled back to 9a2f27c7. An isolated old/new control now proves that process-global query reuse can form a cross-runtime wait cycle with synchronous bridges; optimized compilation is not necessary to reproduce it. The repaired candidate gives all existing Web PostgreSQL sync bridges independent fresh drivers and capacity. The original production child stack was not captured, so unique historical attribution remains bounded. Original 3e26eb4f acceptance remains withdrawn. Repaired 42ed74f5 passed initial live listener/hash/storage, real skill-read and existing-history checks; sustained observation remains pending. A synchronous bridge can still block while its own database request stalls.
 
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo

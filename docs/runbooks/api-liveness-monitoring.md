@@ -29,6 +29,15 @@ overall duration; reaching that duration is not reported as an API failure.
 | `public`: `http://127.0.0.1:8088/api/public/auth/me` | 401 JSON object, with no Cookie header | The unauthenticated public API path. It may emit an authentication warning; it does not exercise the authenticated database lookup or prove connection-pool health. |
 | `meta`: `http://127.0.0.1:8077/api/meta` | 200 JSON object, healthy PostgreSQL/object storage/authoritative-storage flags, valid 40-character Git SHA | Deployment identity and the health checks exposed by the metadata route. Only the allowed boolean flags and SHA are retained; configuration, error messages, and the rest of the body are discarded. Metadata health may be cached and does not cover every application query. |
 
+The sampler validates the shape of the revision, not an operator's expected
+revision. The deployment observer must compare the complete Git SHA with the
+accepted candidate and reset its observation window at the actual cutover.
+Metadata storage checks are cached for 30 seconds; cross that interval before
+claiming repeated dependency health. If only metadata exceeds the 3-second
+sampler deadline while control/auth rejection still respond, classify it as a
+storage/query-path degradation, not automatically a total HTTP outage. The
+server-side dependency probe budgets are longer than the sampler deadline.
+
 HTTP redirects are not followed. The sampler does not use a cookie jar or proxy
 environment settings. URLs must not contain credentials, query parameters, or
 fragments. The loopback defaults measure the origin, not browser-to-Cloudflare
@@ -88,6 +97,76 @@ If a previous failed transient unit still occupies the name, inspect its result
 before clearing it with `systemctl reset-failed hone-api-liveness-monitor.service`.
 Do not start another sampler into the same log directory: a lock rejects
 concurrent writers.
+
+## Persist sampling across windows and host boots
+
+For continuous observation, install a reviewed persistent service after the
+bounded sampler has passed its host checks. Keep the same script, log directory
+and limits; use exactly one sampler instance. A service such as
+`/etc/systemd/system/hone-api-liveness-monitor.service` can contain:
+
+```ini
+[Unit]
+Description=Read-only HONE API liveness evidence sampler
+After=network.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+WorkingDirectory=/
+ExecStart=/usr/bin/python3 -B /usr/local/sbin/hone-api-liveness-monitor --service hone-web.service --interval 30 --timeout 3 --duration 86400 --output-dir /var/log/hone-api-liveness --max-bytes 8388608 --max-files 4
+Restart=always
+RestartSec=10s
+RuntimeMaxSec=25h
+TimeoutStopSec=30s
+KillMode=control-group
+UMask=0077
+CPUQuota=10%
+MemoryMax=64M
+TasksMax=8
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadOnlyPaths=/proc /sys
+ReadWritePaths=/var/log/hone-api-liveness
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Verify the script checksum and root ownership, private log/lock permissions and
+`systemd-analyze verify` on the target host before installation. If a same-named
+transient unit exists, stop only that sampler and prove its old PID has exited.
+Do not remove its log lock or start a second sampler. Reload the manager and
+require `FragmentPath` to be the reviewed `/etc/systemd/system` file,
+`Transient=no` and no unexpected drop-ins before enabling and starting it.
+An old transient definition can remain loaded; do not assume writing an `/etc`
+file completed the conversion. Preserve the old reviewed invocation for recovery.
+
+Acceptance requires `is-enabled=enabled`, active/running, exactly one sampler,
+unchanged resource/privacy settings and at least two fresh healthy samples.
+Also verify that listener/thread evidence remains readable inside the sampler's
+mount namespace; healthy HTTP samples alone do not exercise that path. Confirm
+the business supervisor and actual Web child did not restart during conversion.
+Do not reboot a production host merely to validate the enabled-target link.
+
+A successful 24-hour window exits and restarts after 10 seconds. This renews
+only the observer, not the API. An explicit stop still stops the sampler. Treat
+`stopped/duration_elapsed` as planned renewal only if new samples resume within
+120 seconds; otherwise report a monitoring failure. One expected daily restart
+is normal, while repeated unexpected restarts, OOM or a restart-limit failure
+require attention. Actual day-boundary renewal and boot recovery must be
+distinguished from configuration verification until observed.
+
+After persistent sampling is accepted, a desktop heartbeat should inspect
+freshness, exact accepted revision, failures and the ongoing acceptance canary.
+It must no longer create transient renewal windows. Server sampling continues
+without the desktop; heartbeat notifications still depend on its host being
+online. Preserve the existing privacy boundary: recurring health checks do not
+authorize authenticated-traffic log exports.
 
 ## Inspect and stop
 

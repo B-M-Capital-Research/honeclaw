@@ -1,7 +1,7 @@
 # Public API Latency Diagnosis
 
 - title: Public API latency diagnosis and safe connection performance optimization
-- status: in_progress (service restored by rollback; optimization incident unresolved)
+- status: in_progress (repair deployed and initially accepted; sustained observation and monitoring active)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -318,3 +318,55 @@ This patch does not remove the pre-existing synchronous joins. A genuine stall i
 The independent read-only Linux sampler has been installed with bounded duration, CPU/memory and private log retention. It probes a no-database configuration handler, no-cookie auth rejection and metadata/storage health. Consecutive failures preserve actual HTTP listener-child evidence; service `active` alone is not acceptance. A recurring task checks availability and sampler freshness, and only reports meaningful failures, recovery or actionable new findings. Detailed operator locations, live timings and process evidence remain in ignored `data/diagnostics`, not this public document.
 
 Production application rollout remains withdrawn while the repair is validated. The existing recovery version is retained. Next: decide and execute the controlled long-duration candidate acceptance window, with the documented residual synchronous-bridge blocking risk and independent monitoring. Keep this task active rather than archiving a still-unaccepted rollout.
+
+## Repair Rollout Preparation — 2026-09-20
+
+- status: in_progress; candidate `42ed74f57a14ae3645e38a6d124e1329732900da` built, production cutover pending
+- verification: isolated candidate workspace tests completed with **2,880 passed, 3 known baseline failures, 117 ignored**. The failures remain the two agent mock streaming tests and the README_EN OpenRouter key-pool documentation assertion named above. Web **649/649**, Worker typecheck and **45/45** passed. CI-safe **23/24 scripts** passed; the finance static contract's same 10 failures were independently reproduced from the retained `9a2f27c7` source. No unexecuted remainder was counted as passing.
+- provenance: immutable Linux build [35506673286](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35506673286) and verified artifact export [35507261859](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35507261859) both succeeded at the exact repair revision. Main and release tags remain unchanged.
+- acceptance: verify actual HTTP listener executable and SHA, supervisor identity, exact metadata revision, storage authority, independent lightweight probes, real concurrent skill-list/detail reads and existing browser-history consistency. Repeat full health after the 30-second metadata cache window and retain independent monitoring beyond initial cutover.
+- risks: only synthetic/local regressions exercise write/cancellation isolation; live verification uses existing read paths without sending test messages. The managed stop policy retains a small new-request race after the final zero-active check; it is not a lossless drain protocol.
+
+## Repaired Candidate Initial Acceptance — 2026-09-20
+
+- status: deployed; persistent monitoring accepted; sustained observation in_progress
+- revision: `42ed74f57a14ae3645e38a6d124e1329732900da`; exact Linux source-runtime bundle, build/export links above. Initial acceptance at **11:22:36 UTC** after two full checks separated by more than the metadata cache interval.
+- live identity/storage: actual HTTP child owns both configured listeners; its executable SHA matches the manifest and `/api/meta`; the supervisor also matches. PostgreSQL and object storage are healthy and authoritative, local durable dependencies are zero, and the retained rollback is `9a2f27c7`.
+- existing history: browser reload completed with no sync warning; all **13 pre-existing message IDs, order and text** matched before/after. No test message, business-data migration, session rebinding or write replay was performed. This is one existing account's read consistency, not a live multi-account write test.
+- formerly-deadlocking path: **12 concurrent skill list/detail reads** completed, all 43 skill identifiers remained stable and detail matched the chosen list entry. Median **281.747 → 69.637 ms**, maximum **299.504 → 82.239 ms** under the same probe.
+- shared auth-query path: **140 synthetic requests** returned expected 401 after rollout. Five invalid-cookie endpoint medians **125.981–249.776 → 2.020–2.308 ms**; a 40-request/four-concurrent batch median **662.087 → 6.444 ms**, p95 **1373.304 → 11.777 ms**. No-cookie medians **3.535–4.636 → 1.250–2.073 ms**. These loopback rejection-path measurements do not claim browser latency or authenticated business-response timing.
+- observation: a low-frequency, bounded, read-only skill-list/detail canary and the independent liveness sampler continue beyond initial acceptance. The prior withdrawn `3e26eb4f` remains unaccepted. Historical incident attribution still has the missing original child-stack limitation documented above.
+
+### Persistent monitoring acceptance
+
+The existing server sampler is now a single enabled, non-transient systemd
+service with the reviewed `/etc` fragment, automatic renewal of each 24-hour
+window, unchanged 30-second cadence/3-second deadlines, 10% CPU, 64 MiB memory,
+eight tasks and four 8 MiB private log segments. Two new healthy samples were
+verified after conversion. The business supervisor and actual Web child stayed
+unchanged. A read-only snapshot inside the sampler's mount namespace found the
+correct repaired Web executable and all four kernel-thread stacks were readable;
+no fault was injected. This verifies configuration and present functionality,
+not an actual reboot or a completed day-boundary renewal.
+
+The existing five-minute heartbeat is ACTIVE and now tracks the full repair
+revision and the bounded read canary. It no longer starts transient sampler
+windows, permits planned daily renewal only while fresh samples resume within
+120 seconds, and remains quiet unless availability, evidence or acceptance
+changes. Server sampling continues independently of the desktop; task
+notifications require the desktop host to be available. No authenticated-traffic
+log automation was enabled. The explicit pending authorization boundary remains
+in the private operator record.
+
+Longer acceptance remains ongoing: the bounded skill-read canary must finish
+its 32 rounds/64 concurrent reads before it is called complete; the heartbeat
+will record that result and continue the 24-hour observation. The active plan
+is intentionally retained for these follow-ups. No additional runtime change
+is needed by this monitoring setup, and no formal release/tag or main merge
+was performed.
+
+Latest handoff checkpoint at 11:41 UTC: **37** post-acceptance health samples
+with no failed probe samples, **17/32** read-canary rounds with stable skill
+identifiers/details and no failure, same business supervisor and zero automatic
+restarts. The long-window canary is still running; the active heartbeat owns
+its completion check.
