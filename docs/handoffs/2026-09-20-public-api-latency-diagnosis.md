@@ -370,3 +370,12 @@ with no failed probe samples, **17/32** read-canary rounds with stable skill
 identifiers/details and no failure, same business supervisor and zero automatic
 restarts. The long-window canary is still running; the active heartbeat owns
 its completion check.
+
+## Observer Connectivity Follow-up — 2026-09-20
+
+- status: in_progress; current long-window acceptance cannot yet be read back
+- At **13:08 UTC**, the observer's default DNS timed out for both the public application and its management transport. Two public resolvers answered successfully. With a current public DNS answer and normal hostname/TLS verification, `/chat` returned **200 in 0.960 s** and no-cookie `/api/public/auth/me` returned **401 in 0.966 s**. This proves those lightweight public paths responded at that check, not authenticated API or storage health.
+- The management transport still timed out before completing TLS/SSH, including a bounded process-local DNS substitution. No system DNS, credential, business service or business record was changed. The fresh server readback is empty; it must not be treated as a successful execution or evidence of a stopped sampler.
+- The last verified server checkpoint remains **11:41 UTC: 37 post-acceptance healthy samples and 17/32 read-canary rounds**. These are historical records, not current health. The expected canary end time does not establish completion; retain the pending acceptance gate until its actual completed/failure records and current health can be retrieved.
+- Next: retry the existing read-only management path on the next observer run, check a fresh sample within 120 seconds, the one enabled persistent sampler, full accepted revision, and the 32-round/64-read completion. Notify on recovery or a new actionable failure; do not repeatedly announce the same known observer outage or restart/redeploy the business service.
+- Verification/documentation: fresh public no-cookie checks and bounded DNS/transport diagnostics only; no runtime source change and no repetition of unchanged regression suites. This plan remains active for recovered observability, bounded acceptance and the first full 24-hour observation; no archive yet.

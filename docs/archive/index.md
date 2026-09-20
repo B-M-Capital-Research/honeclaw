@@ -17,7 +17,7 @@ Last updated: 2026-09-20
 - Current conclusion: initial latency improved, but the candidate was withdrawn after an HTTP responsiveness regression. Service and browser history recovered on the previous runtime. A candidate-introduced cross-runtime driver/bridge deadlock is reproduced by old/new controls. Dedicated-connection repair 42ed74f5 is deployed and initially accepted; original production stacks were not retained, so unique historical attribution remains bounded. The original 3e26eb4f acceptance stays withdrawn.
 - Repair build/export: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35506673286 and https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35507261859
 - Runbook: `docs/runbooks/api-liveness-monitoring.md`
-- Next entry point: finish the bounded repaired-candidate canary and first 24-hour observation; persistent single-instance monitoring is already accepted. Do not merge or redeploy withdrawn 3e26eb4f as accepted.
+- Next entry point: restore observer management connectivity and read actual bounded-canary completion/current health, then finish the first 24-hour observation. At 13:08 UTC public lightweight paths responded, but the management readback was unavailable; the last server checkpoint remains historical. Persistent single-instance monitoring was accepted earlier. Do not merge or redeploy withdrawn 3e26eb4f as accepted.
 
 ## 2026-09-13
 
