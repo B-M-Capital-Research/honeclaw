@@ -29,7 +29,7 @@ on:
         type: string
 
 concurrency:
-  group: runtime-image-${{ github.ref }}
+  group: runtime-image-${{ github.ref }}-${{ inputs.export_revision || 'build' }}
   cancel-in-progress: false
 
 permissions:
