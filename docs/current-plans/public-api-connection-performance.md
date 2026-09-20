@@ -1,7 +1,7 @@
 # Public API Connection Performance
 
 - title: Reduce shared API CPU cost with isolated PostgreSQL connection reuse
-- status: archived (production rollout and acceptance completed)
+- status: in_progress (post-rollout production hang; restore service and diagnose)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -50,3 +50,13 @@ User authorized: “发上线测一下看看”. No formal version/tag requested
 - [x] Append rollout evidence to the same-day handoff, update decision/archive index, archive this plan and remove the active index entry.
 
 Completion: deployed exact `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; authenticated origin samples and 140 auth rejection checks passed, 13 live message IDs/order/content unchanged, previous artifact retained. See the handoff for baseline test failures, the restart-window 502s and follow-ups.
+
+## Withdrawal Follow-up
+
+- [x] Restore the previous runtime and verify the public API and existing browser history.
+- [x] Withdraw the earlier deployment acceptance in the handoff, decision and archive index; keep detailed operator evidence outside version control.
+- [ ] Reproduce the HTTP responsiveness regression in isolation and identify the cause before modifying runtime code.
+- [ ] Add a cause-specific regression and validate sustained responsiveness plus account/session isolation before another rollout.
+- [ ] Archive only after the causal investigation and required fix/verification are complete; the performance rollout remains withdrawn.
+
+Affected files: cloud_runtime.rs, cloud_runtime/query_pool.rs and tests if implicated; the same-day handoff, decisions, current-plan index and archive index. No speculative runtime change was made during recovery.

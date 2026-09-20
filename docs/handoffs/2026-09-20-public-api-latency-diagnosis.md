@@ -1,12 +1,12 @@
 # Public API Latency Diagnosis
 
 - title: Public API latency diagnosis and safe connection performance optimization
-- status: done (production rollout and acceptance completed)
+- status: in_progress (service restored by rollback; optimization incident unresolved)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
 - related_files: Cargo.toml; deploy/runtime/Dockerfile; crates/hone-core/src/cloud_runtime.rs; memory/src/web_auth.rs; crates/hone-web-api/src/routes/public.rs; crates/hone-web-api/src/routes/billing.rs; crates/hone-web-api/src/routes/research_overview.rs
-- related_docs: docs/deliverables.md; docs/archive/plans/public-api-connection-performance.md; docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime; docs/runbooks/source-web-startup.md
+- related_docs: docs/deliverables.md; docs/current-plans/public-api-connection-performance.md; docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime; docs/runbooks/source-web-startup.md
 - related_prs: none
 
 ## Summary
@@ -153,7 +153,7 @@ Do not buy a larger plan as the first remediation. After reducing origin latency
 
 ## Next Entry Point
 
-Production is now running the isolated optimization revision, with rollout evidence appended below. Preserve the change in future main integration, observe real-load queueing, and measure residual browser/network latency before changing Cloudflare products. The earlier diagnostic and local implementation stages remain historical evidence.
+Production has been rolled back to `9a2f27c7…` after the optimized revision stopped responding. Read the appended incident stage first. The causal trigger remains unresolved; earlier successful latency samples are historical evidence, not current deployment approval.
 
 ## Implementation Stage — 2026-09-20
 
@@ -275,3 +275,12 @@ A separate anonymous `auth/me` experiment used six sequential requests in one cu
 Two extra inactive artifacts (`a50f9186…`, `93818046…`) were pruned only after archive checksums and bundle manifests matched downloaded recoverable copies, current/previous guards passed, and no process executable used either directory. [First backup export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498891694), [second backup export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35499819831). Actions exports have seven-day retention; the pinned registry images remain the rebuild-free recovery source. Root disk free space finished at **2.9 GiB**; temporary uploaded archives and the completed cutover task were cleaned. Disk capacity remains modest and should be checked before another artifact is staged.
 
 Follow-up: include `3e26eb4f` when integrating the published branch into main; evaluate residual browser/network delay with comparable authenticated samples before purchasing Cloudflare acceleration. A short low-volume acceptance run cannot establish long-term high-load queue behavior or prove the absence of every possible isolation bug.
+
+
+## Rollout Withdrawal — 2026-09-20
+
+- status: withdrawn; service recovered; liveness investigation open
+- The earlier acceptance is withdrawn after a reported HTTP responsiveness regression. The candidate is no longer deployed; the previous runtime was restored and the public page and existing conversation history load again.
+- Do not merge or redeploy `3e26eb4f` as an accepted performance fix. Its initial short-run latency measurements remain historical evidence, not sustained-readiness approval.
+- No cause-specific product patch has been made. Recovery also restarted the service, so it does not establish which code path caused the incident. Reproduce the liveness failure, add a targeted regression and complete sustained validation before proposing another rollout.
+- Detailed operator evidence is retained locally under the ignored `data/diagnostics/` directory and excluded from this public repository update.

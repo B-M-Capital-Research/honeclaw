@@ -6,15 +6,15 @@ Last updated: 2026-09-20
 
 ### Public API Latency Diagnosis and Connection Optimization
 
-- Status: done; deployed and measured on 2026-09-20
-- Plan: `docs/archive/plans/public-api-connection-performance.md`
+- Status: withdrawn; service recovered; regression investigation in_progress
+- Plan: `docs/current-plans/public-api-connection-performance.md`
 - Handoff: `docs/handoffs/2026-09-20-public-api-latency-diagnosis.md`
 - Decision: `docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime`
 - Commit: `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; branch `codex/api-query-pool-performance-20260920` (main not advanced)
 - Build: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498221222
 - Verification: 8 optimized pool safety and 93 explicit PostgreSQL memory regressions; isolated workspace 2874 passed with 3 pre-existing failures; exact immutable runtime/storage acceptance; 13 live message IDs/order/content unchanged; 140 common-auth-path rejection checks.
-- Current conclusion: authenticated origin medians after rollout were me 12.777 ms, research overview 39.676 ms, bootstrap 36.285 ms and pushes 15.571 ms. Small-sample baselines, the earlier overview sample and restart-window 502s are explicit in the handoff. Exclusive query pooling and optimized code removed substantial shared origin overhead; no Cloudflare upgrade was purchased.
-- Next entry point: preserve `3e26eb4f` in future main integration/deployments; compare residual network latency and watch pool queueing under real load. Prior live artifact `9a2f27c7…` remains the immediate rollback target.
+- Current conclusion: initial latency improved, but the candidate was withdrawn after an HTTP responsiveness regression. Service and browser history recovered on the previous runtime. The exact causal defect remains unresolved; initial acceptance is withdrawn.
+- Next entry point: reproduce the liveness failure in isolation and add a targeted regression before reconsidering 3e26eb4f. Do not merge or redeploy this candidate as accepted.
 
 ## 2026-09-13
 
