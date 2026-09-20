@@ -44,6 +44,7 @@ User authorized: “发上线测一下看看”. No formal version/tag requested
 - [ ] Re-read live revision, service topology, active chats and rollback target; capture matched pre-deploy API timings.
 - [ ] Create an isolated production-based checkout containing only this optimization, regression tests and matching documentation. Review diff and run candidate checks.
 - [ ] Publish the reviewed candidate branch and build the exact immutable Linux GHCR artifact through Runtime Image; no macOS binary or production-host compilation.
+- [ ] Add a bounded Runtime Image export mode using job-scoped package read permission and a checksummed Actions artifact, because the operator credential cannot pull the private registry. Do not expand operator token scopes or transfer a broad credential to production.
 - [ ] Verify bundle, environment, free disk and two idle-chat reads; atomically switch and restart with rollback on failed acceptance.
 - [ ] Validate exact live revision, PostgreSQL/object-store authority, expected channel workers, account/session isolation and before/after API latency.
 - [ ] Append rollout evidence to the same-day handoff, update decision/archive index, archive this plan and remove the active index entry.

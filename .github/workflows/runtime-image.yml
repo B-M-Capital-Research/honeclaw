@@ -21,6 +21,12 @@ on:
       - "scripts/verify_runtime_bundle.sh"
       - "scripts/stage_ghcr_runtime.sh"
   workflow_dispatch:
+    inputs:
+      export_revision:
+        description: "Export an already-built exact Git SHA as a checksummed artifact (no rebuild)"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: runtime-image-${{ github.ref }}
@@ -35,6 +41,7 @@ env:
 
 jobs:
   build-and-publish:
+    if: github.event_name != 'workflow_dispatch' || inputs.export_revision == ''
     name: build-and-publish (linux/amd64)
     runs-on: ubuntu-latest
 
@@ -110,3 +117,53 @@ jobs:
             echo "- Digest: \`$digest\`"
             echo "- Platform: \`linux/amd64\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  export-runtime:
+    name: Export verified existing runtime
+    if: github.event_name == 'workflow_dispatch' && inputs.export_revision != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Validate exact revision
+        env:
+          EXPORT_REVISION: ${{ inputs.export_revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPORT_REVISION" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Log in with job-scoped read permission
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export and verify immutable bundle
+        env:
+          EXPORT_REVISION: ${{ inputs.export_revision }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 "${IMAGE_NAME}:${EXPORT_REVISION}"
+          immutable_ref="$(docker image inspect "${IMAGE_NAME}:${EXPORT_REVISION}" --format '{{index .RepoDigests 0}}')"
+          [[ "$immutable_ref" =~ ^ghcr.io/b-m-capital-research/honeclaw-runtime@sha256:[0-9a-f]{64}$ ]]
+          container_id="$(docker create --platform linux/amd64 "$immutable_ref" /unused)"
+          trap 'docker rm -f "$container_id" >/dev/null' EXIT
+          docker cp "${container_id}:/release" ./runtime-release
+          bash runtime-release/tools/verify_runtime_bundle.sh runtime-release "$EXPORT_REVISION"
+          mkdir runtime-export
+          printf '%s\n' "$immutable_ref" > runtime-export/IMAGE_DIGEST
+          tar -C runtime-release -czf runtime-export/runtime-bundle.tar.gz .
+          (cd runtime-export && sha256sum runtime-bundle.tar.gz > runtime-bundle.tar.gz.sha256)
+
+      - name: Upload checksummed runtime bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runtime-bundle-${{ inputs.export_revision }}
+          path: runtime-export/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

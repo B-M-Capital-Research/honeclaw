@@ -204,6 +204,26 @@ The GHCR runtime manifest does not include a public Web bundle. Do not point `HO
 
 After restart, compare the loopback `8088/chat` and public Pages entry/chunk hashes with the exact source build. A successful Pages deployment does not prove the origin fallback exists. The September 5 recovery found the previous path missing and loopback `/chat` returning 404; see its handoff for the accepted replacement and exact hashes.
 
+If the operator's existing GitHub login cannot read the private registry, do not
+expand its scopes merely to deploy. `Runtime Image` also supports an
+`export_revision` input for an **already published exact 40-character SHA**:
+
+```bash
+gh workflow run runtime-image.yml --ref <reviewed-workflow-ref> -f export_revision=<exact-runtime-sha>
+gh run download <export-run-id> -n runtime-bundle-<exact-runtime-sha> -D <local-export-dir>
+```
+
+This mode skips compilation and publishing. Its job has `packages: read`, pulls
+the immutable image, verifies the embedded revision and every payload file, and
+uploads a seven-day artifact with `runtime-bundle.tar.gz`, its SHA-256 file and
+`IMAGE_DIGEST`. The job's registry credential never reaches the operator or
+managed host. Transfer only this bundle and its checksum through the managed
+access path; verify the archive checksum locally and remotely, extract into a
+new release-root staging directory, and run `verify_runtime_bundle.sh` with the
+exact expected revision before moving it to `<revision>-ghcr-runtime`. Preserve
+the same disk floor, current/rollback retention, drain and cutover checks as the
+direct GHCR path. Archive download and staging do not authorize a restart.
+
 The current GHCR runtime bundle is executable-only: it contains the six managed
 binaries, release metadata, the soul asset, and verification tooling, but it
 does not contain the repository `skills/` tree or public share images. A
