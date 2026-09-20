@@ -121,7 +121,7 @@ Use `--allow-unpushed` only for an explicitly accepted local canary. `--skip-bui
 Every worktree keeps its own writable Cargo `target/`. Do not point two worktrees at one shared target: concurrent builds can overwrite same-named outputs and invalidate the revision-to-binary proof used by direct deployment. The repository instead bounds the high-churn non-release lanes:
 
 - `[profile.dev]`: line-level debug information and no incremental state for ordinary build/check/run work;
-- `[profile.source-runtime]`: line-level debug information, no incremental state, output under `target/source-runtime/`;
+- `[profile.source-runtime]`: production optimization (`opt-level=3`) for application code and dependencies, line-level debug information, no incremental state, output under `target/source-runtime/`; it inherits dev's overflow checks/debug assertions, so enabling optimization does not remove those checks;
 - `[profile.test]`: line-level debug information, no incremental state, while the normal `cargo test ...` command remains unchanged.
 
 The source release store keeps the verified `current` and `previous` revisions. Inspect both with:

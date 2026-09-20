@@ -2,6 +2,22 @@
 
 Last updated: 2026-09-05
 
+## D-2026-09-20-02 Exclusive Query Connections and Optimized Source Runtime
+
+- title: Reuse ordinary PostgreSQL connections without sharing transaction state
+- status: accepted (local implementation; production rollout pending)
+- created_at: 2026-09-20
+- updated_at: 2026-09-20
+- owner: Codex
+- related_files: Cargo.toml; crates/hone-core/src/cloud_runtime.rs; crates/hone-core/src/cloud_runtime/query_pool.rs
+- related_docs: docs/handoffs/2026-09-20-public-api-latency-diagnosis.md; docs/invariants.md
+- Context: repeated fresh SCRAM authentication in an unoptimized binary delayed multiple APIs and unrelated no-DB requests on production's two request-worker threads. Actor/session isolation must not be weakened to reduce latency.
+- Decision: private ordinary autocommit methods borrow exclusive leases from a four-connection pool keyed by the resolved database configuration. The pool is separate from existing schema/event-store cached clients. Dedicated transactions/advisory locks keep their ownership. Query errors, cancellation and panic discard the connection/driver without retry; ordinary leases expose tracked query methods rather than transaction/session APIs. Connection-local test fixtures remain pinned and named-schema tests exercise the pool.
+- Decision: source-runtime retains dev's overflow checks/debug assertions and adds opt-level=3 while preserving debug=1, incremental=false and its existing deployment output/provenance.
+- Verification: real PostgreSQL concurrency, namespace/actor isolation, transaction cancellation/rollback, advisory lock, reuse/bounds and disconnect tests; full results and performance comparison are in the handoff.
+- Risks: a failed write may have committed before transport failure, so automatic replay is prohibited. Dedicated/cached connections are additional to the four ordinary-query leases. End-to-end production improvement remains unmeasured until an isolated matching revision is deployed.
+
+
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
 - Status: Accepted

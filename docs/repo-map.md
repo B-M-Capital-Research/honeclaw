@@ -19,6 +19,8 @@ Last updated: 2026-09-05
 
 ## Repository Overview
 
+- `crates/hone-core/src/cloud_runtime/query_pool.rs` owns bounded exclusive PostgreSQL leases for ordinary `CloudPgRuntime` autocommit operations. Its tracked query methods discard failed/cancelled connections instead of replaying operations. Schema/event-store cached clients and dedicated transaction/advisory-lock connections remain separate. The adjacent `query_pool/tests.rs` contains real-PostgreSQL concurrency/isolation regressions and an ignored, explicitly invoked connection benchmark.
+
 - `docs/`
   - `current-plan.md`: active task index
   - `current-plans/`: single-task plan pages for parallel work

@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-09-13
-状态：有 16 个活跃任务
+状态：有 17 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public API 性能优化上线与隔离验证**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-api-connection-performance.md`
+  - 摘要：用户已授权上线；从生产版本提取独立候选，构建 GHCR 产物、保留回滚点，并验证账号/会话隔离及接口前后时延
 
 - **公司完整分析与任务进度**
   - 状态：`in_progress`
