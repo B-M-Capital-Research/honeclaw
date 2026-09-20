@@ -1,19 +1,19 @@
 # Public API Latency Diagnosis
 
 - title: Public API latency diagnosis and safe connection performance optimization
-- status: done (local implementation and verification; production rollout pending)
+- status: done (production rollout and acceptance completed)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
 - related_files: Cargo.toml; deploy/runtime/Dockerfile; crates/hone-core/src/cloud_runtime.rs; memory/src/web_auth.rs; crates/hone-web-api/src/routes/public.rs; crates/hone-web-api/src/routes/billing.rs; crates/hone-web-api/src/routes/research_overview.rs
-- related_docs: docs/deliverables.md; docs/current-plans/public-api-connection-performance.md; docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime; docs/runbooks/source-web-startup.md
+- related_docs: docs/deliverables.md; docs/archive/plans/public-api-connection-performance.md; docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime; docs/runbooks/source-web-startup.md
 - related_prs: none
 
 ## Summary
 
 The user's small authenticated JSON requests take about two seconds. Read-only production measurements reproduce substantial origin CPU cost even over loopback. The leading explanation is repeated PostgreSQL connection/authentication on sequential request paths, amplified by an unoptimized production build and concurrent requests. Network transit contributes, but buying Cloudflare acceleration first is not supported by this evidence.
 
-The active production executable is revision `9a2f27c7c37f694ae3ac63ca1c5f7db71f0cd62d`, from its `-ghcr-runtime` release directory. Code analysis used `git show` at that revision, not the older, dirty local checkout.
+At the initial diagnostic stage, the active production executable was revision `9a2f27c7c37f694ae3ac63ca1c5f7db71f0cd62d`, from its `-ghcr-runtime` release directory. Code analysis used `git show` at that revision, not the older, dirty local checkout.
 
 ## What Changed
 
@@ -135,7 +135,7 @@ fn main() {
 }
 ```
 
-## Risks / Follow-ups
+## Diagnostic-stage Risks / Follow-ups (rollout results appended below)
 
 - Do not call the whole two seconds network latency or claim an exact backend/network percentage from Caddy logs.
 - The full authenticated path was observed in browser and logs, not directly benchmarked with copied credentials on loopback.
@@ -153,7 +153,7 @@ Do not buy a larger plan as the first remediation. After reducing origin latency
 
 ## Next Entry Point
 
-Implementation is now complete locally as described below. Next select an isolated candidate revision aligned with production, then measure the four exact authenticated endpoints sequentially and concurrently, separating auth, connection establishment, SQL and serialization. Keep the browser/origin comparison, then decide whether residual network delay justifies Smart Shield + Argo. No production speedup percentage is promised before that A/B.
+Production is now running the isolated optimization revision, with rollout evidence appended below. Preserve the change in future main integration, observe real-load queueing, and measure residual browser/network latency before changing Cloudflare products. The earlier diagnostic and local implementation stages remain historical evidence.
 
 ## Implementation Stage — 2026-09-20
 
@@ -211,3 +211,67 @@ This measures connection/query cost, **not** authenticated HTTP latency or produ
 - On the candidate, exercise multiple authenticated accounts/conversations concurrently and verify returned actor/session IDs and saved records, plus logout/revocation and transaction/cancellation behavior. Then compare `/me`, `/research-overview`, `/bootstrap`, `/pushes?limit=1` p50/p95 and CPU with matched origin/browser measurements.
 - Four ordinary leases are a conservative starting bound, not a total-process PostgreSQL connection limit: dedicated/cached connections are additional. Observe queueing and long-running queries before tuning capacity. No automatic write retry may be added as a performance shortcut.
 - No schema/data migration is introduced. Rollback selects the prior revision artifact; do not weaken authentication or actor filtering. Cloudflare acceleration remains a subsequent decision based on residual network delay and verified route coverage.
+
+
+## Production Rollout and Acceptance — 2026-09-20
+
+- status: done; deployed and measured
+- User authorization: “发上线测一下看看”. No formal version or release tag was requested or created.
+- Cutover: **2026-09-20 08:27:16 UTC / 16:27:16 Asia/Shanghai**. Accepted exact runtime revision: `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`, based on previous live revision `9a2f27c7c37f694ae3ac63ca1c5f7db71f0cd62d`.
+- Source: isolated branch `codex/api-query-pool-performance-20260920`. The shared dirty checkout was not deployed; unrelated edits, including the OSS body-limit patch in the same source file, were excluded. Remote main was not advanced by this rollout. Future main-based deployment must include this optimization to preserve the gains.
+- [Immutable Linux build](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498221222); [candidate bundle export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35499109600). Image digest: `sha256:fd4c2eaa6267e26e3a8a9d2488accfe070aa649411cacac406e201b839de8bbe`; archive SHA-256: `f9314169d0077640be70cd684880beea62ce86f2f19fc1450dcde40f763a3963`; live CLI SHA-256: `c5dfba90fb7eabbfa3f0515af32faf26d8a3db9a0d39eb29d20887e715818d46`.
+- Runtime Image export support is in `6801d5d3`, with per-revision export concurrency in `516c0543`. These operations-only commits did not change the deployed runtime code. The export job uses job-scoped `packages: read`, checks an exact revision and immutable digest, verifies the bundle, and produces a checksummed artifact. No operator-token scope was expanded and no broad token was installed on production.
+- `source-runtime` is compiled with `opt-level=3`, confirmed by the build log. `/api/meta.build.profile` still says `debug` because that field derives from retained debug assertions; it does not mean this executable is unoptimized.
+
+### Candidate verification
+
+The isolated candidate passed its eight optimized PostgreSQL pool safety regressions and 93 explicit PostgreSQL memory regressions. Full workspace tests produced **2874 passes, 3 failures, 115 ignored**. The three failures are the pre-existing Agent mocks `deferred_prefix_ignores_structurally_invalid_datafetch_activation` and `first_batch_identity_route_limit_executes_only_six_valid_routes`, plus `config::tests::config_example_avoids_stale_config_knobs` (the unchanged production README_EN is missing literal `llm.providers.openrouter.api_key/api_keys`). This differs from the older dirty-checkout failure list above; neither run is represented as wholly green. Runtime image and source deployment shell contracts passed. No frontend or Worker product code was changed by the candidate.
+
+### Successful authenticated origin requests
+
+These are **Caddy origin durations for HTTP 200**, observed while the existing signed-in browser loaded chat/research pages and polled pushes. No valid Cookie was exported or replayed. Pre-rollout sampling ended 08:18:27 UTC; post-rollout samples were strictly filtered to timestamps at or after cutover and ended 08:36:20 UTC. Small samples and changing background work limit statistical claims; this is not a sustained load test or browser end-to-end p95.
+
+| Endpoint | Before: median ms (n) | After: median ms (n) | After min–max ms |
+| --- | ---: | ---: | ---: |
+| `/api/public/auth/me` | 939.667 (1) | 12.777 (3) | 12.711–13.599 |
+| `/api/public/research-overview` | 1636.940 (1; earlier 06:29:57 diagnostic sample) | 39.676 (3) | 26.170–57.588 |
+| `/api/public/bootstrap` | 2993.413 (3) | 36.285 (4) | 23.686–112.295 |
+| `/api/public/pushes` | 1461.364 (7) | 15.571 (11) | 9.741–51.196 |
+
+The before overview sample is explicitly earlier because no successful overview request occurred in the immediate pre-rollout window. Do not turn this table into a uniform paired A/B percentage or a pure network subtraction. The broad origin reduction confirms that repeated connection/authentication and unoptimized CPU work were major shared contributors. Cloudflare configuration and subscription were unchanged.
+
+### Controlled common-auth-path check
+
+Python urllib on production loopback, same five paths, ten sequential invalid-cookie requests per path; all returned JSON HTTP 401. Fake session values are deliberately absent and non-secret. This exercises only the common absent-session lookup, not successful business handlers. Ten no-cookie checks per path and forty requests at four-way concurrency also returned 401 (140 checks total per deployment).
+
+| Endpoint | Before median ms | After median ms |
+| --- | ---: | ---: |
+| auth/me | 153.731 | 2.785 |
+| research-overview | 153.874 | 3.061 |
+| bootstrap | 157.538 | 2.602 |
+| pushes?limit=1 | 154.674 | 3.435 |
+| history | 139.746 | 2.535 |
+
+Four-way concurrency, forty invalid-session requests: median **445.024 → 8.044 ms**, empirical p95 **680.820 → 14.664 ms**, max **720.014 → 64.859 ms**. The p95 uses the sorted element at `floor((n-1)*0.95)`. No-cookie medians after rollout were 1.373–1.858 ms. Timing is diagnostic evidence, not a CI gate.
+
+### Residual public-path latency
+
+A separate anonymous `auth/me` experiment used six sequential requests in one curl process over HTTP/2, without cookies. All returned the expected 401. First request (new connection): total **1143.358 ms**, cumulative TLS completion 625.201 ms. Five connection-reusing requests: total **200.662–202.645 ms**, median **201.088 ms** (`num_connects=0`). The same no-cookie origin path was approximately 1–2 ms locally. This demonstrates substantial residual public-path/client-connection overhead after the backend fix; it does not isolate Cloudflare, each network hop, or mainland no-proxy user experience. It is an anonymous control, not the authenticated browser's end-to-end measurement. The public chat page also returned 200. Do not claim that users' whole requests now take only the origin table's 13–40 ms.
+
+### Correctness, health and cutover impact
+
+- Before switching, three reads reported zero active chats. The independent cutover task verified all bundle checksums and environment presence, switched the release symlink atomically and restarted the managed web service. Failed revision/storage acceptance would have restored the prior symlinks and restarted the previous artifact.
+- After rollout, the live revision and executable path matched the intended bundle. PostgreSQL/object storage remained authoritative and healthy, with zero local durable dependencies. Final 08:40:27 UTC inspection: service active/running, `NRestarts=0`, exit status 0, active chats 0.
+- The existing browser's **13 message IDs, order and rendered contents matched exactly** before/after restart and again after visiting research and returning to chat. All 13 IDs were distinct; captured browser errors after cutover: 0. This is one live account/read-path check. Cross-actor/session writes, cancellation, rollback, advisory locks and connection failure behavior are covered by the isolated PostgreSQL regressions, not claimed as a live multi-account canary.
+- PostgreSQL sample: eight idle clients, one active inspection, five background processes, **no idle-in-transaction**. The pool's four-lease bound applies to ordinary clients, not the additional dedicated/cached connections.
+- The origin recorded **two HTTP 502 responses at 08:27:17 UTC**, both during the service restart. Through final health inspection there were no subsequent public API 5xx responses; 59 successful public API responses were recorded. This was a brief restart interruption, not zero-downtime deployment.
+- Nine sampled application ERROR entries after rollout were all scheduler-class messages with normalized shapes already present during the prior 24 hours. No sampled PostgreSQL/auth errors or panic. Classification and historical comparison ran on the server and exported counts only; no raw error rows were retained in this handoff. Existing scheduler issues remain outside this rollout.
+- There were no enabled/active standalone channel worker units before rollout; none was added or enabled. Configuration, database schema, user data and authentication strength were unchanged by the deployment; browser reads retain their normal application last-seen behavior.
+
+### Retention and rollback
+
+`/opt/hone/previous` points to the verified `9a2f27c7c37f694ae3ac63ca1c5f7db71f0cd62d-ghcr-runtime` artifact. Two earlier bundles (`17a25de6…`, `161fe4b3…`) were also retained. Rollback requires the normal active-chat check, atomically selecting the previous release, restarting the web service, then verifying `/api/meta`, storage health and the executable path. No database migration or rollback is needed.
+
+Two extra inactive artifacts (`a50f9186…`, `93818046…`) were pruned only after archive checksums and bundle manifests matched downloaded recoverable copies, current/previous guards passed, and no process executable used either directory. [First backup export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498891694), [second backup export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35499819831). Actions exports have seven-day retention; the pinned registry images remain the rebuild-free recovery source. Root disk free space finished at **2.9 GiB**; temporary uploaded archives and the completed cutover task were cleaned. Disk capacity remains modest and should be checked before another artifact is staged.
+
+Follow-up: include `3e26eb4f` when integrating the published branch into main; evaluate residual browser/network delay with comparable authenticated samples before purchasing Cloudflare acceleration. A short low-volume acceptance run cannot establish long-term high-load queue behavior or prove the absence of every possible isolation bug.

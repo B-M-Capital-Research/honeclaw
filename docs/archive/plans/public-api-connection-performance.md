@@ -1,7 +1,7 @@
 # Public API Connection Performance
 
 - title: Reduce shared API CPU cost with isolated PostgreSQL connection reuse
-- status: in_progress (local implementation verified; production rollout authorized)
+- status: archived (production rollout and acceptance completed)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -35,16 +35,18 @@ Remove repeated PostgreSQL authentication from ordinary API queries and enable o
 - Production runs a newer revision than this dirty checkout; no unrelated changes may be silently deployed.
 - Ordinary reusable clients must not share transaction/session state with schema migrations or advisory locks.
 - Docker is unavailable locally; safety tests used the existing native development PostgreSQL. A separate temporary SCRAM-enabled PostgreSQL served the benchmark and was stopped after use.
-- Production HTTP gains and pool queueing under production load remain unmeasured; rollout must follow the handoff's account/session isolation and revision-selection checks.
+- Production HTTP gains are recorded in the handoff. High-load pool queueing and a live multi-account write canary remain outside this short acceptance run; isolation/transaction behavior was verified with isolated PostgreSQL regressions.
 
 ## Production Rollout — 2026-09-20
 
 User authorized: “发上线测一下看看”. No formal version/tag requested.
 
-- [ ] Re-read live revision, service topology, active chats and rollback target; capture matched pre-deploy API timings.
-- [ ] Create an isolated production-based checkout containing only this optimization, regression tests and matching documentation. Review diff and run candidate checks.
-- [ ] Publish the reviewed candidate branch and build the exact immutable Linux GHCR artifact through Runtime Image; no macOS binary or production-host compilation.
-- [ ] Add a bounded Runtime Image export mode using job-scoped package read permission and a checksummed Actions artifact, because the operator credential cannot pull the private registry. Do not expand operator token scopes or transfer a broad credential to production.
-- [ ] Verify bundle, environment, free disk and two idle-chat reads; atomically switch and restart with rollback on failed acceptance.
-- [ ] Validate exact live revision, PostgreSQL/object-store authority, expected channel workers, account/session isolation and before/after API latency.
-- [ ] Append rollout evidence to the same-day handoff, update decision/archive index, archive this plan and remove the active index entry.
+- [x] Re-read live revision, service topology, active chats and rollback target; capture matched pre-deploy API timings.
+- [x] Create an isolated production-based checkout containing only this optimization, regression tests and matching documentation. Review diff and run candidate checks.
+- [x] Publish the reviewed candidate branch and build the exact immutable Linux GHCR artifact through Runtime Image; no macOS binary or production-host compilation.
+- [x] Add a bounded Runtime Image export mode using job-scoped package read permission and a checksummed Actions artifact, because the operator credential cannot pull the private registry. Do not expand operator token scopes or transfer a broad credential to production.
+- [x] Verify bundle, environment, free disk and two idle-chat reads; atomically switch and restart with rollback on failed acceptance.
+- [x] Validate exact live revision, PostgreSQL/object-store authority, expected channel workers, account/session isolation and before/after API latency.
+- [x] Append rollout evidence to the same-day handoff, update decision/archive index, archive this plan and remove the active index entry.
+
+Completion: deployed exact `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; authenticated origin samples and 140 auth rejection checks passed, 13 live message IDs/order/content unchanged, previous artifact retained. See the handoff for baseline test failures, the restart-window 502s and follow-ups.

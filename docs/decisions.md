@@ -1,11 +1,11 @@
 # Decisions
 
-Last updated: 2026-09-05
+Last updated: 2026-09-20
 
 ## D-2026-09-20-02 Exclusive Query Connections and Optimized Source Runtime
 
 - title: Reuse ordinary PostgreSQL connections without sharing transaction state
-- status: accepted (local implementation; production rollout pending)
+- status: accepted (deployed as 3e26eb4f; production measurements in handoff)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -15,7 +15,7 @@ Last updated: 2026-09-05
 - Decision: private ordinary autocommit methods borrow exclusive leases from a four-connection pool keyed by the resolved database configuration. The pool is separate from existing schema/event-store cached clients. Dedicated transactions/advisory locks keep their ownership. Query errors, cancellation and panic discard the connection/driver without retry; ordinary leases expose tracked query methods rather than transaction/session APIs. Connection-local test fixtures remain pinned and named-schema tests exercise the pool.
 - Decision: source-runtime retains dev's overflow checks/debug assertions and adds opt-level=3 while preserving debug=1, incremental=false and its existing deployment output/provenance.
 - Verification: real PostgreSQL concurrency, namespace/actor isolation, transaction cancellation/rollback, advisory lock, reuse/bounds and disconnect tests; full results and performance comparison are in the handoff.
-- Risks: a failed write may have committed before transport failure, so automatic replay is prohibited. Dedicated/cached connections are additional to the four ordinary-query leases. End-to-end production improvement remains unmeasured until an isolated matching revision is deployed.
+- Risks: a failed write may have committed before transport failure, so automatic replay is prohibited. Dedicated/cached connections are additional to the four ordinary-query leases. Successful authenticated origin requests now complete in tens of milliseconds in the recorded low-volume samples. Browser end-to-end and sustained high-load queueing require separate measurements.
 
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
