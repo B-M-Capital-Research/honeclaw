@@ -166,6 +166,7 @@ pub fn reset_skill_registry(path: &Path) -> Result<SkillRegistry, String> {
 }
 
 fn read_cloud_skill_registry(postgres: CloudPgRuntime) -> HoneResult<SkillRegistry> {
+    let postgres = postgres.with_dedicated_query_connections();
     let value = run_cloud_skill_registry(async move { postgres.get_skill_registry().await })?;
     match value {
         Some(value) => serde_json::from_value::<SkillRegistry>(value)
@@ -178,6 +179,7 @@ fn write_cloud_skill_registry(
     postgres: CloudPgRuntime,
     registry: &SkillRegistry,
 ) -> HoneResult<()> {
+    let postgres = postgres.with_dedicated_query_connections();
     let value =
         serde_json::to_value(registry).map_err(|err| HoneError::Serialization(err.to_string()))?;
     run_cloud_skill_registry(async move { postgres.import_skill_registry(Some(value)).await })?;
@@ -258,5 +260,158 @@ mod tests {
         let path = root.join("runtime").join("skill_registry.json");
         let registry = load_skill_registry(&path);
         assert!(registry.entries.is_empty());
+    }
+
+    fn run_cloud_registry_bridge_child(mode: &str, namespace: String) {
+        assert!(matches!(mode, "read" | "write"));
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let postgres =
+                CloudPgRuntime::from_cloud_config(&hone_core::config::CloudConfig::default())
+                    .expect("Postgres test configuration")
+                    .with_isolated_test_connection(namespace)
+                    .unwrap();
+            let fixture = SkillRegistry {
+                updated_at: Some("2026-09-20T00:00:00Z".into()),
+                entries: BTreeMap::from([(
+                    "isolated-fixture".into(),
+                    SkillRegistryEntry {
+                        enabled: false,
+                        updated_at: "2026-09-20T00:00:00Z".into(),
+                    },
+                )]),
+                ..SkillRegistry::default()
+            };
+            let value = serde_json::to_value(&fixture).unwrap();
+            let setup = postgres.connect_cached_client().await.unwrap();
+            setup
+                .batch_execute(
+                    "CREATE TABLE cloud_skill_registry (
+                    registry_key text PRIMARY KEY, registry jsonb NOT NULL,
+                    updated_at timestamptz NOT NULL DEFAULT now()
+                )",
+                )
+                .await
+                .unwrap();
+            setup.execute(
+                "INSERT INTO cloud_skill_registry (registry_key, registry) VALUES ('global', $1)",
+                &[&value],
+            ).await.unwrap();
+            drop(setup);
+
+            // Concurrent cold acquisitions create idle pooled connections whose
+            // driver tasks belong to the owner runtime, before its workers block.
+            let (first, second) =
+                tokio::join!(postgres.get_skill_registry(), postgres.get_skill_registry());
+            assert_eq!(first.unwrap(), Some(value.clone()));
+            assert_eq!(second.unwrap(), Some(value));
+            let expected = if mode == "write" {
+                SkillRegistry {
+                    updated_at: Some("2026-09-20T00:01:00Z".into()),
+                    ..SkillRegistry::default()
+                }
+            } else {
+                fixture
+            };
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let mut tasks = tokio::task::JoinSet::new();
+            for _ in 0..2 {
+                let postgres = postgres.clone();
+                let expected = expected.clone();
+                let barrier = barrier.clone();
+                let write = mode == "write";
+                tasks.spawn(async move {
+                    // Occupy both owner workers before either real sync bridge
+                    // starts. The bridge must not need an owner runtime driver.
+                    barrier.wait();
+                    if write {
+                        // Both writers use the same value: no ordering claim
+                        // about concurrent updates to the shared global row.
+                        write_cloud_skill_registry(postgres, &expected).unwrap();
+                    } else {
+                        assert_eq!(read_cloud_skill_registry(postgres).unwrap(), expected);
+                    }
+                });
+            }
+            while let Some(result) = tasks.join_next().await {
+                result.unwrap();
+            }
+            assert_eq!(
+                postgres.get_skill_registry().await.unwrap(),
+                Some(serde_json::to_value(expected).unwrap())
+            );
+            postgres.evict_cached_test_client();
+        });
+    }
+
+    #[test]
+    fn cloud_skill_registry_sync_bridges_preserve_runtime_liveness() {
+        const CHILD_MODE: &str = "HONE_SKILL_REGISTRY_BRIDGE_CHILD_MODE";
+        const CHILD_NAMESPACE: &str = "HONE_SKILL_REGISTRY_BRIDGE_CHILD_NAMESPACE";
+        if let Ok(mode) = std::env::var(CHILD_MODE) {
+            run_cloud_registry_bridge_child(&mode, std::env::var(CHILD_NAMESPACE).unwrap());
+            return;
+        }
+        for mode in ["read", "write"] {
+            let namespace = format!(
+                "hone_memory_skill_bridge_{}_{}_{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos(),
+                mode
+            );
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "skill_registry::tests::cloud_skill_registry_sync_bridges_preserve_runtime_liveness",
+                    "--exact", "--nocapture",
+                ])
+                .env(CHILD_MODE, mode).env(CHILD_NAMESPACE, &namespace)
+                .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped())
+                .spawn().expect("spawn isolated skill registry bridge regression");
+            // An async timeout on the blocked owner cannot fire. The parent
+            // owns this watchdog and always kills/reaps only its own child.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            let timed_out = loop {
+                if child.try_wait().expect("poll regression child").is_some() {
+                    break false;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    break true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            };
+            let output = child.wait_with_output().expect("reap regression child");
+            let cleanup_runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            cleanup_runtime.block_on(async {
+                let postgres =
+                    CloudPgRuntime::from_cloud_config(&hone_core::config::CloudConfig::default())
+                        .unwrap()
+                        .with_isolated_test_connection(namespace)
+                        .unwrap();
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    postgres.drop_isolated_memory_test_schema(),
+                )
+                .await
+                .expect("bounded isolated schema cleanup")
+                .expect("clean only this regression child's schema");
+            });
+            assert!(
+                !timed_out && output.status.success(),
+                "actual {mode} bridge failed (timed_out={timed_out}): stdout={} stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }

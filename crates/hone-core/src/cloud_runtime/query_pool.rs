@@ -68,6 +68,9 @@ impl PgQueryPool {
 }
 
 enum QueryConnection {
+    // Sync bridges must own both their driver and capacity independently of
+    // the caller runtime; even waiting on the shared semaphore can deadlock.
+    Dedicated(PgConnection),
     Pooled {
         client: Option<PgConnection>,
         pool: Arc<PgQueryPool>,
@@ -119,6 +122,14 @@ pub(super) struct PgQueryClient {
 }
 
 impl PgQueryClient {
+    pub(super) fn dedicated(client: PgConnection) -> Self {
+        Self {
+            connection: QueryConnection::Dedicated(client),
+            in_flight: AtomicUsize::new(0),
+            failed: AtomicBool::new(false),
+        }
+    }
+
     pub(super) fn pinned(client: Arc<Client>) -> Self {
         Self {
             connection: QueryConnection::Pinned(client),
@@ -129,6 +140,7 @@ impl PgQueryClient {
 
     pub(super) fn raw(&self) -> &Client {
         match &self.connection {
+            QueryConnection::Dedicated(client) => client.client(),
             QueryConnection::Pooled { client, .. } => client.as_ref().expect("live lease").client(),
             QueryConnection::Pinned(client) => client,
         }

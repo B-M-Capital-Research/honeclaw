@@ -282,6 +282,7 @@ fn sync_company_profiles_to_cloud(core: &HoneBotCore, session_id: &str) {
     if records.is_empty() {
         return;
     }
+    let postgres = postgres.with_dedicated_query_connections();
     let import_result = run_cloud_company_profile_sync(async move {
         postgres.import_company_profile_files(&records).await
     });

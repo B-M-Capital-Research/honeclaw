@@ -19,7 +19,8 @@ Last updated: 2026-09-05
 
 ## Repository Overview
 
-- `crates/hone-core/src/cloud_runtime/query_pool.rs` owns bounded exclusive PostgreSQL leases for ordinary `CloudPgRuntime` autocommit operations. Its tracked query methods discard failed/cancelled connections instead of replaying operations. Schema/event-store cached clients and dedicated transaction/advisory-lock connections remain separate. The adjacent `query_pool/tests.rs` contains real-PostgreSQL concurrency/isolation regressions and an ignored, explicitly invoked connection benchmark.
+- `crates/hone-core/src/cloud_runtime/query_pool.rs` owns bounded exclusive PostgreSQL leases for ordinary `CloudPgRuntime` autocommit operations. Its tracked query methods discard failed/cancelled connections instead of replaying operations. Schema/event-store cached clients and dedicated transaction/advisory-lock connections remain separate. The adjacent `query_pool/tests.rs` contains real-PostgreSQL concurrency/isolation regressions and an ignored, explicitly invoked connection benchmark. The skill-registry bridge (`hone-tools/src/skill_registry.rs`) and company-profile bridge (`hone-channels/src/response_finalizer.rs`) explicitly bypass both pooled drivers and permits with `with_dedicated_query_connections`. Cross-runtime regressions run in externally bounded child processes.
+- `scripts/diagnose_api_liveness.py` is a bounded read-only Linux sampler with whitelisted HTTP health probes and actual listener-child failure snapshots. `tests/regression/ci/test_diagnose_api_liveness.sh` runs its local fixtures; `docs/runbooks/api-liveness-monitoring.md` documents deployment, private retention and coverage limits.
 
 - `docs/`
   - `current-plan.md`: active task index

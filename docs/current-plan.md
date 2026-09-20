@@ -19,7 +19,7 @@
 - **Public API 性能优化上线与隔离验证**
   - 状态：`in_progress`
   - 计划：`docs/current-plans/public-api-connection-performance.md`
-  - 摘要：已撤下本次性能候选，页面及历史恢复；根因未定位，需隔离复现并补持续可用性回归
+  - 摘要：已撤下候选并恢复服务；已复现同步桥与连接池的跨运行时死锁，最小修复验证及持续监测中
 
 - **公司完整分析与任务进度**
   - 状态：`in_progress`

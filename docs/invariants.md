@@ -13,6 +13,8 @@ Last updated: 2026-08-22
 
 - Ordinary `CloudPgRuntime` autocommit operations borrow an exclusive connection from a bounded pool (four leases per resolved PostgreSQL configuration). They must not issue transaction/session-state SQL or share the cached schema/event-store connection. Transactions and advisory locks keep dedicated connections. Failed or cancelled pooled operations close their transport and are never automatically replayed; an error does not prove a write was not committed. Actor/user predicates and database/namespace cache keys remain mandatory isolation boundaries. Connection-local `pg_temp` fixtures retain their pinned connection; named memory-test schemas use the pool and evict it at cleanup.
 
+- A synchronous bridge that blocks its caller while entering another Tokio runtime must call `CloudPgRuntime::with_dedicated_query_connections()` before its queries. It may borrow neither the caller runtime's PostgreSQL driver nor its pool permits. The skill-registry read/write and company-profile sync bridges use this policy; actor predicates and write completion ordering remain unchanged. Cross-runtime liveness regressions require an external process watchdog because timeouts on blocked runtime workers cannot fire.
+
 - Relevant verification must be completed before a task is closed
 - Any affected context documents must be updated before a task is closed
 - Cross-module long-lived behavior changes or architecture decisions must be recorded in `docs/decisions.md`, with ADRs added when needed

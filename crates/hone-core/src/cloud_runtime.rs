@@ -202,6 +202,7 @@ pub struct CloudHealth {
 pub struct CloudPgRuntime {
     config: PostgresConfig,
     isolated_test_connection: Option<String>,
+    dedicated_query_connections: bool,
 }
 
 static CLOUD_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
@@ -1538,7 +1539,19 @@ impl CloudPgRuntime {
         config.postgres.is_configured().then(|| Self {
             config: config.postgres.clone(),
             isolated_test_connection: None,
+            dedicated_query_connections: false,
         })
+    }
+
+    /// Keep ordinary query connections on the runtime executing this handle.
+    ///
+    /// Synchronous bridges must use this policy before entering a short-lived
+    /// runtime: their caller may block the runtime that owns a pooled driver's
+    /// task or an outstanding pool lease. Fresh connections avoid both wait
+    /// cycles without changing SQL, actor predicates or transaction ownership.
+    pub fn with_dedicated_query_connections(mut self) -> Self {
+        self.dedicated_query_connections = true;
+        self
     }
 
     /// 为依赖真实 PostgreSQL 的测试创建一个独立缓存连接。
@@ -1562,6 +1575,7 @@ impl CloudPgRuntime {
         Ok(Self {
             config: self.config.clone(),
             isolated_test_connection: Some(namespace),
+            dedicated_query_connections: self.dedicated_query_connections,
         })
     }
 
@@ -1602,6 +1616,11 @@ impl CloudPgRuntime {
             .is_some_and(|namespace| !namespace.starts_with("hone_memory_"))
         {
             return Ok(PgQueryClient::pinned(self.connect_cached_client().await?));
+        }
+        if self.dedicated_query_connections {
+            return Ok(PgQueryClient::dedicated(
+                self.connect_managed_client().await?,
+            ));
         }
         let pool = PG_QUERY_POOLS
             .lock()
@@ -7642,6 +7661,7 @@ mod tests {
         let runtime = CloudPgRuntime {
             config: PostgresConfig::default(),
             isolated_test_connection: None,
+            dedicated_query_connections: false,
         };
         let update = CloudCommunityResourceBackfillUpdate {
             resource_id: 1,

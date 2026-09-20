@@ -284,3 +284,37 @@ Follow-up: include `3e26eb4f` when integrating the published branch into main; e
 - Do not merge or redeploy `3e26eb4f` as an accepted performance fix. Its initial short-run latency measurements remain historical evidence, not sustained-readiness approval.
 - No cause-specific product patch has been made. Recovery also restarted the service, so it does not establish which code path caused the incident. Reproduce the liveness failure, add a targeted regression and complete sustained validation before proposing another rollout.
 - Detailed operator evidence is retained locally under the ignored `data/diagnostics/` directory and excluded from this public repository update.
+
+## Confirmed Cross-Runtime Defect and Monitoring — 2026-09-20
+
+- status: in_progress; original optimization rollout remains withdrawn; minimal repair under local verification
+- related_files: crates/hone-core/src/cloud_runtime.rs; crates/hone-core/src/cloud_runtime/query_pool.rs; crates/hone-core/src/cloud_runtime/query_pool/tests.rs; crates/hone-tools/src/skill_registry.rs; crates/hone-channels/src/response_finalizer.rs; scripts/diagnose_api_liveness.py
+- related_docs: docs/current-plans/public-api-connection-performance.md; docs/runbooks/api-liveness-monitoring.md; docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime
+
+### Finding and confidence
+
+An isolated old/new comparison confirms a defect introduced by process-global ordinary-query pooling. Existing synchronous skill-registry and company-profile bridges create a new Tokio runtime on an OS thread, then block the caller with `thread::join`. A bridge can borrow an idle PostgreSQL client whose driver belongs to the caller's HTTP runtime. If those HTTP workers are occupied waiting for bridges, the bridge queries wait for drivers that cannot progress. A live process with idle PostgreSQL clients and low CPU is therefore possible even though every HTTP endpoint is unresponsive.
+
+The reproducer uses two worker threads and real PostgreSQL in an isolated named schema. Fresh-connection control completes; pooled control is stopped by an independent process watchdog. Worker samples show synchronous thread joins and PostgreSQL remains idle. The defect reproduces in both ordinary and optimized builds, so optimized compilation is not required for this failure mechanism. Previous pool tests covered permits, cancellation, actor isolation and runtime destruction, but missed a still-live owner runtime blocked by a synchronous bridge. Some existing bot-core tests explicitly disable the cloud skill registry, so passing those tests did not cover the production bridge.
+
+Actual production entry points include skill registry reads/writes, chat preparation/skill restoration, scheduled-agent preparation, and company-profile synchronization after replies. The admin UI can also issue skill-list and last-selected-skill-detail requests concurrently. This is a confirmed candidate defect with a plausible incident call path; the original production child stack and exact concurrent trigger were not preserved, so it is not represented as uniquely proven historical attribution. A separate synthetic stdout-backpressure experiment shows another possible general blocking mechanism, but does not establish that it occurred in this incident.
+
+### Minimal repair
+
+`CloudPgRuntime::with_dedicated_query_connections()` selects fresh, exclusively owned query connections for all existing synchronous PostgreSQL bridge entry points. It bypasses **both** the shared query drivers and pool semaphore; merely filtering driver ownership could still wait on permits held by the blocked caller. `PgQueryClient::Dedicated` owns and closes its driver, never returning it to the pool. Ordinary asynchronous queries retain pooling. Actor predicates, session identity, SQL, dedicated transaction/advisory-lock ownership and write completion ordering are unchanged; failed or ambiguous writes are never automatically replayed.
+
+This patch does not remove the pre-existing synchronous joins. A genuine stall in the bridge's own database connection/query can still occupy an HTTP worker; future work should bound the complete bridge operation or make its callers asynchronous. No assertion is made that all forms of runtime stalls are eliminated.
+
+### Verification
+
+- Core regressions: ordinary and source-runtime/opt3 both **13 passed, 2 ignored** before the additional sustained test. Coverage includes cancellation/reconnect churn, response and actor/namespace isolation, owner-runtime shutdown, dedicated-clone independence, two-worker cross-runtime liveness, and successful bridge queries while the caller retains all four pool permits.
+- A manual pooled counterexample is itself bounded by a parent-process watchdog; it proves the prohibited use still reproduces without hanging the test runner. Child cleanup drops only its unique test schema.
+- Actual skill-registry suite: **5 passed**, including real read/write bridges in separately bounded two-worker child processes. Response-finalizer suite: **8 passed**. Optimized sustained lifecycle regression: two modes, each 512 rounds / 1,024 dedicated bridge calls; all 2,048 responses matched the namespace and no tracked bridge backends remained at the periodic checks. One mode retains every ordinary pool permit throughout. This is a high-frequency lifecycle test, not an hours-long wall-clock soak. Final optimized default pool suite: **13 passed, 3 ignored**.
+- Sampler regression: **11 tests passed**, including HTTP deadlines, missing revision handling, response privacy, two-failure/recovery transitions, actual listener attribution, private log rotation and symlink rejection. Shell wrapper is discoverable by the existing CI runner.
+- `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app --offline`, explicit `rustfmt --check` on the five changed Rust files, and `git diff --check`: passed. The helper changed-file format script skips uncommitted changes here, so its skip was not used as format proof. The complete workspace test suite was not rerun for this repair; prior full-suite baseline failures above remain disclosed.
+
+### Monitoring and follow-up
+
+The independent read-only Linux sampler has been installed with bounded duration, CPU/memory and private log retention. It probes a no-database configuration handler, no-cookie auth rejection and metadata/storage health. Consecutive failures preserve actual HTTP listener-child evidence; service `active` alone is not acceptance. A recurring task checks availability and sampler freshness, and only reports meaningful failures, recovery or actionable new findings. Detailed operator locations, live timings and process evidence remain in ignored `data/diagnostics`, not this public document.
+
+Production application rollout remains withdrawn while the repair is validated. The existing recovery version is retained. Next: decide and execute the controlled long-duration candidate acceptance window, with the documented residual synchronous-bridge blocking risk and independent monitoring. Keep this task active rather than archiving a still-unaccepted rollout.

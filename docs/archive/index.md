@@ -13,8 +13,9 @@ Last updated: 2026-09-20
 - Commit: `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; branch `codex/api-query-pool-performance-20260920` (main not advanced)
 - Build: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498221222
 - Verification: 8 optimized pool safety and 93 explicit PostgreSQL memory regressions; isolated workspace 2874 passed with 3 pre-existing failures; exact immutable runtime/storage acceptance; 13 live message IDs/order/content unchanged; 140 common-auth-path rejection checks.
-- Current conclusion: initial latency improved, but the candidate was withdrawn after an HTTP responsiveness regression. Service and browser history recovered on the previous runtime. The exact causal defect remains unresolved; initial acceptance is withdrawn.
-- Next entry point: reproduce the liveness failure in isolation and add a targeted regression before reconsidering 3e26eb4f. Do not merge or redeploy this candidate as accepted.
+- Repair verification: confirmed cross-runtime old/new control; core 13, real skill registry 5, reply finalizer 8 and sampler 11 regressions pass; 2,048 sustained lifecycle queries pass; workspace compilation passes. Controlled long-duration rollout acceptance remains pending.
+- Current conclusion: initial latency improved, but the candidate was withdrawn after an HTTP responsiveness regression. Service and browser history recovered on the previous runtime. A candidate-introduced cross-runtime driver/bridge deadlock is reproduced by old/new controls. Minimal dedicated-connection repair is under validation; original production stacks were not retained, so unique historical attribution remains bounded. Initial acceptance is withdrawn.
+- Next entry point: complete the bounded bridge regressions, sustained candidate validation and monitoring follow-up. Do not merge or redeploy withdrawn 3e26eb4f as accepted.
 
 ## 2026-09-13
 

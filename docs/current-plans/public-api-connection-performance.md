@@ -1,7 +1,7 @@
 # Public API Connection Performance
 
 - title: Reduce shared API CPU cost with isolated PostgreSQL connection reuse
-- status: in_progress (post-rollout production hang; restore service and diagnose)
+- status: in_progress (service restored; cross-runtime defect reproduced; repair validation and monitoring active)
 - created_at: 2026-09-20
 - updated_at: 2026-09-20
 - owner: Codex
@@ -55,8 +55,32 @@ Completion: deployed exact `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; authentic
 
 - [x] Restore the previous runtime and verify the public API and existing browser history.
 - [x] Withdraw the earlier deployment acceptance in the handoff, decision and archive index; keep detailed operator evidence outside version control.
-- [ ] Reproduce the HTTP responsiveness regression in isolation and identify the cause before modifying runtime code.
+- [x] Reproduce the HTTP responsiveness regression in isolation and identify the cause before modifying runtime code. A two-worker old/new control confirms a cross-runtime driver wait cycle; this is a proven candidate defect, with incomplete historical production stacks.
 - [ ] Add a cause-specific regression and validate sustained responsiveness plus account/session isolation before another rollout.
 - [ ] Archive only after the causal investigation and required fix/verification are complete; the performance rollout remains withdrawn.
 
 Affected files: cloud_runtime.rs, cloud_runtime/query_pool.rs and tests if implicated; the same-day handoff, decisions, current-plan index and archive index. No speculative runtime change was made during recovery.
+
+## Full Incident Investigation and Monitoring — 2026-09-20
+
+User requests complete root-cause investigation and ongoing monitoring.
+
+- [x] Run parallel code audits for pool liveness and HTTP/background/runtime blocking; distinguish reproduced defects from hypotheses.
+- [x] Reconstruct a privacy-preserving production timeline and verify current old-version health.
+- [x] Build and test a bounded, read-only liveness sampler that captures the actual HTTP child on failures without changing service state.
+- [x] Configure a thread heartbeat for continued health checks and investigation; notify only on meaningful change, evidence, failure or required user action.
+- [x] Reproduce the causal mechanism in isolation, add a focused regression and minimal fix if supported by evidence; no unproven candidate redeployment.
+- [x] Synchronize the handoff and decision with findings; keep private production evidence in ignored data/diagnostics. This task remains active; archival still requires rollout closure.
+
+File ownership: pool test agent owns query_pool/tests.rs; runtime audit is read-only; monitor agent owns scripts/diagnose_api_liveness.py and focused tests; root owns implementation decisions, production actions and all context documents.
+
+## Evidence-driven repair scope
+
+The isolated two-worker reproduction confirmed a candidate-introduced cross-runtime wait cycle: HTTP workers synchronously join bridge runtimes, while those bridges borrow pooled clients whose drivers require the blocked HTTP runtime. Fresh-connection control completes. This is a verified defect; the stopped production child's user-space stack was not captured, so unique historical attribution remains bounded.
+
+- [x] Add an explicit dedicated-query policy to CloudPgRuntime and use it in all three existing synchronous PostgreSQL bridge entry points (skill registry read/write and company-profile sync). Preserve actor predicates, exclusive transactions, cancellation discard and normal HTTP query pooling.
+- [x] Convert the reproduction to an externally bounded child-process regression and verify ordinary/optimized builds; review account/response isolation and all known sync bridges.
+- [x] Verify the independently deployed read-only sampler, document its bounded retention and heartbeat behavior in a reusable runbook, and preserve detailed production evidence privately.
+- [x] Update repo map/invariants/decision and same-day handoff with the confirmed runtime ownership constraint. Keep rollout withdrawn until sustained candidate validation; do not archive this active task yet.
+
+Latest validation: candidate workspace all-target compilation passed; explicit formatting/diff checks passed; core default optimized suite 13 passed / 3 ignored; real skill registry suite 5 passed; response-finalizer suite 8 passed; sampler suite 11 passed; 2,048 same-runtime dedicated bridge queries completed with response namespace checks and no tracked backend accumulation. These complete local causal regression coverage, not long-duration production acceptance. Production rollout and final archival remain pending; continuous read-only monitoring is active.
