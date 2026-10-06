@@ -6,6 +6,7 @@
 
 <p align="center">
   Start with a question. Understand the industry. Keep up with the companies you follow.<br>
+  <strong>Now with automated quantitative trading: <a href="https://github.com/B-M-Capital-Research/hone-quant">hone-quant</a>.</strong><br>
   Optical communications · Power · Memory &amp; storage · Chips · Data centers
 </p>
 
@@ -14,8 +15,48 @@
   <a href="https://hone-claw.com/chat">Start using Hone</a> ·
   <a href="https://hone-claw.com">Website</a> ·
   <a href="https://hone-claw.com/blog">Blog</a> ·
-  <a href="https://discord.gg/TyDNfYXDGF">Discord community</a>
+  <a href="https://discord.gg/TyDNfYXDGF">Discord community</a> ·
+  <a href="#contact">Contact</a>
 </p>
+
+---
+
+## New: hone-quant, automated quantitative trading built on honeclaw
+
+**Hone is more than an AI chat tool.** On top of honeclaw's capabilities,
+**[hone-quant](https://github.com/B-M-Capital-Research/hone-quant)** turns Hone's industry research
+into automated quantitative trading. Professional researchers maintain and operate Hone's industry
+ontology of the AI-infrastructure supply chain. AI agents rigorously generate strategies from it
+and execute them twice every US trading day. Every target weight, order and manual decision is
+recorded and auditable.
+
+<p align="center">
+  <img src="./resources/readme/hone-quant-backtests.jpg" alt="hone-quant backtests on hone-claw.com/quant: the sector-first risk budget over three years and one year" width="100%">
+</p>
+
+| Sector-first risk budget, historical backtest | **3 years** (2023-10-05 → 2026-10-05) | **1 year** (2025-10-05 → 2026-10-05) |
+| --- | ---: | ---: |
+| Total return | **+535.88%** | **+70.69%** |
+| Annualised return | +85.24% | +71.01% |
+| Sharpe ratio | 2.10 | 1.59 |
+| Maximum drawdown | −28.01% | −24.57% |
+| Excess return vs QQQ | **+421.46%** | +45.68% |
+
+- **Researchers own the ontology.** It decides *what* is in scope: the sectors, the companies and
+  how demand travels between them. hone-quant never picks stocks.
+- **AI agents turn it into strategy.** They set sector budgets first, then risk-based weights within
+  each sector, and backtest every strategy on the same engine that trades. Each strategy is saved as
+  an immutable version, and every plan explains each target.
+- **The engine keeps the discipline.** Review windows, quote and price-deviation checks, a 5%
+  single-name cap, a turnover cap and no leverage. People can approve, cancel or pause at any time.
+
+<sub>Historical backtests on real market data (split- and dividend-adjusted daily prices, slippage,
+commissions and fees included), run on the same engine as the live paper account. The universe is
+today's ontology membership, so results carry survivorship bias and are likely optimistic. hone-quant
+trades a paper account only. Past and simulated performance do not guarantee future results. Not
+investment advice.</sub>
+
+**[Explore hone-quant →](https://github.com/B-M-Capital-Research/hone-quant)**
 
 ---
 
@@ -89,11 +130,19 @@ Honeclaw is the open-source project behind Hone. Built with **Rust + SolidJS / T
 - [Repository map and module entry points](./docs/repo-map.md)
 - [Development and collaboration guidelines](./AGENTS.md)
 - [Releases and installation packages](https://github.com/B-M-Capital-Research/honeclaw/releases)
+- [hone-quant: automated quantitative trading on the honeclaw ontology](https://github.com/B-M-Capital-Research/hone-quant)
 
 The professional financial databases, proprietary ontology research, and certain research assets used by the hosted product are not distributed with the public code. Self-hosting requires your own model and data service configuration; cloning the repository does not grant access to all hosted data or account features.
 
 Share feedback and contribute through [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues), Pull Requests, or [Discord](https://discord.gg/TyDNfYXDGF). For more, visit [Bilibili: 巴芒投资](https://space.bilibili.com/224670487) and [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93).
 
 To hone is to sharpen. We want Hone to help you sharpen your judgment through ongoing research, comparison, and review.
+
+## Contact
+
+We are an investment research organization based in Singapore, and the team behind honeclaw and [hone-quant](https://github.com/B-M-Capital-Research/hone-quant). If these open-source projects interest you, write to us. You might want to use them, build on them or work with us. We also offer community consultation, investment research guidance and related services.
+
+- **E-mail:** [contact@honeclaw.app](mailto:contact@honeclaw.app)
+- **Website:** [hone-claw.com](https://hone-claw.com)
 
 This project is released under the [MIT License](./LICENSE). Hone's content is for research purposes and does not constitute investment advice.

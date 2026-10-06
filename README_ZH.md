@@ -6,6 +6,7 @@
 
 <p align="center">
   从一个问题开始，读懂产业变化，持续跟踪你关心的公司。<br>
+  <strong>现已支持自动化量化交易：<a href="https://github.com/B-M-Capital-Research/hone-quant">hone-quant</a>。</strong><br>
   光通信 · 电力 · 存储 · 芯片 · 数据中心
 </p>
 
@@ -14,8 +15,35 @@
   <a href="https://hone-claw.com/chat">开始使用</a> ·
   <a href="https://hone-claw.com">官网</a> ·
   <a href="https://hone-claw.com/blog">博客</a> ·
-  <a href="https://discord.gg/TyDNfYXDGF">Discord 社群</a>
+  <a href="https://discord.gg/TyDNfYXDGF">Discord 社群</a> ·
+  <a href="#联系我们">联系我们</a>
 </p>
+
+---
+
+## 全新：hone-quant，建立在 honeclaw 之上的自动化量化交易
+
+**Hone 不只是一个 AI 对话工具。** 依托 honeclaw 的能力，**[hone-quant](https://github.com/B-M-Capital-Research/hone-quant)** 把 Hone 的产业研究变成自动化的量化交易：专业研究员维护和运营 Hone 的 AI 基础设施产业链本体，AI Agent 以此为基础严谨地生成策略，并在每个美股交易日执行两次；每一个目标权重、每一笔订单和每一次人工决策都有记录、可审计。
+
+<p align="center">
+  <img src="./resources/readme/hone-quant-backtests.jpg" alt="hone-claw.com/quant 的回测记录：板块优先 · 风险预算在近 3 年与近 1 年的表现" width="100%">
+</p>
+
+| 板块优先 · 风险预算，历史回测 | **近 3 年**（2023-10-05 → 2026-10-05） | **近 1 年**（2025-10-05 → 2026-10-05） |
+| --- | ---: | ---: |
+| 总收益 | **+535.88%** | **+70.69%** |
+| 年化收益 | +85.24% | +71.01% |
+| 夏普比率 | 2.10 | 1.59 |
+| 最大回撤 | −28.01% | −24.57% |
+| 相对 QQQ 超额收益 | **+421.46%** | +45.68% |
+
+- **研究员掌握本体。** 本体决定*范围*：有哪些板块、哪些公司，以及需求如何在它们之间传导。hone-quant 从不选股。
+- **AI Agent 把本体变成策略。** 先分配板块预算，再在板块内按风险分配权重；每个策略都用与实盘相同的引擎回测，保存为不可修改的版本，每份计划都说明每个目标权重的由来。
+- **引擎守住纪律。** 复核窗口、报价与价格偏离检查、单一公司 5% 上限、换手上限、不加杠杆；人可以随时确认、取消或暂停。
+
+<sub>历史回测使用真实行情（经拆股与分红调整的日线，计入滑点、佣金与规费），与模拟盘使用同一套引擎。投资范围是本体中今天的成员名单，结果存在幸存者偏差、很可能偏乐观。hone-quant 只交易模拟账户。过往表现与模拟表现都不代表未来收益，不构成投资建议。</sub>
+
+**[了解 hone-quant →](https://github.com/B-M-Capital-Research/hone-quant)**
 
 ---
 
@@ -89,11 +117,19 @@ Honeclaw 是 Hone 的开源项目，采用 **Rust + SolidJS / TypeScript**，提
 - [代码库地图与模块入口](./docs/repo-map.md)
 - [开发与协作约定](./AGENTS.md)
 - [Releases 与安装包](https://github.com/B-M-Capital-Research/honeclaw/releases)
+- [hone-quant：基于 honeclaw 本体的自动化量化交易](https://github.com/B-M-Capital-Research/hone-quant)
 
 线上产品接入的专业金融数据库、专有本体研究与部分研究资产，不随公开代码一并提供。自部署需要自行配置模型与数据服务；克隆仓库不等于获得线上服务的全部数据和权限。
 
 欢迎通过 [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues)、Pull Request 或 [Discord](https://discord.gg/TyDNfYXDGF) 反馈问题、分享使用体验和参与贡献。更多内容见 [Bilibili：巴芒投资](https://space.bilibili.com/224670487) 与 [YouTube：巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)。
 
 Hone 意为打磨。我们希望它帮助你在持续研究、比较与复盘中，磨砺自己的判断力。
+
+## 联系我们
+
+我们是一家总部位于新加坡的投资研究机构，也是 honeclaw 和 [hone-quant](https://github.com/B-M-Capital-Research/hone-quant) 背后的团队。如果你对这些开源项目感兴趣，无论是想使用、在此基础上开发，还是与我们合作，都欢迎来信。我们同时提供社区咨询、投研指导及相关服务。
+
+- **邮箱：** [contact@honeclaw.app](mailto:contact@honeclaw.app)
+- **官网：** [hone-claw.com](https://hone-claw.com)
 
 本项目采用 [MIT License](./LICENSE)。Hone 的内容仅供研究参考，不构成投资建议。
