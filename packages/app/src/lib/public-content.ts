@@ -81,6 +81,57 @@ const CONTENT_ZH = {
     plan_cta: "查看定价",
   },
 
+  quant: {
+    hero_chip_tag: "NEW",
+    hero_chip: "自动化量化交易 hone-quant",
+    eyebrow: "HONE QUANT · 自动化量化交易",
+    badge: "开源",
+    title: "不止对话：从本体研究到自动化交易",
+    lead:
+      "hone-quant 构建在 honeclaw 的能力之上：专业研究员维护并运营行业本体（10 个 AI 基础设施板块、64 家公司），AI Agent 以本体为依据严谨地生成策略，再由 hone-quant 的确定性引擎执行——每个美股交易日两份交易计划，含风控校验、交易成本与完整审计记录，运行在模拟盘上。",
+    pillars: [
+      {
+        step: "01",
+        tag: "研究员维护",
+        title: "本体",
+        body: "投资范围、板块划分以及公司之间的关系，由专业研究员持续维护与运营。",
+      },
+      {
+        step: "02",
+        tag: "AI 生成策略",
+        title: "Agent",
+        body: "AI Agent 以本体为依据生成策略版本，并用与实盘相同的引擎在历史行情上回测。",
+      },
+      {
+        step: "03",
+        tag: "确定性执行",
+        title: "执行",
+        body: "每个交易日两份计划并留出审核窗口；风控上限与交易成本逐单计入，每笔订单都可解释、可审计。",
+      },
+    ],
+    backtest_label: "近 3 年历史回测",
+    backtest_strategy: "板块优先 · 风险预算",
+    backtest_range: "2023-10-05 → 2026-10-05",
+    stats: [
+      { label: "总收益", value: "+535.88%", tone: "up" },
+      { label: "年化收益", value: "+85.24%", tone: "up" },
+      { label: "夏普比率", value: "2.10", tone: "neutral" },
+      { label: "最大回撤", value: "−28.01%", tone: "down" },
+      { label: "相对 QQQ 超额", value: "+421.46%", tone: "up" },
+    ],
+    secondary_label: "近 1 年",
+    secondary: "总收益 +70.69% · 夏普 1.59 · 最大回撤 −24.57% · 相对 QQQ 超额 +45.68%",
+    disclaimer:
+      "历史回测基于经拆股与分红调整的日线价格，已计入交易成本与滑点。投资范围采用本体当前的成员名单，结果存在幸存者偏差，很可能偏乐观。仅为模拟盘交易；过往或模拟业绩不代表未来表现，不构成投资建议。",
+    image: "/hone-quant-backtests.jpg",
+    image_alt:
+      "hone-quant 回测页面截图：板块优先风险预算策略近 3 年与近 1 年的回测结果，以及方法与局限说明",
+    cta_github: "在 GitHub 查看 hone-quant",
+    cta_contact: "联系我们",
+    github_url: "https://github.com/B-M-Capital-Research/hone-quant",
+    contact_url: "mailto:contact@honeclaw.app",
+  },
+
   plan: {
     eyebrow: "HONE · 巴芒投研",
     share_title: "巴芒投研会员邀请",
@@ -2646,6 +2697,10 @@ const CONTENT_ZH = {
             href: "https://github.com/B-M-Capital-Research/honeclaw",
           },
           {
+            label: "hone-quant",
+            href: "https://github.com/B-M-Capital-Research/hone-quant",
+          },
+          {
             label: "中文文档",
             href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
           },
@@ -2740,6 +2795,57 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     plan_title: "Open source forever, full access in one subscription",
     plan_desc: "The HONE core stays MIT-licensed and self-hostable. Full access adds weekly live deep dives, the VIP community, and complete research notes.",
     plan_cta: "View pricing",
+  },
+
+  quant: {
+    hero_chip_tag: "NEW",
+    hero_chip: "Automated quant trading with hone-quant",
+    eyebrow: "HONE QUANT · AUTOMATED QUANT TRADING",
+    badge: "Open source",
+    title: "More than chat: from ontology research to automated trading",
+    lead:
+      "hone-quant builds on honeclaw's capabilities. Professional researchers maintain and operate the industry ontology — 10 AI-infrastructure sectors, 64 companies. AI agents rigorously generate strategies from it, and hone-quant's deterministic engine executes them: two trading plans every US trading day, with risk checks, costs and a complete audit trail, on a paper account.",
+    pillars: [
+      {
+        step: "01",
+        tag: "Maintained by researchers",
+        title: "Ontology",
+        body: "Professional researchers maintain and operate the universe: the sectors, their member companies and how they relate.",
+      },
+      {
+        step: "02",
+        tag: "AI-generated strategies",
+        title: "Agents",
+        body: "AI agents generate strategy versions from the ontology and backtest them on market history, on the same engine that trades.",
+      },
+      {
+        step: "03",
+        tag: "Deterministic execution",
+        title: "Execution",
+        body: "Two plans per trading day, each with a review window. Risk limits and costs apply to every order, and every order is explained and audited.",
+      },
+    ],
+    backtest_label: "3-year historical backtest",
+    backtest_strategy: "Sector-first risk budget",
+    backtest_range: "2023-10-05 → 2026-10-05",
+    stats: [
+      { label: "Total return", value: "+535.88%", tone: "up" },
+      { label: "Annualised", value: "+85.24%", tone: "up" },
+      { label: "Sharpe ratio", value: "2.10", tone: "neutral" },
+      { label: "Max drawdown", value: "−28.01%", tone: "down" },
+      { label: "Excess vs QQQ", value: "+421.46%", tone: "up" },
+    ],
+    secondary_label: "1-year",
+    secondary: "+70.69% total · Sharpe 1.59 · max drawdown −24.57% · +45.68% vs QQQ",
+    disclaimer:
+      "Historical backtest on split- and dividend-adjusted daily prices, costs and slippage included. The universe is today's ontology membership, so results carry survivorship bias and are likely optimistic. Paper trading only; past or simulated performance does not guarantee future results. Not investment advice.",
+    image: "/hone-quant-backtests.jpg",
+    image_alt:
+      "Screenshot of the hone-quant backtests page: 3-year and 1-year results for the sector-first risk budget strategy, with notes on method and limitations",
+    cta_github: "View hone-quant on GitHub",
+    cta_contact: "Contact us",
+    github_url: "https://github.com/B-M-Capital-Research/hone-quant",
+    contact_url: "mailto:contact@honeclaw.app",
   },
 
   plan: {
@@ -5392,6 +5498,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           {
             label: "GitHub",
             href: "https://github.com/B-M-Capital-Research/honeclaw",
+          },
+          {
+            label: "hone-quant",
+            href: "https://github.com/B-M-Capital-Research/hone-quant",
           },
           {
             label: "Chinese docs",

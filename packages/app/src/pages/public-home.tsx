@@ -30,7 +30,25 @@ const ICONS = {
   ArrowRight: () => (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
   ),
+  Mail: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>
+  ),
+  Info: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.1"/></svg>
+  ),
+  Ontology: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M10.8 7.2 6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"/></svg>
+  ),
+  Agents: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3.5 12.9 8.6 18 10.5l-5.1 1.9L11 17.5l-1.9-5.1L4 10.5l5.1-1.9z"/><path d="m18.5 15 .9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>
+  ),
+  Execution: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L8 4.5M3.5 12l1.5 1.5L8 10.5M3.5 18l1.5 1.5L8 16.5"/></svg>
+  ),
 }
+
+/** hone-quant 三支柱（本体 / Agent / 执行）的图标，按 CONTENT.quant.pillars 顺序取。 */
+const QUANT_PILLAR_ICONS = [ICONS.Ontology, ICONS.Agents, ICONS.Execution]
 
 export default function PublicHomePage() {
   const [index, setIndex] = createSignal(0)
@@ -69,9 +87,19 @@ export default function PublicHomePage() {
     }, 10000)
   }
 
+  const scrollToQuant = (behavior: ScrollBehavior = "smooth") =>
+    document.getElementById("quant")?.scrollIntoView({ block: "start", behavior })
+
   onMount(() => {
     startTimer()
-    onCleanup(() => clearInterval(timer))
+    // 直接打开 /#quant 时，首屏渲染完成后把 hone-quant 区块直接定位到视野内
+    // （用 instant：后台标签页里平滑滚动不会推进，且与浏览器原生锚点行为一致）。
+    let hashTimer: ReturnType<typeof setTimeout> | undefined
+    if (window.location.hash === "#quant") hashTimer = setTimeout(() => scrollToQuant("instant"), 60)
+    onCleanup(() => {
+      clearInterval(timer)
+      clearTimeout(hashTimer)
+    })
   })
 
   const current = () => slides()[index()]
@@ -93,6 +121,18 @@ export default function PublicHomePage() {
       <main class="hone-home-main">
         {/* ── Hero ── */}
         <section class="hone-home-hero">
+          <a
+            class="hone-home-quant-chip"
+            href="#quant"
+            onClick={(event) => {
+              event.preventDefault()
+              scrollToQuant()
+            }}
+          >
+            <b>{C.quant.hero_chip_tag}</b>
+            <span>{C.quant.hero_chip}</span>
+            <ICONS.ArrowRight />
+          </a>
           <div class="hone-home-eyebrow">{C.hero.eyebrow}</div>
           <h1>
             <span>{C.hero.headline_1}</span>
@@ -130,6 +170,98 @@ export default function PublicHomePage() {
                 </div>
               )}
             </For>
+          </div>
+        </section>
+
+        {/* ── HONE QUANT：本体 → Agent → 确定性执行的自动化量化交易 ── */}
+        <section id="quant" class="hone-home-quant" aria-labelledby="hone-home-quant-title">
+          <div class="hone-home-quant-intro">
+            <div class="hone-home-quant-copy">
+              <div class="hone-home-quant-kicker">
+                <span class="hone-home-eyebrow">{C.quant.eyebrow}</span>
+                <span class="hone-home-quant-badge">{C.quant.badge}</span>
+              </div>
+              <h2 id="hone-home-quant-title">{C.quant.title}</h2>
+              <p>{C.quant.lead}</p>
+              <div class="hone-home-quant-actions">
+                <a
+                  class="hone-home-cta"
+                  href={C.quant.github_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ICONS.Github />
+                  <span>{C.quant.cta_github}</span>
+                </a>
+                <a class="hone-home-cta is-ghost" href={C.quant.contact_url}>
+                  <ICONS.Mail />
+                  <span>{C.quant.cta_contact}</span>
+                </a>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="hone-home-quant-shot"
+              onClick={() => setEnlargeImg(C.quant.image)}
+            >
+              <img
+                src={C.quant.image}
+                alt={C.quant.image_alt}
+                width="1600"
+                height="949"
+                loading="lazy"
+              />
+              <span>{C.home_page.zoom_hint}</span>
+            </button>
+          </div>
+
+          <ol class="hone-home-quant-pillars">
+            <For each={C.quant.pillars}>
+              {(pillar, i) => (
+                <li>
+                  <span class="hone-home-quant-icon" aria-hidden="true">
+                    {QUANT_PILLAR_ICONS[i()]?.()}
+                  </span>
+                  <small>
+                    {pillar.step} · {pillar.tag}
+                  </small>
+                  <h3>{pillar.title}</h3>
+                  <p>{pillar.body}</p>
+                </li>
+              )}
+            </For>
+          </ol>
+
+          <div class="hone-home-quant-backtest">
+            <header>
+              <strong>{C.quant.backtest_label}</strong>
+              <span>
+                {C.quant.backtest_strategy} · {C.quant.backtest_range}
+              </span>
+            </header>
+            <dl class="hone-home-quant-stats">
+              <For each={C.quant.stats}>
+                {(stat) => (
+                  <div
+                    classList={{
+                      "is-up": stat.tone === "up",
+                      "is-down": stat.tone === "down",
+                    }}
+                  >
+                    <dt>{stat.label}</dt>
+                    <dd>{stat.value}</dd>
+                  </div>
+                )}
+              </For>
+            </dl>
+            <p class="hone-home-quant-secondary">
+              <strong>{C.quant.secondary_label}</strong>
+              <span>{C.quant.secondary}</span>
+            </p>
+            <p class="hone-home-quant-note">
+              <ICONS.Info />
+              <span>{C.quant.disclaimer}</span>
+            </p>
           </div>
         </section>
 
@@ -427,6 +559,285 @@ export default function PublicHomePage() {
           font-weight: 650;
           letter-spacing: 0.08em;
           text-transform: uppercase;
+        }
+
+        /* Hero 内的 hone-quant 入口：点击平滑滚到 #quant */
+        .hone-home-quant-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 9px;
+          max-width: 100%;
+          margin-bottom: 20px;
+          padding: 4px 13px 4px 4px;
+          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 34%, var(--hone-line));
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--hone-coral-500) 7%, var(--hone-surface-raised));
+          color: var(--hone-ink-950);
+          font-size: 12px;
+          font-weight: 650;
+          text-decoration: none;
+          box-shadow: var(--hone-shadow-sm);
+          transition: border-color 0.18s ease, box-shadow 0.18s var(--hone-ease), transform 0.18s var(--hone-ease);
+        }
+        .hone-home-quant-chip:hover {
+          border-color: color-mix(in srgb, var(--hone-coral-500) 60%, var(--hone-line));
+          box-shadow: var(--hone-shadow-md);
+          transform: translateY(-1px);
+        }
+        .hone-home-quant-chip b {
+          flex: 0 0 auto;
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: var(--hone-action-bg);
+          color: var(--hone-action-fg);
+          font-family: var(--hone-font-label);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+        }
+        .hone-home-quant-chip span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .hone-home-quant-chip svg {
+          flex: 0 0 auto;
+          color: var(--hone-coral-600);
+          transition: transform 0.18s var(--hone-ease);
+        }
+        .hone-home-quant-chip:hover svg { transform: translateX(2px); }
+
+        /* ── HONE QUANT：首屏之后最醒目的一块 ── */
+        .hone-home-quant {
+          margin-top: 64px;
+          padding: 40px;
+          scroll-margin-top: 16px;
+          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 30%, var(--hone-line));
+          border-radius: 22px;
+          background:
+            radial-gradient(560px 300px at 100% 0, color-mix(in srgb, var(--hone-coral-500) 12%, transparent), transparent 72%),
+            radial-gradient(480px 260px at 0 100%, color-mix(in srgb, var(--hone-coral-500) 6%, transparent), transparent 72%),
+            var(--hone-surface-raised);
+          box-shadow: var(--hone-shadow-md);
+        }
+        .hone-home-quant-intro {
+          display: grid;
+          grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+          gap: 36px;
+          align-items: center;
+        }
+        .hone-home-quant-kicker {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px 10px;
+        }
+        .hone-home-quant-badge {
+          padding: 3px 9px;
+          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 36%, var(--hone-line));
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--hone-coral-500) 9%, transparent);
+          color: var(--hone-coral-600);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .hone-home-quant-copy h2 {
+          margin: 14px 0 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(26px, 3.4vw, 38px);
+          font-weight: 800;
+          line-height: 1.14;
+          letter-spacing: -0.04em;
+          /* 中文标题只在标点处换行，避免“自动化”被拆开 */
+          word-break: keep-all;
+          overflow-wrap: break-word;
+        }
+        .hone-home-quant-copy > p {
+          margin: 16px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 14px;
+          line-height: 1.8;
+        }
+        .hone-home-quant-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 24px;
+        }
+        .hone-home-quant-shot {
+          position: relative;
+          display: block;
+          width: 100%;
+          padding: 0;
+          border: 1px solid var(--hone-line);
+          border-radius: 14px;
+          background: var(--hone-paper-100);
+          overflow: hidden;
+          cursor: zoom-in;
+          box-shadow: 0 24px 60px rgba(23, 32, 31, 0.12);
+        }
+        .hone-home-quant-shot img {
+          display: block;
+          width: 100%;
+          height: auto;
+        }
+        .hone-home-quant-shot span {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          background: rgba(23, 32, 31, 0.24);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          backdrop-filter: blur(2px);
+        }
+        .hone-home-quant-shot:hover span { opacity: 1; }
+
+        /* 三支柱：本体 → Agent → 执行 */
+        .hone-home-quant-pillars {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          margin: 36px 0 0;
+          padding: 0;
+          list-style: none;
+          border-top: 1px solid var(--hone-line);
+        }
+        .hone-home-quant-pillars li {
+          padding: 24px 24px 0;
+          border-left: 1px solid var(--hone-line);
+        }
+        .hone-home-quant-pillars li:first-child { padding-left: 0; border-left: 0; }
+        .hone-home-quant-pillars li:last-child { padding-right: 0; }
+        .hone-home-quant-icon {
+          display: grid;
+          place-items: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 11px;
+          background: color-mix(in srgb, var(--hone-coral-500) 11%, transparent);
+          color: var(--hone-coral-600);
+        }
+        .hone-home-quant-pillars small {
+          display: block;
+          margin-top: 14px;
+          color: var(--hone-coral-600);
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .hone-home-quant-pillars h3 {
+          margin: 6px 0 0;
+          color: var(--hone-ink-950);
+          font-size: 16px;
+          font-weight: 750;
+          letter-spacing: -0.02em;
+        }
+        .hone-home-quant-pillars p {
+          margin: 8px 0 0;
+          color: var(--hone-ink-600);
+          font-size: 13px;
+          line-height: 1.7;
+        }
+
+        /* 回测亮点：大号等宽数字 + 一年期次要行 + 醒目的风险提示 */
+        .hone-home-quant-backtest {
+          margin-top: 34px;
+          padding-top: 26px;
+          border-top: 1px solid var(--hone-line);
+        }
+        .hone-home-quant-backtest > header {
+          display: flex;
+          align-items: baseline;
+          flex-wrap: wrap;
+          gap: 4px 0;
+          color: var(--hone-ink-600);
+          font-size: 12px;
+          font-weight: 650;
+          font-variant-numeric: tabular-nums;
+        }
+        .hone-home-quant-backtest > header strong {
+          color: var(--hone-coral-600);
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+        }
+        .hone-home-quant-backtest > header span::before {
+          content: "·";
+          margin: 0 9px;
+          color: var(--hone-ink-400);
+        }
+        .hone-home-quant-stats {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 10px;
+          margin: 16px 0 0;
+        }
+        .hone-home-quant-stats > div {
+          min-width: 0;
+          padding: 16px 14px 18px;
+          border: 1px solid var(--hone-line);
+          border-radius: 13px;
+          background: var(--hone-paper-100);
+        }
+        .hone-home-quant-stats dt {
+          color: var(--hone-ink-600);
+          font-size: 12px;
+          font-weight: 650;
+        }
+        .hone-home-quant-stats dd {
+          margin: 8px 0 0;
+          color: var(--hone-ink-950);
+          font-size: clamp(20px, 2.4vw, 28px);
+          font-weight: 800;
+          line-height: 1.1;
+          letter-spacing: -0.03em;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .hone-home-quant-stats .is-up dd { color: var(--hone-signal-green-ink); }
+        .hone-home-quant-stats .is-down dd { color: var(--hone-signal-red-ink); }
+        .hone-home-quant-secondary {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: 4px 10px;
+          margin: 14px 0 0;
+          color: var(--hone-ink-800);
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+        }
+        .hone-home-quant-secondary strong {
+          color: var(--hone-ink-950);
+          font-family: var(--hone-font-label);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+        }
+        .hone-home-quant-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin: 16px 0 0;
+          padding: 12px 14px;
+          border: 1px dashed var(--hone-line-strong);
+          border-radius: 11px;
+          color: var(--hone-ink-600);
+          font-size: 12px;
+          line-height: 1.65;
+        }
+        .hone-home-quant-note svg {
+          flex: 0 0 auto;
+          margin-top: 2px;
+          color: var(--hone-ink-400);
         }
 
         /* ── 工作台窗口式演示框 ── */
@@ -806,6 +1217,39 @@ export default function PublicHomePage() {
           }
           .hone-home-stats strong { font-size: 14px; }
 
+          .hone-home-quant-chip { margin-bottom: 16px; }
+          .hone-home-quant { margin-top: 44px; padding: 22px 16px; border-radius: 16px; scroll-margin-top: 12px; }
+          .hone-home-quant-intro { grid-template-columns: 1fr; gap: 22px; }
+          .hone-home-quant-copy h2 { margin-top: 12px; }
+          .hone-home-quant-copy > p { margin-top: 12px; font-size: 13px; line-height: 1.75; }
+          .hone-home-quant-actions { margin-top: 20px; }
+          .hone-home-quant-shot { border-radius: 11px; box-shadow: var(--hone-shadow-sm); }
+          .hone-home-quant-pillars { grid-template-columns: 1fr; margin-top: 24px; }
+          .hone-home-quant-pillars li,
+          .hone-home-quant-pillars li:first-child,
+          .hone-home-quant-pillars li:last-child {
+            display: grid;
+            grid-template-columns: 36px minmax(0, 1fr);
+            gap: 2px 14px;
+            padding: 16px 0;
+            border-left: 0;
+            border-bottom: 1px solid var(--hone-line);
+          }
+          .hone-home-quant-icon { grid-row: 1 / 4; }
+          .hone-home-quant-pillars small { margin-top: 0; }
+          .hone-home-quant-pillars h3 { margin-top: 2px; font-size: 15px; }
+          .hone-home-quant-pillars p { margin-top: 4px; font-size: 12px; line-height: 1.65; }
+          .hone-home-quant-backtest { margin-top: 0; padding-top: 20px; border-top: 0; }
+          .hone-home-quant-backtest > header { flex-direction: column; align-items: flex-start; }
+          .hone-home-quant-backtest > header span::before { content: none; }
+          .hone-home-quant-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+          .hone-home-quant-stats > div { padding: 12px 11px 14px; border-radius: 11px; }
+          .hone-home-quant-stats > div:first-child { grid-column: 1 / -1; }
+          .hone-home-quant-stats dd { font-size: clamp(18px, 5.8vw, 26px); }
+          .hone-home-quant-stats > div:first-child dd { font-size: clamp(28px, 8.6vw, 38px); }
+          .hone-home-quant-secondary { font-size: 12px; }
+          .hone-home-quant-note { padding: 11px 12px; }
+
           /* 卖点三卡合并为一块单面板，卡片间用细分隔线，消除三层描边堆叠 */
           .hone-home-trust {
             grid-template-columns: 1fr;
@@ -857,6 +1301,7 @@ export default function PublicHomePage() {
           .hone-home-hero-actions { width: 100%; flex-direction: column; align-items: stretch; gap: 9px; }
           .hone-home-cta { width: 100%; justify-content: center; min-height: 48px; }
           .hone-home-stats { gap: 6px 22px; }
+          .hone-home-quant-actions { flex-direction: column; align-items: stretch; gap: 9px; }
         }
       `}</style>
     </div>
