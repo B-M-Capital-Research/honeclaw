@@ -12,6 +12,7 @@ base64 = "0.22"
 uuid = { workspace = true }
 chrono = { workspace = true }
 regex = "1"
+tokio = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+serde_yaml = { workspace = true }
