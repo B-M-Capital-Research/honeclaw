@@ -28,6 +28,14 @@ pub struct CreateWebInviteRequest {
 #[derive(Deserialize)]
 pub struct PublicAdminCreateInviteRequest {
     pub phone_number: Option<String>,
+    /// Optional login email; at least one of phone / email is required.
+    pub email_address: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PublicAdminInviteEmailRequest {
+    /// `null`, absent or blank clears the email.
+    pub email_address: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -302,6 +310,7 @@ pub struct PublicBillingSummary {
 pub struct PublicAdminInviteInfo {
     pub user_id: String,
     pub phone_number: String,
+    pub email_address: Option<String>,
     pub created_at: String,
     pub last_login_at: Option<String>,
     pub enabled: bool,

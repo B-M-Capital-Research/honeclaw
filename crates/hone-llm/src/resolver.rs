@@ -55,6 +55,41 @@ impl<'a> LlmResolver<'a> {
         })
     }
 
+    /// OpenRouter model for one long, single-call generation such as a report
+    /// section that streams for several minutes.
+    ///
+    /// The interactive client's timeout is reqwest's total request deadline,
+    /// which also bounds reading a streamed body, so a section that legitimately
+    /// streams for longer is cut off mid-generation. Callers of this provider
+    /// must bound the stream themselves (idle and overall limits).
+    pub fn openrouter_model_for_long_generation(
+        &self,
+        model: &str,
+        max_tokens: u16,
+        request_timeout_secs: u64,
+    ) -> hone_core::HoneResult<CreatedLlmProvider> {
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(hone_core::HoneError::Config(
+                "long-generation model 不能为空".to_string(),
+            ));
+        }
+        let provider = OpenRouterProvider::from_key_pool(
+            self.config.llm.openrouter_key_pool().keys(),
+            DEFAULT_OPENROUTER_BASE_URL,
+            model,
+            request_timeout_secs.max(self.config.llm.openrouter.timeout),
+            max_tokens,
+            LlmRequestOptions::default(),
+        )?;
+        Ok(CreatedLlmProvider {
+            provider: Arc::new(provider),
+            model: model.to_string(),
+            provider_name: OPENROUTER_PROVIDER.to_string(),
+            profile_name: None,
+        })
+    }
+
     pub fn auxiliary_provider(
         &self,
         profile_ref: Option<&str>,
@@ -359,6 +394,36 @@ llm:
         assert!(
             err.to_string().contains("llm.auxiliary.api_key"),
             "expected inline-key error, got {err}"
+        );
+    }
+
+    #[test]
+    fn long_generation_provider_uses_the_openrouter_pool_and_requires_a_model() {
+        let yaml = r#"
+llm:
+  providers:
+    openrouter:
+      kind: openrouter
+      api_key: test
+"#;
+        let cfg: HoneConfig = serde_yaml::from_str(yaml).unwrap();
+        let resolver = LlmResolver::new(&cfg);
+        let created = resolver
+            .openrouter_model_for_long_generation(" google/gemini-3.1-pro-preview ", 32_000, 900)
+            .unwrap();
+        assert_eq!(created.model, "google/gemini-3.1-pro-preview");
+        assert_eq!(created.provider_name, "openrouter");
+        assert!(
+            resolver
+                .openrouter_model_for_long_generation(" ", 32_000, 900)
+                .is_err()
+        );
+
+        let keyless: HoneConfig = serde_yaml::from_str("llm: {}").unwrap();
+        assert!(
+            LlmResolver::new(&keyless)
+                .openrouter_model_for_long_generation("google/gemini-3.1-pro-preview", 32_000, 900)
+                .is_err()
         );
     }
 }

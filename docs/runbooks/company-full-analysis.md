@@ -3,7 +3,7 @@
 - title: 公司完整分析任务、进度与 PDF
 - status: active
 - created_at: 2026-09-14
-- updated_at: 2026-09-14
+- updated_at: 2026-10-11
 - owner: HONE maintainers
 - related_files: crates/hone-web-api/src/routes/company_analysis/; skills/earnings-research/scripts/render_report_pdf.py
 
@@ -12,6 +12,10 @@
 The public chat administrator tools contain 公司完整分析. Only a company name/ticker is required. The server checks the current database admin flag and creates a UUID; client-supplied workflow/model/task IDs are not accepted on start.
 
 Dependencies: configured PostgreSQL, OpenRouter provider credentials, FMP and search credentials/endpoint, and actor object storage. `agent.company_analysis_model` defaults to `google/gemini-3.1-pro-preview`, preserving the main original model. Credentials use existing provider configuration; do not place them in prompts or source assets.
+
+Model transport (2026-10-11): nodes use `LlmResolver::openrouter_model_for_long_generation` — a 900 s HTTP deadline instead of the interactive 120 s total deadline (which also bounds a streamed body and used to cut long sections off), 32k output tokens, a 240 s idle and 720 s overall bound per call. A section that stops at the token limit is continued in the same conversation (up to two continuations). Each node gets four attempts with 5/20/45 s backoff. The configured model must accept `max_tokens=32000`.
+
+Prompts: `original/` is the verbatim, hash-pinned snapshot. `revisions/` replaces the `全跑完-美` valuation node (same 5.1/5.2/5.3 format, plus the shared valuation rules read from `skills/earnings-research/SKILL.md`, the raw quote/financial JSON and consensus/price-target data) and adds one short fact-discipline note per node. The report carries a `股票代码 · 研究日期` line under its title.
 
 The shared earnings renderer requires Python 3, Chromium and CJK fonts. Deploy its whole `scripts/vendor/` directory (Mermaid, KaTeX, fonts and licenses), preserving the executable script and the existing membership image path. macOS prefers the installed Playwright headless shell because desktop Chrome can print missing CJK glyphs. Linux uses system Chromium. All rendering scripts/fonts are offline; external HTML resource loads are blocked by CSP.
 
@@ -24,16 +28,17 @@ All endpoints are authenticated and administrator-only under `/api/public/compan
 - `GET /{task_id}` returns status, phase progress, completed stages and PDF readiness.
 - `POST /{task_id}/resume` continues failed/expired jobs; running/completed jobs return their current state.
 - `GET /{task_id}/pdf` downloads only that actor's completed PDF with private/no-store caching.
+- `GET /{task_id}/markdown` downloads the assembled Markdown report as soon as it exists (`markdown_ready`), including after a PDF render or upload failure.
 
 Original callbacks at 1/10/25/50/80/100 percent are migrated to native `Run.progress`/checkpoint callbacks, rather than posting to Bamang's external task service. The title/PDF/save stages add 85/90/95 percent. Progress is stage-weighted, not an ETA. 100% requires object persistence plus SHA-256 readback. There is no anonymous externally writable progress callback: a caller cannot forge completion.
 
-`company_analysis_tasks` is created on first authorized use with serialized DDL. A partial unique index allows one running task per actor. Lease renewal is every 20 seconds with a two-minute expiry. Backend interruption becomes `interrupted` after expiry. Resume assigns a new attempt token, keeps the original research date and completed node outputs, and repeats only unfinished technical work. Attempt-specific PDF object names prevent expired workers from replacing the current attempt's PDF. Completed reports remain downloadable after restart.
+`company_analysis_tasks` is created on first authorized use with serialized DDL. A partial unique index allows one running task per actor. Lease renewal is every 20 seconds with a two-minute expiry. Backend interruption becomes `interrupted` after expiry. Resume assigns a new attempt token, keeps the original research date and completed node outputs, and repeats only unfinished technical work. A failed run first continues itself once from persisted checkpoints after 30 s (same lease); transient heartbeat and checkpoint-write errors are retried, while a lost lease stops the attempt immediately. A failed diagram or title node does not fail the task (the diagram is skipped with a warning; the title falls back to `{company}公司深度分析 {date}`). When the report exists but the PDF did not finish, the task info says so and the dialog offers the Markdown download plus resume to retry only the PDF. Attempt-specific PDF object names prevent expired workers from replacing the current attempt's PDF. Completed reports remain downloadable after restart.
 
 ## Diagnosis and verification
 
 Check server logs by task ID and the actor-scoped task row. Checkpoint `usage` records each node's token counts/model/elapsed time; `outputs` retains original data inputs and completed text, and PDF metadata records the immutable object key/hash/size. Treat those records as actor data; do not dump them to shared logs or include credentials in handoffs.
 
-A failed download must not be worked around by returning an arbitrary local PDF. Verify actor key, configured object-store provider (R2 uses `r2`/S3 signing), hash and service health. A renderer error can be resumed without regenerating completed research. Diagram/formula syntax failures preserve source text with a technical note; they do not trigger content rewriting.
+A failed download must not be worked around by returning an arbitrary local PDF. Verify actor key, configured object-store provider (R2 uses `r2`/S3 signing), hash and service health. A renderer error can be resumed without regenerating completed research, and the Markdown stays downloadable meanwhile. Diagram/formula syntax failures preserve source text with a technical note; if diagram layout does not finish in time the renderer makes a final script-free print with the diagram source as text (warning `图表或公式未能在时限内绘制…`). None of this triggers content rewriting.
 
 Relevant automated checks: `cargo test -p hone-web-api --lib`, `bun run test:web`, `bun run --cwd packages/app typecheck`, `cd packages/app && bun run test:e2e public-chat-pdf-download.spec.ts --project public`, and `bash tests/regression/ci/test_earnings_research_pdf_markdown.sh`. Rust tests need the PostgreSQL environment in AGENTS.md.
 

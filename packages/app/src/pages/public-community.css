@@ -617,7 +617,7 @@
 
 .public-community-view-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -655,11 +655,146 @@
 }
 
 @media (max-width: 640px) {
+  /* Three short tabs stay on one row on a phone; the explanatory line is
+     the first thing to go so the feed starts above the fold. */
   .public-community-view-tabs {
-    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .public-community-view-tabs button {
-    padding: 11px 13px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+
+  .public-community-view-tabs button span {
+    display: none;
+  }
+}
+
+/* ── 大V速报 tab ────────────────────────────────────────────────────────────
+   The timeline itself is the shared research feed; this only frames it as an
+   in-page section instead of the research desk's modal sheet. */
+.community-influencer {
+  overflow: hidden;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-md);
+  background: var(--hone-surface-raised);
+}
+
+.community-influencer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 12px;
+}
+
+.community-influencer__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.community-influencer__title h2 {
+  margin: 0;
+  color: var(--hone-ink-950);
+  font-size: var(--hone-text-lg);
+}
+
+.community-influencer__status {
+  padding: 2px 9px;
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-signal-neutral-soft);
+  color: var(--hone-signal-neutral-ink);
+  font-size: var(--hone-text-2xs);
+  font-weight: 600;
+}
+
+.community-influencer__status.is-green {
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green-ink);
+}
+
+.community-influencer__status.is-yellow {
+  background: var(--hone-signal-yellow-soft);
+  color: var(--hone-signal-yellow-ink);
+}
+
+.community-influencer__status.is-orange {
+  background: var(--hone-signal-orange-soft);
+  color: var(--hone-signal-orange-ink);
+}
+
+.community-influencer__status.is-red {
+  background: var(--hone-signal-red-soft);
+  color: var(--hone-signal-red-ink);
+}
+
+.community-influencer__count {
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-text-xs);
+}
+
+.community-influencer__head p {
+  margin: 6px 0 0;
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-xs);
+  line-height: 1.6;
+}
+
+.community-influencer__head button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-radius-pill);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-800);
+  font: inherit;
+  font-size: var(--hone-text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.community-influencer__head button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.community-influencer .influencer-authors {
+  padding: 8px 20px 10px;
+  border-top: 1px solid var(--hone-line);
+}
+
+/* In the page the document scrolls; the sheet's own scroll box is not needed. */
+.community-influencer .influencer-digest-body {
+  overflow: visible;
+  padding: 0 20px 8px;
+}
+
+.community-influencer__note {
+  margin: 0;
+  padding: 10px 20px 14px;
+  border-top: 1px solid var(--hone-line);
+  color: var(--hone-ink-500);
+  font-size: var(--hone-text-2xs);
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .community-influencer__head {
+    padding: 14px 14px 10px;
+  }
+
+  .community-influencer .influencer-authors {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .community-influencer .influencer-digest-body {
+    padding: 0 10px 6px;
   }
 }

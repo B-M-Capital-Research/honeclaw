@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 const app = read("../app.tsx");
-const home = read("./public-home.tsx");
+const home = read("./public-home.css");
 const roadmap = read("./public-roadmap.tsx");
 const community = read("./public-community.css");
 const foundation = read("./public-foundation.css");
@@ -34,11 +34,13 @@ describe("public theme surface contract", () => {
   });
 
   it("uses semantic surfaces and action foregrounds on the home page", () => {
-    expect(home).toMatch(/\.hone-home-window \{[^}]*background: var\(--hone-surface-raised\)/s);
-    expect(home).toMatch(/\.hone-home-trust article \{[^}]*background: var\(--hone-surface-raised\)/s);
-    expect(home).toMatch(/\.hone-home-cases \{[^}]*background: var\(--hone-surface-raised\)/s);
-    expect(home).toMatch(/\.hone-home-blog \{[^}]*background: var\(--hone-surface-raised\)/s);
+    expect(home).toMatch(/\.hone-home-product \{[^}]*background: var\(--hone-surface-raised\)/s);
+    expect(home).toMatch(/\.hone-home-principles article \{[^}]*background: var\(--hone-surface-raised\)/s);
+    expect(home).toMatch(/\.hone-home-quant \{[^}]*background: var\(--hone-surface-raised\)/s);
+    expect(home).toMatch(/\.hone-home-community__panel \{[^}]*background: var\(--hone-surface-raised\)/s);
     expect(home).toMatch(/\.hone-home-cta \{[^}]*color: var\(--hone-action-fg\)/s);
+    // The light-only sage tint must not leak into the dark theme's hero.
+    expect(home).toContain('[data-theme="dark"] .hone-home-bg {');
   });
 
   it("uses semantic surfaces and stable inverse colors on the roadmap", () => {

@@ -22,6 +22,10 @@ from pathlib import Path
 MAX_REPORT_CHARS = 240_000
 RENDER_ATTEMPTS = 2
 RENDER_TIMEOUT_SECONDS = 40
+# Script-free last attempt for reports with diagrams or formulas: their source
+# text is printed instead of failing the whole PDF. Host deadlines are 115-120 s.
+PLAIN_RENDER_TIMEOUT_SECONDS = 25
+PLAIN_FALLBACK_WARNING = "图表或公式未能在时限内绘制，PDF 中保留了原始内容。"
 def emit(payload: dict) -> int:
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -261,11 +265,11 @@ def chromium_candidates() -> list[Path]:
     return available
 
 
-def run_chromium(command: list[str]) -> subprocess.CompletedProcess:
-    # The script's host deadline is 120s. Two bounded attempts leave time for
+def run_chromium(command: list[str], timeout: float = RENDER_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
+    # The script's host deadline is 115-120s. The bounded attempts leave time for
     # cleanup and JSON delivery; never leave browser children running on timeout.
     output = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf=")))
-    deadline = time.monotonic() + RENDER_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout
     with subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, start_new_session=True,
@@ -310,18 +314,29 @@ def is_complete_pdf(path: Path) -> bool:
         return stream.read().rstrip().endswith(b"%%EOF")
 
 
-def render_pdf_with_chromium(rendered_html: str, pdf_path: Path) -> list[str]:
+def has_scripted_content(rendered_html: str) -> bool:
+    return 'class="hone-mermaid"' in rendered_html or 'class="hone-math"' in rendered_html
+
+
+def render_pdf_with_chromium(rendered_html: str, pdf_path: Path, plain_html: str | None = None) -> list[str]:
     browsers = chromium_candidates()
     if not browsers:
         raise RuntimeError("Chromium/Chrome executable not found")
     failures: list[str] = []
+    attempts = [(rendered_html, RENDER_TIMEOUT_SECONDS, False)] * RENDER_ATTEMPTS
+    if plain_html is not None:
+        attempts.append((plain_html, PLAIN_RENDER_TIMEOUT_SECONDS, True))
+    layout_stalled = False
     # Only atomically publish a completed PDF. Failed attempts cannot expose
     # partially written artifacts or overwrite an already delivered report.
     with tempfile.TemporaryDirectory(prefix=".hone-earnings-pdf-", dir=pdf_path.parent) as temp_dir:
-        html_path = Path(temp_dir) / "report.html"
-        html_path.write_text(rendered_html, encoding="utf-8")
         staged_pdf = Path(temp_dir) / "report.pdf"
-        for attempt in range(RENDER_ATTEMPTS):
+        for attempt, (document, timeout, plain) in enumerate(attempts):
+            if layout_stalled and not plain:
+                # Diagram layout that missed its signal once will miss it again.
+                continue
+            html_path = Path(temp_dir) / f"report-{attempt}.html"
+            html_path.write_text(document, encoding="utf-8")
             chrome = browsers[min(attempt, len(browsers) - 1)]
             command = [
                 str(chrome),
@@ -339,11 +354,11 @@ def render_pdf_with_chromium(rendered_html: str, pdf_path: Path) -> list[str]:
                 f"--print-to-pdf={staged_pdf}",
                 html_path.as_uri(),
             ]
-            diagrams = 'class="hone-mermaid"' in rendered_html or 'class="hone-math"' in rendered_html
+            diagrams = not plain and has_scripted_content(document)
             if diagrams:
                 command[1:1] = ["--virtual-time-budget=10000", "--dump-dom"]
             try:
-                completed = run_chromium(command)
+                completed = run_chromium(command, timeout)
             except subprocess.TimeoutExpired:
                 failures.append(f"{chrome.name} attempt {attempt + 1} timed out")
                 staged_pdf.unlink(missing_ok=True)
@@ -358,11 +373,14 @@ def render_pdf_with_chromium(rendered_html: str, pdf_path: Path) -> list[str]:
                     root = re.search(r"<html\b[^>]*>", completed.stdout)
                     if not root or 'data-hone-diagrams="ready"' not in root.group():
                         failures.append("diagram layout did not finish before PDF printing")
+                        layout_stalled = True
                         staged_pdf.unlink(missing_ok=True)
                         continue
                     fallback = re.search(r'data-hone-diagram-fallbacks="(\d+)"', root.group())
                     if fallback and int(fallback.group(1)):
                         warnings.append(f"{fallback.group(1)} 处图表或公式无法绘制，已保留原始内容。")
+                if plain:
+                    warnings.append(PLAIN_FALLBACK_WARNING)
                 os.replace(staged_pdf, pdf_path)
                 return warnings
             detail = (completed.stderr or completed.stdout).strip()[-500:]
@@ -386,14 +404,20 @@ def output_directory() -> Path:
     return root.resolve()
 
 
-def build_html(company: str, mode_label: str, report: str, share_image: Path | None) -> str:
+def build_html(company: str, mode_label: str, report: str, share_image: Path | None, scripts_enabled: bool = True) -> str:
     title, body = split_report_title(report)
     body_html = markdown_to_html(body)
     scripts = ""
     math_css = ""
     script_policy = ""
-    has_math = 'class="hone-math"' in body_html
-    if 'class="hone-mermaid"' in body_html or has_math:
+    if not scripts_enabled:
+        # Same text, no browser-side layout: diagram source prints as code.
+        body_html = body_html.replace(
+            '<pre class="hone-mermaid">',
+            '<p>图表暂未绘制，原始内容如下：</p><pre class="code-block diagram-fallback">',
+        )
+    has_math = scripts_enabled and 'class="hone-math"' in body_html
+    if scripts_enabled and ('class="hone-mermaid"' in body_html or has_math):
         bundle = Path(__file__).parent / "vendor/mermaid-11.12.3.min.js"
         if not bundle.is_file():
             raise RuntimeError("bundled Mermaid renderer is unavailable")
@@ -504,10 +528,14 @@ def main() -> int:
         base = safe_name(str(spec.get("output_name", "")) or f"{company}-{mode}")
         pdf_path = out_dir / f"{base}-{uuid.uuid4().hex[:8]}.pdf"
         mode_label = {"preview": "财报前瞻", "analysis": "财报分析", "company": "公司完整分析"}[mode]
-        warnings = render_pdf_with_chromium(
-            build_html(company, mode_label, report, resolve_share_image()),
-            pdf_path,
+        share_image = resolve_share_image()
+        rendered_html = build_html(company, mode_label, report, share_image)
+        plain_html = (
+            build_html(company, mode_label, report, share_image, scripts_enabled=False)
+            if has_scripted_content(rendered_html)
+            else None
         )
+        warnings = render_pdf_with_chromium(rendered_html, pdf_path, plain_html)
         return emit(
             {
                 "success": True,

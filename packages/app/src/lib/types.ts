@@ -312,7 +312,9 @@ export type PublicBillingStatus = {
 
 export type PublicAdminInviteInfo = {
   user_id: string;
+  /** Empty for an email-only allowlist entry. */
   phone_number: string;
+  email_address?: string | null;
   created_at: string;
   last_login_at?: string;
   enabled: boolean;

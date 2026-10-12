@@ -25,12 +25,12 @@ describe("daily valuation lab", () => {
     expect(daily).toContain("panel: \"daily-signal-macro\"");
   });
 
-  test("is parked under the research-desk admin group until public rollout", () => {
+  test("is parked in the research-desk 内测 section until public rollout", () => {
     const block = research.slice(
       research.indexOf('key: "valuation-lab"'),
       research.indexOf('key: "portfolio-news"'),
     );
-    expect(block).toContain('group: "admin"');
+    expect(block).toContain('group: "preview"');
     expect(block).toContain("adminOnly: true");
     expect(page).toContain('setView("forbidden")');
     expect(page).toContain("暂未对全部用户开放");

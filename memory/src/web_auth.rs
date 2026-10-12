@@ -1,7 +1,7 @@
 use hone_core::cloud_runtime::ensure_cloud_schema_once;
 use hone_core::cloud_runtime::{
     CloudPgRuntime, CloudWebAdminCreateOutcome, CloudWebAdminDisableOutcome,
-    CloudWebUserExternalStateRecord,
+    CloudWebAdminEmailOutcome, CloudWebUserExternalStateRecord,
 };
 use hone_core::{HoneError, HoneResult, local_now, local_now_rfc3339, rfc3339_at_or_before};
 use serde::{Deserialize, Serialize};
@@ -41,6 +41,9 @@ pub struct WebAdminInviteSummary {
     pub last_login_at: Option<String>,
     pub revoked_at: Option<String>,
     pub is_admin: bool,
+    /// Optional allowlisted login email; an entry may have a phone, an email
+    /// or both.
+    pub email_address: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +118,22 @@ pub enum WebAdminInviteCreateOutcome {
         used_today: u32,
     },
     DuplicatePhone,
+    DuplicateEmail,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebAdminInviteEmailOutcome {
+    Updated {
+        invite: WebInviteUser,
+        email_address: Option<String>,
+    },
+    NotAdmin,
+    NotFound,
+    DuplicateEmail,
+    /// Stripe purchase identities own their email as billing identity.
+    ExternalIdentity,
+    /// Clearing the email would leave the entry without any login method.
+    NoLoginMethod,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,6 +297,20 @@ impl WebAuthStorage {
         .await;
     }
 
+    async fn save_email_verification_state(
+        &self,
+        user: &WebInviteUser,
+        expected: &WebUserExternalState,
+        next: &WebUserExternalState,
+    ) -> HoneResult<bool> {
+        self.postgres
+            .compare_exchange_web_email_verification(
+                &cloud_external_state_record(&user.user_id, expected)?,
+                &cloud_external_state_record(&user.user_id, next)?,
+            )
+            .await
+    }
+
     async fn find_external_user_by_email(
         &self,
         email_address: &str,
@@ -356,16 +389,33 @@ impl WebAuthStorage {
         .await;
     }
 
+    /// Adds one allowlist entry. Either login method may be omitted, but not
+    /// both: a phone-only, email-only or phone+email entry is admitted.
     pub async fn create_invite_user_by_admin(
         &self,
         admin_user_id: &str,
-        phone_number: &str,
+        phone_number: Option<&str>,
+        email_address: Option<&str>,
     ) -> HoneResult<WebAdminInviteCreateOutcome> {
         let now = local_now();
         let created_at = now.to_rfc3339();
         let local_date = now.format("%F").to_string();
         let user_id = generate_user_id();
-        let phone_number = validate_phone_number(phone_number)?;
+        let phone_number = match phone_number
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            Some(phone_number) => validate_phone_number(phone_number)?,
+            None => String::new(),
+        };
+        let email_address = email_address
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(normalize_email_address)
+            .transpose()?;
+        if phone_number.is_empty() && email_address.is_none() {
+            return Err(HoneError::Config("手机号或邮箱至少填写一项".to_string()));
+        }
 
         let postgres = self.postgres.clone();
         let invite_code = generate_unique_invite_code_cloud(self).await?;
@@ -402,6 +452,7 @@ impl WebAuthStorage {
                     &admin_user_id,
                     &user_id,
                     &phone_number,
+                    email_address.as_deref(),
                     record,
                     &local_date,
                     WEB_ADMIN_DAILY_INVITE_LIMIT,
@@ -423,7 +474,57 @@ impl WebAuthStorage {
             CloudWebAdminCreateOutcome::DuplicatePhone => {
                 WebAdminInviteCreateOutcome::DuplicatePhone
             }
+            CloudWebAdminCreateOutcome::DuplicateEmail => {
+                WebAdminInviteCreateOutcome::DuplicateEmail
+            }
         });
+    }
+
+    /// Attaches, replaces (`Some`) or clears (`None` / blank) the login email
+    /// of an allowlist entry on behalf of an administrator. Audited.
+    pub async fn set_invite_email_by_admin(
+        &self,
+        admin_user_id: &str,
+        target_user_id: &str,
+        email_address: Option<&str>,
+    ) -> HoneResult<WebAdminInviteEmailOutcome> {
+        let email_address = email_address
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(normalize_email_address)
+            .transpose()?;
+        let local_date = local_now().format("%F").to_string();
+        let postgres = self.postgres.clone();
+        let admin_user_id = admin_user_id.to_string();
+        let target_user_id = target_user_id.to_string();
+        let email_for_write = email_address.clone();
+        let outcome = (async move {
+            postgres
+                .set_web_invite_user_email_by_admin(
+                    &admin_user_id,
+                    &target_user_id,
+                    email_for_write.as_deref(),
+                    &local_date,
+                )
+                .await
+        })
+        .await?;
+        Ok(match outcome {
+            CloudWebAdminEmailOutcome::Updated { record } => {
+                let (invite, _) = Self::cloud_record_to_user(record)?;
+                WebAdminInviteEmailOutcome::Updated {
+                    invite,
+                    email_address,
+                }
+            }
+            CloudWebAdminEmailOutcome::NotAdmin => WebAdminInviteEmailOutcome::NotAdmin,
+            CloudWebAdminEmailOutcome::NotFound => WebAdminInviteEmailOutcome::NotFound,
+            CloudWebAdminEmailOutcome::DuplicateEmail => WebAdminInviteEmailOutcome::DuplicateEmail,
+            CloudWebAdminEmailOutcome::ExternalIdentity => {
+                WebAdminInviteEmailOutcome::ExternalIdentity
+            }
+            CloudWebAdminEmailOutcome::NoLoginMethod => WebAdminInviteEmailOutcome::NoLoginMethod,
+        })
     }
 
     pub async fn disable_invite_user_by_admin(
@@ -521,6 +622,13 @@ impl WebAuthStorage {
     ) -> HoneResult<WebInviteUser> {
         let email_address = normalize_email_address(email_address)?;
         if let Some((user, mut state)) = self.find_external_user_by_email(&email_address).await? {
+            // An administrator-allowlisted email already grants invite access.
+            // An unauthenticated Checkout request must never be able to turn
+            // that identity into a paid-only one (which would lock the member
+            // out until they pay), so it is returned untouched.
+            if state.profile.identity_kind == WEB_IDENTITY_DOMESTIC_INVITE {
+                return Ok(user);
+            }
             if state.profile.email_verified_at.is_some()
                 && state.profile.email_address.as_deref() != Some(email_address.as_str())
             {
@@ -544,6 +652,10 @@ impl WebAuthStorage {
         let Some((user, mut state)) = self.find_external_user_by_email(email_address).await? else {
             return Ok(None);
         };
+        if user.revoked_at.is_some() {
+            return Ok(None);
+        }
+        let expected = state.clone();
         let now = local_now();
         let code = generate_email_verification_code();
         state.email_challenge = Some(EmailVerificationChallenge {
@@ -552,7 +664,12 @@ impl WebAuthStorage {
             expires_at: (now + chrono::Duration::minutes(ttl_minutes.max(1))).to_rfc3339(),
             attempts: 0,
         });
-        self.save_external_state(&user, state).await?;
+        if !self
+            .save_email_verification_state(&user, &expected, &state)
+            .await?
+        {
+            return Ok(None);
+        }
         Ok(Some(code))
     }
 
@@ -561,38 +678,48 @@ impl WebAuthStorage {
         email_address: &str,
         code: &str,
     ) -> HoneResult<EmailVerificationResult> {
-        let Some((user, mut state)) = self.find_external_user_by_email(email_address).await? else {
-            return Ok(EmailVerificationResult::Missing);
-        };
-        let Some(mut challenge) = state.email_challenge.take() else {
-            return Ok(EmailVerificationResult::Missing);
-        };
-        if challenge.attempts >= 5 {
-            state.email_challenge = Some(challenge);
-            self.save_external_state(&user, state).await?;
-            return Ok(EmailVerificationResult::AttemptsExceeded);
-        }
-        if rfc3339_at_or_before(&challenge.expires_at, &local_now_rfc3339()) {
-            self.save_external_state(&user, state).await?;
-            return Ok(EmailVerificationResult::Expired);
-        }
-        let normalized_code = normalize_email_verification_code(code);
-        if hash_email_verification_code(&user.user_id, &normalized_code) != challenge.code_hash {
-            challenge.attempts = challenge.attempts.saturating_add(1);
-            let exhausted = challenge.attempts >= 5;
-            state.email_challenge = Some(challenge);
-            self.save_external_state(&user, state).await?;
-            return Ok(if exhausted {
-                EmailVerificationResult::AttemptsExceeded
+        // Retry only a known comparison conflict, never an ambiguous write.
+        // Each failed guess increments the current challenge atomically.
+        for _ in 0..6 {
+            let Some((user, mut state)) = self.find_external_user_by_email(email_address).await?
+            else {
+                return Ok(EmailVerificationResult::Missing);
+            };
+            if user.revoked_at.is_some() {
+                return Ok(EmailVerificationResult::Missing);
+            }
+            let expected = state.clone();
+            let Some(mut challenge) = state.email_challenge.take() else {
+                return Ok(EmailVerificationResult::Missing);
+            };
+            if challenge.attempts >= 5 {
+                return Ok(EmailVerificationResult::AttemptsExceeded);
+            }
+            let result = if rfc3339_at_or_before(&challenge.expires_at, &local_now_rfc3339()) {
+                EmailVerificationResult::Expired
+            } else if hash_email_verification_code(&user.user_id, code) != challenge.code_hash {
+                challenge.attempts = challenge.attempts.saturating_add(1);
+                let exhausted = challenge.attempts >= 5;
+                state.email_challenge = Some(challenge);
+                if exhausted {
+                    EmailVerificationResult::AttemptsExceeded
+                } else {
+                    EmailVerificationResult::Invalid
+                }
             } else {
-                EmailVerificationResult::Invalid
-            });
+                state.profile.email_verified_at = Some(local_now_rfc3339());
+                EmailVerificationResult::Verified {
+                    user_id: user.user_id.clone(),
+                }
+            };
+            if self
+                .save_email_verification_state(&user, &expected, &state)
+                .await?
+            {
+                return Ok(result);
+            }
         }
-        state.profile.email_verified_at = Some(local_now_rfc3339());
-        self.save_external_state(&user, state).await?;
-        Ok(EmailVerificationResult::Verified {
-            user_id: user.user_id,
-        })
+        Ok(EmailVerificationResult::Missing)
     }
 
     async fn create_international_email_user(
@@ -653,6 +780,7 @@ impl WebAuthStorage {
                 last_login_at: record.last_login_at,
                 revoked_at: record.revoked_at,
                 is_admin: record.is_admin,
+                email_address: record.email_address,
             })
             .collect());
     }
@@ -1243,7 +1371,8 @@ fn cloud_external_state_from_record(
     })
 }
 
-fn normalize_email_address(email_address: &str) -> HoneResult<String> {
+/// Canonical (trimmed, lowercased, shape-checked) form of a login email.
+pub fn normalize_email_address(email_address: &str) -> HoneResult<String> {
     let normalized = email_address.trim().to_ascii_lowercase();
     let Some((local, domain)) = normalized.split_once('@') else {
         return Err(HoneError::Config("邮箱格式不合法".to_string()));
@@ -1334,9 +1463,10 @@ fn hash_email_verification_code(user_id: &str, code: &str) -> String {
 mod tests {
     use super::{
         CloudWebInviteRecord, EmailVerificationResult, SESSION_TTL_DAYS_LONG,
-        SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_INTERNATIONAL_EMAIL, WebAdminInviteCreateOutcome,
-        WebAdminInviteDisableOutcome, WebAuthStorage, WebSessionAuthResult, generate_api_key,
-        generate_invite_code, generate_session_token, hash_session_token,
+        SESSION_TTL_DAYS_SHORT, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,
+        WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome, WebAdminInviteEmailOutcome,
+        WebAuthStorage, WebSessionAuthResult, generate_api_key, generate_invite_code,
+        generate_session_token, hash_session_token,
     };
     use hone_core::cloud_runtime::CloudPgRuntime;
     use hone_core::{HoneError, HoneResult, local_now};
@@ -1624,7 +1754,7 @@ WHERE s.user_id = $1
             .expect("grant");
 
         let first = storage
-            .create_invite_user_by_admin(&admin.user_id, "13900000000")
+            .create_invite_user_by_admin(&admin.user_id, Some("13900000000"), None)
             .await
             .expect("first");
         assert!(matches!(
@@ -1641,7 +1771,7 @@ WHERE s.user_id = $1
 
         assert_eq!(
             storage
-                .create_invite_user_by_admin(&admin.user_id, "13900000000")
+                .create_invite_user_by_admin(&admin.user_id, Some("13900000000"), None)
                 .await
                 .expect("duplicate"),
             WebAdminInviteCreateOutcome::DuplicatePhone
@@ -1661,7 +1791,7 @@ WHERE s.user_id = $1
         {
             assert!(matches!(
                 storage
-                    .create_invite_user_by_admin(&admin.user_id, phone)
+                    .create_invite_user_by_admin(&admin.user_id, Some(phone), None)
                     .await.expect("create"),
                 WebAdminInviteCreateOutcome::Created { used_today, .. }
                     if used_today == index as u32 + 2
@@ -1669,7 +1799,7 @@ WHERE s.user_id = $1
         }
         assert_eq!(
             storage
-                .create_invite_user_by_admin(&admin.user_id, "13900000005")
+                .create_invite_user_by_admin(&admin.user_id, Some("13900000005"), None)
                 .await
                 .expect("limit"),
             WebAdminInviteCreateOutcome::LimitReached { used_today: 5 }
@@ -1698,7 +1828,7 @@ WHERE s.user_id = $1
 
         assert_eq!(
             storage
-                .create_invite_user_by_admin(&ordinary.user_id, "13700137000")
+                .create_invite_user_by_admin(&ordinary.user_id, Some("13700137000"), None)
                 .await
                 .expect("create"),
             WebAdminInviteCreateOutcome::NotAdmin
@@ -2558,6 +2688,407 @@ WHERE s.user_id = $1
         assert!(
             !invite_record_has_external_state,
             "new Cloud writes must keep external state in its dedicated table"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    async fn stale_email_verification_cannot_restore_an_admin_changed_address_or_replay_code() {
+        let storage = test_storage().await;
+        let admin = test_admin(&storage, "13871396421").await;
+        let member = storage.create_invite_user("13900000000").await.unwrap();
+        storage
+            .set_invite_email_by_admin(&admin.user_id, &member.user_id, Some("old@example.com"))
+            .await
+            .unwrap();
+        let code = storage
+            .begin_email_verification("old@example.com", 10)
+            .await
+            .unwrap()
+            .unwrap();
+        let (_, expected) = storage
+            .find_external_user_by_email("old@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        let mut verified = expected.clone();
+        verified.email_challenge = None;
+        verified.profile.email_verified_at = Some(hone_core::local_now_rfc3339());
+        storage
+            .set_invite_email_by_admin(&admin.user_id, &member.user_id, Some("new@example.com"))
+            .await
+            .unwrap();
+
+        // Reproduce both interleavings directly at the read/write boundary.
+        assert!(
+            !storage
+                .save_email_verification_state(&member, &expected, &expected)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !storage
+                .save_email_verification_state(&member, &expected, &verified)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            storage
+                .verify_email_code("old@example.com", &code)
+                .await
+                .unwrap(),
+            EmailVerificationResult::Missing
+        );
+        let profile = storage.external_profile(&member.user_id).await.unwrap();
+        assert_eq!(profile.email_address.as_deref(), Some("new@example.com"));
+        assert_eq!(profile.email_verified_at, None);
+
+        let code = storage
+            .begin_email_verification("new@example.com", 10)
+            .await
+            .unwrap()
+            .unwrap();
+        let (first, second) = tokio::join!(
+            storage.verify_email_code("new@example.com", &code),
+            storage.verify_email_code("new@example.com", &code),
+        );
+        let outcomes = [first.unwrap(), second.unwrap()];
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|result| matches!(result, EmailVerificationResult::Verified { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|result| **result == EmailVerificationResult::Missing)
+                .count(),
+            1
+        );
+
+        let code = storage
+            .begin_email_verification("new@example.com", 10)
+            .await
+            .unwrap()
+            .unwrap();
+        let (_, expected) = storage
+            .find_external_user_by_email("new@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        storage
+            .set_invite_revoked(&member.user_id, true)
+            .await
+            .unwrap();
+        assert!(
+            !storage
+                .save_email_verification_state(&member, &expected, &expected)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            storage
+                .verify_email_code("new@example.com", &code)
+                .await
+                .unwrap(),
+            EmailVerificationResult::Missing
+        );
+    }
+
+    async fn test_admin(storage: &WebAuthStorage, phone: &str) -> super::WebInviteUser {
+        let admin = storage.create_invite_user(phone).await.expect("admin");
+        storage
+            .set_web_admin_by_phone(phone, true)
+            .await
+            .expect("grant admin");
+        admin
+    }
+
+    #[tokio::test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    async fn admin_allowlist_accepts_email_only_and_phone_plus_email_entries() {
+        let storage = test_storage().await;
+        let admin = test_admin(&storage, "13871396421").await;
+
+        assert!(matches!(
+            storage
+                .create_invite_user_by_admin(
+                    &admin.user_id,
+                    Some("13900000000"),
+                    Some(" Member@Example.COM ")
+                )
+                .await
+                .expect("create phone + email"),
+            WebAdminInviteCreateOutcome::Created { used_today: 1, .. }
+        ));
+        let email_only = match storage
+            .create_invite_user_by_admin(&admin.user_id, None, Some("overseas@example.com"))
+            .await
+            .expect("create email only")
+        {
+            WebAdminInviteCreateOutcome::Created {
+                invite,
+                used_today: 2,
+            } => invite,
+            other => panic!("unexpected outcome: {other:?}"),
+        };
+        assert_eq!(email_only.phone_number, "");
+        assert_eq!(
+            storage
+                .create_invite_user_by_admin(
+                    &admin.user_id,
+                    Some("13900000001"),
+                    Some("member@example.com")
+                )
+                .await
+                .expect("duplicate email"),
+            WebAdminInviteCreateOutcome::DuplicateEmail
+        );
+        assert!(
+            storage
+                .create_invite_user_by_admin(&admin.user_id, None, None)
+                .await
+                .is_err(),
+            "an entry without any login method must be rejected"
+        );
+        assert_eq!(
+            storage
+                .web_admin_create_count_today(&admin.user_id)
+                .await
+                .unwrap(),
+            2
+        );
+
+        let profile = storage
+            .external_profile(&email_only.user_id)
+            .await
+            .expect("profile");
+        assert_eq!(
+            profile.email_address.as_deref(),
+            Some("overseas@example.com")
+        );
+        assert_eq!(profile.identity_kind, WEB_IDENTITY_DOMESTIC_INVITE);
+
+        // The international purchase path must also see the email as taken.
+        let international = storage
+            .ensure_international_email_user("buyer@example.com")
+            .await
+            .expect("international");
+        let summaries = storage
+            .list_web_admin_invite_summaries()
+            .await
+            .expect("summaries");
+        assert!(
+            summaries
+                .iter()
+                .any(|summary| summary.user_id == email_only.user_id
+                    && summary.email_address.as_deref() == Some("overseas@example.com")
+                    && summary.phone_number.is_empty())
+        );
+        assert!(
+            summaries
+                .iter()
+                .any(|summary| summary.phone_number == "13900000000"
+                    && summary.email_address.as_deref() == Some("member@example.com"))
+        );
+        assert!(
+            !summaries
+                .iter()
+                .any(|summary| summary.user_id == international.user_id),
+            "Stripe purchase identities are not allowlist entries"
+        );
+        assert_eq!(
+            storage
+                .create_invite_user_by_admin(&admin.user_id, None, Some("BUYER@example.com"))
+                .await
+                .expect("email owned by purchase identity"),
+            WebAdminInviteCreateOutcome::DuplicateEmail
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    async fn admin_can_attach_replace_and_clear_allowlist_email() {
+        let storage = test_storage().await;
+        let admin = test_admin(&storage, "13871396421").await;
+        let member = storage
+            .create_invite_user("13900000000")
+            .await
+            .expect("member");
+        let other = storage
+            .create_invite_user("13900000001")
+            .await
+            .expect("other");
+        let ordinary = storage
+            .create_invite_user("13900000002")
+            .await
+            .expect("ordinary");
+
+        assert_eq!(
+            storage
+                .set_invite_email_by_admin(
+                    &ordinary.user_id,
+                    &member.user_id,
+                    Some("a@example.com")
+                )
+                .await
+                .expect("non admin"),
+            WebAdminInviteEmailOutcome::NotAdmin
+        );
+        assert!(matches!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, &member.user_id, Some("A@Example.com"))
+                .await
+                .expect("attach"),
+            WebAdminInviteEmailOutcome::Updated { email_address: Some(ref email), .. } if email == "a@example.com"
+        ));
+        let code = storage
+            .begin_email_verification("a@example.com", 10)
+            .await
+            .expect("challenge")
+            .expect("allowlisted email receives a code");
+        assert_eq!(
+            storage
+                .verify_email_code("a@example.com", &code)
+                .await
+                .expect("verify"),
+            EmailVerificationResult::Verified {
+                user_id: member.user_id.clone()
+            }
+        );
+        assert_eq!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, &other.user_id, Some("a@example.com"))
+                .await
+                .expect("duplicate"),
+            WebAdminInviteEmailOutcome::DuplicateEmail
+        );
+
+        // Replacing the address invalidates the old one and its verification.
+        assert!(matches!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, &member.user_id, Some("b@example.com"))
+                .await
+                .expect("replace"),
+            WebAdminInviteEmailOutcome::Updated { .. }
+        ));
+        assert_eq!(
+            storage
+                .find_user_by_email("a@example.com")
+                .await
+                .expect("old"),
+            None
+        );
+        let profile = storage
+            .external_profile(&member.user_id)
+            .await
+            .expect("profile");
+        assert_eq!(profile.email_address.as_deref(), Some("b@example.com"));
+        assert_eq!(profile.email_verified_at, None);
+
+        assert!(matches!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, &member.user_id, None)
+                .await
+                .expect("clear"),
+            WebAdminInviteEmailOutcome::Updated {
+                email_address: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            storage
+                .find_user_by_email("b@example.com")
+                .await
+                .expect("cleared"),
+            None
+        );
+
+        let email_only = match storage
+            .create_invite_user_by_admin(&admin.user_id, None, Some("solo@example.com"))
+            .await
+            .expect("email only")
+        {
+            WebAdminInviteCreateOutcome::Created { invite, .. } => invite,
+            other => panic!("unexpected outcome: {other:?}"),
+        };
+        assert_eq!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, &email_only.user_id, Some("  "))
+                .await
+                .expect("clear only method"),
+            WebAdminInviteEmailOutcome::NoLoginMethod
+        );
+
+        let international = storage
+            .ensure_international_email_user("buyer@example.com")
+            .await
+            .expect("international");
+        assert_eq!(
+            storage
+                .set_invite_email_by_admin(
+                    &admin.user_id,
+                    &international.user_id,
+                    Some("x@example.com")
+                )
+                .await
+                .expect("purchase identity"),
+            WebAdminInviteEmailOutcome::ExternalIdentity
+        );
+        assert_eq!(
+            storage
+                .set_invite_email_by_admin(&admin.user_id, "missing-user", Some("x@example.com"))
+                .await
+                .expect("missing"),
+            WebAdminInviteEmailOutcome::NotFound
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires HONE_POSTGRES_* and a running local PostgreSQL"]
+    async fn allowlisted_email_is_not_downgraded_by_checkout_and_revoked_entries_get_no_code() {
+        let storage = test_storage().await;
+        let admin = test_admin(&storage, "13871396421").await;
+        let member = match storage
+            .create_invite_user_by_admin(
+                &admin.user_id,
+                Some("13900000000"),
+                Some("member@example.com"),
+            )
+            .await
+            .expect("create")
+        {
+            WebAdminInviteCreateOutcome::Created { invite, .. } => invite,
+            other => panic!("unexpected outcome: {other:?}"),
+        };
+
+        let same = storage
+            .ensure_international_email_user("member@example.com")
+            .await
+            .expect("checkout lookup");
+        assert_eq!(same.user_id, member.user_id);
+        assert_eq!(
+            storage
+                .external_profile(&member.user_id)
+                .await
+                .expect("profile")
+                .identity_kind,
+            WEB_IDENTITY_DOMESTIC_INVITE,
+            "an unauthenticated Checkout request must not flip an allowlisted identity"
+        );
+
+        storage
+            .set_invite_revoked(&member.user_id, true)
+            .await
+            .expect("revoke");
+        assert_eq!(
+            storage
+                .begin_email_verification("member@example.com", 10)
+                .await
+                .expect("challenge"),
+            None
         );
     }
 }

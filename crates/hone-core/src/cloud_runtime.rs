@@ -52,18 +52,26 @@ SELECT reserved, quota_date, limit_count, reserved_count, committed_count FROM c
 LIMIT 1
 "#;
 
+// 白名单 = 管理员创建的 domestic_invite 身份:有手机号,或只配置了邮箱。
+// Stripe 付款创建的 international_email 身份不属于白名单,不在这里出现。
 const LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL: &str = r#"
 SELECT
-  user_id,
-  phone_number,
-  COALESCE(NULLIF(record->>'created_at', ''), updated_at::text) AS created_at,
-  NULLIF(record->>'last_login_at', '') AS last_login_at,
-  NULLIF(record->>'revoked_at', '') AS revoked_at,
-  is_admin
-FROM cloud_web_invite_users
-WHERE phone_number <> ''
-ORDER BY COALESCE(NULLIF(record->>'created_at', '')::timestamptz, updated_at) DESC,
-         user_id
+  u.user_id,
+  COALESCE(u.phone_number, '') AS phone_number,
+  COALESCE(NULLIF(u.record->>'created_at', ''), u.updated_at::text) AS created_at,
+  NULLIF(u.record->>'last_login_at', '') AS last_login_at,
+  NULLIF(u.record->>'revoked_at', '') AS revoked_at,
+  u.is_admin,
+  s.email_address
+FROM cloud_web_invite_users u
+LEFT JOIN cloud_web_user_external_state s ON s.user_id = u.user_id
+WHERE COALESCE(u.phone_number, '') <> ''
+   OR (
+     s.email_address IS NOT NULL
+     AND COALESCE(s.identity_kind, 'domestic_invite') = 'domestic_invite'
+   )
+ORDER BY COALESCE(NULLIF(u.record->>'created_at', '')::timestamptz, u.updated_at) DESC,
+         u.user_id
 "#;
 
 const WEB_ADMIN_CREATE_COUNT_SQL: &str = r#"
@@ -1189,6 +1197,60 @@ fn cloud_web_user_external_state_from_row(
     }
 }
 
+async fn rollback_web_admin_email(transaction: tokio_postgres::Transaction<'_>) -> HoneResult<()> {
+    transaction
+        .rollback()
+        .await
+        .map_err(|err| HoneError::Config(format!("Postgres web admin 邮箱事务回滚失败: {err}")))
+}
+
+/// Serializes allowlist writers of one normalized email so the duplicate
+/// check and the insert cannot interleave across administrators.
+async fn lock_web_invite_email(
+    transaction: &tokio_postgres::Transaction<'_>,
+    email_address: &str,
+) -> HoneResult<()> {
+    transaction
+        .query_one(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            &[&format!("web-invite-email:{email_address}")],
+        )
+        .await
+        .map_err(|err| HoneError::Config(format!("Postgres web invite 邮箱锁定失败: {err}")))?;
+    Ok(())
+}
+
+/// True when another identity (allowlist entry or Stripe purchase identity)
+/// already owns this email, including legacy records whose external state
+/// still lives only in the JSON column.
+async fn web_invite_email_in_use(
+    transaction: &tokio_postgres::Transaction<'_>,
+    email_address: &str,
+    except_user_id: Option<&str>,
+) -> HoneResult<bool> {
+    let row = transaction
+        .query_opt(
+            r#"
+SELECT 1
+FROM cloud_web_user_external_state
+WHERE email_address = $1
+  AND ($2::text IS NULL OR user_id <> $2::text)
+UNION ALL
+SELECT 1
+FROM cloud_web_invite_users u
+LEFT JOIN cloud_web_user_external_state s ON s.user_id = u.user_id
+WHERE s.user_id IS NULL
+  AND NULLIF(u.record #>> '{external_state,email_address}', '') = $1
+  AND ($2::text IS NULL OR u.user_id <> $2::text)
+LIMIT 1
+"#,
+            &[&email_address, &except_user_id],
+        )
+        .await
+        .map_err(|err| HoneError::Config(format!("Postgres web invite 邮箱查重失败: {err}")))?;
+    Ok(row.is_some())
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CloudWebAuthSessionRecord {
     pub session_hash: String,
@@ -1213,6 +1275,7 @@ pub struct CloudWebAdminInviteSummary {
     pub last_login_at: Option<String>,
     pub revoked_at: Option<String>,
     pub is_admin: bool,
+    pub email_address: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1221,6 +1284,24 @@ pub enum CloudWebAdminCreateOutcome {
     NotAdmin,
     LimitReached { used_today: u32 },
     DuplicatePhone,
+    DuplicateEmail,
+}
+
+/// Result of an administrator attaching, replacing or clearing the login
+/// email on an allowlist entry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CloudWebAdminEmailOutcome {
+    Updated {
+        record: serde_json::Value,
+    },
+    NotAdmin,
+    NotFound,
+    DuplicateEmail,
+    /// The target is a Stripe purchase identity whose email is its billing
+    /// identity, not an allowlist attribute an administrator may rewrite.
+    ExternalIdentity,
+    /// Clearing the email would leave the entry with no way to sign in.
+    NoLoginMethod,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1928,10 +2009,32 @@ CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
   action_id BIGSERIAL PRIMARY KEY,
   admin_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
   target_user_id TEXT NOT NULL REFERENCES cloud_web_invite_users(user_id),
-  action TEXT NOT NULL CHECK (action IN ('create', 'disable')),
+  action TEXT NOT NULL CHECK (action IN ('create', 'disable', 'update_email')),
   local_date DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 白名单邮箱编辑也写审计行。老库的 CHECK 只允许 create/disable,`CREATE TABLE
+-- IF NOT EXISTS` 不会改它;只有约束定义里还没有 update_email 时才重建,
+-- 保持幂等,热路径上通常只多一次目录查询。
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = current_schema()
+      AND t.relname = 'cloud_web_admin_actions'
+      AND c.conname = 'cloud_web_admin_actions_action_check'
+      AND pg_get_constraintdef(c.oid) NOT LIKE '%update_email%'
+  ) THEN
+    ALTER TABLE cloud_web_admin_actions
+      DROP CONSTRAINT cloud_web_admin_actions_action_check;
+    ALTER TABLE cloud_web_admin_actions
+      ADD CONSTRAINT cloud_web_admin_actions_action_check
+      CHECK (action IN ('create', 'disable', 'update_email'));
+  END IF;
+END $$;
 -- 运行时时区改造把这一列从 `beijing_date` 改名为 `local_date`,但 `CREATE TABLE
 -- IF NOT EXISTS` 对**已存在**的表是空操作 —— 老库里列名不会变,紧接着的
 -- CREATE INDEX 引用 `local_date` 就会报 `column "local_date" does not exist`,
@@ -3739,6 +3842,101 @@ DO UPDATE SET
         Ok(())
     }
 
+    /// Serialize verification writes with administrator email changes and
+    /// revocation. A stale request must not restore an old address/challenge,
+    /// and two verifications must not consume the same code.
+    pub async fn compare_exchange_web_email_verification(
+        &self,
+        expected: &CloudWebUserExternalStateRecord,
+        next: &CloudWebUserExternalStateRecord,
+    ) -> HoneResult<bool> {
+        if expected.user_id != next.user_id
+            || expected.email_address != next.email_address
+            || expected.identity_kind != next.identity_kind
+        {
+            return Err(HoneError::Config("邮箱验证不得修改身份".to_string()));
+        }
+        let mut client = self.connect_new_client().await?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 邮箱验证事务失败: {err}")))?;
+        let user = transaction
+            .query_opt(
+                "SELECT record FROM cloud_web_invite_users WHERE user_id = $1 FOR UPDATE",
+                &[&expected.user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 邮箱验证身份锁定失败: {err}")))?;
+        let Some(user) = user else { return Ok(false) };
+        let record: serde_json::Value = user.get(0);
+        if record
+            .get("revoked_at")
+            .is_some_and(|value| !value.is_null())
+        {
+            return Ok(false);
+        }
+        let state = transaction.query_opt(
+            "SELECT user_id, email_address, email_verified_at, identity_kind, email_challenge_json FROM cloud_web_user_external_state WHERE user_id = $1 FOR UPDATE",
+            &[&expected.user_id],
+        ).await.map_err(|err| HoneError::Config(format!("Postgres 邮箱验证状态锁定失败: {err}")))?;
+        let current = match state {
+            Some(row) => cloud_web_user_external_state_from_row(&row, 0),
+            None => {
+                let legacy = &record["external_state"];
+                CloudWebUserExternalStateRecord {
+                    user_id: expected.user_id.clone(),
+                    email_address: legacy["email_address"].as_str().map(str::to_owned),
+                    email_verified_at: legacy["email_verified_at"].as_str().map(str::to_owned),
+                    identity_kind: legacy["identity_kind"].as_str().map(str::to_owned),
+                    email_challenge_json: legacy
+                        .get("email_challenge")
+                        .filter(|v| !v.is_null())
+                        .map(serde_json::Value::to_string),
+                }
+            }
+        };
+        let parse_challenge = |raw: &Option<String>| -> HoneResult<Option<serde_json::Value>> {
+            raw.as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(|err| HoneError::Serialization(format!("邮箱验证状态无效: {err}")))
+        };
+        if current.email_address != expected.email_address
+            || current.email_verified_at != expected.email_verified_at
+            || current
+                .identity_kind
+                .as_deref()
+                .unwrap_or("domestic_invite")
+                != expected
+                    .identity_kind
+                    .as_deref()
+                    .unwrap_or("domestic_invite")
+            || parse_challenge(&current.email_challenge_json)?
+                != parse_challenge(&expected.email_challenge_json)?
+        {
+            return Ok(false);
+        }
+        transaction
+            .execute(
+                UPSERT_WEB_USER_EXTERNAL_STATE_SQL,
+                &[
+                    &next.user_id,
+                    &next.email_address,
+                    &next.email_verified_at,
+                    &next.identity_kind,
+                    &next.email_challenge_json,
+                ],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 邮箱验证写入失败: {err}")))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres 邮箱验证提交失败: {err}")))?;
+        Ok(true)
+    }
+
     pub async fn find_web_user_external_state_record(
         &self,
         user_id: &str,
@@ -4208,6 +4406,7 @@ WHERE provider = $1
                 last_login_at: row.get(3),
                 revoked_at: row.get(4),
                 is_admin: row.get(5),
+                email_address: row.get(6),
             })
             .collect())
     }
@@ -4287,11 +4486,16 @@ WHERE user_id = $1
         Ok(row.get::<_, i64>(0).max(0) as u32)
     }
 
+    /// Creates one allowlist entry. `phone_number` may be empty for an
+    /// email-only entry; the caller guarantees at least one login method and
+    /// passes an already-normalized email.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_web_invite_user_record_by_admin(
         &self,
         admin_user_id: &str,
         target_user_id: &str,
         phone_number: &str,
+        email_address: Option<&str>,
         record: serde_json::Value,
         local_date: &str,
         daily_limit: u32,
@@ -4328,28 +4532,41 @@ FOR UPDATE
             return Ok(CloudWebAdminCreateOutcome::NotAdmin);
         }
 
-        transaction
-            .query_one(
-                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                &[&format!("web-invite-phone:{phone_number}")],
-            )
-            .await
-            .map_err(|err| {
-                HoneError::Config(format!("Postgres web invite 手机号锁定失败: {err}"))
-            })?;
-        let duplicate = transaction
-            .query_opt(
-                "SELECT 1 FROM cloud_web_invite_users WHERE phone_number = $1 LIMIT 1",
-                &[&phone_number],
-            )
-            .await
-            .map_err(|err| HoneError::Config(format!("Postgres web invite 手机号查重失败: {err}")))?
-            .is_some();
-        if duplicate {
-            transaction.rollback().await.map_err(|err| {
-                HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
-            })?;
-            return Ok(CloudWebAdminCreateOutcome::DuplicatePhone);
+        if !phone_number.is_empty() {
+            transaction
+                .query_one(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                    &[&format!("web-invite-phone:{phone_number}")],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres web invite 手机号锁定失败: {err}"))
+                })?;
+            let duplicate = transaction
+                .query_opt(
+                    "SELECT 1 FROM cloud_web_invite_users WHERE phone_number = $1 LIMIT 1",
+                    &[&phone_number],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres web invite 手机号查重失败: {err}"))
+                })?
+                .is_some();
+            if duplicate {
+                transaction.rollback().await.map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+                })?;
+                return Ok(CloudWebAdminCreateOutcome::DuplicatePhone);
+            }
+        }
+        if let Some(email_address) = email_address {
+            lock_web_invite_email(&transaction, email_address).await?;
+            if web_invite_email_in_use(&transaction, email_address, None).await? {
+                transaction.rollback().await.map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 新增事务回滚失败: {err}"))
+                })?;
+                return Ok(CloudWebAdminCreateOutcome::DuplicateEmail);
+            }
         }
 
         let used_today = transaction
@@ -4379,6 +4596,23 @@ VALUES ($1, $2, FALSE, $3)
             .map_err(|err| {
                 HoneError::Config(format!("Postgres web admin 新增白名单失败: {err}"))
             })?;
+        if let Some(email_address) = email_address {
+            transaction
+                .execute(
+                    UPSERT_WEB_USER_EXTERNAL_STATE_SQL,
+                    &[
+                        &target_user_id,
+                        &Some(email_address),
+                        &Option::<String>::None,
+                        &"domestic_invite",
+                        &Option::<String>::None,
+                    ],
+                )
+                .await
+                .map_err(|err| {
+                    HoneError::Config(format!("Postgres web admin 白名单邮箱写入失败: {err}"))
+                })?;
+        }
         transaction
             .execute(
                 r#"
@@ -4523,6 +4757,147 @@ VALUES ($1, $2, 'disable', $3::text::date)
             record: updated,
             cleared_session_count,
         })
+    }
+
+    /// Attaches, replaces (`Some`) or clears (`None`) the login email of an
+    /// allowlist entry. The email must already be normalized by the caller.
+    /// Changing the address drops any pending code and the old verification
+    /// time, so a code mailed to the previous address can no longer sign in.
+    pub async fn set_web_invite_user_email_by_admin(
+        &self,
+        admin_user_id: &str,
+        target_user_id: &str,
+        email_address: Option<&str>,
+        local_date: &str,
+    ) -> HoneResult<CloudWebAdminEmailOutcome> {
+        let mut client = self.connect_new_client().await?;
+        let transaction = client.transaction().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 邮箱事务创建失败: {err}"))
+        })?;
+
+        let admin = transaction
+            .query_opt(
+                r#"
+SELECT is_admin, record->>'revoked_at'
+FROM cloud_web_invite_users
+WHERE user_id = $1
+FOR UPDATE
+"#,
+                &[&admin_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web admin 身份锁定失败: {err}")))?;
+        let admin_ok = admin
+            .is_some_and(|row| row.get::<_, bool>(0) && row.get::<_, Option<String>>(1).is_none());
+        if !admin_ok {
+            rollback_web_admin_email(transaction).await?;
+            return Ok(CloudWebAdminEmailOutcome::NotAdmin);
+        }
+
+        let target = transaction
+            .query_opt(
+                r#"
+SELECT COALESCE(phone_number, ''), record
+FROM cloud_web_invite_users
+WHERE user_id = $1
+FOR UPDATE
+"#,
+                &[&target_user_id],
+            )
+            .await
+            .map_err(|err| HoneError::Config(format!("Postgres web invite 目标锁定失败: {err}")))?;
+        let Some(target) = target else {
+            rollback_web_admin_email(transaction).await?;
+            return Ok(CloudWebAdminEmailOutcome::NotFound);
+        };
+        let phone_number = target.get::<_, String>(0);
+        let record = target.get::<_, serde_json::Value>(1);
+
+        let state = transaction
+            .query_one(
+                r#"
+SELECT
+  COALESCE(
+    s.identity_kind,
+    NULLIF(u.record #>> '{external_state,identity_kind}', ''),
+    'domestic_invite'
+  ),
+  CASE WHEN s.user_id IS NULL
+    THEN NULLIF(u.record #>> '{external_state,email_address}', '')
+    ELSE s.email_address
+  END,
+  s.email_verified_at
+FROM cloud_web_invite_users u
+LEFT JOIN cloud_web_user_external_state s ON s.user_id = u.user_id
+WHERE u.user_id = $1
+"#,
+                &[&target_user_id],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web external state 读取失败: {err}"))
+            })?;
+        let identity_kind = state.get::<_, String>(0);
+        let current_email = state.get::<_, Option<String>>(1);
+        let current_verified_at = state.get::<_, Option<String>>(2);
+        if identity_kind != "domestic_invite" {
+            rollback_web_admin_email(transaction).await?;
+            return Ok(CloudWebAdminEmailOutcome::ExternalIdentity);
+        }
+        if email_address.is_none() && phone_number.is_empty() {
+            rollback_web_admin_email(transaction).await?;
+            return Ok(CloudWebAdminEmailOutcome::NoLoginMethod);
+        }
+        if current_email.as_deref() == email_address {
+            rollback_web_admin_email(transaction).await?;
+            return Ok(CloudWebAdminEmailOutcome::Updated { record });
+        }
+        if let Some(email_address) = email_address {
+            lock_web_invite_email(&transaction, email_address).await?;
+            if web_invite_email_in_use(&transaction, email_address, Some(target_user_id)).await? {
+                rollback_web_admin_email(transaction).await?;
+                return Ok(CloudWebAdminEmailOutcome::DuplicateEmail);
+            }
+        }
+        // 同一地址重写时保留核验时间;换地址或清空则一并作废旧核验和未用验证码。
+        let verified_at = if current_email.as_deref() == email_address {
+            current_verified_at
+        } else {
+            None
+        };
+        transaction
+            .execute(
+                UPSERT_WEB_USER_EXTERNAL_STATE_SQL,
+                &[
+                    &target_user_id,
+                    &email_address,
+                    &verified_at,
+                    &"domestic_invite",
+                    &Option::<String>::None,
+                ],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 白名单邮箱写入失败: {err}"))
+            })?;
+        transaction
+            .execute(
+                r#"
+INSERT INTO cloud_web_admin_actions(
+  admin_user_id, target_user_id, action, local_date
+)
+VALUES ($1, $2, 'update_email', $3::text::date)
+"#,
+                &[&admin_user_id, &target_user_id, &local_date],
+            )
+            .await
+            .map_err(|err| {
+                HoneError::Config(format!("Postgres web admin 邮箱审计写入失败: {err}"))
+            })?;
+        transaction.commit().await.map_err(|err| {
+            HoneError::Config(format!("Postgres web admin 邮箱事务提交失败: {err}"))
+        })?;
+        Ok(CloudWebAdminEmailOutcome::Updated { record })
     }
 
     pub async fn delete_web_auth_sessions_for_user(&self, user_id: &str) -> HoneResult<u64> {
@@ -7563,17 +7938,28 @@ mod tests {
 
     #[test]
     fn web_admin_list_query_is_a_minimal_legacy_tolerant_projection() {
-        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("user_id"));
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("u.user_id"));
         assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("phone_number"));
-        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("is_admin"));
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("u.is_admin"));
+        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("s.email_address"));
         assert!(
             LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL
-                .contains("COALESCE(NULLIF(record->>'created_at', ''), updated_at::text)")
+                .contains("COALESCE(NULLIF(u.record->>'created_at', ''), u.updated_at::text)")
         );
-        assert!(LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("WHERE phone_number <> ''"));
+        // Allowlist = phone entries plus email-only domestic_invite entries;
+        // Stripe purchase identities (international_email) stay out.
+        assert!(
+            LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL
+                .contains("WHERE COALESCE(u.phone_number, '') <> ''")
+        );
+        assert!(
+            LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL
+                .contains("COALESCE(s.identity_kind, 'domestic_invite') = 'domestic_invite'")
+        );
         assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("SELECT record"));
         assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("invite_code"));
         assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("api_key"));
+        assert!(!LIST_WEB_ADMIN_INVITE_SUMMARIES_SQL.contains("email_challenge"));
     }
 
     #[test]
@@ -7582,6 +7968,7 @@ mod tests {
         let source = include_str!("cloud_runtime.rs");
         assert!(source.contains("'create', $3::text::date"));
         assert!(source.contains("'disable', $3::text::date"));
+        assert!(source.contains("'update_email', $3::text::date"));
     }
 
     #[test]

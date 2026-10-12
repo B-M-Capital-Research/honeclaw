@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
@@ -18,6 +18,11 @@ const SKILL_SCRIPT_STDERR_CHARS: usize = 1000;
 const MAX_SKILL_SCRIPT_ARGUMENTS: usize = 64;
 const MAX_SKILL_SCRIPT_ARGUMENT_BYTES: usize = 256 * 1024;
 const SKILL_SCRIPT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Structured payloads travel as a private temporary JSON file passed as
+/// `--input <path>`, never as one argv string: Linux caps a single argument at
+/// 128 KiB, which a long Chinese report exceeds, and an echoed argument would
+/// repeat the whole payload in the tool result.
+const MAX_SKILL_SCRIPT_PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
 
 enum SkillScriptExecutionError {
     NotStarted(String),
@@ -114,6 +119,8 @@ impl SkillTool {
         let script_path = runtime
             .resolve_script_path(skill, args.get("script").and_then(|value| value.as_str()))
             .map_err(SkillScriptExecutionError::NotStarted)?;
+        // Removed on drop, after the script process has exited.
+        let mut _payload_file = None;
         let script_arguments = match args.get("script_payload") {
             Some(payload) => {
                 if args.get("script_arguments").is_some() || args.get("args").is_some() {
@@ -126,11 +133,11 @@ impl SkillTool {
                         "script_payload 必须是结构化 JSON 对象".to_string(),
                     ));
                 }
-                vec![serde_json::to_string(payload).map_err(|error| {
-                    SkillScriptExecutionError::NotStarted(format!(
-                        "序列化 skill 脚本 payload 失败: {error}"
-                    ))
-                })?]
+                let file = write_script_payload_file(payload)
+                    .map_err(SkillScriptExecutionError::NotStarted)?;
+                let path = file.path().to_string_lossy().into_owned();
+                _payload_file = Some(file);
+                vec!["--input".to_string(), path]
             }
             None => runtime
                 .map_script_arguments(
@@ -249,6 +256,26 @@ impl SkillTool {
                 .unwrap_or(Value::Null),
         })))
     }
+}
+
+fn write_script_payload_file(payload: &Value) -> Result<tempfile::NamedTempFile, String> {
+    let serialized = serde_json::to_vec(payload)
+        .map_err(|error| format!("序列化 skill 脚本 payload 失败: {error}"))?;
+    if serialized.len() > MAX_SKILL_SCRIPT_PAYLOAD_BYTES {
+        return Err(format!(
+            "script_payload 超过 {} MiB 限制",
+            MAX_SKILL_SCRIPT_PAYLOAD_BYTES / 1024 / 1024
+        ));
+    }
+    let mut file = tempfile::Builder::new()
+        .prefix("hone-skill-payload-")
+        .suffix(".json")
+        .tempfile()
+        .map_err(|error| format!("写入 skill 脚本 payload 失败: {error}"))?;
+    file.write_all(&serialized)
+        .and_then(|_| file.flush())
+        .map_err(|error| format!("写入 skill 脚本 payload 失败: {error}"))?;
+    Ok(file)
 }
 
 fn validate_script_argument_budget(arguments: &[String]) -> Result<(), String> {
@@ -792,7 +819,8 @@ mod tests {
         fs::write(
             scripts_dir.join("run.sh"),
             concat!(
-                "printf '%s' \"$1\" > \"$HONE_SKILL_DIR/payload.json\"\n",
+                "test \"$1\" = --input || exit 3\n",
+                "cat \"$2\" > \"$HONE_SKILL_DIR/payload.json\"\n",
                 "printf '{\"success\":true,\"summary\":\"ok\",\"artifacts\":[{\"kind\":\"image\",\"path\":\"%s/test.png\",\"mime\":\"image/png\"}],\"warnings\":[]}' \"$HONE_SKILL_DIR\"\n"
             ),
         )
@@ -804,9 +832,14 @@ mod tests {
             custom,
             root.join("runtime").join("skill_registry.json"),
         );
+        // Larger than Linux's 128 KiB single-argument limit once serialized.
+        let long_report = format!(
+            "机构称\"买入\"，目标价 220 美元。{}",
+            "长篇中文报告正文。".repeat(6_000)
+        );
         let report_spec = serde_json::json!({
             "company": "AAOI",
-            "report_markdown": "机构称\"买入\"，目标价 220 美元。",
+            "report_markdown": long_report,
             "preview_audit": {
                 "institution_views": [{"institution": "Rosenblatt Securities"}]
             }
@@ -830,6 +863,18 @@ mod tests {
             result["validated_report_markdown"],
             report_spec["report_markdown"]
         );
+        // The private payload file is removed once the script has finished.
+        let leftovers = fs::read_dir(std::env::temp_dir())
+            .expect("temp dir")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("hone-skill-payload-")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
         clear_test_env();
         std::fs::remove_dir_all(root).ok();
     }
@@ -1488,7 +1533,7 @@ impl Tool for SkillTool {
             ToolParameter {
                 name: "script_payload".to_string(),
                 param_type: "object".to_string(),
-                description: "可选。由运行时序列化为单个 JSON 脚本参数的结构化对象；不能与 script_arguments 或 args 同时使用。".to_string(),
+                description: "可选。结构化对象；运行时把它写成临时 JSON 文件，以 `--input <文件路径>` 传给脚本（不受命令行长度限制）；不能与 script_arguments 或 args 同时使用。".to_string(),
                 required: false,
                 r#enum: None,
                 items: None,

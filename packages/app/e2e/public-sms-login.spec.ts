@@ -161,7 +161,7 @@ test("SMS login sends code, requires ToS, and signs in", async ({ page }) => {
 
   await page.goto("/me");
   await expect(
-    page.getByText("目前是邀请制，请联系 bm@hone-claw.com 加入白名单。"),
+    page.getByText("目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单。"),
   ).toBeVisible();
 
   await page.getByLabel("手机号").fill(PHONE);

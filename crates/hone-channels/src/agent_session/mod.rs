@@ -19,6 +19,7 @@
 
 mod artifacts;
 mod core;
+mod earnings_salvage;
 mod emitter;
 mod guard;
 mod helpers;

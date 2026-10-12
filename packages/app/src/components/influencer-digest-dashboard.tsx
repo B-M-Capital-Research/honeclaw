@@ -100,8 +100,43 @@ function dayLabels(generatedAtLocal: string | undefined) {
 
 type Row = { kind: "day"; label: string; count: number } | { kind: "post"; item: InfluencerDigestItem };
 
-export function InfluencerDigestPanel(props: Props) {
-  const navigate = useNavigate();
+/** Free-text match over author, handle, text and tickers for the shell search. */
+export function influencerItemMatches(item: InfluencerDigestItem, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    item.author_name,
+    item.public_handle,
+    sourceText(item),
+    item.source_text_en ?? "",
+    item.tickers.map((ticker) => `$${ticker} ${ticker}`).join(" "),
+  ]
+    .join("\n")
+    .toLowerCase()
+    .includes(needle);
+}
+
+/**
+ * The question handed to the assistant for one post: its date and its
+ * author's words, so the conversation starts from the exact thing the reader
+ * is looking at rather than from "what does Serenity think".
+ */
+export function influencerAskQuestion(item: InfluencerDigestItem) {
+  const said = sourceText(item).replace(/\s+/g, " ").trim().slice(0, 160);
+  const who = item.author_id === "serenity" ? "Serenity（白毛，@aleabitoreddit）" : item.author_name;
+  const targets = item.tickers.length ? item.tickers.map((ticker) => `$${ticker}`).join("、") : "相关公司";
+  return (
+    `${who} ${item.published_at_local} 发布：“${said}”。` +
+    `请结合本轮可核验的行情、财报与新闻说明：这条在讲什么，哪些是事实、哪些是作者判断，` +
+    `对 ${targets} 意味着什么，以及接下来需要验证的数据点。`
+  );
+}
+
+/**
+ * Snapshot loading plus author / type / search filtering, shared by the
+ * research-desk sheet and the Insights 大V速报 tab so both read one timeline.
+ */
+export function createInfluencerDigestView(options: { query?: () => string } = {}) {
   const [snapshot, setSnapshot] = createSignal<InfluencerDigestSnapshot>();
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal("");
@@ -140,7 +175,8 @@ export function InfluencerDigestPanel(props: Props) {
         if (kind() === "original") return item.post_kind === "original" || item.post_kind === "article";
         if (kind() === "media") return (item.media_urls?.length ?? 0) > 0;
         return true;
-      }),
+      })
+      .filter((item) => influencerItemMatches(item, options.query?.() ?? "")),
   );
 
   // A timeline reads by day: 今天 / 昨天 / MM-DD, each divider counting the
@@ -182,19 +218,159 @@ export function InfluencerDigestPanel(props: Props) {
       .join(" · ");
   });
 
-  /**
-   * One post, handed to the assistant with its date and its author's words,
-   * so the conversation starts from the exact thing the reader is looking at
-   * rather than from "what does Serenity think".
-   */
+  return { snapshot, loading, error, load, author, setAuthor, kind, setKind, authors, visible, rows, metaLine };
+}
+
+export type InfluencerDigestView = ReturnType<typeof createInfluencerDigestView>;
+
+/** Filter row plus the day-grouped post timeline; no head, footer or modal chrome. */
+export function InfluencerTimeline(props: {
+  view: InfluencerDigestView;
+  askAbout: (item: InfluencerDigestItem) => void;
+  emptyDetail?: string;
+}) {
+  const { snapshot, loading, error, load, author, setAuthor, kind, setKind, authors, visible, rows } = props.view;
+  return (
+    <>
+      <div class="influencer-authors research-scroller">
+        <button classList={{ active: author() === "all" }} onClick={() => setAuthor("all")}>全部</button>
+        <For each={authors()}>
+          {(item) => (
+            <button
+              classList={{ active: author() === item.id, carried: item.carried_over === true }}
+              onClick={() => setAuthor(item.id)}
+              title={item.carried_over ? "来源本轮读取失败，沿用上次同步的内容" : item.focus}
+            >
+              {item.name}
+              <small>{item.carried_over ? "沿用上次" : `${item.item_count} 条`}</small>
+            </button>
+          )}
+        </For>
+        <i class="influencer-authors__gap" aria-hidden="true" />
+        <button class="filter" classList={{ active: kind() === "all" }} onClick={() => setKind("all")}>
+          全部类型
+        </button>
+        <button class="filter" classList={{ active: kind() === "original" }} onClick={() => setKind("original")}>
+          只看原创
+        </button>
+        <button class="filter" classList={{ active: kind() === "media" }} onClick={() => setKind("media")}>
+          含图
+        </button>
+      </div>
+
+      <div class="influencer-digest-body">
+        <Show when={loading() && !snapshot()}>
+          <ResearchState kind="loading" message="正在读取公开观点" detail="只读取已同步的速报，不会触发重新抓取。" />
+        </Show>
+        <Show when={error()}>
+          <ResearchState kind="error" message="大V速报读取失败" detail={error()} onRetry={() => void load()} />
+        </Show>
+        <Show when={!error() && snapshot()}>
+          <Show
+            when={visible().length}
+            fallback={
+              <ResearchState
+                kind="empty"
+                message="当前没有可展示的原文更新"
+                detail={props.emptyDetail ?? "换一位作者或类型再看；未配置来源不会被补造内容。"}
+              />
+            }
+          >
+            <ResearchFeed>
+              <For each={rows()}>
+                {(row) => (
+                  <Switch>
+                    <Match when={row.kind === "day" && row}>
+                      {(day) => <ResearchFeedDay label={day().label} count={day().count} />}
+                    </Match>
+                    <Match when={row.kind === "post" && row}>
+                      {(post) => {
+                        const item = () => post().item;
+                        return (
+                          <ResearchFeedItem
+                            avatar={avatarOf(item())}
+                            author={item().author_name}
+                            handle={item().public_handle}
+                            kind={item().post_kind === "original" ? undefined : postKindLabel(item().post_kind)}
+                            time={clockOf(shortLocalTimestamp(item().published_at_local))}
+                            quoted={
+                              item().reply_context
+                                ? {
+                                    label: `${item().post_kind === "quote" ? "引用" : "回复"} ${item().reply_context!.author}`,
+                                    text: item().reply_context!.text,
+                                  }
+                                : undefined
+                            }
+                            media={item().media_urls}
+                            mediaAlt={`${item().author_name} 原文配图`}
+                            stats={stats(item())}
+                            links={[
+                              { href: item().source_url, label: "查看作者原文" },
+                              ...(item().aggregation_url
+                                ? [{ href: item().aggregation_url!, label: `${item().aggregation_source} · 翻译/聚合源` }]
+                                : []),
+                            ]}
+                            actions={[{ label: "问 HONE", onClick: () => props.askAbout(item()) }]}
+                            analysisLabel="HONE 解读"
+                            analysis={
+                              item().analysis_status === "model_analyzed" ? (
+                                <>
+                                  <Show when={item().summary.trim()}>
+                                    <p>{item().summary}</p>
+                                  </Show>
+                                  <Show when={item().counterpoint.trim()}>
+                                    <p>
+                                      <b>反方 / 未证实处：</b>
+                                      {item().counterpoint}
+                                    </p>
+                                  </Show>
+                                  <p class="influencer-analysis-terms">
+                                    {[
+                                      stanceLabel(item().stance),
+                                      item().content_type === "fact"
+                                        ? "事实陈述"
+                                        : item().content_type === "opinion"
+                                          ? "作者观点"
+                                          : "事实与观点混合",
+                                      ...item().tickers.map((ticker) => `$${ticker}`),
+                                      ...item().topics,
+                                    ].join(" · ")}
+                                  </p>
+                                </>
+                              ) : undefined
+                            }
+                          >
+                            {/* The post itself, in the author's words. The title line
+                                used to repeat this text's first line above it. */}
+                            <p>{sourceText(item()) || item().title}</p>
+                            <Show when={englishOriginal(item())}>
+                              <details class="influencer-source-en">
+                                <summary>English original</summary>
+                                <p>{englishOriginal(item())}</p>
+                              </details>
+                            </Show>
+                          </ResearchFeedItem>
+                        );
+                      }}
+                    </Match>
+                  </Switch>
+                )}
+              </For>
+            </ResearchFeed>
+          </Show>
+        </Show>
+      </div>
+    </>
+  );
+}
+
+export function InfluencerDigestPanel(props: Props) {
+  const navigate = useNavigate();
+  const view = createInfluencerDigestView();
+  const { snapshot, visible, metaLine } = view;
+
   const askHone = (item: InfluencerDigestItem) => {
-    const said = sourceText(item).replace(/\s+/g, " ").trim().slice(0, 160);
-    const who = item.author_id === "serenity" ? "Serenity（白毛，@aleabitoreddit）" : item.author_name;
-    const targets = item.tickers.length ? item.tickers.map((ticker) => `$${ticker}`).join("、") : "相关公司";
-    const question =
-      `${who} ${item.published_at_local} 发布：“${said}”。` +
-      `请结合本轮可核验的行情、财报与新闻说明：这条在讲什么，哪些是事实、哪些是作者判断，` +
-      `对 ${targets} 意味着什么，以及接下来需要验证的数据点。`;
+    const question = influencerAskQuestion(item);
     props.onClose();
     navigate(`/chat?q=${encodeURIComponent(question)}&send=1`);
   };
@@ -219,134 +395,7 @@ export function InfluencerDigestPanel(props: Props) {
           onClose={props.onClose}
         />
 
-        <div class="influencer-authors research-scroller">
-          <button classList={{ active: author() === "all" }} onClick={() => setAuthor("all")}>全部</button>
-          <For each={authors()}>
-            {(item) => (
-              <button
-                classList={{ active: author() === item.id, carried: item.carried_over === true }}
-                onClick={() => setAuthor(item.id)}
-                title={item.carried_over ? "来源本轮读取失败，沿用上次同步的内容" : item.focus}
-              >
-                {item.name}
-                <small>{item.carried_over ? "沿用上次" : `${item.item_count} 条`}</small>
-              </button>
-            )}
-          </For>
-          <i class="influencer-authors__gap" aria-hidden="true" />
-          <button class="filter" classList={{ active: kind() === "all" }} onClick={() => setKind("all")}>
-            全部类型
-          </button>
-          <button class="filter" classList={{ active: kind() === "original" }} onClick={() => setKind("original")}>
-            只看原创
-          </button>
-          <button class="filter" classList={{ active: kind() === "media" }} onClick={() => setKind("media")}>
-            含图
-          </button>
-        </div>
-
-        <div class="influencer-digest-body">
-          <Show when={loading() && !snapshot()}>
-            <ResearchState kind="loading" message="正在读取公开观点" detail="只读取已同步的速报，不会触发重新抓取。" />
-          </Show>
-          <Show when={error()}>
-            <ResearchState kind="error" message="大V速报读取失败" detail={error()} onRetry={() => void load()} />
-          </Show>
-          <Show when={!error() && snapshot()}>
-            <Show
-              when={visible().length}
-              fallback={
-                <ResearchState
-                  kind="empty"
-                  message="当前没有可展示的原文更新"
-                  detail="换一位作者或类型再看；未配置来源不会被补造内容。"
-                />
-              }
-            >
-              <ResearchFeed>
-                <For each={rows()}>
-                  {(row) => (
-                    <Switch>
-                      <Match when={row.kind === "day" && row}>
-                        {(day) => <ResearchFeedDay label={day().label} count={day().count} />}
-                      </Match>
-                      <Match when={row.kind === "post" && row}>
-                        {(post) => {
-                          const item = () => post().item;
-                          return (
-                            <ResearchFeedItem
-                              avatar={avatarOf(item())}
-                              author={item().author_name}
-                              handle={item().public_handle}
-                              kind={item().post_kind === "original" ? undefined : postKindLabel(item().post_kind)}
-                              time={clockOf(shortLocalTimestamp(item().published_at_local))}
-                              quoted={
-                                item().reply_context
-                                  ? {
-                                      label: `${item().post_kind === "quote" ? "引用" : "回复"} ${item().reply_context!.author}`,
-                                      text: item().reply_context!.text,
-                                    }
-                                  : undefined
-                              }
-                              media={item().media_urls}
-                              mediaAlt={`${item().author_name} 原文配图`}
-                              stats={stats(item())}
-                              links={[
-                                { href: item().source_url, label: "查看作者原文" },
-                                ...(item().aggregation_url
-                                  ? [{ href: item().aggregation_url!, label: `${item().aggregation_source} · 翻译/聚合源` }]
-                                  : []),
-                              ]}
-                              actions={[{ label: "问 HONE", onClick: () => askHone(item()) }]}
-                              analysisLabel="HONE 解读"
-                              analysis={
-                                item().analysis_status === "model_analyzed" ? (
-                                  <>
-                                    <Show when={item().summary.trim()}>
-                                      <p>{item().summary}</p>
-                                    </Show>
-                                    <Show when={item().counterpoint.trim()}>
-                                      <p>
-                                        <b>反方 / 未证实处：</b>
-                                        {item().counterpoint}
-                                      </p>
-                                    </Show>
-                                    <p class="influencer-analysis-terms">
-                                      {[
-                                        stanceLabel(item().stance),
-                                        item().content_type === "fact"
-                                          ? "事实陈述"
-                                          : item().content_type === "opinion"
-                                            ? "作者观点"
-                                            : "事实与观点混合",
-                                        ...item().tickers.map((ticker) => `$${ticker}`),
-                                        ...item().topics,
-                                      ].join(" · ")}
-                                    </p>
-                                  </>
-                                ) : undefined
-                              }
-                            >
-                              {/* The post itself, in the author's words. The title line
-                                  used to repeat this text's first line above it. */}
-                              <p>{sourceText(item()) || item().title}</p>
-                              <Show when={englishOriginal(item())}>
-                                <details class="influencer-source-en">
-                                  <summary>English original</summary>
-                                  <p>{englishOriginal(item())}</p>
-                                </details>
-                              </Show>
-                            </ResearchFeedItem>
-                          );
-                        }}
-                      </Match>
-                    </Switch>
-                  )}
-                </For>
-              </ResearchFeed>
-            </Show>
-          </Show>
-        </div>
+        <InfluencerTimeline view={view} askAbout={askHone} />
 
         <footer class="influencer-digest-footer">
           <p>{snapshot()?.disclaimer}</p>
@@ -355,3 +404,5 @@ export function InfluencerDigestPanel(props: Props) {
     </ResearchPanel>
   );
 }
+
+export { statusLabel as influencerStatusLabel, statusSignal as influencerStatusSignal };

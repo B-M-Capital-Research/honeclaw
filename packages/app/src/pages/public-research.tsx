@@ -6,7 +6,6 @@ import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicAdminUsagePanel } from "@/components/public-admin-usage-panel";
 import { PublicAdminWhitelistPanel } from "@/components/public-admin-whitelist-panel";
-import { ResearchState } from "@/components/research/research-state";
 import { DailySignalPanel } from "@/components/daily-signal-dashboard";
 import { CompanyRatingPanel } from "@/components/company-rating-dashboard";
 import { PortfolioNewsPanel } from "@/components/portfolio-news-dashboard";
@@ -30,20 +29,19 @@ import "./public-research.css";
 /**
  * The research desk: every daily research product in one place.
  *
- * The grid reads like an app launcher rather than a wall of equal cards —
- * sections are grouped, a section that produced something today leads with
- * its finding, and one that has not is visibly dimmed with the time it
- * refreshes so nobody has to open it to discover there is nothing inside.
- * Opening a section writes `?panel=` so the view is shareable and the back
- * button closes it; the full snapshot is fetched only at that point.
+ * One card grammar for every product — title, its state, one sentence of
+ * today's finding, and two actions (看详情 / 问 HONE) — laid out as a few
+ * titled sections instead of filter tabs, so a reader with three products is
+ * never offered four tabs. Opening a card writes `?panel=` so the view is
+ * shareable and the back button closes it; the full snapshot is fetched only
+ * at that point, and the grid itself is painted from one overview call.
  *
- * Every section also says, in one quiet line, what it is and how to read
- * it, and carries a 「问 HONE」 that hands its context to the assistant — the
- * desk used to assume the reader already knew what a "关键事件链" was for.
+ * What each product is and how to read it lives once, in the folded guide at
+ * the bottom, rather than as two extra lines on every card.
  *
- * Administrators see two views. Their own has the unreleased sections and
- * the admin panels; 「用户视角」 is exactly the page a reader gets, so what
- * has and has not shipped is never a guess.
+ * Administrators additionally see one 内测板块 section (labelled once, not a
+ * badge per card) and a separate 管理 view for usage and the allowlist. The
+ * 「用户视角」 switch draws exactly the page a reader gets.
  */
 
 type PanelProps = { onClose: () => void };
@@ -68,22 +66,63 @@ type SectionDef = {
   href?: string;
   /** Hidden entirely from non-administrators. */
   adminOnly?: boolean;
+  /** Not a daily job (interactive map, manual library): never counted as "updated today". */
+  manual?: boolean;
+  /** The same content is also readable elsewhere in the product. */
+  alsoIn?: { label: string; href: string };
 };
 
-type GroupKey = "signal" | "industry" | "voices" | "admin";
+type GroupKey = "signal" | "voices" | "industry" | "preview" | "admin";
 
 /**
- * The macro light, the industry explorer and the commentator digest are
- * released to everyone. Everything else is still being polished, so it sits
- * behind 管理 where administrators can use and review it without users
- * meeting a half-finished product.
+ * Page sections, top to bottom. The macro light, the industry explorer and
+ * the commentator digest are released to everyone. Everything else is still
+ * being polished, so it sits in 内测板块 where administrators can use and
+ * review it without readers meeting a half-finished product. 管理 is not a
+ * research section: `?group=admin` opens the usage / allowlist view.
  */
-const GROUPS: { key: GroupKey | "all"; label: string; adminOnly?: boolean }[] = [
-  { key: "all", label: "全部" },
-  { key: "signal", label: "大盘信号" },
-  { key: "industry", label: "产业研究" },
+const GROUPS: { key: GroupKey; label: string; adminOnly?: boolean }[] = [
+  { key: "signal", label: "市场信号" },
   { key: "voices", label: "大V观点" },
+  { key: "industry", label: "产业研究" },
+  { key: "preview", label: "内测板块", adminOnly: true },
   { key: "admin", label: "管理", adminOnly: true },
+];
+
+/**
+ * How the groups are laid out. A reader has one product per group, so the
+ * daily ones share a single grid instead of each getting a heading of its own;
+ * the interactive industry pages and the administrator-only previews follow.
+ */
+const DESK_SECTIONS: {
+  id: "today" | "industry" | "preview";
+  label: string;
+  note: string;
+  groups: GroupKey[];
+  /** `aria-label` of the region; the industry one is a stable test anchor. */
+  region: string;
+}[] = [
+  {
+    id: "today",
+    label: "今日研究",
+    note: "每天自动更新，先看结论再看证据",
+    groups: ["signal", "voices"],
+    region: "今日研究",
+  },
+  {
+    id: "industry",
+    label: "产业研究",
+    note: "沿着 AI 基础设施的上下游展开",
+    groups: ["industry"],
+    region: "产业研究入口",
+  },
+  {
+    id: "preview",
+    label: "内测板块",
+    note: "仅管理员可见，稳定后对全部用户开放",
+    groups: ["preview"],
+    region: "内测板块",
+  },
 ];
 
 const SECTIONS: SectionDef[] = [
@@ -110,6 +149,7 @@ const SECTIONS: SectionDef[] = [
     howTo: "先看整机再点单层；每层的公司名可以直接拿去问投资助手。",
     refreshAt: "交互式产业地图",
     href: "/data-center",
+    manual: true,
   },
   {
     key: "industry-map",
@@ -121,6 +161,7 @@ const SECTIONS: SectionDef[] = [
     howTo: "改动即时生效并注入对话；每季财报后更新上游的「最近动作」。",
     refreshAt: "研究底稿维护",
     href: "/industry-map",
+    manual: true,
     // 行业本体是研究底稿而不是已发布结论，仍然只对管理员开放；服务端同样拒绝
     // 非管理员读取，所以这里不是靠藏入口来保密。
     adminOnly: true,
@@ -137,12 +178,13 @@ const SECTIONS: SectionDef[] = [
       "整理大V速报里 Serenity（白毛，@aleabitoreddit）最近三天推文的观点：她在关注哪些公司与瓶颈，哪些是事实、哪些是判断，与我的持仓有什么交集，以及需要验证的数据点。",
     refreshAt: "每 15 分钟",
     panel: (props) => <InfluencerDigestPanel {...props} />,
+    alsoIn: { label: "在洞察中阅读", href: "/community?view=influencer" },
   },
   {
     key: "daily-signal-ai",
     title: "AI 红绿灯",
     kicker: "AI 增长可持续性",
-    group: "admin",
+    group: "preview",
     blurb: "需求旁证 · 商业化 · 融资 · 资本开支",
     what: "AI 增长可持续性打分：需求旁证、商业化、融资、资本开支。",
     howTo: "与宏观灯一起看：宏观红、AI 绿，说明结构性机会在但整体风险高。",
@@ -156,7 +198,7 @@ const SECTIONS: SectionDef[] = [
     key: "company-ratings",
     title: "公司评级",
     kicker: "52 家研究基线",
-    group: "admin",
+    group: "preview",
     blurb: "研究结构分与因子覆盖，缺数据时明示",
     what: "52 家覆盖公司的研究结构分与因子覆盖，缺数据时明示。",
     howTo: "找到你的持仓，看它在哪些因子上还缺证据。",
@@ -170,8 +212,8 @@ const SECTIONS: SectionDef[] = [
     key: "valuation-lab",
     title: "估值实验室",
     kicker: "三情景估值",
-    // 先停在管理分类里，等模型稳定后再对全部用户开放。
-    group: "admin",
+    // 先停在内测板块里，等模型稳定后再对全部用户开放。
+    group: "preview",
     blurb: "悲观 / 基准 / 乐观情景与关键假设",
     what: "悲观 / 基准 / 乐观三情景估值与关键假设，每日更新。",
     howTo: "看现价落在哪两个情景之间，再点开看假设是否还成立。",
@@ -183,7 +225,7 @@ const SECTIONS: SectionDef[] = [
     key: "portfolio-news",
     title: "持仓重点新闻",
     kicker: "按你的持仓筛选",
-    group: "admin",
+    group: "preview",
     blurb: "每日新闻的持仓影响分析",
     what: "按你的持仓筛选当天新闻，并标注对每只持仓的影响。",
     howTo: "只看标了高影响的，再决定要不要追问。",
@@ -197,7 +239,7 @@ const SECTIONS: SectionDef[] = [
     key: "position-management",
     title: "仓位管理",
     kicker: "评分 × 宏观 × 新闻",
-    group: "admin",
+    group: "preview",
     blurb: "结合评分与信号的每日仓位建议",
     what: "评分 × 宏观 × 新闻叠加后的每日仓位提示。",
     howTo: "它是提示不是指令：先看触发了哪条规则，再决定动不动。",
@@ -211,7 +253,7 @@ const SECTIONS: SectionDef[] = [
     key: "key-event-chain",
     title: "关键事件链",
     kicker: "第一性证据链",
-    group: "admin",
+    group: "preview",
     blurb: "AI 主题的里程碑与线索",
     what: "AI 主题十二层（模型、数据中心、HBM、光模块、CPO…）的里程碑与线索，分一手确认与待核实。",
     howTo: "先看「一手确认」再看线索；线索只能用来提问，不能当结论。",
@@ -225,7 +267,7 @@ const SECTIONS: SectionDef[] = [
     key: "weekly-brief",
     title: "周度简报",
     kicker: "回顾与前瞻",
-    group: "admin",
+    group: "preview",
     blurb: "上周回顾 · 下周日历 · 30 日展望",
     what: "上周回顾、下周日历与 30 日展望。",
     howTo: "周一早上先看它，再决定本周要盯什么。",
@@ -238,12 +280,13 @@ const SECTIONS: SectionDef[] = [
     key: "research-library",
     title: "研究文库",
     kicker: "知识源与投稿核验",
-    group: "admin",
+    group: "preview",
     blurb: "上传资料、核验投稿，注入研究对话",
     what: "上传资料、核验投稿，注入研究对话。",
     howTo: "上传后才会被引用；投稿要先核验。",
     refreshAt: "手动维护",
     href: "/research-library",
+    manual: true,
     adminOnly: true,
   },
 ];
@@ -264,7 +307,7 @@ const WAITING_STATUSES = new Set(["waiting", "data_unavailable", "source_unconfi
 
 type CardState = "ready" | "empty" | "waiting";
 
-function cardState(card: ResearchOverviewCard | undefined): CardState {
+export function cardState(card: ResearchOverviewCard | undefined): CardState {
   if (!card) return "waiting";
   if (WAITING_STATUSES.has(card.status)) return "waiting";
   if (EMPTY_STATUSES.has(card.status)) return "empty";
@@ -281,19 +324,11 @@ function daysBetween(from: string, to: string) {
 
 /**
  * Only a section that deviates from today gets a label, and it says how.
- *
- * Two separate corrections meet here. The badge used to read "今日已更新" for
- * any snapshot that merely existed, so a report written last night still
- * claimed to be today's and the panel then opened on visibly older content.
- * And it was worn by six of eight cards at once — a mark repeating on almost
- * every card carries no information while costing a fixed slot in each.
- *
- * So freshness is measured against the server's calendar day, and a section
- * that is genuinely current says nothing at all: the header already prints
- * the "N / M 项已更新" tally, and the per-card slot is spent only on the ones
- * that deviate from it.
+ * Freshness is measured against the server's calendar day; a section that is
+ * genuinely current says nothing, because the header already prints the
+ * "N / M 已更新" tally and a mark repeated on every card carries no information.
  */
-function stateLabel(
+export function stateLabel(
   state: CardState,
   card: ResearchOverviewCard | undefined,
   today: string | undefined,
@@ -313,7 +348,7 @@ function stateLabel(
  * still have produced nothing usable. The header tally claims "there is
  * something here, and it is today's", so it requires both.
  */
-function isFreshToday(
+export function isFreshToday(
   card: ResearchOverviewCard | undefined,
   today: string | undefined,
   state?: CardState,
@@ -324,14 +359,11 @@ function isFreshToday(
 }
 
 /**
- * The card blurb is one sentence, cut on a sentence boundary.
- *
- * A two-line `-webkit-line-clamp` alone truncates mid-clause — the AI card
- * read "…本版只使…" and the second line was spent saying nothing. Cutting at
- * the first terminator keeps the line whole; the clamp stays as the backstop
- * for a first sentence that is itself too long.
+ * The card line is one sentence, cut on a sentence boundary. A two-line
+ * clamp alone truncates mid-clause; the clamp stays as the backstop for a
+ * first sentence that is itself too long.
  */
-function leadSentence(text: string) {
+export function leadSentence(text: string) {
   const trimmed = text.trim();
   const end = trimmed.search(/[。；！？](?![）」』】])/);
   if (end === -1 || end > 56) return trimmed;
@@ -341,7 +373,7 @@ function leadSentence(text: string) {
 }
 
 /** Per-device memory of two small choices: which view, and whether the
- *  how-to strip is folded. Neither is worth a server round trip. */
+ *  guide is open. Neither is worth a server round trip. */
 const VIEW_STORAGE_KEY = "hone.research.view";
 const GUIDE_STORAGE_KEY = "hone.research.guide";
 
@@ -369,15 +401,10 @@ export default function PublicResearchPage() {
   const [cards, setCards] = createSignal<Map<string, ResearchOverviewCard>>(new Map());
   const [reportToday, setReportToday] = createSignal<string>();
   const [overviewLoading, setOverviewLoading] = createSignal(true);
-  const initialGroup = typeof searchParams.group === "string" ? searchParams.group : "";
-  const [group, setGroup] = createSignal<GroupKey | "all">(
-    GROUPS.some((item) => item.key === initialGroup)
-      ? (initialGroup as GroupKey | "all")
-      : "all",
-  );
   // 管理员可以切到「用户视角」：看到的就是普通用户此刻看到的页面。
   const [viewAsUser, setViewAsUser] = createSignal(readStored(VIEW_STORAGE_KEY) === "user");
-  const [guideOpen, setGuideOpen] = createSignal(readStored(GUIDE_STORAGE_KEY) !== "closed");
+  // The guide is reference material now, so it starts folded.
+  const [guideOpen, setGuideOpen] = createSignal(readStored(GUIDE_STORAGE_KEY) === "open");
   let controller: AbortController | undefined;
 
   const loadAuth = async () => {
@@ -421,6 +448,7 @@ export default function PublicResearchPage() {
   const chooseView = (asUser: boolean) => {
     setViewAsUser(asUser);
     writeStored(VIEW_STORAGE_KEY, asUser ? "user" : "admin");
+    if (asUser && activeGroup() === "admin") setSearchParams({ group: undefined });
   };
 
   const toggleGuide = (open: boolean) => {
@@ -443,49 +471,22 @@ export default function PublicResearchPage() {
       : undefined;
   });
 
-  // 非管理员即使拿到 ?group=admin 的链接也回落到「全部」，而不是看到空网格。
+  // `?group=` either jumps to a section or, for administrators, opens 管理.
+  // A reader handed a ?group=admin link simply gets the desk.
   const activeGroup = createMemo(() => {
-    const current = group();
-    return visibleGroups().some((item) => item.key === current) ? current : "all";
+    const requested = typeof searchParams.group === "string" ? searchParams.group : "";
+    return visibleGroups().some((item) => item.key === requested) ? (requested as GroupKey) : undefined;
   });
 
-  const visibleSections = createMemo(() => {
-    const active = activeGroup();
-    return active === "all"
-      ? allowedSections()
-      : allowedSections().filter((section) => section.group === active);
-  });
+  const sectionsOf = (groups: GroupKey[]) =>
+    allowedSections().filter((section) => groups.includes(section.group));
+
+  const deskSections = createMemo(() =>
+    DESK_SECTIONS.filter((desk) => sectionsOf(desk.groups).length > 0),
+  );
 
   const dailySections = createMemo(() =>
-    allowedSections().filter((section) => section.group !== "industry" && (section.panel || section.href)),
-  );
-  const industrySections = createMemo(() =>
-    visibleSections().filter((section) => section.group === "industry"),
-  );
-
-  /**
-   * Three tiers, outermost first.
-   *
-   * The desk used to open as eight identical cards — every section a closed
-   * container you had to click to learn anything, including the two that ARE
-   * the day's verdict. Now the outer layer states conclusions and the detail
-   * stays behind the panel: the traffic lights lead with their score and
-   * phase, sections that produced a finding print that finding as a line of
-   * prose, and sections still waiting collapse into a single quiet row.
-   */
-  const verdictSections = createMemo(() =>
-    visibleSections().filter((section) => section.group !== "industry" && cards().get(section.key)?.signal),
-  );
-
-  const findingSections = createMemo(() =>
-    visibleSections().filter((section) => {
-      const card = cards().get(section.key);
-      return section.group !== "industry" && !card?.signal && cardState(card) === "ready";
-    }),
-  );
-
-  const pendingSections = createMemo(() =>
-    visibleSections().filter((section) => section.group !== "industry" && cardState(cards().get(section.key)) !== "ready"),
+    allowedSections().filter((section) => !section.manual && (section.panel || section.href)),
   );
 
   const readyCount = createMemo(
@@ -495,6 +496,17 @@ export default function PublicResearchPage() {
         return isFreshToday(card, reportToday(), cardState(card));
       }).length,
   );
+
+  onMount(() => {
+    const group = activeGroup();
+    if (!group || group === "admin") return;
+    const desk = DESK_SECTIONS.find((item) => item.groups.includes(group));
+    if (!desk) return;
+    // Let the grid paint first, then bring the requested section into view.
+    requestAnimationFrame(() =>
+      document.getElementById(`research-group-${desk.id}`)?.scrollIntoView({ block: "start" }),
+    );
+  });
 
   const openSection = (section: SectionDef) => {
     if (section.href) {
@@ -513,18 +525,92 @@ export default function PublicResearchPage() {
     navigate(`/chat?q=${encodeURIComponent(section.question)}&send=1`);
   };
 
-  const rowActions = (section: SectionDef) => (
-    <span class="public-research-row__actions">
-      <button type="button" onClick={() => openSection(section)}>
-        {section.href ? "打开" : "看详情"}
-      </button>
-      <Show when={section.question}>
-        <button type="button" class="public-research-tochat" onClick={() => askHone(section)}>
-          问 HONE
+  const ResearchCard = (props: { section: SectionDef }) => {
+    const section = props.section;
+    const card = () => cards().get(section.key);
+    const state = () => (section.manual ? "ready" : cardState(card()));
+    const signal = () => card()?.signal ?? undefined;
+    const label = () => (section.manual ? "" : stateLabel(state(), card(), reportToday()));
+    return (
+      <article
+        class="public-research-card"
+        classList={{
+          "is-signal": Boolean(signal()),
+          [`is-${signal()}`]: Boolean(signal()),
+          "is-waiting": state() === "waiting",
+          "is-entry": Boolean(section.manual),
+        }}
+      >
+        <button type="button" class="public-research-card__open" onClick={() => openSection(section)}>
+          <span class="public-research-card__head">
+            <span class="public-research-card__title">
+              <strong>
+                {section.title}
+                {/* 内测板块整体已标注；只有混在公开分组里的管理员专属入口单独标一次。 */}
+                <Show when={section.adminOnly && section.group !== "preview"}>
+                  <i class="public-research-card__tag">内测</i>
+                </Show>
+              </strong>
+              <small>{section.kicker}</small>
+            </span>
+            <Show
+              when={signal()}
+              fallback={
+                <Show when={label()}>
+                  <span class="public-research-card__state">{label()}</span>
+                </Show>
+              }
+            >
+              <span class="public-research-card__signal">
+                <Show when={typeof card()?.score === "number"}>
+                  <b>{card()!.score!.toFixed(1)}</b>
+                </Show>
+                <em>{SIGNAL_LABELS[signal()!] ?? signal()}</em>
+              </span>
+            </Show>
+          </span>
+          <span class="public-research-card__summary">
+            {state() === "waiting"
+              ? section.what
+              : leadSentence(card()?.summary || section.blurb)}
+          </span>
         </button>
-      </Show>
-    </span>
-  );
+        <Show when={section.alsoIn}>
+          {(target) => (
+            <a
+              class="public-research-card__also"
+              href={target().href}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(target().href);
+              }}
+            >
+              {target().label}
+            </a>
+          )}
+        </Show>
+        <footer class="public-research-card__foot">
+          <span class="public-research-card__meta">
+            {state() === "ready" && card()?.metric ? card()!.metric : section.refreshAt}
+            <Show when={signal() && label()}>
+              {" · "}
+              {label()}
+            </Show>
+          </span>
+          <span class="public-research-card__actions">
+            <button type="button" onClick={() => openSection(section)}>
+              {section.href ? "打开" : "看详情"}
+            </button>
+            <Show when={section.question}>
+              <button type="button" class="public-research-tochat" onClick={() => askHone(section)}>
+                问 HONE
+              </button>
+            </Show>
+          </span>
+        </footer>
+      </article>
+    );
+  };
 
   return (
     <Show
@@ -535,217 +621,95 @@ export default function PublicResearchPage() {
         {(currentUser) => (
           <PublicWorkspaceShell
             active="research"
+            topbarLabel="研究台"
             userName={workspaceUserName(currentUser().user_id)}
           >
-            <main class="public-research-main">
+            <div class="public-research-main">
               <header class="public-research-header">
-                <div class="public-research-header__row">
-                  <div>
-                    <h1>研究台</h1>
-                    <p>
-                      HONE 每天自动跑的研究产品都在这里：先看结论，再点开看证据，有疑问直接问投资助手。
-                      <Show when={!overviewLoading()}>
-                        {" "}
-                        <b>今日 {readyCount()} / {dailySections().length} 项已更新。</b>
-                      </Show>
-                      {" "}缺数据时明示，不用模拟值补位。
-                    </p>
-                  </div>
-                  <Show when={isAdmin()}>
-                    <div class="public-research-view" role="group" aria-label="视角">
-                      <button
-                        type="button"
-                        classList={{ "is-active": !viewAsUser() }}
-                        onClick={() => chooseView(false)}
-                      >
-                        管理员视角
-                      </button>
-                      <button
-                        type="button"
-                        classList={{ "is-active": viewAsUser() }}
-                        onClick={() => chooseView(true)}
-                      >
-                        用户视角
-                      </button>
-                    </div>
-                  </Show>
+                <div class="public-research-header__text">
+                  <h1>研究台</h1>
+                  <p>每天自动更新的研究结论：先看结论，再看证据，有疑问随时问 HONE。</p>
                 </div>
-                <Show when={isAdmin()}>
-                  <p class="public-research-view__hint">
-                    {viewAsUser()
-                      ? "现在看到的就是普通用户看到的页面：只有已发布的板块。"
-                      : "管理员视角多出未发布板块（标「未发布」）与管理面板；切到用户视角可以核对对外的样子。"}
-                  </p>
+                <Show when={!overviewLoading()} fallback={<span class="public-research-tally is-loading">读取今日状态…</span>}>
+                  <span class="public-research-tally">
+                    今日已更新 <b>{readyCount()}</b> / {dailySections().length}
+                  </span>
                 </Show>
-
-                {/* 三步说明：研究台是什么、怎么用。折叠状态记在本机。 */}
-                <details
-                  class="public-research-guide"
-                  open={guideOpen()}
-                  onToggle={(event) => toggleGuide(event.currentTarget.open)}
-                >
-                  <summary>研究台是什么、怎么用</summary>
-                  <ol>
-                    <li>
-                      <b>先看灯。</b>宏观红绿灯每天 20:00 给周期打分：绿灯偏机会、黄灯观望、红灯先控风险。
-                    </li>
-                    <li>
-                      <b>再看人。</b>大V速报每 15 分钟同步 Serenity（白毛）等作者的推文，中文时间线，HONE 标出观点 / 事实与反方。
-                    </li>
-                    <li>
-                      <b>有疑问就问。</b>每个板块都有「问 HONE」，会把板块的上下文带到投资助手接着追问；点「看详情」看完整证据。
-                    </li>
-                  </ol>
-                </details>
               </header>
 
-              <nav class="public-research-tabs" aria-label="研究分类">
-                <For each={visibleGroups()}>
-                  {(item) => (
+              <Show when={isAdmin()}>
+                <div class="public-research-adminbar">
+                  <div class="public-research-view" role="group" aria-label="视角">
                     <button
                       type="button"
-                      classList={{ "is-active": activeGroup() === item.key }}
-                      onClick={() => setGroup(item.key)}
+                      classList={{ "is-active": !viewAsUser() }}
+                      onClick={() => chooseView(false)}
                     >
-                      {item.label}
+                      管理员视角
                     </button>
-                  )}
-                </For>
-              </nav>
-
-              <Show
-                when={!overviewLoading() || cards().size > 0}
-                fallback={<ResearchState kind="loading" message="正在读取今日研究总览…" />}
-              >
-                <div class="public-research-layers">
-                  <Show when={industrySections().length}>
-                    <section class="public-research-findings" aria-label="产业研究入口">
-                      <h2>探索 AI 基础设施</h2>
-                      <For each={industrySections()}>
-                        {(section) => (
-                          <button type="button" onClick={() => openSection(section)}>
-                            <span class="public-research-findings__label">
-                              {section.title}
-                              {/* 管理员在这一层也要能一眼看出哪张还没对用户放出。 */}
-                              <Show when={section.adminOnly}>
-                                <i class="public-research-gated">未发布</i>
-                              </Show>
-                            </span>
-                            <span class="public-research-findings__text">{section.blurb}</span>
-                            <span class="public-research-findings__metric" aria-hidden="true">↗</span>
-                          </button>
-                        )}
-                      </For>
-                    </section>
-                  </Show>
-                  {/* 判断层：红绿灯本身就是结论，不该藏在卡片后面。 */}
-                  <Show when={verdictSections().length}>
-                    <section class="public-research-verdicts">
-                      <For each={verdictSections()}>
-                        {(section) => {
-                          const card = () => cards().get(section.key);
-                          return (
-                            <div
-                              class="public-research-verdict"
-                              classList={{ [`is-${card()?.signal ?? "none"}`]: true }}
-                            >
-                              <button
-                                type="button"
-                                class="public-research-verdict__open"
-                                onClick={() => openSection(section)}
-                              >
-                                <span class="public-research-verdict__top">
-                                  <strong>{section.title}</strong>
-                                  <Show when={section.adminOnly}>
-                                    <i class="public-research-gated">未发布</i>
-                                  </Show>
-                                  <b>{card()?.score?.toFixed(1)}</b>
-                                  <em>{SIGNAL_LABELS[card()!.signal!] ?? card()!.signal}</em>
-                                </span>
-                                <span class="public-research-verdict__note">
-                                  {leadSentence(card()?.summary || section.blurb)}
-                                </span>
-                                <span class="public-research-what">{section.howTo}</span>
-                                <Show when={stateLabel(cardState(card()), card(), reportToday())}>
-                                  {(age) => <span class="public-research-age">{age()}</span>}
-                                </Show>
-                              </button>
-                              {rowActions(section)}
-                            </div>
-                          );
-                        }}
-                      </For>
-                    </section>
-                  </Show>
-
-                  {/* 洞察层：一行一个结论，而不是一格一个入口。 */}
-                  <Show when={findingSections().length}>
-                    <section class="public-research-findings">
-                      <h2>今日要点</h2>
-                      <For each={findingSections()}>
-                        {(section) => {
-                          const card = () => cards().get(section.key);
-                          return (
-                            <div class="public-research-finding">
-                              <button
-                                type="button"
-                                class="public-research-finding__open"
-                                onClick={() => openSection(section)}
-                              >
-                                <span class="public-research-findings__label">
-                                  {section.title}
-                                  <Show when={section.adminOnly}>
-                                    <i class="public-research-gated">未发布</i>
-                                  </Show>
-                                </span>
-                                <span class="public-research-findings__text">
-                                  {leadSentence(card()?.summary || section.blurb)}
-                                  <small class="public-research-what">{section.what}</small>
-                                </span>
-                                <span class="public-research-findings__metric">
-                                  <Show when={stateLabel(cardState(card()), card(), reportToday())}>
-                                    {(age) => <b class="public-research-age">{age()}</b>}
-                                  </Show>
-                                  <Show when={card()?.metric}>{card()!.metric}</Show>
-                                </span>
-                              </button>
-                              {rowActions(section)}
-                            </div>
-                          );
-                        }}
-                      </For>
-                    </section>
-                  </Show>
-
-                  {/* 还没有内容的模块不配占一整格，一行说清楚它是什么、什么时候有。 */}
-                  <Show when={pendingSections().length}>
-                    <section class="public-research-pending">
-                      <For each={pendingSections()}>
-                        {(section) => {
-                          const card = () => cards().get(section.key);
-                          return (
-                            <div class="public-research-pending__row">
-                              <button type="button" onClick={() => openSection(section)}>
-                                {section.title}
-                                <Show when={section.adminOnly}>
-                                  <i class="public-research-gated">未发布</i>
-                                </Show>
-                                <small>
-                                  {stateLabel(cardState(card()), card(), reportToday()) || "今日无新增"} ·{" "}
-                                  {section.refreshAt}
-                                </small>
-                              </button>
-                              <span class="public-research-what">{section.what}</span>
-                            </div>
-                          );
-                        }}
-                      </For>
-                    </section>
+                    <button
+                      type="button"
+                      classList={{ "is-active": viewAsUser() }}
+                      onClick={() => chooseView(true)}
+                    >
+                      用户视角
+                    </button>
+                  </div>
+                  <span class="public-research-adminbar__hint">
+                    {viewAsUser() ? "当前与普通用户看到的页面一致" : "多出内测板块与管理入口"}
+                  </span>
+                  <Show when={adminView()}>
+                    <Show
+                      when={activeGroup() === "admin"}
+                      fallback={
+                        <button
+                          type="button"
+                          class="public-research-adminbar__link"
+                          onClick={() => setSearchParams({ group: "admin" })}
+                        >
+                          管理 · 使用统计与白名单
+                        </button>
+                      }
+                    >
+                      <button
+                        type="button"
+                        class="public-research-adminbar__link"
+                        onClick={() => setSearchParams({ group: undefined })}
+                      >
+                        返回研究台
+                      </button>
+                    </Show>
                   </Show>
                 </div>
               </Show>
 
-              <Show when={activeGroup() === "admin" && adminView()}>
+              <Show
+                when={activeGroup() === "admin" && adminView()}
+                fallback={
+                  <div class="public-research-sections">
+                    <For each={deskSections()}>
+                      {(desk) => (
+                        <section
+                          id={`research-group-${desk.id}`}
+                          class="public-research-section"
+                          classList={{ "is-preview": desk.id === "preview" }}
+                          aria-label={desk.region}
+                        >
+                          <header class="public-research-section__head">
+                            <h2>{desk.label}</h2>
+                            <span>{desk.note}</span>
+                          </header>
+                          <div class="public-research-grid">
+                            <For each={sectionsOf(desk.groups)}>
+                              {(section) => <ResearchCard section={section} />}
+                            </For>
+                          </div>
+                        </section>
+                      )}
+                    </For>
+                  </div>
+                }
+              >
                 {/* 管理模块是宽表格，内联堆叠比塞进弹层可用得多。 */}
                 <div class="public-research-admin">
                   <PublicAdminUsagePanel />
@@ -753,12 +717,40 @@ export default function PublicResearchPage() {
                 </div>
               </Show>
 
+              {/* 板块说明集中在一处：研究台是什么、每个板块怎么看。折叠状态记在本机。 */}
+              <details
+                class="public-research-guide"
+                open={guideOpen()}
+                onToggle={(event) => toggleGuide(event.currentTarget.open)}
+              >
+                <summary>研究台是什么、怎么用</summary>
+                <p>
+                  每个板块每天按固定时间自动生成；点「看详情」看完整证据，点「问 HONE」把板块的上下文带到投资助手继续追问。
+                </p>
+                <dl>
+                  <For each={allowedSections()}>
+                    {(section) => (
+                      <div>
+                        <dt>
+                          {section.title}
+                          <small>{section.refreshAt}</small>
+                        </dt>
+                        <dd class="public-research-what">
+                          {section.what} {section.howTo}
+                        </dd>
+                      </div>
+                    )}
+                  </For>
+                </dl>
+              </details>
+              <p class="public-research-footnote">缺数据时明示，不用模拟值补位。内容仅供研究参考，不构成投资建议。</p>
+
               <Show when={activeSection()}>
                 {(section) => (
                   <Dynamic component={section().panel!} onClose={closePanel} />
                 )}
               </Show>
-            </main>
+            </div>
           </PublicWorkspaceShell>
         )}
       </Show>

@@ -2787,3 +2787,5 @@ Use this file as the historical entry point for completed or paused work that sh
 - Next entry point: with action-time confirmation to create user-visible messages, run named-company, relationship, AAOI-style move and fresh-report financial-metric canaries; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
 
 - 2026-09-08：流式 HTTP 529 有界重试，状态 `done`；[plan](plans/stream-http-529-retry-2026-09-08.md) / [handoff](../handoffs/stream-http-529-retry-2026-09-08.md) / [bug](../bugs/scheduler_heartbeat_minimax_http_transport_failure_no_retry.md)。41 测试与编译通过，P1 PostgreSQL/runtime 恢复留待运维。
+
+- 2026-10-11：三类报告（公司完整分析 / 财报分析 / 财报前瞻）可靠交付与共用估值 Prompt 修订，状态 `done`（待部署与真实 canary）；[handoff](../handoffs/2026-10-11-report-reliability-and-valuation-prompts.md) / decision `D-2026-10-11-02` / runbook `docs/runbooks/company-full-analysis.md`。PDF 失败不再丢失报告（主机复用/自行渲染/带说明交付 Markdown），公司分析长输出与传输修复、Markdown 下载；无内容门禁。

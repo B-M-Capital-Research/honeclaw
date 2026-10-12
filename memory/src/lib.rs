@@ -73,6 +73,7 @@ pub use survey::{
 pub use web_auth::{
     EmailVerificationResult, SESSION_TTL_DAYS_LONG, SESSION_TTL_DAYS_SHORT,
     WEB_ADMIN_DAILY_INVITE_LIMIT, WEB_IDENTITY_DOMESTIC_INVITE, WEB_IDENTITY_INTERNATIONAL_EMAIL,
-    WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome, WebAdminInviteSummary,
-    WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult, WebUserExternalProfile,
+    WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome, WebAdminInviteEmailOutcome,
+    WebAdminInviteSummary, WebAuthStorage, WebInviteSession, WebInviteUser, WebSessionAuthResult,
+    WebUserExternalProfile, normalize_email_address,
 };

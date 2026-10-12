@@ -134,6 +134,8 @@ Honeclaw is the open-source project behind Hone. Built with **Rust + SolidJS / T
 
 The professional financial databases, proprietary ontology research, and certain research assets used by the hosted product are not distributed with the public code. Self-hosting requires your own model and data service configuration; cloning the repository does not grant access to all hosted data or account features.
 
+Configure OpenRouter credentials through `llm.providers.openrouter.api_key/api_keys`; the legacy `llm.openrouter.*` single-key configuration remains a fallback. See the [configuration guide](./docs/wiki.md) for provider and model settings.
+
 Share feedback and contribute through [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues), Pull Requests, or [Discord](https://discord.gg/TyDNfYXDGF). For more, visit [Bilibili: 巴芒投资](https://space.bilibili.com/224670487) and [YouTube: 巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93).
 
 To hone is to sharpen. We want Hone to help you sharpen your judgment through ongoing research, comparison, and review.

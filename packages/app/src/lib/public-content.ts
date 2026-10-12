@@ -23,7 +23,8 @@ const CONTENT_ZH = {
   nav: {
     logo_tagline: "HONE",
     home: "首页",
-    community: "社区",
+    community: "洞察",
+    research: "研究",
     roadmap: "路线图与文档",
     blog: "Blog",
     me: "个人",
@@ -48,37 +49,161 @@ const CONTENT_ZH = {
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
 
-  hero: {
-    eyebrow: "HONE · AI 投资纪律助手",
-    headline_1: "不是迎合你的聊天玩具",
-    headline_2: "是你的投研纪律守卫者",
-    description:
-      "冷静、克制、长期记忆、研究导向。HONE 是专为严肃投资者打造的开源 AI Agent，帮你建立并坚守投研纪律，而不是告诉你想听的答案。",
-    cta_primary: "进入对话",
-    cta_secondary: "查看路线图",
-    scroll_hint: "滚动探索",
-    stat_1: { value: "Rust", label: "核心引擎" },
-    stat_2: { value: "7", label: "接入渠道" },
-    stat_3: { value: "MIT", label: "开源协议" },
-  },
-
   home_page: {
-    roadmap_button: "产品路线图",
-    roadmap_slide_tag: "路线图",
-    hero_slogan: "并非迎合你的聊天玩具，而是你投资纪律的无情捍卫者。",
-    start_trial: "开始试用",
-    video_demo: "视频演示",
-    view_full_roadmap: "完整路线图",
-    zoom_hint: "查看详情",
+    zoom_hint: "查看大图",
     blog_eyebrow: "工程 Blog",
     blog_title: "为什么 HONE 选择 Rust",
     blog_desc:
       "从 Python + Node.js 到 Rust 的重构复盘：AI Coding 时代的上下文、稳定性和多端工程选择。",
     blog_cta: "阅读文章",
-    plan_eyebrow: "PLAN 与定价",
-    plan_title: "开源免费，完整服务一次订阅打通",
-    plan_desc: "HONE 核心永远 MIT 开源、可自托管；完整服务提供每周深度直播、VIP 社群与完整研报分享。",
-    plan_cta: "查看定价",
+  },
+
+  landing: {
+    page_title: "HONE · AI 基础设施投研助手",
+    eyebrow: "AI 基础设施投研助手",
+    headline_1: "读懂 AI 产业变化",
+    headline_2: "跟踪你关心的公司",
+    description:
+      "从一个问题开始。HONE 结合约 50 家 AI 基础设施公司的产业本体、专业金融数据与社区研究，把热点问成可以继续研究的问题。",
+    cta_primary: "开始提问",
+    cta_member: "加入会员",
+    coverage_label: "研究覆盖",
+    coverage: ["光通信", "电力", "存储", "芯片", "数据中心"],
+    hero_image_alt: "HONE 投资助手界面：围绕 AI 模型进展，追问产业传导与公司影响",
+    hero_caption: "投资助手线上界面，内容与数据以使用时的来源为准。",
+    proof: [
+      { value: "≈50", label: "家 AI 基础设施公司本体" },
+      { value: "15 分钟", label: "大V速报同步一次" },
+      { value: "每日 20:00", label: "宏观红绿灯更新" },
+      { value: "MIT", label: "开源，可自部署" },
+    ],
+    products_eyebrow: "产品",
+    products_title: "一个工作台，覆盖研究的每一步",
+    products_sub: "提问、看结论、读观点、跟踪变化，电脑和手机上都能完成。",
+    products: [
+      {
+        key: "chat",
+        title: "投资助手",
+        body: "用自然语言提问，结合产业本体与财务、估值数据回答，并沿着回答继续追问。",
+        href: "/chat",
+        cta: "开始提问",
+      },
+      {
+        key: "research",
+        title: "研究台",
+        body: "宏观红绿灯、大V速报与 3D 数据中心，每天自动更新：先看结论，再看证据。",
+        href: "/research",
+        cta: "进入研究台",
+      },
+      {
+        key: "insights",
+        title: "洞察",
+        body: "HONE 官方研究动态、大V公开观点与会员讨论，集中在一处按时间阅读。",
+        href: "/community",
+        cta: "查看洞察",
+      },
+      {
+        key: "tracking",
+        title: "关注与推送",
+        body: "添加关注的公司与持仓，财报日历和重要变化主动推送到你面前。",
+        href: "/me",
+        cta: "管理关注",
+      },
+    ],
+    assistant: {
+      eyebrow: "投资助手",
+      title: "把 AI 热点，问成可以继续研究的问题",
+      body: "新模型发布、推理需求增长、云厂商扩大资本开支，最终会传导到芯片、存储、光互联、电力和数据中心。HONE 帮你把这些变化与具体公司联系起来。",
+      points: [
+        "沿着上下游追问：一个问题可以一路问到受影响的公司和关键假设",
+        "专业金融数据：财务报表、增长与盈利、现金流、估值和市场数据",
+        "证据先于结论：标注数据时间与口径，缺数据时直接说明",
+      ],
+      examples_label: "可以这样问",
+      examples: [
+        "推理需求增长，会怎样影响光模块、存储和电力需求？",
+        "云厂商上调资本开支，对我关注的公司分别意味着什么？",
+        "这条消息改变了公司的长期逻辑，还是只是短期情绪？",
+      ],
+      cta: "开始提问",
+    },
+    research: {
+      eyebrow: "研究台 · 洞察",
+      title: "每天的研究，主动来到你面前",
+      body: "不必每天自己搜集。研究台按固定节奏更新结论，洞察把官方研究与大V观点放进同一处；看到值得深挖的内容，一键带着上下文问 HONE。",
+      points: [
+        {
+          title: "宏观红绿灯",
+          body: "每天 20:00 按收入、消费、生产、利润、资本开支的领先顺序给周期打分并亮灯。",
+        },
+        {
+          title: "大V速报",
+          body: "每 15 分钟同步 Serenity（白毛）等作者的公开动态，原文、译文与 HONE 解读分开呈现。",
+        },
+        {
+          title: "洞察",
+          body: "官方研究动态、大V观点与会员讨论区按时间连续沉淀，随时回看、随时追问。",
+        },
+      ],
+      image_alt: "HONE 研究台：宏观红绿灯、大V速报与产业研究入口",
+      mobile_alt: "手机上的大V速报：作者原文、配图、来源链接与问 HONE 入口",
+      caption: "研究台为界面示例；手机截图为线上实拍。作者观点不代表 HONE 判断。",
+      cta: "进入研究台",
+    },
+    community: {
+      eyebrow: "社区",
+      title: "和认真做研究的人一起",
+      body: "HONE 由巴芒投研团队打造。会员得到的不只是工具：原创研报、财报前瞻、每周直播与高手社群，把研究方法和结论一起分享给你。",
+      host_name: "Hari 老王",
+      host_role: "巴芒投研主理人 · HONE 出品人",
+      host_bio: "深耕美股二十年；YouTube 与 B 站每周更新美股深度视频。",
+      stats: [
+        { value: "300+", label: "每年原创万字研报" },
+        { value: "100+", label: "每季财报前瞻" },
+        { value: "每周四", label: "主理人直播讲解" },
+        { value: "500+", label: "会员实时交流" },
+      ],
+      channels_label: "关注我们",
+      channels: [
+        { label: "知识星球", href: "https://wx.zsxq.com/group/51115212285814" },
+        {
+          label: "YouTube",
+          href: "https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93",
+        },
+        { label: "Bilibili", href: "https://space.bilibili.com/224670487" },
+        { label: "Discord", href: "https://discord.gg/TyDNfYXDGF" },
+      ],
+      cta: "了解会员",
+      cta_trial: "先加免费体验群",
+      note: "会员服务由 B&M Capital Research 提供；开源版能力不受订阅影响。",
+    },
+    principles: {
+      eyebrow: "原则",
+      title: "我们坚持的三件事",
+      items: [
+        {
+          title: "证据先于观点",
+          body: "回答标注数据时间与来源；缺数据时明确说明，不用模拟值补位。",
+        },
+        {
+          title: "观点与事实分开",
+          body: "大V原话、HONE 解读与反方意见分开呈现，观点不会被包装成结论。",
+        },
+        {
+          title: "开源、可审计",
+          body: "Rust + SolidJS 实现，MIT 开源；代码、架构与开发约定公开，可以自部署。",
+        },
+      ],
+      github_cta: "在 GitHub 查看源码",
+    },
+    final: {
+      title: "从一个问题开始",
+      body: "打开投资助手，问出你今天最关心的那家公司。",
+      cta_primary: "开始提问",
+      cta_secondary: "了解会员",
+      contact: "合作与咨询",
+    },
+    disclaimer: "内容仅供研究参考，不构成投资建议。市场有风险，决策需独立判断。",
   },
 
   quant: {
@@ -221,220 +346,6 @@ const CONTENT_ZH = {
     },
     foot: "服务由 B&M Capital Research 提供；开源版能力不受订阅影响。",
     close_aria: "关闭",
-  },
-
-  trust: {
-    section_label: "为什么是 HONE",
-    items: [
-      {
-        symbol: "◈",
-        title: "纪律先于观点",
-        body: "HONE 不会迎合你的仓位偏见。每一次对话都以研究纪律为约束，主动识别并克制情绪驱动的决策冲动。",
-      },
-      {
-        symbol: "∞",
-        title: "长期研究记忆",
-        body: "每家公司的深度画像在对话中持续积累，跨会话保留上下文，形成你独有的、不断生长的投研知识库。",
-      },
-      {
-        symbol: "✦",
-        title: "客观多维判断",
-        body: "内置正反博弈推演与零幻觉协议，在噪音中找到信号——而不是把你的情绪包装成分析结论反馈给你。",
-      },
-    ],
-  },
-
-  cases: {
-    section_label: "真实工作流",
-    section_sub: "HONE 如何融入你的投研日常",
-    placeholder_suffix: "场景演示截图",
-    items: [
-      {
-        tag: "个股分析",
-        title: "系统性深度研究一家公司",
-        body: "从财务数据到行业竞争格局，HONE 帮你构建完整研究框架，记录每一个关键假设和风险因子。",
-        image: "/hone_introduction_zh.jpg" as string | null,
-      },
-      {
-        tag: "持仓追踪",
-        title: "追踪持仓，主动提醒关键节点",
-        body: "设置止盈止损逻辑，HONE 定时检查持仓状态，在你设定的条件触发时主动推送提醒。",
-        image: "/hone_work_zh.jpg" as string | null,
-      },
-      {
-        tag: "定时任务",
-        title: "每周五自动触发投资复盘",
-        body: "把固定工作流交给 HONE：每周复盘、月度总结、关键节点检查——按你设定的时间自动跑，不用手动催。",
-        image: "/hone_page.jpg" as string | null,
-      },
-      {
-        tag: "长期画像",
-        title: "建立公司专属研究档案",
-        body: "每次研究结果自动归档到公司画像，下次提问直接调用历史上下文，越用越聪明。",
-        image: "/hone_solution_zh.jpg" as string | null,
-      },
-      {
-        tag: "跨平台通知",
-        title: "在 iMessage / Lark 收到 HONE",
-        body: "不只是网页。HONE 通过 iMessage、Lark、Discord 等渠道主动联系你，在你最顺手的地方工作。",
-        image: "/hone_channels_zh.jpg" as string | null,
-      },
-    ],
-  },
-
-  video: {
-    section_label: "看 HONE 如何工作",
-    title: "老王讲 HONE：投研 AI Agent 的实际用法",
-    description:
-      "从开户到深度研究，10 分钟了解 HONE 如何改变你的投研工作流。完整演示个股分析、持仓追踪、定时任务等核心场景。",
-    video_url: "https://www.bilibili.com/video/BV1ByXNBGET5/",
-    thumbnail: "/hone_introduction_zh.jpg",
-    duration: "约 10 分钟",
-    coverage: "视频涵盖：个股深度研究、持仓追踪、定时任务、多端接入演示",
-    url_placeholder: "视频链接待配置",
-  },
-
-  capabilities: {
-    section_label: "核心能力",
-    items: [
-      {
-        symbol: "⚡",
-        title: "投研纪律约束",
-        body: "对话时主动约束情绪决策，帮你坚守原则。不是复读你的想法，而是质疑它。",
-      },
-      {
-        symbol: "◈",
-        title: "公司画像 & 长期记忆",
-        body: "对每家公司建立持久档案，跨会话积累研究成果，形成真正的知识资产。",
-      },
-      {
-        symbol: "∞",
-        title: "定时任务与自动提醒",
-        body: "定时工作流自动运行：复盘、持仓检查、重要节点提醒，按你设定的时间触发。",
-      },
-      {
-        symbol: "✦",
-        title: "多端接入",
-        body: "Web、iMessage、Lark / Feishu、Discord、Telegram、CLI——在你最顺手的地方使用 HONE。",
-      },
-      {
-        symbol: "⌘",
-        title: "Rust 驱动的稳定性",
-        body: "核心引擎用 Rust 构建，低延迟、高可靠，长期运行不掉线、不崩溃。",
-      },
-      {
-        symbol: "ℹ",
-        title: "可编程投研操作系统",
-        body: "自定义 Skill、动态任务链、跨会话记忆调用，构建完全属于你的投研工作流。",
-      },
-    ],
-  },
-
-  community: {
-    section_label: "加入社群",
-    section_sub: "找到认真对待投研的同行者",
-    qr_label: "二维码",
-    tier1: [
-      {
-        key: "wechat_group",
-        tier_label: "免费",
-        name: "微信交流群",
-        desc: "扫码加入，交流投研方法、产品反馈、使用心得",
-        qr: null as string | null,
-        cta: "扫码加群",
-      },
-      {
-        key: "author_wechat",
-        tier_label: "作者",
-        name: "老王个人微信",
-        desc: "产品问题直接反馈，重要更新优先通知",
-        qr: null as string | null,
-        cta: "添加微信",
-      },
-    ],
-    tier2: [
-      {
-        key: "discord",
-        name: "Discord",
-        desc: "英文社区讨论",
-        url: "#",
-        label: "开放",
-        symbol: "⚡",
-      },
-      {
-        key: "zsxq",
-        name: "知识星球",
-        desc: "付费深度内容",
-        url: "#",
-        label: "付费",
-        symbol: "◈",
-      },
-      {
-        key: "vip",
-        name: "VIP 群",
-        desc: "私域高级功能体验",
-        url: "#",
-        label: "邀请制",
-        symbol: "✦",
-      },
-      {
-        key: "content",
-        name: "内容号",
-        desc: "投研方法论 & 产品更新",
-        url: "#",
-        label: "关注",
-        symbol: "∞",
-      },
-    ],
-  },
-
-  repo: {
-    section_label: "开源",
-    section_sub: "B&M Capital Research 出品，MIT 协议开放",
-    items: [
-      {
-        title: "GitHub 仓库",
-        desc: "Star、Fork、提 Issue，参与开源建设",
-        url: "https://github.com/B-M-Capital-Research/honeclaw",
-        tag: "开源",
-        icon: "⌘",
-      },
-      {
-        title: "中文文档",
-        desc: "README、使用说明、案例示范",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
-        tag: "文档",
-        icon: "◈",
-      },
-      {
-        title: "安装方式",
-        desc: "macOS 桌面端 + 服务端自部署指南",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
-        tag: "安装",
-        icon: "⚡",
-      },
-      {
-        title: "代码库地图",
-        desc: "模块结构、数据流与运行时边界说明",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
-        tag: "技术",
-        icon: "∞",
-      },
-      {
-        title: "案例集",
-        desc: "真实投研场景使用示例",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
-        tag: "案例",
-        icon: "✦",
-      },
-      {
-        title: "贡献指南",
-        desc: "参与开发、提交 PR、讨论功能方向",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
-        tag: "贡献",
-        icon: "ℹ",
-      },
-    ],
   },
 
   roadmap: {
@@ -1648,9 +1559,9 @@ const CONTENT_ZH = {
       login_title: "登录后查看 HONE 社区",
       login_hint: "社区当前为只读，内容仅向已登录用户展示。",
       search: "搜索社区、公司或主题",
-      eyebrow: "社区研究 · 只读",
-      title: "社区",
-      subtitle: "来自 HONE 社区的研究判断、市场观察与关键资料，按发生时间连续沉淀。",
+      eyebrow: "洞察 · Insights",
+      title: "洞察",
+      subtitle: "HONE 官方研究动态、大V公开观点与会员讨论，集中在一处按时间阅读。",
       loading: "正在加载社区内容…",
       reload: "重新加载",
       feed_title: "官方社区动态",
@@ -1947,10 +1858,21 @@ const CONTENT_ZH = {
       w_disable_failed: "禁用会员白名单失败",
       w_admin: "管理员",
       w_title: "会员白名单",
-      w_subtitle: "管理国内手机号会员白名单。禁用后，该用户现有登录态会立即失效。",
+      w_subtitle: "白名单成员可用手机号或邮箱登录。禁用后，该用户现有登录态会立即失效。",
       w_remaining: "今日还可新增",
-      w_add_label: "新增白名单手机号",
-      w_phone_ph: "请输入 11 位手机号",
+      w_add_label: "新增白名单成员",
+      w_phone_ph: "11 位手机号（可选）",
+      w_email_ph: "登录邮箱（可选）",
+      w_need_one: "手机号或邮箱至少填写一项",
+      w_bad_email: "请输入正确的邮箱地址",
+      w_email: "邮箱",
+      w_member: "成员",
+      w_no_email: "未配置邮箱",
+      w_edit_email: "设置邮箱",
+      w_save_email: "保存",
+      w_cancel: "取消",
+      w_email_edit_ph: "留空即移除登录邮箱",
+      w_email_failed: "更新登录邮箱失败",
       w_processing: "处理中…",
       w_add: "加入白名单",
       w_quota_note: "为防止误操作，每位管理员按运行时时区每天最多成功新增 5 人。",
@@ -1963,7 +1885,7 @@ const CONTENT_ZH = {
       w_disabled: "已禁用",
       w_disable: "禁用",
       w_current_admin: "当前管理员",
-      w_empty: "当前还没有国内手机号会员。",
+      w_empty: "当前还没有白名单成员。",
       w_loading: "正在读取会员白名单…",
       u_all_channels: "全部渠道",
       u_refreshing: "刷新中…",
@@ -2070,6 +1992,7 @@ const CONTENT_ZH = {
       interrupted: "上次请求已中断，请重新发送",
       reconnecting: "连接中断，正在恢复任务状态",
       reconnect_failed: "连接已中断，未能恢复任务状态，请刷新页面后重试",
+      rejected: "这次请求没有被接受，请稍后重试",
       attach_aria: "添加图片或文件",
     },
     community: {
@@ -2134,8 +2057,18 @@ const CONTENT_ZH = {
   auth: {
     login: {
       title: "登录 HONE",
-      subtitle: "使用手机号和短信验证码登录。",
+      subtitle: "使用白名单内的手机号或邮箱，凭一次性验证码登录。",
       hint_sms: "目前是邀请制，请联系 bm@hone-claw.com 加入邀请名单。",
+      method_aria: "选择登录方式",
+      method_phone: "手机号",
+      method_email: "邮箱",
+      email_label: "邮箱",
+      email_placeholder: "name@example.com",
+      email_aria: "邮箱地址",
+      email_code_placeholder: "8 位邮箱验证码",
+      email_code_aria: "邮箱验证码",
+      email_code_sent: "如果该邮箱在白名单中，验证码将在一分钟内送达，请同时检查垃圾邮件。",
+      email_hint: "管理员为你配置邮箱后即可用邮箱登录；验证码由 no-reply@hone-claw.com 发送。",
       phone_label: "手机号",
       phone_placeholder: "例如 13800138000",
       phone_aria: "手机号",
@@ -2152,7 +2085,7 @@ const CONTENT_ZH = {
       dev_login: "进入本地测试账号",
       dev_login_loading: "正在进入…",
       dev_login_hint: "仅本地开发环境可用，不需要手机号或验证码。",
-      or_sms: "或使用短信登录",
+      or_sms: "或使用验证码登录",
     },
     tos: {
       prefix: "我已阅读并同意",
@@ -2683,10 +2616,11 @@ const CONTENT_ZH = {
         title: "产品",
         items: [
           { label: "首页", href: "/" },
-          { label: "路线图", href: "/roadmap" },
+          { label: "投资助手", href: "/chat" },
+          { label: "研究台", href: "/research" },
+          { label: "洞察", href: "/community" },
+          { label: "会员与定价", href: "/plan" },
           { label: "Blog", href: "/blog" },
-          { label: "对话", href: "/chat" },
-          { label: "个人", href: "/me" },
         ],
       },
       resources: {
@@ -2706,7 +2640,7 @@ const CONTENT_ZH = {
           },
           {
             label: "安装方式",
-            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
           },
           {
             label: "代码库地图",
@@ -2717,10 +2651,10 @@ const CONTENT_ZH = {
       community: {
         title: "社群",
         items: [
-          { label: "Discord", href: "#" },
-          { label: "知识星球", href: "#" },
-          { label: "微信群", href: "#" },
-          { label: "内容号", href: "#" },
+          { label: "Discord", href: "https://discord.gg/TyDNfYXDGF" },
+          { label: "知识星球", href: "https://wx.zsxq.com/group/51115212285814" },
+          { label: "微信体验群", href: "/plan" },
+          { label: "Bilibili", href: "https://space.bilibili.com/224670487" },
         ],
       },
       legal: {
@@ -2738,7 +2672,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   nav: {
     logo_tagline: "HONE",
     home: "Home",
-    community: "Community",
+    community: "Insights",
+    research: "Research",
     roadmap: "Roadmap & Docs",
     blog: "Blog",
     me: "Account",
@@ -2763,38 +2698,161 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     github_url: "https://github.com/B-M-Capital-Research/honeclaw",
   },
 
-  hero: {
-    eyebrow: "HONE · AI INVESTMENT DISCIPLINE",
-    headline_1: "Not a chatbot that flatters you.",
-    headline_2: "A research-discipline guardian.",
-    description:
-      "Calm, restrained, long-memory, research-first. HONE is an open-source AI agent built for serious investors — it helps you set and keep your research discipline, not tell you what you want to hear.",
-    cta_primary: "Enter Chat",
-    cta_secondary: "View Roadmap",
-    scroll_hint: "Scroll",
-    stat_1: { value: "Rust", label: "Core Engine" },
-    stat_2: { value: "7", label: "Channels" },
-    stat_3: { value: "MIT", label: "License" },
-  },
-
   home_page: {
-    roadmap_button: "Roadmap",
-    roadmap_slide_tag: "ROADMAP",
-    hero_slogan:
-      "Not a chatbot that flatters you, but a ruthless defender of your investment discipline.",
-    start_trial: "Start Now",
-    video_demo: "VIDEO DEMO",
-    view_full_roadmap: "View Full Roadmap",
-    zoom_hint: "Zoom In",
-    blog_eyebrow: "Engineering Blog",
+    zoom_hint: "View larger",
+    blog_eyebrow: "Engineering blog",
     blog_title: "Why HONE chose Rust",
     blog_desc:
-      "A field report on moving from Python + Node.js to Rust, and what it means for context, stability, and multi-endpoint engineering in the AI Coding era.",
-    blog_cta: "Read article",
-    plan_eyebrow: "PLAN & PRICING",
-    plan_title: "Open source forever, full access in one subscription",
-    plan_desc: "The HONE core stays MIT-licensed and self-hostable. Full access adds weekly live deep dives, the VIP community, and complete research notes.",
-    plan_cta: "View pricing",
+      "A retrospective on rebuilding from Python + Node.js to Rust: context, stability and multi-surface engineering in the age of AI coding.",
+    blog_cta: "Read the post",
+  },
+
+  landing: {
+    page_title: "HONE · AI infrastructure research assistant",
+    eyebrow: "AI infrastructure research assistant",
+    headline_1: "See how AI moves industries",
+    headline_2: "Track the companies you follow",
+    description:
+      "Start with a question. HONE combines an industry ontology of about 50 AI infrastructure companies, professional financial data and community research to turn headlines into questions you can keep researching.",
+    cta_primary: "Ask a question",
+    cta_member: "Become a member",
+    coverage_label: "Coverage",
+    coverage: ["Optical", "Power", "Memory", "Chips", "Data centers"],
+    hero_image_alt: "HONE assistant: following an AI model release through to industry transmission and company impact",
+    hero_caption: "Live assistant interface; content and data depend on the sources available at the time.",
+    proof: [
+      { value: "≈50", label: "AI infrastructure companies in the ontology" },
+      { value: "15 min", label: "influencer brief sync" },
+      { value: "20:00 daily", label: "macro traffic light update" },
+      { value: "MIT", label: "open source, self-hostable" },
+    ],
+    products_eyebrow: "Product",
+    products_title: "One workspace for every step of research",
+    products_sub: "Ask, read the verdict, follow the voices and track changes, on desktop or phone.",
+    products: [
+      {
+        key: "chat",
+        title: "Assistant",
+        body: "Ask in plain language; answers draw on the industry ontology plus financial and valuation data, and you can keep following up.",
+        href: "/chat",
+        cta: "Ask a question",
+      },
+      {
+        key: "research",
+        title: "Research desk",
+        body: "Macro traffic light, influencer brief and the 3D data center, refreshed daily: verdict first, evidence one click away.",
+        href: "/research",
+        cta: "Open the desk",
+      },
+      {
+        key: "insights",
+        title: "Insights",
+        body: "HONE's official research feed, public influencer posts and member discussion, read in one place in time order.",
+        href: "/community",
+        cta: "Read Insights",
+      },
+      {
+        key: "tracking",
+        title: "Tracking & pushes",
+        body: "Follow companies and holdings; the earnings calendar and material changes come to you as pushes.",
+        href: "/me",
+        cta: "Manage tracking",
+      },
+    ],
+    assistant: {
+      eyebrow: "Assistant",
+      title: "Turn AI headlines into questions worth researching",
+      body: "New models, growing inference demand and rising cloud capex eventually reach chips, memory, optical interconnect, power and data centers. HONE connects those shifts to specific companies.",
+      points: [
+        "Follow the supply chain: one question can lead all the way to the affected companies and key assumptions",
+        "Professional financial data: statements, growth and margins, cash flow, valuation and market data",
+        "Evidence before conclusions: data time and basis are stated, and gaps are said out loud",
+      ],
+      examples_label: "Try asking",
+      examples: [
+        "How does growing inference demand affect optical modules, memory and power?",
+        "Cloud providers raised capex guidance. What does that mean for the companies I follow?",
+        "Does this news change the company's long-term thesis, or is it short-term sentiment?",
+      ],
+      cta: "Ask a question",
+    },
+    research: {
+      eyebrow: "Research desk · Insights",
+      title: "Daily research that comes to you",
+      body: "No need to gather it yourself every day. The desk refreshes its verdicts on a fixed schedule, Insights puts official research and influencer views side by side, and anything worth digging into goes to HONE with its context in one click.",
+      points: [
+        {
+          title: "Macro traffic light",
+          body: "Scores the cycle at 20:00 every day in leading order: income, consumption, production, profits, capex.",
+        },
+        {
+          title: "Influencer brief",
+          body: "Public posts from Serenity and other authors every 15 minutes, with the original, translation and HONE's reading kept apart.",
+        },
+        {
+          title: "Insights",
+          body: "Official research, influencer views and the member forum accumulate in time order, ready to revisit and question.",
+        },
+      ],
+      image_alt: "HONE research desk: macro traffic light, influencer brief and industry research entries",
+      mobile_alt: "Influencer brief on a phone: author's post, images, source links and the Ask HONE entry",
+      caption: "The desk is an interface example; the phone capture is from production. Author views are not HONE's.",
+      cta: "Open the desk",
+    },
+    community: {
+      eyebrow: "Community",
+      title: "Research alongside people who take it seriously",
+      body: "HONE is built by the B&M research team. Members get more than a tool: original reports, earnings previews, weekly live sessions and an active community share both the method and the conclusions.",
+      host_name: "Hari",
+      host_role: "Head of B&M Research · HONE producer",
+      host_bio: "Twenty years in US equities; in-depth US stock videos weekly on YouTube and Bilibili.",
+      stats: [
+        { value: "300+", label: "original long-form reports a year" },
+        { value: "100+", label: "earnings previews a quarter" },
+        { value: "Thursdays", label: "weekly live company deep dives" },
+        { value: "500+", label: "members in live discussion" },
+      ],
+      channels_label: "Follow us",
+      channels: [
+        { label: "Knowledge Planet", href: "https://wx.zsxq.com/group/51115212285814" },
+        {
+          label: "YouTube",
+          href: "https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93",
+        },
+        { label: "Bilibili", href: "https://space.bilibili.com/224670487" },
+        { label: "Discord", href: "https://discord.gg/TyDNfYXDGF" },
+      ],
+      cta: "Membership",
+      cta_trial: "Join the free trial group",
+      note: "Membership is provided by B&M Capital Research; the open-source edition is unaffected by subscriptions.",
+    },
+    principles: {
+      eyebrow: "Principles",
+      title: "Three things we hold to",
+      items: [
+        {
+          title: "Evidence before opinion",
+          body: "Answers state data time and source; when data is missing we say so instead of filling in simulated values.",
+        },
+        {
+          title: "Opinion kept apart from fact",
+          body: "Influencer words, HONE's reading and counterpoints are shown separately; opinion is never dressed up as a conclusion.",
+        },
+        {
+          title: "Open source, auditable",
+          body: "Built with Rust + SolidJS under the MIT license; code, architecture and conventions are public and self-hostable.",
+        },
+      ],
+      github_cta: "View the source on GitHub",
+    },
+    final: {
+      title: "Start with one question",
+      body: "Open the assistant and ask about the company you care most about today.",
+      cta_primary: "Ask a question",
+      cta_secondary: "Membership",
+      contact: "Partnerships & enquiries",
+    },
+    disclaimer: "For research only, not investment advice. Markets carry risk; decide independently.",
   },
 
   quant: {
@@ -2937,221 +2995,6 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     },
     foot: "Service provided by B&M Capital Research. The open-source edition is never limited by subscriptions.",
     close_aria: "Close",
-  },
-
-  trust: {
-    section_label: "WHY HONE",
-    items: [
-      {
-        symbol: "◈",
-        title: "Discipline over opinion",
-        body: "HONE will not flatter your position. Every conversation is constrained by research discipline — it actively surfaces and pushes back on emotion-driven decisions.",
-      },
-      {
-        symbol: "∞",
-        title: "Long-term research memory",
-        body: "Deep profiles of each company grow across conversations. Context persists across sessions, building a personal, ever-growing research knowledge base.",
-      },
-      {
-        symbol: "✦",
-        title: "Multi-angle judgment",
-        body: "Built-in pro/con dialectics and a zero-hallucination protocol find signal in the noise — instead of repackaging your feelings as analysis.",
-      },
-    ],
-  },
-
-  cases: {
-    section_label: "REAL WORKFLOWS",
-    section_sub: "How HONE fits into your research routine",
-    placeholder_suffix: "scenario screenshot (placeholder)",
-    items: [
-      {
-        tag: "Stock analysis",
-        title: "Systematically research a company in depth",
-        body: "From financials to competitive landscape, HONE helps you assemble a complete research framework, logging every key assumption and risk factor.",
-        image: "/company_profile.png",
-      },
-      {
-        tag: "Portfolio tracking",
-        title: "Track holdings, nudge on key moments",
-        body: "Set stop-loss / take-profit logic; HONE checks your portfolio on a schedule and pushes an alert the moment your conditions trigger.",
-        image: null as string | null,
-      },
-      {
-        tag: "Scheduled tasks",
-        title: "Trigger a weekly review every Friday",
-        body: "Hand fixed workflows to HONE. Weekly reviews, monthly summaries, key-moment checks — all run themselves at the time you set.",
-        image: null as string | null,
-      },
-      {
-        tag: "Long-term profile",
-        title: "Build a company's personal dossier",
-        body: "Each research result is archived into the company profile. Next time you ask, HONE calls back the full history — smarter with every use.",
-        image: "/hone_solution.jpg",
-      },
-      {
-        tag: "Cross-platform notifications",
-        title: "Get HONE in iMessage / Lark",
-        body: "Not just the web. HONE reaches you through iMessage, Lark, Discord and more — in whatever channel you're already using.",
-        image: "/hone_channels.jpg",
-      },
-    ],
-  },
-
-  video: {
-    section_label: "SEE HONE IN ACTION",
-    title: "Lao Wang on HONE: the research AI agent in practice",
-    description:
-      "From onboarding to deep research, learn in ten minutes how HONE changes the way you work. Full walkthrough of stock analysis, portfolio tracking, scheduled tasks, and more.",
-    video_url: "https://www.youtube.com/watch?v=hJr-81OdYcQ",
-    thumbnail: "/hone_introduction.jpg",
-    duration: "~10 min",
-    coverage:
-      "Covered: deep single-stock research, portfolio tracking, scheduled tasks, multi-channel demo",
-    url_placeholder: "Video link not configured yet (set video_url)",
-  },
-
-  capabilities: {
-    section_label: "CORE CAPABILITIES",
-    items: [
-      {
-        symbol: "⚡",
-        title: "Research discipline",
-        body: "Constrains emotional decisions in-conversation. It doesn't echo your thinking — it questions it.",
-      },
-      {
-        symbol: "◈",
-        title: "Company profiles & long memory",
-        body: "A persistent dossier per company; research compounds across sessions into a real knowledge asset.",
-      },
-      {
-        symbol: "∞",
-        title: "Scheduled tasks & alerts",
-        body: "Scheduled workflows that run themselves: reviews, portfolio checks, key-moment alerts — all on the timing you set.",
-      },
-      {
-        symbol: "✦",
-        title: "Multi-channel access",
-        body: "Web, iMessage, Lark / Feishu, Discord, Telegram, CLI — HONE on whichever channel you already live in.",
-      },
-      {
-        symbol: "⌘",
-        title: "Rust-powered stability",
-        body: "Core engine built in Rust — low latency, high reliability, no drift or crash on long runs.",
-      },
-      {
-        symbol: "ℹ",
-        title: "Programmable research OS",
-        body: "Custom skills, dynamic task chains, cross-session memory — compose a workflow that's fully yours.",
-      },
-    ],
-  },
-
-  community: {
-    section_label: "JOIN THE COMMUNITY",
-    section_sub: "Find people who take research seriously",
-    qr_label: "QR code",
-    tier1: [
-      {
-        key: "wechat_group",
-        tier_label: "Free",
-        name: "WeChat group",
-        desc: "Scan to join — discuss methodology, give feedback, share notes",
-        qr: null as string | null,
-        cta: "Scan to join",
-      },
-      {
-        key: "author_wechat",
-        tier_label: "Author",
-        name: "Lao Wang's WeChat",
-        desc: "Direct product feedback; priority notice on important updates",
-        qr: null as string | null,
-        cta: "Add contact",
-      },
-    ],
-    tier2: [
-      {
-        key: "discord",
-        name: "Discord",
-        desc: "English community discussion",
-        url: "#",
-        label: "Open",
-        symbol: "⚡",
-      },
-      {
-        key: "zsxq",
-        name: "Zhishixingqiu",
-        desc: "Paid deep-dive content",
-        url: "#",
-        label: "Paid",
-        symbol: "◈",
-      },
-      {
-        key: "vip",
-        name: "VIP group",
-        desc: "Premium / private feature preview",
-        url: "#",
-        label: "Invite",
-        symbol: "✦",
-      },
-      {
-        key: "content",
-        name: "Content channel",
-        desc: "Research methodology & product updates",
-        url: "#",
-        label: "Follow",
-        symbol: "∞",
-      },
-    ],
-  },
-
-  repo: {
-    section_label: "OPEN SOURCE",
-    section_sub: "Made by B&M Capital Research. MIT licensed.",
-    items: [
-      {
-        title: "GitHub repo",
-        desc: "Star, fork, open issues, help build in the open",
-        url: "https://github.com/B-M-Capital-Research/honeclaw",
-        tag: "Source",
-        icon: "⌘",
-      },
-      {
-        title: "Chinese docs",
-        desc: "README, usage guide, case studies",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md",
-        tag: "Docs",
-        icon: "◈",
-      },
-      {
-        title: "Install guide",
-        desc: "macOS desktop + self-hosted server setup",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
-        tag: "Install",
-        icon: "⚡",
-      },
-      {
-        title: "Repository map",
-        desc: "Module structure, data flow, and runtime boundaries",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/repo-map.md",
-        tag: "Tech",
-        icon: "∞",
-      },
-      {
-        title: "Case studies",
-        desc: "Real-world research scenarios",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CASES_ZH.md",
-        tag: "Cases",
-        icon: "✦",
-      },
-      {
-        title: "Contributing",
-        desc: "How to contribute code, ideas, and skills",
-        url: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/CONTRIBUTING.md",
-        tag: "Contribute",
-        icon: "ℹ",
-      },
-    ],
   },
 
   roadmap: {
@@ -4395,9 +4238,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       login_title: "Sign in to view the HONE community",
       login_hint: "The community is read-only and visible to signed-in users.",
       search: "Search the community, companies or topics",
-      eyebrow: "Community research · read-only",
-      title: "Community",
-      subtitle: "Research calls, market observations and key materials from the HONE community, kept in chronological order.",
+      eyebrow: "Insights",
+      title: "Insights",
+      subtitle: "HONE's official research feed, public influencer posts and member discussion, read in one place in time order.",
       loading: "Loading community content…",
       reload: "Reload",
       feed_title: "Official community feed",
@@ -4694,10 +4537,21 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       w_disable_failed: "Could not disable this allowlist entry",
       w_admin: "Administrator",
       w_title: "Member allowlist",
-      w_subtitle: "Manage the China mobile member allowlist. Disabling invalidates the user's existing session immediately.",
+      w_subtitle: "Allowlisted members sign in with a phone number or email. Disabling invalidates the user's existing session immediately.",
       w_remaining: "Remaining today",
-      w_add_label: "Add an allowlist number",
-      w_phone_ph: "Enter an 11-digit mobile number",
+      w_add_label: "Add an allowlist member",
+      w_phone_ph: "11-digit mobile (optional)",
+      w_email_ph: "Sign-in email (optional)",
+      w_need_one: "Enter a phone number, an email, or both",
+      w_bad_email: "Enter a valid email address",
+      w_email: "Email",
+      w_member: "Member",
+      w_no_email: "No email",
+      w_edit_email: "Set email",
+      w_save_email: "Save",
+      w_cancel: "Cancel",
+      w_email_edit_ph: "Leave blank to remove the sign-in email",
+      w_email_failed: "Could not update the sign-in email",
       w_processing: "Working…",
       w_add: "Add to allowlist",
       w_quota_note: "To limit mistakes, each administrator can add at most 5 people per runtime-timezone day.",
@@ -4710,7 +4564,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       w_disabled: "Disabled",
       w_disable: "Disable",
       w_current_admin: "Current administrator",
-      w_empty: "No China mobile members yet.",
+      w_empty: "No allowlist members yet.",
       w_loading: "Loading the member allowlist…",
       u_all_channels: "All channels",
       u_refreshing: "Refreshing…",
@@ -4818,6 +4672,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       reconnecting: "Connection dropped, restoring task state",
       reconnect_failed:
         "Connection dropped and the task state could not be restored. Please refresh and try again.",
+      rejected: "This request was not accepted. Please try again shortly.",
       attach_aria: "Add an image or file",
     },
     community: {
@@ -4882,9 +4737,21 @@ const CONTENT_EN: typeof CONTENT_ZH = {
   auth: {
     login: {
       title: "Sign in to HONE",
-      subtitle: "Sign in with your phone number and SMS code.",
+      subtitle: "Use your allowlisted phone number or email and a one-time code.",
       hint_sms:
         "HONE is currently invite-only. Contact bm@hone-claw.com to join the invite list.",
+      method_aria: "Choose a sign-in method",
+      method_phone: "Phone",
+      method_email: "Email",
+      email_label: "Email",
+      email_placeholder: "name@example.com",
+      email_aria: "Email address",
+      email_code_placeholder: "8-digit email code",
+      email_code_aria: "Email code",
+      email_code_sent:
+        "If this email is on the allowlist, a code arrives within a minute. Check spam too.",
+      email_hint:
+        "Email sign-in works once an administrator adds your email. Codes come from no-reply@hone-claw.com.",
       phone_label: "Phone",
       phone_placeholder: "e.g. +1 555 0134",
       phone_aria: "Phone",
@@ -4902,7 +4769,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       dev_login_loading: "Signing in…",
       dev_login_hint:
         "Available only in local development; no phone or code required.",
-      or_sms: "or sign in with SMS",
+      or_sms: "or sign in with a code",
     },
     tos: {
       prefix: "I have read and agree to the ",
@@ -5486,10 +5353,11 @@ const CONTENT_EN: typeof CONTENT_ZH = {
         title: "Product",
         items: [
           { label: "Home", href: "/" },
-          { label: "Roadmap", href: "/roadmap" },
+          { label: "Assistant", href: "/chat" },
+          { label: "Research desk", href: "/research" },
+          { label: "Insights", href: "/community" },
+          { label: "Membership & pricing", href: "/plan" },
           { label: "Blog", href: "/blog" },
-          { label: "Chat", href: "/chat" },
-          { label: "Account", href: "/me" },
         ],
       },
       resources: {
@@ -5509,7 +5377,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
           },
           {
             label: "Install",
-            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/README_ZH.md#安装与启动",
+            href: "https://github.com/B-M-Capital-Research/honeclaw/blob/main/docs/wiki.md",
           },
           {
             label: "Repository map",
@@ -5520,10 +5388,10 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       community: {
         title: "Community",
         items: [
-          { label: "Discord", href: "#" },
-          { label: "Zhishixingqiu", href: "#" },
-          { label: "WeChat group", href: "#" },
-          { label: "Content channel", href: "#" },
+          { label: "Discord", href: "https://discord.gg/TyDNfYXDGF" },
+          { label: "Knowledge Planet", href: "https://wx.zsxq.com/group/51115212285814" },
+          { label: "WeChat trial group", href: "/plan" },
+          { label: "Bilibili", href: "https://space.bilibili.com/224670487" },
         ],
       },
       legal: {

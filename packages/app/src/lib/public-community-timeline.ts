@@ -30,3 +30,11 @@ export function mergeCommunityTimeline(
     nextBefore: currentNextBefore,
   };
 }
+
+/** The three Insights streams. Only "official" is backed by the PG timeline. */
+export type CommunityView = "official" | "influencer" | "forum";
+
+/** `?view=` deep link; anything unknown falls back to the official feed. */
+export function communityViewFromParam(value: unknown): CommunityView {
+  return value === "influencer" || value === "forum" ? value : "official";
+}

@@ -13,14 +13,14 @@ use hone_memory::cron_job::{CronJobExecutionRecord, ExecutionFilter};
 use hone_memory::session::Session;
 use hone_memory::{
     WEB_ADMIN_DAILY_INVITE_LIMIT, WebAdminInviteCreateOutcome, WebAdminInviteDisableOutcome,
-    WebAdminInviteSummary, WebInviteUser,
+    WebAdminInviteEmailOutcome, WebAdminInviteSummary, WebInviteUser,
 };
 
 use crate::state::AppState;
 use crate::types::{
-    PublicAdminCreateInviteRequest, PublicAdminInviteInfo, PublicAdminInviteList,
-    PublicAdminInviteMutation, PublicAdminUsageQuestion, PublicAdminUsageReport,
-    PublicAdminUsageRow, PublicAdminUsageSummary,
+    PublicAdminCreateInviteRequest, PublicAdminInviteEmailRequest, PublicAdminInviteInfo,
+    PublicAdminInviteList, PublicAdminInviteMutation, PublicAdminUsageQuestion,
+    PublicAdminUsageReport, PublicAdminUsageRow, PublicAdminUsageSummary,
 };
 
 const ADMIN_ACTION_HEADER: &str = "x-hone-admin-action";
@@ -116,20 +116,43 @@ pub(crate) async fn handle_create_invite(
         Ok(admin) => admin,
         Err(response) => return response,
     };
-    let phone_number = match crate::routes::require_phone_number(request.phone_number, "手机号")
-    {
-        Ok(phone_number) => phone_number,
-        Err(response) => return response,
+    let phone_number = request
+        .phone_number
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let email_address = request
+        .email_address
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    if phone_number.is_none() && email_address.is_none() {
+        return crate::routes::json_error(StatusCode::BAD_REQUEST, "手机号或邮箱至少填写一项");
+    }
+    let phone_number = match phone_number {
+        Some(phone_number) => {
+            match crate::routes::require_phone_number(Some(phone_number), "手机号") {
+                Ok(phone_number) => Some(phone_number),
+                Err(response) => return response,
+            }
+        }
+        None => None,
     };
     let admin_user_id = admin.user_id.clone();
     let result = state
         .web_auth
-        .create_invite_user_by_admin(&admin_user_id, &phone_number)
+        .create_invite_user_by_admin(
+            &admin_user_id,
+            phone_number.as_deref(),
+            email_address.as_deref(),
+        )
         .await;
     match result {
         Ok(WebAdminInviteCreateOutcome::Created { invite, used_today }) => {
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_mutation_invite(&admin.user_id, invite),
+                invite: to_public_admin_mutation_invite(
+                    &admin.user_id,
+                    invite,
+                    email_address.clone(),
+                ),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today: used_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(used_today),
@@ -154,8 +177,14 @@ pub(crate) async fn handle_create_invite(
         Ok(WebAdminInviteCreateOutcome::DuplicatePhone) => {
             crate::routes::json_error(StatusCode::CONFLICT, "该手机号已在会员白名单中")
         }
+        Ok(WebAdminInviteCreateOutcome::DuplicateEmail) => {
+            crate::routes::json_error(StatusCode::CONFLICT, "该邮箱已绑定其他账号")
+        }
         Err(error) if error.to_string().contains("手机号格式不合法") => {
             crate::routes::json_error(StatusCode::BAD_REQUEST, "手机号格式不合法")
+        }
+        Err(error) if error.to_string().contains("邮箱格式不合法") => {
+            crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法")
         }
         Err(error) => crate::routes::json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -185,8 +214,13 @@ pub(crate) async fn handle_disable_invite(
                 .web_admin_create_count_today(&admin.user_id)
                 .await
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
+            let email_address = admin_invite_email(&state, &result.invite.user_id).await;
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_mutation_invite(&admin.user_id, result.invite),
+                invite: to_public_admin_mutation_invite(
+                    &admin.user_id,
+                    result.invite,
+                    email_address,
+                ),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(created_today),
@@ -201,8 +235,9 @@ pub(crate) async fn handle_disable_invite(
                 .web_admin_create_count_today(&admin.user_id)
                 .await
                 .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
+            let email_address = admin_invite_email(&state, &invite.user_id).await;
             Json(PublicAdminInviteMutation {
-                invite: to_public_admin_mutation_invite(&admin.user_id, invite),
+                invite: to_public_admin_mutation_invite(&admin.user_id, invite, email_address),
                 daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
                 created_today,
                 remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(created_today),
@@ -225,6 +260,96 @@ pub(crate) async fn handle_disable_invite(
             format!("禁用会员白名单失败: {error}"),
         ),
     }
+}
+
+pub(crate) async fn handle_set_invite_email(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(target_user_id): Path<String>,
+    Json(request): Json<PublicAdminInviteEmailRequest>,
+) -> Response {
+    let admin = match require_public_admin_mutation(&state, &headers).await {
+        Ok(admin) => admin,
+        Err(response) => return response,
+    };
+    let email_address = request
+        .email_address
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let result = state
+        .web_auth
+        .set_invite_email_by_admin(&admin.user_id, &target_user_id, email_address.as_deref())
+        .await;
+    match result {
+        Ok(WebAdminInviteEmailOutcome::Updated {
+            invite,
+            email_address,
+        }) => {
+            let created_today = state
+                .web_auth
+                .web_admin_create_count_today(&admin.user_id)
+                .await
+                .unwrap_or(WEB_ADMIN_DAILY_INVITE_LIMIT);
+            let message = if email_address.is_some() {
+                "已更新登录邮箱"
+            } else {
+                "已移除登录邮箱"
+            };
+            // A summary row is protected the same way the list projects it.
+            let is_admin = state
+                .web_auth
+                .is_web_admin(&invite.user_id)
+                .await
+                .unwrap_or(true);
+            let mut info = to_public_admin_mutation_invite(&admin.user_id, invite, email_address);
+            info.can_disable = info.can_disable && !is_admin;
+            Json(PublicAdminInviteMutation {
+                invite: info,
+                daily_create_limit: WEB_ADMIN_DAILY_INVITE_LIMIT,
+                created_today,
+                remaining_today: WEB_ADMIN_DAILY_INVITE_LIMIT.saturating_sub(created_today),
+                cleared_session_count: 0,
+                message: message.to_string(),
+            })
+            .into_response()
+        }
+        Ok(WebAdminInviteEmailOutcome::NotAdmin) => {
+            crate::routes::json_error(StatusCode::FORBIDDEN, "当前账号没有管理权限")
+        }
+        Ok(WebAdminInviteEmailOutcome::NotFound) => {
+            crate::routes::json_error(StatusCode::NOT_FOUND, "会员白名单用户不存在")
+        }
+        Ok(WebAdminInviteEmailOutcome::DuplicateEmail) => {
+            crate::routes::json_error(StatusCode::CONFLICT, "该邮箱已绑定其他账号")
+        }
+        Ok(WebAdminInviteEmailOutcome::ExternalIdentity) => crate::routes::json_error(
+            StatusCode::CONFLICT,
+            "海外付款账号的邮箱由付款身份管理，不能在白名单中修改",
+        ),
+        Ok(WebAdminInviteEmailOutcome::NoLoginMethod) => crate::routes::json_error(
+            StatusCode::CONFLICT,
+            "该成员没有手机号，移除邮箱后将无法登录",
+        ),
+        Err(error) if error.to_string().contains("邮箱格式不合法") => {
+            crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法")
+        }
+        Err(error) => crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("更新登录邮箱失败: {error}"),
+        ),
+    }
+}
+
+/// Best-effort email lookup for mutation responses; a read failure only
+/// hides the email column for that one row until the next list refresh.
+async fn admin_invite_email(state: &AppState, user_id: &str) -> Option<String> {
+    state
+        .web_auth
+        .external_profile(user_id)
+        .await
+        .ok()
+        .filter(|profile| profile.identity_kind == hone_memory::WEB_IDENTITY_DOMESTIC_INVITE)
+        .and_then(|profile| profile.email_address)
 }
 
 pub(crate) async fn handle_usage_report(
@@ -748,6 +873,7 @@ fn to_public_admin_summary(
         can_disable: enabled && invite.user_id != admin_user_id && !invite.is_admin,
         user_id: invite.user_id,
         phone_number: invite.phone_number,
+        email_address: invite.email_address,
         created_at: invite.created_at,
         last_login_at: invite.last_login_at,
         enabled,
@@ -757,12 +883,14 @@ fn to_public_admin_summary(
 fn to_public_admin_mutation_invite(
     admin_user_id: &str,
     invite: WebInviteUser,
+    email_address: Option<String>,
 ) -> PublicAdminInviteInfo {
     let enabled = invite.revoked_at.is_none();
     PublicAdminInviteInfo {
         can_disable: enabled && invite.user_id != admin_user_id,
         user_id: invite.user_id,
         phone_number: invite.phone_number,
+        email_address,
         created_at: invite.created_at,
         last_login_at: invite.last_login_at,
         enabled,
@@ -813,6 +941,7 @@ mod tests {
             last_login_at: None,
             revoked_at: revoked.then(|| "2026-07-31T01:00:00+08:00".to_string()),
             is_admin,
+            email_address: None,
         }
     }
 
@@ -888,18 +1017,35 @@ mod tests {
         let value = serde_json::to_value(to_public_admin_mutation_invite(
             "admin",
             invite("member", false),
+            Some("member@example.com".to_string()),
         ))
         .expect("serialize");
         assert!(value.get("invite_code").is_none());
         assert!(value.get("api_key").is_none());
         assert!(value.get("password_hash").is_none());
+        assert!(value.get("email_challenge").is_none());
+        assert_eq!(value["email_address"], "member@example.com");
         assert_eq!(value["can_disable"], true);
     }
 
     #[test]
+    fn list_projection_carries_allowlisted_email() {
+        let mut row = summary("member", false, false);
+        row.phone_number = String::new();
+        row.email_address = Some("overseas@example.com".to_string());
+        let value = serde_json::to_value(to_public_admin_summary("admin", row)).expect("serialize");
+        assert_eq!(value["phone_number"], "");
+        assert_eq!(value["email_address"], "overseas@example.com");
+    }
+
+    #[test]
     fn public_projection_protects_self_and_disabled_rows() {
-        assert!(!to_public_admin_mutation_invite("admin", invite("admin", false)).can_disable);
-        assert!(!to_public_admin_mutation_invite("admin", invite("member", true)).can_disable);
+        assert!(
+            !to_public_admin_mutation_invite("admin", invite("admin", false), None).can_disable
+        );
+        assert!(
+            !to_public_admin_mutation_invite("admin", invite("member", true), None).can_disable
+        );
     }
 
     #[test]

@@ -11,3 +11,6 @@
 .company-analysis-history button { display: block; width: 100%; padding: 10px 0; border: 0; background: transparent; text-align: left; color: inherit; cursor: pointer; }
 .company-analysis-reconnecting { font-size: 13px; color: #86704b; }
 @media (max-width: 640px) { .company-analysis-dialog { max-height: calc(100dvh - 24px); } }
+.company-analysis-progress button + button { margin-top: 8px; }
+.company-analysis-secondary { width: 100%; min-height: 38px; border: 1px solid color-mix(in srgb, var(--hone-ink-950) 18%, transparent); border-radius: 9px; background: transparent; color: var(--hone-ink-950); cursor: pointer; font-size: 13.5px; font-weight: 600; }
+.company-analysis-secondary:disabled { cursor: progress; opacity: 0.6; }

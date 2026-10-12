@@ -48,7 +48,7 @@ use crate::runtime::{sanitize_user_visible_output, user_visible_error_message};
 use crate::session_compactor::SessionCompactor;
 use crate::tool_trace::{
     PERSISTENT_SIDE_EFFECT_NO_RETRY_MESSAGE, PERSISTENT_SIDE_EFFECT_UNCERTAIN_MESSAGE,
-    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf_artifact,
+    UNKNOWN_TOOL_EFFECT_NO_RETRY_MESSAGE, completed_earnings_pdf, completed_earnings_pdf_artifact,
     earnings_opencode_pdf_validation_failed_without_side_effects,
     latest_safe_failed_earnings_report_draft, persistent_side_effect_state_is_uncertain,
     response_has_only_known_read_only_calls, response_has_only_retry_safe_earnings_opencode_calls,
@@ -58,6 +58,10 @@ use crate::tool_trace::{
 use crate::turn_builder::{PromptTurnBuilder, SlashSkillExpansion};
 
 use super::artifacts::{OssPromotion, attach_web_generated_files};
+use super::earnings_salvage::{
+    EarningsDelivery, EarningsSalvage, content_with_pdf, content_without_pdf, merge_salvage,
+    render_mode, render_on_host, salvage_candidate, workflow_parameter,
+};
 use super::emitter::{DeferredUserOutputEmitter, SessionEventEmitter};
 use super::guard::QuotaReservationGuard;
 use super::helpers::{
@@ -1382,7 +1386,9 @@ impl AgentSession {
                  不得为凑新闻数量或满足 PDF 版式虚构内容。renderer 只负责\
                  将最终 Markdown 排版成 PDF，不要求 preview_audit、固定新闻条数、固定页数或额外\
                  报告结构。只有 skill_tool 返回 success=true 且 PDF artifact 已生成后才能结束；\
-                 若 renderer 报告技术错误，修复对应调用后再执行，禁止用文字失败说明收尾。",
+                 若 renderer 报告技术错误，修复对应调用后再执行，禁止用文字失败说明收尾。\
+                 renderer 成功后只回复一句简短确认：主机会发布 renderer 校验过的完整报告与 PDF 附件，\
+                 不要再次输出全文。",
             );
         }
         let investment_context = if options.dedicated_earnings_workflow {
@@ -1702,6 +1708,95 @@ impl AgentSession {
                 )],
             )
             .await;
+    }
+
+    /// Close a dedicated earnings run whose renderer step did not end with a
+    /// persisted PDF, from the report the model submitted to the renderer.
+    async fn close_earnings_from_salvage(
+        &self,
+        session_id: &str,
+        working_directory: &str,
+        runtime_user_input: &str,
+        runner_error: Option<&str>,
+        salvage: EarningsSalvage,
+    ) -> (String, EarningsDelivery) {
+        tracing::warn!(
+            session_id,
+            runner_error = runner_error.unwrap_or(""),
+            completed_pdf = matches!(salvage, EarningsSalvage::Completed(_)),
+            "dedicated earnings run ended without a persisted PDF; closing from the submitted report"
+        );
+        let (content, delivery, detail) = match salvage {
+            EarningsSalvage::Completed(completed)
+                if std::path::Path::new(&completed.path).is_file() =>
+            {
+                (
+                    content_with_pdf(&completed.report_markdown, &completed.path),
+                    EarningsDelivery::HostPdf {
+                        report_markdown: completed.report_markdown,
+                    },
+                    "reused_completed_pdf".to_string(),
+                )
+            }
+            EarningsSalvage::Completed(completed) => (
+                content_without_pdf(&completed.report_markdown),
+                EarningsDelivery::MarkdownOnly,
+                "completed_pdf_missing markdown_only".to_string(),
+            ),
+            EarningsSalvage::Submitted(submitted) => {
+                self.emit(session_progress_event(
+                    "earnings.pdf.host_render",
+                    Some("start".to_string()),
+                ))
+                .await;
+                let company = submitted
+                    .company
+                    .as_deref()
+                    .or_else(|| workflow_parameter(runtime_user_input, "company"))
+                    .unwrap_or("HONE")
+                    .to_string();
+                let mode = render_mode(submitted.mode.as_deref(), runtime_user_input).to_string();
+                let script = self
+                    .core
+                    .configured_system_skills_dir()
+                    .join("earnings-research/scripts/render_report_pdf.py");
+                match render_on_host(
+                    &script,
+                    std::path::Path::new(working_directory),
+                    &company,
+                    &mode,
+                    &submitted.report_markdown,
+                )
+                .await
+                {
+                    Ok(path) => (
+                        content_with_pdf(&submitted.report_markdown, &path.to_string_lossy()),
+                        EarningsDelivery::HostPdf {
+                            report_markdown: submitted.report_markdown,
+                        },
+                        "host_rendered_pdf".to_string(),
+                    ),
+                    Err(error) => {
+                        tracing::error!(session_id, error, "earnings host render failed");
+                        (
+                            content_without_pdf(&submitted.report_markdown),
+                            EarningsDelivery::MarkdownOnly,
+                            "host_render_failed markdown_only".to_string(),
+                        )
+                    }
+                }
+            }
+        };
+        self.core.log_message_step(
+            &self.actor.channel,
+            &self.actor.user_id,
+            session_id,
+            "agent.run.earnings_salvage",
+            &detail,
+            self.message_id.as_deref(),
+            None,
+        );
+        (content, delivery)
     }
 
     async fn persist_assistant_text_turn(
@@ -2677,6 +2772,8 @@ impl AgentSession {
             success: false,
             error: None,
         };
+        // The best earnings deliverable seen across every recovery attempt.
+        let mut earnings_salvage: Option<EarningsSalvage> = None;
         for recovery_idx in 0..=CONTEXT_OVERFLOW_RECOVERY_LIMIT {
             let runner_emitter =
                 self.runner_emitter(execution.runner_request.working_directory.clone());
@@ -2706,6 +2803,12 @@ impl AgentSession {
             }
             context_messages = runner_result.context_messages;
             response = runner_result.response;
+            if options.dedicated_earnings_workflow {
+                earnings_salvage = merge_salvage(
+                    earnings_salvage.take(),
+                    salvage_candidate(&response.tool_calls_made),
+                );
+            }
 
             let context_overflow = response
                 .error
@@ -2917,6 +3020,28 @@ impl AgentSession {
             };
             execution = recovered.0;
         }
+        let mut earnings_delivery = EarningsDelivery::Renderer;
+        if options.dedicated_earnings_workflow
+            && committed_visible_prefix.is_none()
+            && !(response.success
+                && completed_earnings_pdf_artifact(&response.tool_calls_made).is_some())
+            && let Some(salvage) = earnings_salvage.take()
+        {
+            let (content, delivery) = self
+                .close_earnings_from_salvage(
+                    &session_id,
+                    &execution.runner_request.working_directory,
+                    runtime_user_input,
+                    response.error.as_deref(),
+                    salvage,
+                )
+                .await;
+            response.content = content;
+            response.success = true;
+            response.error = None;
+            terminal_error_emitted = false;
+            earnings_delivery = delivery;
+        }
         let finalize_outcome = if agent_owned_interactive_output {
             finalize_agent_owned_interactive_response(
                 &self.core,
@@ -2976,25 +3101,50 @@ impl AgentSession {
                 );
             }
         }
-        if options.dedicated_earnings_workflow
+        let renderer_pdf = completed_earnings_pdf(&response.tool_calls_made);
+        let earnings_pdf_missing = options.dedicated_earnings_workflow
             && response.success
-            && (completed_earnings_pdf_artifact(&response.tool_calls_made).is_none()
-                || generated_files_attached == 0)
-        {
+            && match &earnings_delivery {
+                EarningsDelivery::Renderer => {
+                    renderer_pdf.is_none() || generated_files_attached == 0
+                }
+                EarningsDelivery::HostPdf { .. } => generated_files_attached == 0,
+                EarningsDelivery::MarkdownOnly => false,
+            };
+        if earnings_pdf_missing {
             tracing::error!(
                 session_id,
                 runner = execution.runner_name,
-                completed_renderer =
-                    completed_earnings_pdf_artifact(&response.tool_calls_made).is_some(),
+                completed_renderer = renderer_pdf.is_some(),
                 generated_files_attached,
                 "dedicated earnings workflow reached terminal output without a persisted PDF"
             );
-            response.success = false;
-            response.content.clear();
-            response.error = Some(
-                "dedicated earnings workflow ended without a persisted PDF artifact".to_string(),
-            );
-            terminal_error_emitted = false;
+            // A finished report is never discarded because its PDF could not
+            // be persisted; only a run without any submitted report fails.
+            let report = match &earnings_delivery {
+                EarningsDelivery::HostPdf { report_markdown } => Some(report_markdown.clone()),
+                _ => renderer_pdf.map(|completed| completed.report_markdown),
+            };
+            if let Some(report) = report {
+                response.content = content_without_pdf(&report);
+                self.core.log_message_step(
+                    &self.actor.channel,
+                    &self.actor.user_id,
+                    &session_id,
+                    "agent.run.earnings_salvage",
+                    "pdf_not_attached markdown_only",
+                    self.message_id.as_deref(),
+                    None,
+                );
+            } else {
+                response.success = false;
+                response.content.clear();
+                response.error = Some(
+                    "dedicated earnings workflow ended without a persisted PDF artifact"
+                        .to_string(),
+                );
+                terminal_error_emitted = false;
+            }
         }
         if response.success
             && let Some(prefix) = committed_visible_prefix.as_deref()

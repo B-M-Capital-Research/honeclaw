@@ -5,6 +5,7 @@ import {
   createPublicAdminInvite,
   disablePublicAdminInvite,
   getPublicAdminInvites,
+  setPublicAdminInviteEmail,
 } from "@/lib/api";
 import type {
   PublicAdminInviteInfo,
@@ -25,6 +26,42 @@ export function normalizeDomesticAdminPhone(value: string) {
   return digits.startsWith("86") && digits.length === 13
     ? digits.slice(2)
     : digits;
+}
+
+export function normalizeAdminEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function adminEmailLooksValid(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+/**
+ * Validates the create form: phone and email are each optional, but at least
+ * one is required, and whatever is filled in must look right.
+ */
+export function validateAdminInviteInput(phone: string, email: string):
+  | { ok: true; phone_number?: string; email_address?: string }
+  | { ok: false; reason: "need_one" | "bad_phone" | "bad_email" } {
+  const normalizedPhone = normalizeDomesticAdminPhone(phone);
+  const normalizedEmail = normalizeAdminEmail(email);
+  if (!normalizedPhone && !normalizedEmail) return { ok: false, reason: "need_one" };
+  if (normalizedPhone && !/^1\d{10}$/.test(normalizedPhone)) {
+    return { ok: false, reason: "bad_phone" };
+  }
+  if (normalizedEmail && !adminEmailLooksValid(normalizedEmail)) {
+    return { ok: false, reason: "bad_email" };
+  }
+  return {
+    ok: true,
+    phone_number: normalizedPhone || undefined,
+    email_address: normalizedEmail || undefined,
+  };
+}
+
+/** Label used in confirmations: phone when present, otherwise the email. */
+export function adminInviteLabel(invite: Pick<PublicAdminInviteInfo, "phone_number" | "email_address">) {
+  return invite.phone_number || invite.email_address || "—";
 }
 
 export function publicAdminCanCreate(
@@ -48,6 +85,9 @@ function replaceInvite(
 export function PublicAdminWhitelistPanel() {
   const [list, setList] = createSignal<PublicAdminInviteList | null>(null);
   const [phone, setPhone] = createSignal("");
+  const [email, setEmail] = createSignal("");
+  const [editingUserId, setEditingUserId] = createSignal<string | null>(null);
+  const [editingEmail, setEditingEmail] = createSignal("");
   const [loading, setLoading] = createSignal(true);
   const [pending, setPending] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -69,9 +109,15 @@ export function PublicAdminWhitelistPanel() {
 
   const createInvite = async (event: SubmitEvent) => {
     event.preventDefault();
-    const normalized = normalizeDomesticAdminPhone(phone());
-    if (!/^1\d{10}$/.test(normalized)) {
-      setError(CONTENT.chat_page.admin.w_bad_phone);
+    const input = validateAdminInviteInput(phone(), email());
+    if (!input.ok) {
+      setError(
+        input.reason === "need_one"
+          ? CONTENT.chat_page.admin.w_need_one
+          : input.reason === "bad_phone"
+            ? CONTENT.chat_page.admin.w_bad_phone
+            : CONTENT.chat_page.admin.w_bad_email,
+      );
       return;
     }
     if (!publicAdminCanCreate(list(), pending())) return;
@@ -79,7 +125,10 @@ export function PublicAdminWhitelistPanel() {
     setError("");
     setNotice("");
     try {
-      const result = await createPublicAdminInvite(normalized);
+      const result = await createPublicAdminInvite({
+        phone_number: input.phone_number,
+        email_address: input.email_address,
+      });
       setList((current) =>
         current
           ? {
@@ -92,6 +141,7 @@ export function PublicAdminWhitelistPanel() {
           : current,
       );
       setPhone("");
+      setEmail("");
       setNotice(result.message);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : CONTENT.chat_page.admin.w_add_failed);
@@ -106,7 +156,7 @@ export function PublicAdminWhitelistPanel() {
       !invite.can_disable ||
       pending() ||
       !window.confirm(
-        `${CONTENT.chat_page.admin.w_confirm.replace("{phone}", invite.phone_number)}${CONTENT.chat_page.admin.w_confirm_note}`,
+        `${CONTENT.chat_page.admin.w_confirm.replace("{phone}", adminInviteLabel(invite))}${CONTENT.chat_page.admin.w_confirm_note}`,
       )
     ) {
       return;
@@ -130,6 +180,39 @@ export function PublicAdminWhitelistPanel() {
       setNotice(result.message);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : CONTENT.chat_page.admin.w_disable_failed);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const startEmailEdit = (invite: PublicAdminInviteInfo) => {
+    setEditingUserId(invite.user_id);
+    setEditingEmail(invite.email_address ?? "");
+    setError("");
+    setNotice("");
+  };
+
+  const saveEmail = async (invite: PublicAdminInviteInfo) => {
+    if (pending()) return;
+    const next = normalizeAdminEmail(editingEmail());
+    if (next && !adminEmailLooksValid(next)) {
+      setError(CONTENT.chat_page.admin.w_bad_email);
+      return;
+    }
+    setPending(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await setPublicAdminInviteEmail(invite.user_id, next || null);
+      setList((current) =>
+        current
+          ? { ...current, invites: replaceInvite(current.invites, result.invite) }
+          : current,
+      );
+      setEditingUserId(null);
+      setNotice(result.message);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : CONTENT.chat_page.admin.w_email_failed);
     } finally {
       setPending(false);
     }
@@ -160,16 +243,29 @@ export function PublicAdminWhitelistPanel() {
       <div class="public-admin-section-body">
         <form class="public-admin-create" onSubmit={createInvite}>
           <label for="public-admin-phone">{CONTENT.chat_page.admin.w_add_label}</label>
-          <div>
+          <div class="public-admin-create-fields">
             <input
               id="public-admin-phone"
               type="tel"
               inputmode="numeric"
-              autocomplete="tel"
+              autocomplete="off"
               maxlength="18"
+              aria-label={CONTENT.chat_page.admin.w_phone}
               placeholder={CONTENT.chat_page.admin.w_phone_ph}
               value={phone()}
               onInput={(event) => setPhone(event.currentTarget.value)}
+              disabled={pending()}
+            />
+            <input
+              id="public-admin-email"
+              type="email"
+              inputmode="email"
+              autocomplete="off"
+              maxlength="254"
+              aria-label={CONTENT.chat_page.admin.w_email}
+              placeholder={CONTENT.chat_page.admin.w_email_ph}
+              value={email()}
+              onInput={(event) => setEmail(event.currentTarget.value)}
               disabled={pending()}
             />
             <button
@@ -202,6 +298,7 @@ export function PublicAdminWhitelistPanel() {
                 <thead>
                   <tr>
                     <th>{CONTENT.chat_page.admin.w_phone}</th>
+                    <th>{CONTENT.chat_page.admin.w_email}</th>
                     <th>{CONTENT.chat_page.admin.w_joined}</th>
                     <th>{CONTENT.chat_page.admin.w_last_login}</th>
                     <th>{CONTENT.chat_page.admin.w_status}</th>
@@ -212,7 +309,60 @@ export function PublicAdminWhitelistPanel() {
                   <For each={list()?.invites ?? []}>
                     {(invite) => (
                       <tr>
-                        <td data-label={CONTENT.chat_page.admin.w_phone}><strong>{invite.phone_number}</strong></td>
+                        <td data-label={CONTENT.chat_page.admin.w_phone}><strong>{invite.phone_number || "—"}</strong></td>
+                        <td data-label={CONTENT.chat_page.admin.w_email} class="public-admin-email-cell">
+                          <Show
+                            when={editingUserId() === invite.user_id}
+                            fallback={
+                              <span class="public-admin-email-view">
+                                <span classList={{ "is-empty": !invite.email_address }}>
+                                  {invite.email_address || CONTENT.chat_page.admin.w_no_email}
+                                </span>
+                                <Show when={invite.enabled}>
+                                  <button
+                                    type="button"
+                                    class="public-admin-link-button"
+                                    disabled={pending()}
+                                    onClick={() => startEmailEdit(invite)}
+                                  >
+                                    {CONTENT.chat_page.admin.w_edit_email}
+                                  </button>
+                                </Show>
+                              </span>
+                            }
+                          >
+                            <form
+                              class="public-admin-email-edit"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void saveEmail(invite);
+                              }}
+                            >
+                              <input
+                                type="email"
+                                inputmode="email"
+                                autocomplete="off"
+                                maxlength="254"
+                                aria-label={CONTENT.chat_page.admin.w_email}
+                                placeholder={CONTENT.chat_page.admin.w_email_edit_ph}
+                                value={editingEmail()}
+                                onInput={(event) => setEditingEmail(event.currentTarget.value)}
+                                disabled={pending()}
+                              />
+                              <button type="submit" disabled={pending()}>
+                                {CONTENT.chat_page.admin.w_save_email}
+                              </button>
+                              <button
+                                type="button"
+                                class="public-admin-link-button"
+                                disabled={pending()}
+                                onClick={() => setEditingUserId(null)}
+                              >
+                                {CONTENT.chat_page.admin.w_cancel}
+                              </button>
+                            </form>
+                          </Show>
+                        </td>
                         <td data-label={CONTENT.chat_page.admin.w_joined}>{formatAdminDate(invite.created_at)}</td>
                         <td data-label={CONTENT.chat_page.admin.w_last_login}>{formatAdminDate(invite.last_login_at)}</td>
                         <td data-label={CONTENT.chat_page.admin.w_status}>

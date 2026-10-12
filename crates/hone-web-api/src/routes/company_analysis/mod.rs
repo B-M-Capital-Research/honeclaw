@@ -239,6 +239,51 @@ pub(crate) async fn download(
         .into_response()
 }
 
+/// Markdown of the assembled report. It exists before the PDF and survives a
+/// failed render, so a finished analysis is never withheld by layout.
+pub(crate) async fn markdown(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let (_, task) = match owned_task(&state, &headers, &id).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let Some(report) = task.checkpoint.outputs.get(workflow::MARKDOWN_KEY) else {
+        return super::json_error(StatusCode::CONFLICT, "报告正文尚未生成完成");
+    };
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                "text/markdown; charset=utf-8".to_owned(),
+            ),
+            (header::CACHE_CONTROL, "private, no-store".to_owned()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"company-analysis-{id}.md\""),
+            ),
+        ],
+        report.clone(),
+    )
+        .into_response()
+}
+
+/// One automatic continuation from checkpoints after a non-lease failure.
+const AUTOMATIC_RESUMES: usize = 1;
+const AUTOMATIC_RESUME_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
+/// Consecutive heartbeat errors tolerated; 3 x 20 s stays inside the 2 min lease.
+const HEARTBEAT_FAILURES_TOLERATED: usize = 3;
+
+fn failure_info(checkpoint: &store::Checkpoint) -> &'static str {
+    if checkpoint.outputs.contains_key(workflow::MARKDOWN_KEY) {
+        "报告正文已完成，PDF 生成未完成；可先下载 Markdown，或继续重新生成 PDF"
+    } else {
+        "任务中断，可继续已保存的分析"
+    }
+}
+
 fn spawn(state: Arc<AppState>, store: Store, task: Task) {
     tokio::spawn(async move {
         // Include these jobs in the existing production deploy/drain count.
@@ -246,27 +291,74 @@ fn spawn(state: Arc<AppState>, store: Store, task: Task) {
             .active_chat_runs
             .try_begin(format!("company-analysis:{}", task.task_id));
         let heartbeat = async {
+            let mut failures = 0;
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-                store.heartbeat(&task).await?;
+                match store.heartbeat(&task).await {
+                    Ok(()) => failures = 0,
+                    Err(e) if e == store::LEASE_LOST => return Err(e),
+                    Err(e) => {
+                        failures += 1;
+                        tracing::warn!(task_id=%task.task_id,failures,error=%e,"company analysis heartbeat failed");
+                        if failures > HEARTBEAT_FAILURES_TOLERATED {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+        };
+        let attempts = async {
+            let mut current = task.clone();
+            let mut resumes = 0;
+            loop {
+                match workflow::execute(&state, &store, &current).await {
+                    Ok(()) => return Ok(()),
+                    Err(e) if resumes < AUTOMATIC_RESUMES && !e.contains(store::LEASE_LOST) => {
+                        resumes += 1;
+                        tracing::warn!(task_id=%task.task_id,error=%e,"company analysis failed; continuing from checkpoints");
+                        tokio::time::sleep(AUTOMATIC_RESUME_DELAY).await;
+                        // Continue from the persisted checkpoint, never from the
+                        // stale snapshot this attempt started with.
+                        match store.get(&task.actor_user_id, &task.task_id).await {
+                            Ok(Some(latest)) if latest.lease_token == task.lease_token => {
+                                current = latest
+                            }
+                            Ok(_) => return Err(store::LEASE_LOST.to_owned()),
+                            Err(read) => return Err(format!("{e}; checkpoint reload: {read}")),
+                        }
+                    }
+                    Err(e) => return Err(e),
+                }
             }
         };
         let result = tokio::select! {
-            r=tokio::time::timeout(std::time::Duration::from_secs(3600),workflow::execute(&state,&store,&task))=>r.unwrap_or_else(|_|Err("company analysis overall timeout".to_owned())),
+            r=tokio::time::timeout(std::time::Duration::from_secs(3600),attempts)=>r.unwrap_or_else(|_|Err("company analysis overall timeout".to_owned())),
             r=heartbeat=>r,
         };
         if let Err(e) = result {
             tracing::error!(task_id=%task.task_id,error=%e,"company analysis failed; checkpoints retained");
-            if let Ok(Some(latest)) = store.get(&task.actor_user_id, &task.task_id).await {
-                let _ = store
-                    .update(
-                        &task,
-                        latest.progress,
-                        "任务中断，可继续已保存的分析",
-                        "failed",
-                        &latest.checkpoint,
-                    )
-                    .await;
+            for delay in [0, 2, 5] {
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                match store.get(&task.actor_user_id, &task.task_id).await {
+                    Ok(Some(latest)) => {
+                        let info = failure_info(&latest.checkpoint);
+                        match store
+                            .update(&task, latest.progress, info, "failed", &latest.checkpoint)
+                            .await
+                        {
+                            // Success, or another attempt now owns the task.
+                            Ok(()) => break,
+                            Err(write) if write == store::LEASE_LOST => break,
+                            Err(write) => {
+                                tracing::warn!(task_id=%task.task_id,error=%write,"company analysis failure state write retry")
+                            }
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(read) => {
+                        tracing::warn!(task_id=%task.task_id,error=%read,"company analysis failure state read retry")
+                    }
+                }
             }
         }
     });
@@ -285,5 +377,15 @@ mod tests {
             serde_json::from_value::<StartRequest>(json!({"company":"TEM","model":"evil"}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn failure_message_points_to_the_markdown_once_the_report_exists() {
+        let mut checkpoint = store::Checkpoint::default();
+        assert_eq!(failure_info(&checkpoint), "任务中断，可继续已保存的分析");
+        checkpoint
+            .outputs
+            .insert(workflow::MARKDOWN_KEY.into(), "# 报告".into());
+        assert!(failure_info(&checkpoint).contains("下载 Markdown"));
     }
 }

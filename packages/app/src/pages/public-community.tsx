@@ -1,6 +1,10 @@
 import { Title } from "@solidjs/meta";
 import { CONTENT } from "@/lib/public-content";
-import { mergeCommunityTimeline } from "@/lib/public-community-timeline";
+import {
+  type CommunityView,
+  communityViewFromParam,
+  mergeCommunityTimeline,
+} from "@/lib/public-community-timeline";
 import {
   cachedCommunityFeed,
   setCachedCommunityFeed,
@@ -23,6 +27,8 @@ import { Portal } from "solid-js/web";
 import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicWorkspaceShell } from "@/components/public-workspace-shell";
 import { CommunityForum } from "@/components/community-forum";
+import { CommunityInfluencerFeed } from "@/components/community-influencer-feed";
+import { useSearchParams } from "@solidjs/router";
 import {
   getPublicCommunity,
   getPublicCommunityResourceBlob,
@@ -49,7 +55,7 @@ const CommunityPdfPreview = lazy(() => import("@/components/community-pdf-previe
 const COMMUNITY_SOURCE_GROUP_URL = "https://wx.zsxq.com/group/51115212285814";
 
 type ViewState = "loading" | "ready" | "login" | "error";
-type CommunityView = "official" | "forum";
+
 
 const SAFE_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -600,7 +606,14 @@ export default function PublicCommunityPage() {
   const [downloadingResourceId, setDownloadingResourceId] = createSignal<number | null>(null);
   const [downloadError, setDownloadError] = createSignal("");
   const [query, setQuery] = createSignal("");
-  const [communityView, setCommunityView] = createSignal<CommunityView>("official");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [communityView, setCommunityViewSignal] = createSignal<CommunityView>(
+    communityViewFromParam(searchParams.view),
+  );
+  const setCommunityView = (next: CommunityView) => {
+    setCommunityViewSignal(next);
+    setSearchParams({ view: next === "official" ? undefined : next }, { replace: true });
+  };
   let requestController: AbortController | undefined;
   let hasLoaded = false;
   let lastRefreshAt = 0;
@@ -739,8 +752,9 @@ export default function PublicCommunityPage() {
             <main class="public-community-shell">
 
           <nav class="public-community-view-tabs" aria-label="社区内容分类">
-            <button type="button" classList={{ active: communityView() === "official" }} onClick={() => setCommunityView("official")}><strong>官方动态</strong><span>经过 HONE 发布的只读资料</span></button>
-            <button type="button" classList={{ active: communityView() === "forum" }} onClick={() => setCommunityView("forum")}><strong>讨论区</strong><span>用户观点 · 未经官方核验</span></button>
+            <button type="button" aria-pressed={communityView() === "official"} classList={{ active: communityView() === "official" }} onClick={() => setCommunityView("official")}><strong>官方动态</strong><span>经过 HONE 发布的只读资料</span></button>
+            <button type="button" aria-pressed={communityView() === "influencer"} classList={{ active: communityView() === "influencer" }} onClick={() => setCommunityView("influencer")}><strong>大V速报</strong><span>作者公开观点 · 与研究台同步</span></button>
+            <button type="button" aria-pressed={communityView() === "forum"} classList={{ active: communityView() === "forum" }} onClick={() => setCommunityView("forum")}><strong>讨论区</strong><span>用户观点 · 未经官方核验</span></button>
           </nav>
 
           <Show when={communityView() === "official"}>
@@ -895,6 +909,9 @@ export default function PublicCommunityPage() {
               </section>
             </Match>
           </Switch>
+          </Show>
+          <Show when={communityView() === "influencer"}>
+            <CommunityInfluencerFeed query={query()} />
           </Show>
           <Show when={communityView() === "forum"}>
             <CommunityForum query={query()} />

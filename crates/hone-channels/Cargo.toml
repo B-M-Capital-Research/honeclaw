@@ -33,7 +33,8 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 uuid = { workspace = true }
 sha2 = { workspace = true }
 
+tempfile = "3"
+
 [dev-dependencies]
 anyhow = { workspace = true }
 serde_yaml = { workspace = true }
-tempfile = "3"

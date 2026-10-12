@@ -471,15 +471,41 @@ export async function getPublicAdminUsage(
   return { ...report, period_days: inferredDays };
 }
 
-export async function createPublicAdminInvite(phoneNumber: string) {
+/** Adds one allowlist entry; at least one of phone / email is required. */
+export async function createPublicAdminInvite(input: {
+  phone_number?: string;
+  email_address?: string;
+}) {
   const response = await apiFetch("/api/public/admin/invites", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...PUBLIC_ADMIN_ACTION_HEADERS,
     },
-    body: JSON.stringify({ phone_number: phoneNumber }),
+    body: JSON.stringify({
+      phone_number: input.phone_number || undefined,
+      email_address: input.email_address || undefined,
+    }),
   });
+  return parseJson<PublicAdminInviteMutation>(response);
+}
+
+/** Attaches, replaces or (with `null`) clears an allowlist entry's login email. */
+export async function setPublicAdminInviteEmail(
+  userId: string,
+  emailAddress: string | null,
+) {
+  const response = await apiFetch(
+    `/api/public/admin/invites/${encodeURIComponent(userId)}/email`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...PUBLIC_ADMIN_ACTION_HEADERS,
+      },
+      body: JSON.stringify({ email_address: emailAddress }),
+    },
+  );
   return parseJson<PublicAdminInviteMutation>(response);
 }
 
@@ -1059,6 +1085,11 @@ export async function getPublicGeneratedFileBlob(path: string) {
     `/api/public/file?path=${encodeURIComponent(path)}`,
   );
   if (!response.ok) throw await apiErrorFromResponse(response);
+  // A login page or proxy error served with 200 must not be saved as the
+  // report: generated files are never HTML documents.
+  if (response.headers.get("Content-Type")?.toLowerCase().startsWith("text/html")) {
+    throw new Error("文件下载响应异常，请重试");
+  }
   return response.blob();
 }
 

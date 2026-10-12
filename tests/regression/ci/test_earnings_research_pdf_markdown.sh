@@ -75,7 +75,7 @@ render_calls = []
 try:
     module.chromium_candidates = lambda: [Path("/fake/chrome")]
 
-    def fake_run(command, **kwargs):
+    def fake_run(command, timeout=None, **kwargs):
         render_calls.append(command)
         if len(render_calls) == 1:
             return subprocess.CompletedProcess(command, 21, "", "")
@@ -96,7 +96,7 @@ assert len(render_calls) == 2
 assert "--disable-extensions" in render_calls[0]
 profiles = [next(arg for arg in call if arg.startswith("--user-data-dir=")) for call in render_calls]
 assert len(set(profiles)) == 2
-assert module.RENDER_ATTEMPTS * module.RENDER_TIMEOUT_SECONDS < 120
+assert module.RENDER_ATTEMPTS * module.RENDER_TIMEOUT_SECONDS + module.PLAIN_RENDER_TIMEOUT_SECONDS < 115
 
 # A failed browser must neither publish a partial artifact nor replace an
 # existing artifact. A zero exit with HTML/truncated PDF is still a failure.
@@ -105,7 +105,7 @@ original_candidates = module.chromium_candidates
 try:
     module.chromium_candidates = lambda: [Path("/fake/chrome")]
     for invalid_pdf in (b"<html>" + b"x" * 1200, b"%PDF-1.7\n" + b"x" * 1200):
-        def incomplete(command):
+        def incomplete(command, timeout=None):
             target = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
             Path(target).write_bytes(invalid_pdf)
             return subprocess.CompletedProcess(command, 0, "", "")
@@ -157,7 +157,7 @@ original_run, original_candidates = module.run_chromium, module.chromium_candida
 try:
     module.chromium_candidates = lambda: [Path("/fake/chrome")]
     for ready in (False, True):
-        def diagram_result(command):
+        def diagram_result(command, timeout=None):
             target = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
             Path(target).write_bytes(b"%PDF-1.7\n" + b"x" * 1200 + b"\n%%EOF\n")
             dom = '<html data-hone-diagrams="ready" data-hone-diagram-fallbacks="1">' if ready else '<html>'
@@ -178,6 +178,33 @@ try:
                 assert target.read_bytes() == b"previous report"
 finally:
     module.run_chromium, module.chromium_candidates = original_run, original_candidates
+
+# A stalled diagram layout no longer costs the PDF: the second full attempt is
+# skipped and a script-free print keeps the diagram source as text.
+plain_html = module.build_html("TEM", "公司完整分析", company_report, None, scripts_enabled=False)
+assert "<script" not in plain_html and "diagram-fallback" in plain_html
+assert "图表暂未绘制，原始内容如下：" in plain_html and "估值假设保留" in plain_html
+assert module.has_scripted_content(company_html) and not module.has_scripted_content(workflow_html)
+original_run, original_candidates = module.run_chromium, module.chromium_candidates
+calls = []
+try:
+    module.chromium_candidates = lambda: [Path("/fake/chrome")]
+    def stalled_then_plain(command, timeout=None):
+        calls.append((command, timeout))
+        target = next(arg.split("=", 1)[1] for arg in command if arg.startswith("--print-to-pdf="))
+        Path(target).write_bytes(b"%PDF-1.7\n" + b"x" * 1200 + b"\n%%EOF\n")
+        return subprocess.CompletedProcess(command, 0, "<html>" if "--dump-dom" in command else "", "")
+    module.run_chromium = stalled_then_plain
+    with tempfile.TemporaryDirectory() as directory:
+        target = Path(directory) / "report.pdf"
+        warnings = module.render_pdf_with_chromium(company_html, target, plain_html)
+        assert module.is_complete_pdf(target)
+        assert warnings == [module.PLAIN_FALLBACK_WARNING]
+finally:
+    module.run_chromium, module.chromium_candidates = original_run, original_candidates
+assert len(calls) == 2, calls
+assert "--dump-dom" in calls[0][0] and "--dump-dom" not in calls[1][0]
+assert calls[1][1] == module.PLAIN_RENDER_TIMEOUT_SECONDS
 
 assert "table-layout: fixed" in workflow_html
 assert "table-header-group" in workflow_html

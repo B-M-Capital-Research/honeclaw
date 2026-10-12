@@ -44,14 +44,19 @@ describe("research desk contract", () => {
     expect(page).toContain("setSearchParams({ panel: undefined })");
   });
 
-  it("parks valuation lab under the admin group until public rollout", () => {
+  it("parks unreleased products in one admin-only 内测 section until public rollout", () => {
     const block = page.slice(
       page.indexOf('key: "valuation-lab"'),
       page.indexOf('key: "portfolio-news"'),
     );
-    expect(block).toContain('group: "admin"');
+    expect(block).toContain('group: "preview"');
     expect(block).toContain("adminOnly: true");
+    expect(page).toContain('{ key: "preview", label: "内测板块", adminOnly: true }');
+    // 管理 is not a research section; ?group=admin opens usage + allowlist.
     expect(page).toContain('{ key: "admin", label: "管理", adminOnly: true }');
+    // The section is labelled once; no per-card "未发布" badge repeats it.
+    expect(page).not.toContain("public-research-gated");
+    expect(page).not.toContain("未发布");
   });
 
   it("releases the commentator digest to every reader under its own group", () => {
@@ -62,7 +67,9 @@ describe("research desk contract", () => {
     expect(start).toBeGreaterThan(-1);
     expect(block).toContain('group: "voices"');
     expect(block).not.toContain("adminOnly");
-    expect(page).toContain('{ key: "voices", label: "大V观点" }');
+    expect(page).toContain('{ key: "voices", label: "大V观点"');
+    // The same posts are synced into Insights; the card says where.
+    expect(block).toContain('href: "/community?view=influencer"');
     // A snapshot whose model did not run still carries its sources, so it is
     // a finding, not an empty day.
     expect(page).not.toContain('"source_only"');
@@ -110,6 +117,20 @@ describe("research desk contract", () => {
     expect(page).toContain("!section.adminOnly || adminView()");
     expect(page).toContain('activeGroup() === "admin" && adminView()');
     expect(css).toContain(".public-research-view {");
+  });
+
+  it("lays the desk out as titled sections of one card grammar, not filter tabs", () => {
+    // Three products for a reader must not come with four tabs.
+    expect(page).not.toContain("public-research-tabs");
+    expect(page).toContain("const ResearchCard = (props: { section: SectionDef })");
+    expect(page).toContain("<ResearchCard section={section} />");
+    expect(page).toContain('id={`research-group-${desk.id}`}');
+    // The shell already owns <main>; the desk must not nest a second one.
+    expect(page).not.toContain('<main class="public-research-main"');
+    // Explanations live once in the folded guide, which starts closed.
+    expect(page).toContain('readStored(GUIDE_STORAGE_KEY) === "open"');
+    expect(css).toContain(".public-research-card {");
+    expect(css).toContain(".public-research-section.is-preview {");
   });
 
   it("paints the grid from one aggregate call and degrades to static cards", () => {

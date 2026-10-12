@@ -4,6 +4,7 @@ import {
   ApiError,
   createPublicAdminInvite,
   disablePublicAdminInvite,
+  setPublicAdminInviteEmail,
   getPublicAdminUsage,
   getPublicChatBootstrap,
   getPublicAuthMe,
@@ -310,14 +311,99 @@ describe("public administrator whitelist API", () => {
       );
     }) as typeof fetch;
 
-    const result = await createPublicAdminInvite("13900000000");
+    const result = await createPublicAdminInvite({
+      phone_number: "13900000000",
+      email_address: "member@example.com",
+    });
     const headers = new Headers(requestedInit?.headers);
 
     expect(calls).toBe(1);
     expect(requestedUrl).toContain("/api/public/admin/invites");
     expect(requestedInit?.method).toBe("POST");
     expect(headers.get("x-hone-admin-action")).toBe("whitelist");
+    expect(JSON.parse(String(requestedInit?.body))).toEqual({
+      phone_number: "13900000000",
+      email_address: "member@example.com",
+    });
     expect(result.remaining_today).toBe(4);
+  });
+
+  test("creates an email-only entry without sending an empty phone", async () => {
+    let requestedInit: RequestInit | undefined;
+    globalThis.fetch = ((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestedInit = init;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            invite: {
+              user_id: "web-user-3",
+              phone_number: "",
+              email_address: "overseas@example.com",
+              created_at: "2026-10-11T10:00:00+08:00",
+              enabled: true,
+              can_disable: true,
+            },
+            daily_create_limit: 5,
+            created_today: 2,
+            remaining_today: 3,
+            cleared_session_count: 0,
+            message: "已加入会员白名单",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    await createPublicAdminInvite({
+      phone_number: "",
+      email_address: "overseas@example.com",
+    });
+    expect(JSON.parse(String(requestedInit?.body))).toEqual({
+      email_address: "overseas@example.com",
+    });
+  });
+
+  test("updates an entry email through a marked POST and clears with null", async () => {
+    const requests: { url: string; init?: RequestInit }[] = [];
+    globalThis.fetch = ((url: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            invite: {
+              user_id: "web-user/member",
+              phone_number: "13900000000",
+              email_address: null,
+              created_at: "2026-07-31T10:00:00+08:00",
+              enabled: true,
+              can_disable: true,
+            },
+            daily_create_limit: 5,
+            created_today: 0,
+            remaining_today: 5,
+            cleared_session_count: 0,
+            message: "已移除登录邮箱",
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }) as typeof fetch;
+
+    await setPublicAdminInviteEmail("web-user/member", "member@example.com");
+    await setPublicAdminInviteEmail("web-user/member", null);
+
+    expect(requests[0].url).toContain(
+      "/api/public/admin/invites/web-user%2Fmember/email",
+    );
+    expect(new Headers(requests[0].init?.headers).get("x-hone-admin-action")).toBe(
+      "whitelist",
+    );
+    expect(JSON.parse(String(requests[0].init?.body))).toEqual({
+      email_address: "member@example.com",
+    });
+    expect(JSON.parse(String(requests[1].init?.body))).toEqual({
+      email_address: null,
+    });
   });
 
   test("disables through a one-shot marked POST to the exact user", async () => {
@@ -370,7 +456,7 @@ describe("public administrator whitelist API", () => {
     );
 
     const error = await expectApiError(() =>
-      createPublicAdminInvite("13900000000"),
+      createPublicAdminInvite({ phone_number: "13900000000" }),
     );
     expect(error.status).toBe(429);
     expect(error.message).toBe("今日新增白名单已达到 5 人上限");
@@ -846,6 +932,19 @@ describe("public community API", () => {
     expect(credentials).toBe("include");
     expect(blob.type).toBe("application/pdf");
     expect(blob.size).toBe(5);
+  });
+
+  test("refuses to save an HTML page as a generated file", async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response("<html>login</html>", {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      )) as unknown as typeof fetch;
+
+    await expect(
+      getPublicGeneratedFileBlob("<absolute-path>/ANET-财报前瞻.pdf"),
+    ).rejects.toThrow("文件下载响应异常");
   });
 
   test("keeps legacy resources revalidating while versioning hashed resources", () => {

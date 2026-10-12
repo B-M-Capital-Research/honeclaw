@@ -1,4 +1,8 @@
-// public-login-form.tsx — /me 和 /chat 共用的手机号验证码登录卡
+// public-login-form.tsx — /me、/chat 与工作台共用的验证码登录卡
+//
+// 两种方式都只对管理员白名单开放：手机号 + 短信验证码，或管理员为成员配置的
+// 邮箱 + 邮件验证码（Cloudflare Email Sending，no-reply@hone-claw.com）。
+// 服务端对“是否在白名单”不做任何区分回应，前端也不推断。
 
 import {
   Show,
@@ -13,6 +17,8 @@ import {
   getPublicCaptchaConfig,
   getPublicDevLoginConfig,
   publicDevLogin,
+  publicEmailLogin,
+  publicSendEmailCode,
   publicSendSmsCode,
   publicSmsLogin,
 } from "@/lib/api";
@@ -35,8 +41,48 @@ type Props = {
 
 let captchaIdSeed = 0;
 
+export type PublicLoginMethod = "phone" | "email";
+
+const LOGIN_METHOD_STORAGE_KEY = "hone-public-login-method";
+
+/** Remembered per device so a member who signs in by email lands there next time. */
+export function readStoredLoginMethod(): PublicLoginMethod {
+  try {
+    return window.localStorage.getItem(LOGIN_METHOD_STORAGE_KEY) === "email"
+      ? "email"
+      : "phone";
+  } catch {
+    return "phone";
+  }
+}
+
+function storeLoginMethod(method: PublicLoginMethod) {
+  try {
+    window.localStorage.setItem(LOGIN_METHOD_STORAGE_KEY, method);
+  } catch {
+    // Private mode or blocked storage: the switch still works for this visit.
+  }
+}
+
+/** Loose client-side shape check; the server owns the real normalization. */
+export function looksLikeEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+/** Phone codes come from the SMS provider (4–8 chars); email codes are 8 digits. */
+export function loginCodeLooksValid(method: PublicLoginMethod, code: string) {
+  const trimmed = code.trim();
+  return method === "email"
+    ? /^\d{6,12}$/.test(trimmed)
+    : /^[0-9A-Za-z]{4,8}$/.test(trimmed);
+}
+
 export function PublicLoginForm(props: Props) {
+  const [method, setMethod] = createSignal<PublicLoginMethod>(
+    readStoredLoginMethod(),
+  );
   const [phoneNumber, setPhoneNumber] = createSignal("");
+  const [emailAddress, setEmailAddress] = createSignal("");
   const [verifyCode, setVerifyCode] = createSignal("");
   const [remember, setRemember] = createSignal(true);
   const [agreed, setAgreed] = createSignal(false);
@@ -56,18 +102,30 @@ export function PublicLoginForm(props: Props) {
     setNotice("");
   };
 
-  const phoneOk = createMemo(
-    () => normalizePhoneNumber(phoneNumber()).length >= 5,
+  const identityOk = createMemo(() =>
+    method() === "email"
+      ? looksLikeEmail(emailAddress())
+      : normalizePhoneNumber(phoneNumber()).length >= 5,
   );
-  const codeOk = createMemo(() =>
-    /^[0-9A-Za-z]{4,8}$/.test(verifyCode().trim()),
-  );
+  const codeOk = createMemo(() => loginCodeLooksValid(method(), verifyCode()));
   const sendReady = createMemo(
-    () => phoneOk() && !sending() && cooldown() <= 0,
+    () => identityOk() && !sending() && cooldown() <= 0,
   );
   const loginReady = createMemo(
-    () => phoneOk() && codeOk() && agreed() && !submitting(),
+    () => identityOk() && codeOk() && agreed() && !submitting(),
   );
+
+  const switchMethod = (next: PublicLoginMethod) => {
+    if (next === method()) return;
+    setMethod(next);
+    storeLoginMethod(next);
+    setVerifyCode("");
+    clearFeedback();
+    // A cooldown belongs to the address it was started for.
+    if (cooldownTimer) clearInterval(cooldownTimer);
+    cooldownTimer = undefined;
+    setCooldown(0);
+  };
 
   let cooldownTimer: ReturnType<typeof setInterval> | undefined;
   onCleanup(() => {
@@ -100,12 +158,17 @@ export function PublicLoginForm(props: Props) {
     setSending(true);
     clearFeedback();
     try {
-      const captchaVerifyParam = await verifyCaptchaIfEnabled();
-      await publicSendSmsCode(
-        normalizePhoneNumber(phoneNumber()),
-        captchaVerifyParam,
-      );
-      setNotice(CONTENT.auth.login.code_sent);
+      if (method() === "email") {
+        await publicSendEmailCode(emailAddress().trim());
+        setNotice(CONTENT.auth.login.email_code_sent);
+      } else {
+        const captchaVerifyParam = await verifyCaptchaIfEnabled();
+        await publicSendSmsCode(
+          normalizePhoneNumber(phoneNumber()),
+          captchaVerifyParam,
+        );
+        setNotice(CONTENT.auth.login.code_sent);
+      }
       startCooldown();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -146,12 +209,20 @@ export function PublicLoginForm(props: Props) {
     setSubmitting(true);
     clearFeedback();
     try {
-      const user = await publicSmsLogin({
-        phone_number: normalizePhoneNumber(phoneNumber()),
-        verify_code: verifyCode().trim(),
-        remember: remember(),
-        tos_version: TOS_VERSION,
-      });
+      const user =
+        method() === "email"
+          ? await publicEmailLogin({
+              email_address: emailAddress().trim(),
+              verify_code: verifyCode().trim(),
+              remember: remember(),
+              tos_version: TOS_VERSION,
+            })
+          : await publicSmsLogin({
+              phone_number: normalizePhoneNumber(phoneNumber()),
+              verify_code: verifyCode().trim(),
+              remember: remember(),
+              tos_version: TOS_VERSION,
+            });
       await props.onLogin(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -259,16 +330,34 @@ export function PublicLoginForm(props: Props) {
               <span>{CONTENT.auth.login.or_sms}</span>
             </div>
           </Show>
-          <p
-            style={{
-              margin: "0 0 16px",
-              "font-size": "12px",
-              color: "var(--hone-ink-400)",
-              "line-height": "1.55",
-              "text-align": "center",
-            }}
+          <div
+            class="public-login-methods"
+            role="tablist"
+            aria-label={CONTENT.auth.login.method_aria}
           >
-            {CONTENT.auth.login.hint_sms}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method() === "phone"}
+              classList={{ "is-active": method() === "phone" }}
+              onClick={() => switchMethod("phone")}
+            >
+              {CONTENT.auth.login.method_phone}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={method() === "email"}
+              classList={{ "is-active": method() === "email" }}
+              onClick={() => switchMethod("email")}
+            >
+              {CONTENT.auth.login.method_email}
+            </button>
+          </div>
+          <p class="public-login-hint">
+            {method() === "email"
+              ? CONTENT.auth.login.email_hint
+              : CONTENT.auth.login.hint_sms}
           </p>
 
           <div
@@ -278,15 +367,33 @@ export function PublicLoginForm(props: Props) {
               "margin-bottom": "12px",
             }}
           >
-            <FieldLabel>{CONTENT.auth.login.phone_label}</FieldLabel>
-            <TextInput
-              value={phoneNumber()}
-              onInput={setPhoneNumber}
-              type="tel"
-              placeholder={CONTENT.auth.login.phone_placeholder}
-              autoComplete="tel"
-              ariaLabel={CONTENT.auth.login.phone_aria}
-            />
+            <Show
+              when={method() === "email"}
+              fallback={
+                <>
+                  <FieldLabel>{CONTENT.auth.login.phone_label}</FieldLabel>
+                  <TextInput
+                    value={phoneNumber()}
+                    onInput={setPhoneNumber}
+                    type="tel"
+                    placeholder={CONTENT.auth.login.phone_placeholder}
+                    autoComplete="tel"
+                    ariaLabel={CONTENT.auth.login.phone_aria}
+                  />
+                </>
+              }
+            >
+              <FieldLabel>{CONTENT.auth.login.email_label}</FieldLabel>
+              <TextInput
+                value={emailAddress()}
+                onInput={setEmailAddress}
+                type="email"
+                placeholder={CONTENT.auth.login.email_placeholder}
+                autoComplete="email"
+                inputMode="email"
+                ariaLabel={CONTENT.auth.login.email_aria}
+              />
+            </Show>
           </div>
 
           <div
@@ -300,8 +407,17 @@ export function PublicLoginForm(props: Props) {
               <TextInput
                 value={verifyCode()}
                 onInput={setVerifyCode}
-                placeholder={CONTENT.auth.login.code_placeholder}
-                ariaLabel={CONTENT.auth.login.code_aria}
+                placeholder={
+                  method() === "email"
+                    ? CONTENT.auth.login.email_code_placeholder
+                    : CONTENT.auth.login.code_placeholder
+                }
+                ariaLabel={
+                  method() === "email"
+                    ? CONTENT.auth.login.email_code_aria
+                    : CONTENT.auth.login.code_aria
+                }
+                autoComplete="one-time-code"
                 inputMode="numeric"
                 onEnter={submitLogin}
               />

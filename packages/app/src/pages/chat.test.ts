@@ -24,6 +24,7 @@ import {
   PUBLIC_CHAT_VIEWPORT_CONTENT,
   publicRestoreRetryDelay,
   publicAttachmentFileLabel,
+  publicChatRequestRejection,
   publicChatRunEventPatch,
   publicChatRunStartedAtLabel,
   publicChatTerminalEventPatch,
@@ -490,6 +491,30 @@ describe("public chat restore retry policy", () => {
       shouldRecover: false,
       patch: { phase: "error", statusText: "已停止" },
     });
+  });
+
+  it("shows a refused chat request instead of treating it as a disconnect", () => {
+    const refused = (status: number, body: string) =>
+      Object.assign(new Error(body), { status });
+    expect(
+      publicChatRequestRejection(
+        refused(403, '{"error":"该功能目前仅对管理员开放"}'),
+        "请求未被接受",
+      ),
+    ).toBe("该功能目前仅对管理员开放");
+    expect(
+      publicChatRequestRejection(
+        refused(503, '{"error":"财报工作流执行配置不可用"}'),
+        "请求未被接受",
+      ),
+    ).toBe("财报工作流执行配置不可用");
+    expect(
+      publicChatRequestRejection(refused(400, "<html>bad</html>"), "请求未被接受"),
+    ).toBe("请求未被接受");
+    // Session expiry, gateway failures and plain network errors still recover.
+    expect(publicChatRequestRejection(refused(401, "{}"), "x")).toBeNull();
+    expect(publicChatRequestRejection(refused(502, "Bad Gateway"), "x")).toBeNull();
+    expect(publicChatRequestRejection(new TypeError("Failed to fetch"), "x")).toBeNull();
   });
 
   it("treats only authoritative completion frames as terminal", () => {

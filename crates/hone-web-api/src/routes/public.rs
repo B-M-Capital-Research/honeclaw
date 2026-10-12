@@ -473,9 +473,15 @@ pub(crate) async fn handle_email_send_code(
             "HONE 邮箱验证码服务尚未配置",
         );
     }
-    let email_address = match crate::routes::require_string(request.email_address, "邮箱") {
-        Ok(value) => value.trim().to_ascii_lowercase(),
+    let raw_email = match crate::routes::require_string(request.email_address, "邮箱") {
+        Ok(value) => value,
         Err(response) => return response,
+    };
+    // Shape is checked identically for every address, before any lookup, so
+    // a malformed address is the only input that can produce a distinct reply.
+    let email_address = match hone_memory::normalize_email_address(&raw_email) {
+        Ok(value) => value,
+        Err(_) => return crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法"),
     };
     let ip_key = public_client_key(&headers);
     let email_key = format!("email-send:{email_address}");
@@ -492,33 +498,43 @@ pub(crate) async fn handle_email_send_code(
     {
         return json_rate_limited(retry_after_secs);
     }
-    if request.intent.as_deref() == Some("stripe_checkout") {
-        if !crate::routes::billing::stripe_activation_enabled() {
-            return crate::routes::json_error(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Stripe 订阅入口尚未开放",
-            );
-        }
-        if let Err(error) = state
-            .web_auth
-            .ensure_international_email_user(&email_address)
-            .await
-        {
-            return crate::routes::json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("创建国际邮箱身份失败: {error}"),
-            );
-        }
+
+    if request.intent.as_deref() != Some("stripe_checkout") {
+        // Sign-in: only an active allowlist entry (or an existing purchase
+        // identity) with this email receives a code, but the reply must not
+        // reveal which. Issue and send after a uniform acceptance, exactly
+        // like SMS, so status, body and provider latency are identical.
+        let background_state = state.clone();
+        tokio::spawn(async move {
+            issue_and_send_login_email_code(background_state, email_address, email_key).await;
+        });
+        return email_send_accepted_response();
+    }
+
+    if !crate::routes::billing::stripe_activation_enabled() {
+        return crate::routes::json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Stripe 订阅入口尚未开放",
+        );
+    }
+    // Checkout creates the identity when missing, so every address receives
+    // a code and a synchronous provider error discloses nothing.
+    if let Err(error) = state
+        .web_auth
+        .ensure_international_email_user(&email_address)
+        .await
+    {
+        return crate::routes::json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("创建国际邮箱身份失败: {error}"),
+        );
     }
     let code = match state
         .web_auth
-        .begin_email_verification(&email_address, 10)
+        .begin_email_verification(&email_address, EMAIL_CODE_TTL_MINUTES)
         .await
     {
         Ok(value) => value,
-        Err(error) if error.to_string().contains("邮箱格式不合法") => {
-            return crate::routes::json_error(StatusCode::BAD_REQUEST, "邮箱格式不合法");
-        }
         Err(error) => {
             return crate::routes::json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -530,7 +546,7 @@ pub(crate) async fn handle_email_send_code(
         let message = crate::email_verification::EmailVerificationMessage {
             to: email_address,
             code,
-            expires_in_minutes: 10,
+            expires_in_minutes: EMAIL_CODE_TTL_MINUTES as u32,
         };
         if let Err(error) = state
             .email_verification_sender
@@ -545,9 +561,50 @@ pub(crate) async fn handle_email_send_code(
         }
     }
     state.public_auth_limiter.record_success(&email_key);
+    email_send_accepted_response()
+}
+
+const EMAIL_CODE_TTL_MINUTES: i64 = 10;
+
+async fn issue_and_send_login_email_code(
+    state: Arc<AppState>,
+    email_address: String,
+    email_key: String,
+) {
+    let code = match state
+        .web_auth
+        .begin_email_verification(&email_address, EMAIL_CODE_TTL_MINUTES)
+        .await
+    {
+        Ok(Some(code)) => code,
+        Ok(None) => return,
+        Err(error) => {
+            warn!("email login code issue failed after generic acceptance: {error}");
+            return;
+        }
+    };
+    let message = crate::email_verification::EmailVerificationMessage {
+        to: email_address,
+        code,
+        expires_in_minutes: EMAIL_CODE_TTL_MINUTES as u32,
+    };
+    match state
+        .email_verification_sender
+        .send_verification_code(message)
+        .await
+    {
+        Ok(()) => state.public_auth_limiter.record_success(&email_key),
+        Err(error) => {
+            let _ = state.public_auth_limiter.record_failure(&email_key);
+            warn!("email login code send failed after generic acceptance: {error}");
+        }
+    }
+}
+
+fn email_send_accepted_response() -> Response {
     Json(json!({
         "ok": true,
-        "message": "如果该邮箱可用于 HONE 登录或订阅，验证码已发送"
+        "message": "如果该邮箱可用于 HONE 登录或订阅，验证码将很快送达"
     }))
     .into_response()
 }
@@ -2275,7 +2332,7 @@ mod tests {
         OpenAiStreamListener, PUBLIC_ACTIVE_STATE_CACHE_CONTROL, WEB_SESSION_MAX_AGE_LONG_SECS,
         WEB_SESSION_MAX_AGE_SHORT_SECS, aliyun_sms_phone_number, build_public_chat_user_input,
         build_session_cookie, canonical_earnings_workflow_message, clear_session_cookie,
-        forced_earnings_skill_input, has_unanswered_interactive_turn,
+        email_send_accepted_response, forced_earnings_skill_input, has_unanswered_interactive_turn,
         infer_canonical_earnings_workflow, is_earnings_research_skill_command,
         logout_success_response, public_active_state_response, public_api_failure_message,
         public_api_finish_reason, public_attachment_filename, public_client_key,
@@ -2681,6 +2738,55 @@ mod tests {
         let send_body = String::from_utf8(send_body.to_vec()).unwrap();
         assert!(send_body.contains("验证码将很快送达"));
         assert!(!send_body.contains("邀请"));
+    }
+
+    #[tokio::test]
+    async fn public_email_send_response_does_not_disclose_allowlist_membership() {
+        let send = email_send_accepted_response();
+        assert_eq!(send.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(send.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("验证码将很快送达"));
+        assert!(!body.contains("白名单"));
+        assert!(!body.contains("邀请"));
+    }
+
+    #[test]
+    fn public_email_login_send_issues_codes_only_after_uniform_acceptance() {
+        let source = include_str!("public.rs");
+        let start = source
+            .find("async fn handle_email_send_code")
+            .expect("email send handler");
+        let end = source[start..]
+            .find("\nconst EMAIL_CODE_TTL_MINUTES")
+            .map(|offset| start + offset)
+            .expect("email send handler end");
+        let handler = &source[start..end];
+        let login_branch = handler
+            .find("if request.intent.as_deref() != Some(\"stripe_checkout\")")
+            .expect("login branch");
+        let spawn = handler
+            .find("tokio::spawn(async move")
+            .expect("background send");
+        let accepted = handler
+            .find("return email_send_accepted_response();")
+            .expect("uniform acceptance");
+        let first_lookup = handler
+            .find("begin_email_verification")
+            .expect("checkout lookup");
+        assert!(login_branch < spawn && spawn < accepted);
+        assert!(
+            accepted < first_lookup,
+            "the login branch must return before any synchronous membership lookup"
+        );
+        assert!(
+            handler
+                .find("normalize_email_address")
+                .expect("shape check")
+                < login_branch
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { useLocale } from "@/lib/i18n";
-import { canResumeCompanyAnalysis, companyAnalysisProgress, downloadCompanyAnalysis,
-  getCompanyAnalysis, listCompanyAnalyses, resumeCompanyAnalysis, startCompanyAnalysis,
-  type CompanyAnalysisTask } from "@/lib/company-analysis";
+import { canResumeCompanyAnalysis, companyAnalysisProgress, companyAnalysisToShow, downloadCompanyAnalysis,
+  downloadCompanyAnalysisMarkdown, getCompanyAnalysis, listCompanyAnalyses, resumeCompanyAnalysis,
+  startCompanyAnalysis, type CompanyAnalysisTask } from "@/lib/company-analysis";
 import "./company-analysis-dialog.css";
 
 export function CompanyAnalysisDialog(props: { openRequest: number; disabled: boolean }) {
@@ -50,8 +50,9 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
     void listCompanyAnalyses(controller.signal).then((tasks) => {
       if (controller.signal.aborted) return;
       setHistory(tasks);
-      const active = tasks.find((item) => item.status === "running" || item.status === "interrupted");
-      if (active) { setTask(active); setCompany(active.company); }
+      // A finished or failed report stays in view instead of hiding in history.
+      const shown = companyAnalysisToShow(tasks);
+      if (shown) { setTask(shown); if (shown.status !== "completed") setCompany(shown.company); }
     }).catch((cause) => { if (!controller.signal.aborted) setError(String(cause.message || cause)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     onCleanup(() => {
       controller.abort(); document.documentElement.style.overflow = previous;
@@ -94,7 +95,9 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
       // task rather than sending a duplicate paid research request.
       try {
         const tasks = await listCompanyAnalyses(); setHistory(tasks);
-        const active = tasks.find((item) => item.status === "running");
+        // A running task whose lease lapsed reads as interrupted; it still
+        // blocks a new start, so it is the one to show.
+        const active = tasks.find((item) => item.status === "running" || item.status === "interrupted");
         if (active) selectTask(active);
       } catch { /* Preserve the original error; a later reopen retries GET. */ }
     } finally { setBusy(false); }
@@ -106,13 +109,16 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  const download = async () => {
-    const current = task(); if (!current?.pdf_ready || downloading()) return;
+  const download = async (format: "pdf" | "md") => {
+    const current = task();
+    if (!current || downloading() || !(format === "pdf" ? current.pdf_ready : current.markdown_ready)) return;
     setDownloading(true); setError("");
     try {
-      const blob = await downloadCompanyAnalysis(current.task_id);
+      const blob = format === "pdf"
+        ? await downloadCompanyAnalysis(current.task_id)
+        : await downloadCompanyAnalysisMarkdown(current.task_id);
       const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
-      anchor.href = url; anchor.download = `${current.company.replace(/[\\/:*?"<>|]/g, "-")}-公司完整分析.pdf`;
+      anchor.href = url; anchor.download = `${current.company.replace(/[\\/:*?"<>|]/g, "-")}-公司完整分析.${format}`;
       document.body.appendChild(anchor); anchor.click(); anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
@@ -125,7 +131,7 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
         <button type="button" class="public-chat-proactive-close" aria-label={t("关闭", "Close")} onClick={close} disabled={busy()}>×</button>
         <span class="public-chat-earnings-kicker">{t("管理员研究工作流", "Administrator research")}</span>
         <h2 id="company-analysis-title">{t("公司完整分析", "Full company analysis")}</h2>
-        <p class="public-chat-proactive-intro">{t("输入公司名称，自动完成公司、产品、管理层、财务和估值分析，生成完整 PDF。", "Enter a company to research its business, products, management, financials and valuation, with a complete PDF.")}</p>
+        <p class="public-chat-proactive-intro">{t("输入公司名称，自动完成公司、产品、管理层、财务和估值分析，生成完整 PDF 与 Markdown。", "Enter a company to research its business, products, management, financials and valuation, as a complete PDF and Markdown report.")}</p>
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
           <label class="public-chat-earnings-field"><span>{t("公司名称或股票代码", "Company name or ticker")}</span>
             <input ref={input} value={company()} maxlength={200} disabled={busy() || running()} placeholder="Tempus AI / TEM" data-testid="company-analysis-company" onInput={(event) => setCompany(event.currentTarget.value)} />
@@ -140,8 +146,9 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
           <Show when={running()}><small>{t("可以关闭弹窗，稍后从公司完整分析查看进度。", "You can close this dialog and return here to check progress.")}</small></Show>
           <Show when={current().completed_stages.filter((stage) => !stage.startsWith("_")).length}><ul class="company-analysis-stages"><For each={current().completed_stages.filter((stage) => !stage.startsWith("_"))}>{(stage) => <li>✓ {stageLabel(stage)}</li>}</For></ul></Show>
           <Show when={canResumeCompanyAnalysis(current())}><button class="public-chat-proactive-primary" type="button" onClick={() => void resume()} disabled={busy()}>{t("继续已保存的分析", "Resume saved analysis")}</button></Show>
-          <Show when={current().warnings?.length}><p class="company-analysis-reconnecting">{t("部分图表保留了原始文字，详情见 PDF 中的提示。", "Some diagrams are preserved as source text. See the notes in the PDF.")}</p></Show>
-          <Show when={current().pdf_ready}><button class="public-chat-proactive-primary" data-testid="company-analysis-download" type="button" onClick={() => void download()} disabled={downloading()}>{downloading() ? t("正在下载…", "Downloading…") : t("下载完整 PDF", "Download complete PDF")}</button></Show>
+          <Show when={current().warnings?.length}><For each={current().warnings}>{(warning) => <p class="company-analysis-reconnecting">{useLocale() === "en" ? "Part of the report has a layout note; see the PDF." : warning}</p>}</For></Show>
+          <Show when={current().pdf_ready}><button class="public-chat-proactive-primary" data-testid="company-analysis-download" type="button" onClick={() => void download("pdf")} disabled={downloading()}>{downloading() ? t("正在下载…", "Downloading…") : t("下载完整 PDF", "Download complete PDF")}</button></Show>
+          <Show when={current().markdown_ready}><button class={current().pdf_ready ? "company-analysis-secondary" : "public-chat-proactive-primary"} data-testid="company-analysis-download-markdown" type="button" onClick={() => void download("md")} disabled={downloading()}>{t("下载 Markdown", "Download Markdown")}</button></Show>
         </div>}</Show>
         <Show when={pollError()}><p role="status" class="company-analysis-reconnecting">{pollError()}</p></Show>
         <Show when={error()}><p class="public-chat-earnings-error" role="alert">{error()}</p></Show>

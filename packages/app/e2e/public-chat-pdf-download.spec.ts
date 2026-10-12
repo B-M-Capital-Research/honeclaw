@@ -191,6 +191,7 @@ test("company analysis restores real task progress without repeating start and d
   await page.route("**/api/public/company-analysis/tasks**",async route=>{
     const url=new URL(route.request().url());
     if(url.pathname.endsWith("/pdf")) {await route.fulfill({status:200,contentType:"application/pdf",path:PDF_FIXTURE});return;}
+    if(url.pathname.endsWith("/markdown")) {await route.fulfill({status:200,contentType:"text/markdown; charset=utf-8",body:"# TEM 公司完整分析"});return;}
     if(route.request().method()==="POST") {
       starts++;expect(route.request().postDataJSON()).toEqual({company:"TEM"});
       task={task_id:"11111111-1111-4111-8111-111111111111",company:"TEM",status:"running",progress:25,info:"公司基本信息搜索完成",created_at:new Date().toISOString(),updated_at:new Date().toISOString(),pdf_ready:false,completed_stages:["公司基本介绍"]};
@@ -212,11 +213,33 @@ test("company analysis restores real task progress without repeating start and d
   task={...task,progress:95,info:"PDF 已生成，正在保存"};
   await expect(dialog.getByText("95%",{exact:true})).toBeVisible();
   await expect(page.getByTestId("company-analysis-download")).toHaveCount(0);
-  task={...task,status:"completed",progress:100,pdf_ready:true,info:"完整分析与 PDF 已完成"};
+  task={...task,status:"completed",progress:100,pdf_ready:true,markdown_ready:true,info:"完整分析与 PDF 已完成"};
   await expect(page.getByTestId("company-analysis-download")).toBeVisible();
   const downloaded=page.waitForEvent("download");await page.getByTestId("company-analysis-download").click();
   expect((await downloaded).suggestedFilename()).toBe("TEM-公司完整分析.pdf");
+  const markdown=page.waitForEvent("download");await page.getByTestId("company-analysis-download-markdown").click();
+  expect((await markdown).suggestedFilename()).toBe("TEM-公司完整分析.md");
   expect(starts).toBe(1);
+});
+
+test("a company analysis whose PDF failed still opens with its Markdown report", async ({page}) => {
+  await installPdfConversation(page);
+  await page.addInitScript(() => localStorage.setItem("hone-public-locale", "zh"));
+  await page.setViewportSize({width:1440,height:1024});
+  const failed={task_id:"22222222-2222-4222-8222-222222222222",company:"TEM",status:"failed",progress:90,info:"报告正文已完成，PDF 生成未完成；可先下载 Markdown，或继续重新生成 PDF",created_at:new Date().toISOString(),updated_at:new Date().toISOString(),pdf_ready:false,markdown_ready:true,completed_stages:["公司基本介绍"]};
+  await page.route("**/api/public/company-analysis/tasks**",async route=>{
+    const url=new URL(route.request().url());
+    if(url.pathname.endsWith("/markdown")) {await route.fulfill({status:200,contentType:"text/markdown; charset=utf-8",body:"# TEM 公司完整分析"});return;}
+    await fulfillJson(route,url.pathname.endsWith("/tasks")?{tasks:[failed]}:failed);
+  });
+  await page.goto("/chat");
+  await page.getByRole("button",{name:"工具",exact:true}).click();await page.getByRole("menuitem",{name:"公司完整分析"}).click();
+  const dialog=page.getByRole("dialog",{name:"公司完整分析"});
+  await expect(dialog.getByText(/可先下载 Markdown/)).toBeVisible();
+  await expect(dialog.getByRole("button",{name:"继续已保存的分析"})).toBeVisible();
+  await expect(page.getByTestId("company-analysis-download")).toHaveCount(0);
+  const markdown=page.waitForEvent("download");await page.getByTestId("company-analysis-download-markdown").click();
+  expect((await markdown).suggestedFilename()).toBe("TEM-公司完整分析.md");
 });
 
 test("company analysis shortcut is absent for non-administrators",async({page})=>{

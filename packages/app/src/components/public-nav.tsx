@@ -25,6 +25,7 @@ import "../pages/public-polish.css";
 
 const NAV_LINKS = [
   { labelKey: "home", path: "/" },
+  { labelKey: "research", path: "/research" },
   { labelKey: "community", path: "/community" },
   { labelKey: "blog", path: "/blog" },
   { labelKey: "plan", path: "/plan" },
@@ -291,6 +292,7 @@ export function PublicNav(
           <div class="pub-mobile-menu-links">
             <For
               each={[
+                { labelKey: "research" as const, path: "/research" },
                 { labelKey: "plan" as const, path: "/plan" },
                 { labelKey: "roadmap" as const, path: "/roadmap" },
                 { labelKey: "blog" as const, path: "/blog" },

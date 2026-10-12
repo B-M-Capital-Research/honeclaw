@@ -114,6 +114,7 @@ import {
   rekeyTrailingOptimisticIds,
   resolvePublicChatRecovery,
   resolvePublicChatStreamInterruption,
+  publicChatRequestRejection,
   isPublicChatBusy,
   isPublicChatRestoreCurrent,
   isPublicChatTerminalStreamEvent,
@@ -1851,6 +1852,9 @@ type ComposerAction = {
   icon: () => JSX.Element;
   run: () => void;
   adminOnly?: boolean;
+  /** Runs outside the chat turn (its own task and dialog), so a chat reply in
+      progress must not block opening it. */
+  independentOfChat?: boolean;
   /** Reachable from 工具 and the phone sheet, but not shown as a desktop chip. */
   secondary?: boolean;
   dot?: boolean;
@@ -2153,7 +2157,7 @@ function ChatToolsMenu(props: {
                       type="button"
                       role="menuitem"
                       class="chat-tools__item"
-                      disabled={action.adminOnly && props.actionsDisabled}
+                      disabled={action.adminOnly && !action.independentOfChat && props.actionsDisabled}
                       onClick={() => run(action.run)}
                     >
                       <span class="chat-tools__item-icon">{action.icon()}</span>
@@ -2400,6 +2404,7 @@ function Composer(props: {
             icon: () => <ToolIcon name="earnings-analysis" />,
             run: () => setCompanyAnalysisSeq((seq) => seq + 1),
             adminOnly: true,
+            independentOfChat: true,
           },
         ]
       : []),
@@ -2657,7 +2662,7 @@ function Composer(props: {
       </div>
 
       <Show when={props.isAdmin}>
-        <CompanyAnalysisDialog disabled={workflowsDisabled()} openRequest={companyAnalysisSeq()} />
+        <CompanyAnalysisDialog disabled={false} openRequest={companyAnalysisSeq()} />
         <EarningsResearchDialog
           kind="preview"
           disabled={workflowsDisabled()}
@@ -3816,6 +3821,7 @@ export default function PublicChatPage() {
     let reachedStreamEof = false;
     let sawTerminalEvent = false;
     let recoverAfterDisconnect = false;
+    let requestRejected = false;
     let lastRunErrorMessage: string | undefined;
     try {
       const stream = await sendPublicChat(
@@ -4016,16 +4022,30 @@ export default function PublicChatPage() {
       }
     } catch (e) {
       const index = messages.findIndex((m) => m.id === assistantId);
-      const interrupted = resolvePublicChatStreamInterruption({
-        aborted:
-          controller.signal.aborted ||
-          (e instanceof Error && e.name === "AbortError"),
-        recoveringText: CONTENT.chat_page.recovery.reconnecting,
-        stoppedText: CONTENT.chat_page.status.stopped,
-      });
-      recoverAfterDisconnect = interrupted.shouldRecover;
-      if (index >= 0) {
-        setMessages(index, interrupted.patch);
+      const rejection = publicChatRequestRejection(
+        e,
+        CONTENT.chat_page.recovery.rejected,
+      );
+      if (rejection !== null) {
+        // Nothing started on the server; restoring history would erase the
+        // only place this reason is shown.
+        requestRejected = true;
+        recoverAfterDisconnect = false;
+        if (index >= 0) {
+          setMessages(index, { phase: "error", statusText: rejection });
+        }
+      } else {
+        const interrupted = resolvePublicChatStreamInterruption({
+          aborted:
+            controller.signal.aborted ||
+            (e instanceof Error && e.name === "AbortError"),
+          recoveringText: CONTENT.chat_page.recovery.reconnecting,
+          stoppedText: CONTENT.chat_page.status.stopped,
+        });
+        recoverAfterDisconnect = interrupted.shouldRecover;
+        if (index >= 0) {
+          setMessages(index, interrupted.patch);
+        }
       }
     } finally {
       const shouldStayAtBottom =
@@ -4033,25 +4053,29 @@ export default function PublicChatPage() {
       if (shouldStayAtBottom) pinToBottom(1600);
       setCanStop(false);
       setIsSending(false);
-      void restoreSession({
-        retryOnFailure: recoverAfterDisconnect,
-        onExhausted: recoverAfterDisconnect
-          ? () => {
-              const index = messages.findIndex((m) => m.id === assistantId);
-              if (
-                index >= 0 &&
-                messages[index].phase !== "done" &&
-                messages[index].phase !== "error"
-              ) {
-                setMessages(index, {
-                  phase: "error",
-                  statusText:
-                    CONTENT.chat_page.recovery.reconnect_failed,
-                });
+      if (!requestRejected) {
+        void restoreSession({
+          // Retry even after a clean finish: the PDF attachment card only
+          // arrives with history, so one slow bootstrap must not drop it.
+          retryOnFailure: true,
+          onExhausted: recoverAfterDisconnect
+            ? () => {
+                const index = messages.findIndex((m) => m.id === assistantId);
+                if (
+                  index >= 0 &&
+                  messages[index].phase !== "done" &&
+                  messages[index].phase !== "error"
+                ) {
+                  setMessages(index, {
+                    phase: "error",
+                    statusText:
+                      CONTENT.chat_page.recovery.reconnect_failed,
+                  });
+                }
               }
-            }
-          : undefined,
-      });
+            : undefined,
+        });
+      }
     }
   };
 

@@ -9,6 +9,8 @@ export type CompanyAnalysisTask = {
   created_at: string;
   updated_at: string;
   pdf_ready: boolean;
+  /** The assembled Markdown report exists, even when the PDF failed. */
+  markdown_ready?: boolean;
   completed_stages: string[];
   warnings?: string[];
 };
@@ -49,6 +51,22 @@ export async function downloadCompanyAnalysis(id: string): Promise<Blob> {
     throw new Error("PDF 下载响应异常，请重试");
   }
   return response.blob();
+}
+
+export async function downloadCompanyAnalysisMarkdown(id: string): Promise<Blob> {
+  const response = await checked(await apiFetch(`${ROOT}/${encodeURIComponent(id)}/markdown`));
+  if (!response.headers.get("Content-Type")?.startsWith("text/markdown")) {
+    throw new Error("Markdown 下载响应异常，请重试");
+  }
+  return response.blob();
+}
+
+/**
+ * The task to show when the dialog opens: one still in flight or resumable,
+ * else the most recent task so a finished or failed report stays reachable.
+ */
+export function companyAnalysisToShow(tasks: CompanyAnalysisTask[]): CompanyAnalysisTask | undefined {
+  return tasks.find((item) => item.status === "running" || item.status === "interrupted") ?? tasks[0];
 }
 
 export function canResumeCompanyAnalysis(task: CompanyAnalysisTask): boolean {

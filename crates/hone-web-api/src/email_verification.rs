@@ -42,6 +42,34 @@ impl EmailVerificationSender for UnconfiguredEmailVerificationSender {
     }
 }
 
+/// Builds the login/activation code sender.
+///
+/// The configured transactional `email` block is the primary source: it is the
+/// same Cloudflare Email Sending account and verified sender
+/// (`email.from_address`, e.g. `no-reply@hone-claw.com`) that scheduled pushes
+/// already use, with the token resolved from `email.api_token_env`. The older
+/// `HONE_CLOUDFLARE_ACCOUNT_ID` / `HONE_EMAIL_FROM` environment trio is only a
+/// fallback for deployments that have not configured that block.
+pub fn email_verification_sender_from_config(
+    http_client: Client,
+    config: &hone_core::config::EmailConfig,
+) -> Result<Arc<dyn EmailVerificationSender>, String> {
+    if config.is_configured() {
+        let api_base = format!("{}/", config.api_base.trim().trim_end_matches('/'));
+        let sender = CloudflareEmailVerificationSender::new_with_api_base_url(
+            http_client,
+            config.account_id.clone(),
+            config.resolved_api_token(),
+            config.from_address.clone(),
+            &api_base,
+        )
+        .map_err(|error| format!("email 配置无效: {error}"))?
+        .with_from_name(config.from_name.trim());
+        return Ok(Arc::new(sender));
+    }
+    email_verification_sender_from_env(http_client)
+}
+
 pub fn email_verification_sender_from_env(
     http_client: Client,
 ) -> Result<Arc<dyn EmailVerificationSender>, String> {
@@ -106,6 +134,7 @@ pub struct CloudflareEmailVerificationSender {
     endpoint: Url,
     api_token: String,
     from_address: String,
+    from_name: String,
 }
 
 impl CloudflareEmailVerificationSender {
@@ -124,7 +153,7 @@ impl CloudflareEmailVerificationSender {
         )
     }
 
-    fn new_with_api_base_url(
+    pub(crate) fn new_with_api_base_url(
         http_client: Client,
         account_id: String,
         api_token: String,
@@ -162,7 +191,17 @@ impl CloudflareEmailVerificationSender {
             endpoint,
             api_token: api_token.to_string(),
             from_address: from_address.to_string(),
+            from_name: "HONE".to_string(),
         })
+    }
+
+    /// Display name shown next to the sender address; blank keeps "HONE".
+    pub fn with_from_name(mut self, from_name: &str) -> Self {
+        let from_name = from_name.trim();
+        if !from_name.is_empty() && !from_name.chars().any(char::is_control) {
+            self.from_name = from_name.chars().take(64).collect();
+        }
+        self
     }
 }
 
@@ -190,7 +229,7 @@ struct CloudflareEmailRequest<'a> {
 #[derive(Serialize)]
 struct CloudflareEmailAddress<'a> {
     address: &'a str,
-    name: &'static str,
+    name: &'a str,
 }
 
 #[derive(Deserialize)]
@@ -235,21 +274,13 @@ impl EmailVerificationSender for CloudflareEmailVerificationSender {
         {
             return Err("邮箱验证码消息无效".to_string());
         }
-        let text = format!(
-            "你的 HONE 登录验证码是：{}\n\n验证码将在 {} 分钟后失效。如果不是你本人操作，请忽略此邮件。",
-            message.code, message.expires_in_minutes
-        );
-        let html = format!(
-            "<p>你的 HONE 登录验证码是：</p>\
-             <p style=\"font-size:28px;font-weight:700;letter-spacing:4px\">{}</p>\
-             <p>验证码将在 {} 分钟后失效。如果不是你本人操作，请忽略此邮件。</p>",
-            message.code, message.expires_in_minutes
-        );
+        let text = verification_email_text(&message.code, message.expires_in_minutes);
+        let html = verification_email_html(&message.code, message.expires_in_minutes);
         let request = CloudflareEmailRequest {
             to: [&message.to],
             from: CloudflareEmailAddress {
                 address: &self.from_address,
-                name: "HONE",
+                name: &self.from_name,
             },
             subject: "你的 HONE 登录验证码",
             text,
@@ -295,6 +326,40 @@ impl EmailVerificationSender for CloudflareEmailVerificationSender {
     }
 }
 
+fn verification_email_text(code: &str, expires_in_minutes: u32) -> String {
+    format!(
+        "你的 HONE 登录验证码是：{code}\n\n\
+         验证码将在 {expires_in_minutes} 分钟后失效，请勿转发给他人。\n\
+         如果不是你本人操作，请忽略此邮件，你的账号不会有任何变化。\n\n\
+         Your HONE sign-in code is {code}. It expires in {expires_in_minutes} minutes.\n\n\
+         —— HONE · hone-claw.com（此邮件由系统自动发送，请勿直接回复）"
+    )
+}
+
+/// The code is the only dynamic value and is validated to be eight ASCII
+/// digits before this runs, so nothing here needs HTML escaping.
+fn verification_email_html(code: &str, expires_in_minutes: u32) -> String {
+    format!(
+        r#"<!doctype html><html lang="zh-CN"><body style="margin:0;padding:0;background:#f4f1ea">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ea;padding:32px 12px">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid #e3ddd0;border-radius:16px">
+<tr><td style="padding:32px 32px 8px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',Arial,sans-serif;color:#1f2422">
+<div style="font-size:15px;font-weight:700;letter-spacing:3px">HONE</div>
+<h1 style="margin:24px 0 8px;font-size:20px;line-height:1.4;font-weight:700">你的登录验证码</h1>
+<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#59615c">在登录页输入以下验证码即可进入 HONE。</p>
+<div style="margin:0 0 20px;padding:16px 0;text-align:center;background:#f4f1ea;border-radius:12px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:'SFMono-Regular',Menlo,Consolas,monospace">{code}</div>
+<p style="margin:0 0 8px;font-size:13px;line-height:1.7;color:#59615c">验证码将在 {expires_in_minutes} 分钟后失效，请勿转发给他人。如果不是你本人操作，请忽略此邮件，你的账号不会有任何变化。</p>
+<p style="margin:0 0 24px;font-size:12px;line-height:1.7;color:#879398">Your HONE sign-in code expires in {expires_in_minutes} minutes. If you did not request it, you can ignore this email.</p>
+</td></tr>
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #efeae0;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',Arial,sans-serif;font-size:12px;line-height:1.6;color:#879398">此邮件由系统自动发送，请勿直接回复 · hone-claw.com</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>"#
+    )
+}
+
 fn request_error_kind(error: &reqwest::Error) -> &'static str {
     if error.is_timeout() {
         "请求超时"
@@ -328,7 +393,8 @@ mod tests {
 
     use super::{
         CloudflareEmailVerificationSender, EmailVerificationMessage, EmailVerificationSender,
-        UnconfiguredEmailVerificationSender, email_verification_sender_from_values,
+        UnconfiguredEmailVerificationSender, email_verification_sender_from_config,
+        email_verification_sender_from_values,
     };
 
     const TEST_ACCOUNT_ID: &str = "0123456789abcdef0123456789abcdef";
@@ -560,6 +626,84 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn configured_email_block_sends_from_the_no_reply_sender() {
+        let (api_base_url, captured, server) = mock_email_api(
+            StatusCode::OK,
+            json!({
+                "success": true,
+                "errors": [],
+                "result": { "message_id": "<accepted@example.com>" }
+            }),
+        )
+        .await;
+        let config = hone_core::config::EmailConfig {
+            account_id: TEST_ACCOUNT_ID.to_string(),
+            api_token: "config-token".to_string(),
+            from_address: "no-reply@hone-claw.com".to_string(),
+            from_name: "HONE".to_string(),
+            // The config form has no trailing slash; the builder must add it.
+            api_base: api_base_url.trim_end_matches('/').to_string(),
+            ..hone_core::config::EmailConfig::default()
+        };
+        let sender = email_verification_sender_from_config(test_http_client(), &config)
+            .expect("configured sender");
+        assert!(sender.is_configured());
+        sender
+            .send_verification_code(EmailVerificationMessage {
+                to: "member@example.com".to_string(),
+                code: "87654321".to_string(),
+                expires_in_minutes: 10,
+            })
+            .await
+            .expect("send through configured block");
+        let (headers, body) = captured.lock().await.clone().expect("captured request");
+        assert_eq!(
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer config-token")
+        );
+        assert_eq!(
+            body["from"],
+            json!({"address": "no-reply@hone-claw.com", "name": "HONE"})
+        );
+        assert_eq!(body["to"], json!(["member@example.com"]));
+        assert!(
+            body["html"]
+                .as_str()
+                .is_some_and(|html| html.contains("87654321"))
+        );
+        server.abort();
+    }
+
+    #[test]
+    fn unconfigured_email_block_falls_back_to_the_legacy_environment() {
+        // No account/token/sender in config: the env trio decides, and with
+        // none of those present in this test process the sender stays off.
+        let config = hone_core::config::EmailConfig {
+            api_token_env: "HONE_TEST_EMAIL_TOKEN_THAT_IS_NEVER_SET".to_string(),
+            ..hone_core::config::EmailConfig::default()
+        };
+        if std::env::var("HONE_CLOUDFLARE_ACCOUNT_ID").is_err()
+            && std::env::var("HONE_EMAIL_FROM").is_err()
+            && std::env::var("HONE_CLOUDFLARE_EMAIL_API_TOKEN").is_err()
+        {
+            let sender = email_verification_sender_from_config(reqwest::Client::new(), &config)
+                .expect("fallback");
+            assert!(!sender.is_configured());
+        }
+    }
+
+    #[test]
+    fn verification_email_bodies_carry_code_and_expiry() {
+        let text = super::verification_email_text("12345678", 10);
+        assert!(text.contains("12345678") && text.contains("10 分钟"));
+        let html = super::verification_email_html("12345678", 10);
+        assert!(html.contains("12345678") && html.contains("10 分钟"));
+        assert!(!html.contains("{code}"));
     }
 
     #[test]

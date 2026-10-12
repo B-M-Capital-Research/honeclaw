@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-09-14
-状态：有 15 个活跃任务
+最后更新：2026-10-11
+状态：有 16 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **官网重设计 / Research Workspace 重构 / Insights 同步大V速报 / 白名单邮箱登录**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-site-research-insights-overhaul-2026-10-11.md`
+  - 摘要：已在本地完成实现与验证（待评审、提交与部署）：官网按当前产品与社区重写；登录在手机号短信之外新增白名单邮箱验证码（Cloudflare Email Sending，`no-reply@hone-claw.com`），管理员白名单支持配置/修改邮箱；Research Workspace 改为分区卡片并拆出管理视图；Insights 新增「大V速报」标签页。交接见 `docs/handoffs/2026-10-11-public-site-research-insights-email-login.md`
 
 - **推送/蒸馏成本整治（P0 哈希增量蒸馏 + P1 润色按事件共享）**
   - 状态：`in_progress`

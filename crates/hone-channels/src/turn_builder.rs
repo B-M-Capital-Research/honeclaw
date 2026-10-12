@@ -51,7 +51,16 @@ pub(crate) fn skill_prompt_is_turn_scoped(skill_id: &str) -> bool {
 }
 
 fn parse_earnings_workflow_mode(user_input: &str) -> HoneResult<EarningsWorkflowMode> {
-    let modes = user_input
+    // The server-owned parameter block is authoritative. Text appended after
+    // it (research-library excerpts, attachments) must not add a mode line.
+    let scope = user_input
+        .split_once(crate::earnings_materials::WORKFLOW_PARAMETERS_MARKER)
+        .map(|(_, block)| {
+            let block = block.trim_start_matches(['\r', '\n']);
+            block.split("\n\n").next().unwrap_or(block)
+        })
+        .unwrap_or(user_input);
+    let modes = scope
         .lines()
         .filter_map(|line| line.trim().strip_prefix("mode:"))
         .map(str::trim)
@@ -435,6 +444,18 @@ mod tests {
         assert!(analysis.contains("# 10. 结论"));
         assert!(analysis.contains(EARNINGS_PDF_DELIVERY_HEADING));
         assert!(skill_prompt_is_turn_scoped("earnings-research"));
+
+        let with_appended_context = "/earnings-research\n生成前瞻\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: INTC\n\n【研究资料】\nmode: analysis";
+        assert!(matches!(
+            parse_earnings_workflow_mode(with_appended_context),
+            Ok(EarningsWorkflowMode::Preview)
+        ));
+        assert!(
+            parse_earnings_workflow_mode(
+                "【HONE 财报工作流参数】\nmode: preview\nmode: analysis\ncompany: INTC"
+            )
+            .is_err()
+        );
         assert!(!skill_prompt_is_turn_scoped("stock_research"));
     }
 

@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS company_analysis_actor_created
  ON company_analysis_tasks(actor_user_id, created_at DESC);
 ";
 
+/// The only update/heartbeat error that means another attempt owns the task.
+pub(super) const LEASE_LOST: &str = "任务执行权已失效";
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct Checkpoint {
@@ -40,6 +43,9 @@ pub(super) struct Task {
     pub created_at: String,
     pub updated_at: String,
     pub pdf_ready: bool,
+    /// The assembled Markdown report exists; it stays downloadable even when
+    /// PDF rendering or persistence failed.
+    pub markdown_ready: bool,
     pub warnings: Vec<String>,
     pub completed_stages: Vec<String>,
     #[serde(skip)]
@@ -65,6 +71,9 @@ fn task_from_row(row: &tokio_postgres::Row) -> Result<Task, String> {
         company: row.get("company"),
         model: row.get("model"),
         pdf_ready: status == "completed" && checkpoint.pdf_key.is_some(),
+        markdown_ready: checkpoint
+            .outputs
+            .contains_key(super::workflow::MARKDOWN_KEY),
         status,
         progress: row.get("progress"),
         info: row.get("info"),
@@ -186,6 +195,30 @@ mod tests {
                 .unwrap()
                 .progress,
             25
+        );
+        assert!(
+            !store
+                .get("admin-a", &task.task_id)
+                .await
+                .unwrap()
+                .unwrap()
+                .markdown_ready
+        );
+        // A failed PDF attempt still exposes the assembled report.
+        checkpoint
+            .outputs
+            .insert(super::super::workflow::MARKDOWN_KEY.into(), "# 报告".into());
+        store
+            .update(&resumed, 90, "正在生成完整 PDF", "running", &checkpoint)
+            .await
+            .unwrap();
+        let rendering = store.get("admin-a", &task.task_id).await.unwrap().unwrap();
+        assert!(rendering.markdown_ready && !rendering.pdf_ready);
+        assert!(
+            !rendering
+                .completed_stages
+                .iter()
+                .any(|s| s.starts_with('_'))
         );
         checkpoint.pdf_key = Some("actor-owned/report.pdf".into());
         checkpoint.pdf_sha256 = Some("test-hash".into());
@@ -341,7 +374,7 @@ impl Store {
         if n == 1 {
             Ok(())
         } else {
-            Err("任务执行权已失效".to_owned())
+            Err(LEASE_LOST.to_owned())
         }
     }
 
@@ -391,7 +424,7 @@ impl Store {
         if n == 1 {
             Ok(())
         } else {
-            Err("任务执行权已失效".to_owned())
+            Err(LEASE_LOST.to_owned())
         }
     }
 }

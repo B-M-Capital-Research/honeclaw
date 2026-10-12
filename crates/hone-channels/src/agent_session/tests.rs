@@ -388,6 +388,63 @@ impl AgentRunner for EarningsFallbackStreamingRunner {
     }
 }
 
+/// Renders the official PDF, then loses the final confirmation (for example a
+/// timeout while the model re-types the report).
+struct EarningsRenderedThenTimedOutRunner;
+
+#[async_trait]
+impl AgentRunner for EarningsRenderedThenTimedOutRunner {
+    fn name(&self) -> &'static str {
+        "earnings_rendered_then_timed_out"
+    }
+
+    fn conversation_strategy(&self) -> AgentConversationStrategy {
+        AgentConversationStrategy::EphemeralCompiledPrompt
+    }
+
+    async fn run(
+        &self,
+        request: AgentRunnerRequest,
+        _emitter: Arc<dyn AgentRunnerEmitter>,
+    ) -> AgentRunnerResult {
+        std::fs::create_dir_all(&request.working_directory).expect("sandbox");
+        let pdf =
+            std::path::Path::new(&request.working_directory).join("AAOI-preview-rendered.pdf");
+        std::fs::write(&pdf, b"%PDF-1.7\n%%EOF\n").expect("pdf");
+        let report = "# AAOI公司财报前瞻分析\n\n已渲染的完整报告";
+        AgentRunnerResult {
+            response: AgentResponse {
+                content: String::new(),
+                tool_calls_made: vec![ToolCallMade {
+                    name: "mcp__hone__skill_tool".to_string(),
+                    arguments: serde_json::json!({
+                        "skill_name":"earnings-research",
+                        "execute_script":true,
+                        "script":"scripts/render_report_pdf.py",
+                        "script_payload":{"company":"AAOI","mode":"preview","report_markdown":report}
+                    }),
+                    result: serde_json::json!({
+                        "success":true,
+                        "render_success":true,
+                        "side_effect_status":"completed",
+                        "validated_report_markdown":report,
+                        "artifacts":[{"kind":"document","mime":"application/pdf","path":pdf.display().to_string()}]
+                    }),
+                    tool_call_id: Some("call_renderer".to_string()),
+                }],
+                iterations: 1,
+                success: false,
+                error: Some("session/prompt idle timeout".to_string()),
+            },
+            streamed_output: false,
+            committed_visible_prefix: None,
+            terminal_error_emitted: false,
+            session_metadata_updates: HashMap::new(),
+            context_messages: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ServicePrefixRunner {
     fail_after_commit: bool,
@@ -4758,6 +4815,67 @@ async fn dedicated_earnings_text_fallback_without_pdf_fails_closed() {
 }
 
 #[tokio::test]
+async fn dedicated_earnings_keeps_a_rendered_pdf_when_the_run_fails_afterwards() {
+    let root = make_temp_dir("hone_channels_earnings_rendered_then_timed_out");
+    let llm = MockLlmProvider::with_tool_responses(Vec::new());
+    let mut core = make_test_core_with_config(&root, llm, |config| {
+        config.agent.runner = "codex_acp".to_string();
+    })
+    .await;
+    Arc::get_mut(&mut core)
+        .expect("exclusive test core")
+        .test_runner_factory = Some(Arc::new(|| Box::new(EarningsRenderedThenTimedOutRunner)));
+    let actor =
+        ActorIdentity::new("web", "database-admin-pdf-salvage", None::<String>).expect("actor");
+    let session = AgentSession::new(core.clone(), actor.clone(), "direct").with_prompt_options(
+        PromptOptions {
+            is_admin: true,
+            ..PromptOptions::default()
+        },
+    );
+    let result = session
+        .run(
+            "请为 AAOI 生成财报前瞻",
+            AgentRunOptions {
+                runner_override: Some(AgentRunRunnerOverride::OpencodeAcp),
+                model_override: Some("google/gemini-3.1-pro-preview".to_string()),
+                isolate_prior_history: true,
+                dedicated_earnings_workflow: true,
+                ..AgentRunOptions::default()
+            },
+        )
+        .await;
+
+    assert!(result.response.success, "{:?}", result.response.error);
+    assert!(
+        result
+            .response
+            .content
+            .starts_with("# AAOI公司财报前瞻分析\n\n已渲染的完整报告")
+    );
+    assert!(
+        result
+            .response
+            .content
+            .contains("AAOI-preview-rendered.pdf")
+    );
+    let messages = core
+        .session_storage
+        .get_messages(&actor.session_id(), None)
+        .await
+        .expect("messages");
+    assert!(messages.iter().any(|message| {
+        message
+            .content
+            .iter()
+            .filter_map(|part| part.text.as_deref())
+            .any(|text| text.contains("已渲染的完整报告"))
+    }));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
 async fn dedicated_earnings_restarts_fresh_opencode_session_after_corrupted_thought_signature() {
     let root = make_temp_dir("hone_channels_earnings_corrupted_thought_signature_retry");
     let llm = MockLlmProvider::with_chat_responses(Vec::new());
@@ -5040,7 +5158,23 @@ async fn dedicated_earnings_restarts_fresh_session_after_safe_pdf_validation_fai
         )
         .await;
 
-    assert!(!result.response.success);
+    // The retry also failed, but the report submitted to the renderer is the
+    // deliverable: it is published (with a PDF-missing note when no renderer
+    // is available to the host) instead of an empty error.
+    assert!(result.response.success);
+    assert!(
+        result
+            .response
+            .content
+            .contains("# AAOI公司财报前瞻分析\n\n待修正的完整报告")
+    );
+    assert!(
+        result
+            .response
+            .content
+            .starts_with(super::earnings_salvage::PDF_MISSING_NOTICE)
+            || result.response.content.contains("[附件: ")
+    );
     assert_eq!(
         recorded_contexts
             .lock()

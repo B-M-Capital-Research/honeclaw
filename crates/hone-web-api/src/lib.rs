@@ -781,11 +781,14 @@ pub async fn start_server(
         .build()
         .map_err(|e| format!("HTTP client 构建失败: {e}"))?;
     let email_verification_sender =
-        crate::email_verification::email_verification_sender_from_env(http_client.clone())?;
+        crate::email_verification::email_verification_sender_from_config(
+            http_client.clone(),
+            &core.config.email,
+        )?;
     if email_verification_sender.is_configured() {
         info!("Cloudflare 邮箱验证码服务已装配");
     } else {
-        warn!("邮箱验证码服务未配置，国际会员激活将返回 503");
+        warn!("邮箱验证码服务未配置，邮箱登录与国际会员激活将返回 503");
     }
     let bearer_token = {
         let v = core.config.web.auth_token.trim().to_string();

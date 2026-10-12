@@ -395,6 +395,40 @@ export function resolvePublicChatStreamInterruption(input: {
 }
 
 /**
+ * A chat POST the server refused before any run started (validation,
+ * permission, configuration, quota). Unlike a dropped stream there is nothing
+ * to recover, so the server's reason is shown instead of silently restoring
+ * history over the optimistic turn. Gateway 5xx stays a disconnect because the
+ * run may already have started behind it.
+ */
+export function publicChatRequestRejection(
+  error: unknown,
+  fallback: string,
+): string | null {
+  if (!(error instanceof Error)) return null;
+  const status = (error as { status?: unknown }).status;
+  if (typeof status !== "number" || status === 401) return null;
+  if (!((status >= 400 && status < 500) || status === 503)) return null;
+  let message = error.message.trim();
+  try {
+    const body = JSON.parse(message) as { error?: unknown; message?: unknown };
+    message =
+      typeof body?.error === "string"
+        ? body.error
+        : typeof body?.message === "string"
+          ? body.message
+          : "";
+  } catch {
+    // Plain-text error body.
+  }
+  message = message.trim();
+  if (!message || message.length > 240 || /<\/?[a-z][^>]*>/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
+/**
  * Only these frames end the HTTP chat stream. `run_error` is deliberately not
  * terminal: a runner attempt can fail and still be recovered by the server
  * before the final `run_finished` frame arrives.

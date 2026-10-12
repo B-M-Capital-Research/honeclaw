@@ -112,6 +112,40 @@ html {
   color: var(--hone-link);
   font-weight: 700;
 }
+.public-login-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-radius-sm);
+  background: var(--hone-paper-100);
+}
+.public-login-methods button {
+  min-height: 36px;
+  border: 0;
+  border-radius: calc(var(--hone-radius-sm) - 3px);
+  background: transparent;
+  color: var(--hone-ink-600);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s var(--hone-ease), color 0.15s var(--hone-ease);
+}
+.public-login-methods button.is-active {
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  box-shadow: var(--hone-shadow-sm);
+}
+.public-login-hint {
+  margin: 0 0 16px;
+  color: var(--hone-ink-400);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
 .public-login-dev-button {
   width: 100%;
   min-height: 44px;

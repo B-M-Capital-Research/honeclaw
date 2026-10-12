@@ -155,6 +155,81 @@ fn is_safe_failed_earnings_renderer(call: &ToolCallMade) -> bool {
             .is_some_and(|value| !value.trim().is_empty())
 }
 
+/// A complete report the model handed to the repository-owned earnings
+/// renderer, whatever the render outcome. The renderer payload is the model's
+/// declared deliverable, so it is what the host may render itself or publish
+/// when the PDF step cannot complete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SubmittedEarningsReport {
+    pub(crate) report_markdown: String,
+    pub(crate) company: Option<String>,
+    pub(crate) mode: Option<String>,
+}
+
+/// `script_payload` as the runtime received it: a JSON object, or a JSON
+/// string when an ACP client forwarded the raw argument text.
+fn earnings_render_payload(arguments: &serde_json::Value) -> Option<serde_json::Value> {
+    match arguments.get("script_payload")? {
+        serde_json::Value::Object(_) => arguments.get("script_payload").cloned(),
+        serde_json::Value::String(raw) => serde_json::from_str::<serde_json::Value>(raw)
+            .ok()
+            .filter(serde_json::Value::is_object),
+        _ => None,
+    }
+}
+
+fn submitted_report_markdown(arguments: &serde_json::Value) -> Option<String> {
+    earnings_render_payload(arguments)
+        .as_ref()
+        .and_then(|payload| payload.get("report_markdown"))
+        // Older traces and fixtures carried the report at the top level.
+        .or_else(|| arguments.get("report_markdown"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn is_earnings_renderer_call(call: &ToolCallMade) -> bool {
+    canonical_hone_tool_name(&call.name) == Some("skill_tool")
+        && call
+            .arguments
+            .get("skill_name")
+            .and_then(serde_json::Value::as_str)
+            == Some("earnings-research")
+        && call
+            .arguments
+            .get("execute_script")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+}
+
+pub(crate) fn latest_submitted_earnings_report(
+    tool_calls: &[ToolCallMade],
+) -> Option<SubmittedEarningsReport> {
+    tool_calls.iter().rev().find_map(|call| {
+        if !is_earnings_renderer_call(call) {
+            return None;
+        }
+        let report_markdown = submitted_report_markdown(&call.arguments)?;
+        let payload = earnings_render_payload(&call.arguments);
+        let field = |name: &str| {
+            payload
+                .as_ref()
+                .and_then(|payload| payload.get(name))
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        };
+        Some(SubmittedEarningsReport {
+            report_markdown,
+            company: field("company"),
+            mode: field("mode"),
+        })
+    })
+}
+
 pub(crate) fn latest_safe_failed_earnings_report_draft(
     tool_calls: &[ToolCallMade],
 ) -> Option<FailedEarningsReportDraft> {
@@ -162,13 +237,7 @@ pub(crate) fn latest_safe_failed_earnings_report_draft(
         if !is_safe_failed_earnings_renderer(call) {
             return None;
         }
-        let report_markdown = call
-            .arguments
-            .get("report_markdown")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())?
-            .to_string();
+        let report_markdown = submitted_report_markdown(&call.arguments)?;
         let render_error = call
             .result
             .get("render_error")
@@ -495,6 +564,69 @@ mod tests {
                 render_error: "preview preflight found 7 issues".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn the_real_nested_renderer_payload_is_the_submitted_report() {
+        let rejected = |arguments: serde_json::Value| ToolCallMade {
+            name: "mcp__hone__skill_tool".to_string(),
+            arguments,
+            result: json!({
+                "success":false,
+                "render_success":false,
+                "side_effect_status":"not_started",
+                "render_error":"Chromium PDF render failed",
+                "artifacts":[]
+            }),
+            tool_call_id: Some("render".to_string()),
+        };
+        let nested = rejected(json!({
+            "skill_name":"earnings-research",
+            "execute_script":true,
+            "script":"scripts/render_report_pdf.py",
+            "script_payload":{"company":"TEM","mode":"analysis","report_markdown":"# TEM公司财报分析总结\n\n正文"}
+        }));
+        assert_eq!(
+            latest_safe_failed_earnings_report_draft(std::slice::from_ref(&nested))
+                .map(|draft| draft.report_markdown),
+            Some("# TEM公司财报分析总结\n\n正文".to_string())
+        );
+        assert_eq!(
+            latest_submitted_earnings_report(&[nested]),
+            Some(SubmittedEarningsReport {
+                report_markdown: "# TEM公司财报分析总结\n\n正文".to_string(),
+                company: Some("TEM".to_string()),
+                mode: Some("analysis".to_string()),
+            })
+        );
+
+        // A script timeout is "uncertain" and has no render_* fields, yet the
+        // submitted report is still the model's deliverable.
+        let uncertain = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({
+                "skill_name":"earnings-research",
+                "execute_script":true,
+                "script_payload":"{\"company\":\"TEM\",\"mode\":\"preview\",\"report_markdown\":\"# 前瞻\"}"
+            }),
+            result: json!({"success":false,"error":"skill script 执行超时","side_effect_status":"uncertain"}),
+            tool_call_id: Some("timeout".to_string()),
+        };
+        assert!(
+            latest_safe_failed_earnings_report_draft(std::slice::from_ref(&uncertain)).is_none()
+        );
+        assert_eq!(
+            latest_submitted_earnings_report(&[uncertain]).map(|report| report.mode),
+            Some(Some("preview".to_string()))
+        );
+
+        let read_only_skill = ToolCallMade {
+            name: "hone_skill_tool".to_string(),
+            arguments: json!({"skill_name":"earnings-research","script_payload":{"report_markdown":"x"}}),
+            result: json!({"success":true}),
+            tool_call_id: None,
+        };
+        assert!(latest_submitted_earnings_report(&[read_only_skill]).is_none());
     }
 
     #[test]

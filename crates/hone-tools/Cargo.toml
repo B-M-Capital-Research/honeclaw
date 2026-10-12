@@ -21,7 +21,7 @@ chrono-tz = { workspace = true }
 url = { workspace = true }
 scraper = { workspace = true }
 glob = "0.3"
+tempfile = "3"
 walkdir = "2"
 
 [dev-dependencies]
-tempfile = "3"

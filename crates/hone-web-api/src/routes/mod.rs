@@ -340,6 +340,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             "/admin/invites/{user_id}/disable",
             post(public_admin::handle_disable_invite),
         )
+        .route(
+            "/admin/invites/{user_id}/email",
+            post(public_admin::handle_set_invite_email),
+        )
         .route("/admin/usage", get(public_admin::handle_usage_report))
         .route(
             "/integrations/stripe/webhook",
@@ -424,6 +428,10 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
         .route(
             "/company-analysis/tasks/{id}/pdf",
             get(company_analysis::download),
+        )
+        .route(
+            "/company-analysis/tasks/{id}/markdown",
+            get(company_analysis::markdown),
         )
         .route(
             "/v1/chat/completions",

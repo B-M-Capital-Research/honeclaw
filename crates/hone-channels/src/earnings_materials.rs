@@ -3,11 +3,35 @@
 use hone_tools::Tool;
 use serde_json::{Value, json};
 
-pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u32) {
-    let Some(company) = runtime_input
+pub(crate) const WORKFLOW_PARAMETERS_MARKER: &str = "【HONE 财报工作流参数】";
+/// Per-page and whole-prefetch bounds on fetched page bodies. Larger inputs push
+/// the dedicated run into context compaction, which disables PDF recovery.
+const MAX_PAGE_CHARS: usize = 60_000;
+const MAX_PREFETCH_PAGE_CHARS: usize = 200_000;
+const PAGE_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// A `key: value` line from the server-owned workflow parameter block. Text
+/// appended later (research-library excerpts, attachments) cannot override it.
+pub(crate) fn workflow_parameter<'a>(input: &'a str, key: &str) -> Option<&'a str> {
+    let (_, block) = input.split_once(WORKFLOW_PARAMETERS_MARKER)?;
+    block
         .lines()
-        .rev()
-        .find_map(|line| line.strip_prefix("company: "))
+        .map(str::trim)
+        .skip_while(|line| line.is_empty())
+        .take_while(|line| !line.is_empty())
+        .find_map(|line| line.strip_prefix(key)?.strip_prefix(':'))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u32) {
+    let Some(company) = workflow_parameter(runtime_input, "company")
+        .or_else(|| {
+            runtime_input
+                .lines()
+                .rev()
+                .find_map(|line| line.strip_prefix("company: "))
+        })
         .map(str::trim)
         .filter(|company| !company.is_empty() && company.chars().count() <= 200)
     else {
@@ -84,17 +108,28 @@ pub(crate) async fn prepare(tool: &dyn Tool, runtime_input: &str) -> (String, u3
         }
     }
     let fetched_pages = futures::future::join_all(urls.iter().map(|url| async move {
-        match tool.execute(json!({"query":company, "url":url})).await {
-            Ok(page) => page,
-            Err(error) => json!({"url":url, "retrieval_error":error.to_string()}),
+        let args = json!({"query":company, "url":url});
+        match tokio::time::timeout(PAGE_FETCH_TIMEOUT, tool.execute(args)).await {
+            Ok(Ok(page)) => page,
+            Ok(Err(error)) => json!({"url":url, "retrieval_error":error.to_string()}),
+            Err(_) => json!({"url":url, "retrieval_error":"source page read timed out"}),
         }
     }))
     .await;
     pages.extend(fetched_pages);
+    let mut budget = MAX_PREFETCH_PAGE_CHARS;
     for page in &mut pages {
+        if let Some(page) = page.as_object_mut() {
+            // Navigation links are up to 200 entries per page and carry no
+            // filing or call text.
+            page.remove("links");
+        }
         if let Some(text) = page.get("raw_content").and_then(Value::as_str) {
-            if text.chars().count() > 60_000 {
-                page["raw_content"] = Value::String(text.chars().take(60_000).collect());
+            let chars = text.chars().count();
+            let keep = chars.min(MAX_PAGE_CHARS).min(budget);
+            budget -= keep;
+            if keep < chars {
+                page["raw_content"] = Value::String(text.chars().take(keep).collect());
                 if !page["hone_evidence"].is_object() {
                     page["hone_evidence"] = json!({});
                 }
@@ -162,6 +197,52 @@ mod tests {
         assert_eq!(calls[2]["url"], "https://ir.example/release");
         assert!(calls[0]["query"].as_str().unwrap().starts_with("TEM "));
     }
+    #[test]
+    fn the_company_comes_from_the_server_parameter_block() {
+        let input = "/earnings-research\n生成前瞻\n\n【HONE 财报工作流参数】\nmode: preview\ncompany: Tempus AI\n此工作流由管理员专属入口触发\n\n研究资料摘录\ncompany: OTHER";
+        assert_eq!(workflow_parameter(input, "company"), Some("Tempus AI"));
+        assert_eq!(workflow_parameter(input, "mode"), Some("preview"));
+        assert_eq!(workflow_parameter("company: TEM", "company"), None);
+    }
+
+    struct BulkyPageTool;
+    #[async_trait::async_trait]
+    impl Tool for BulkyPageTool {
+        fn name(&self) -> &str {
+            "web_search"
+        }
+        fn description(&self) -> &str {
+            "bulky pages"
+        }
+        fn parameters(&self) -> Vec<hone_tools::ToolParameter> {
+            vec![]
+        }
+        async fn execute(&self, args: Value) -> hone_core::HoneResult<Value> {
+            if let Some(url) = args.get("url") {
+                let links: Vec<Value> = (0..200)
+                    .map(|i| json!({"text":format!("navigation {i}"),"url":"https://ir.example/nav"}))
+                    .collect();
+                return Ok(json!({"url":url, "raw_content":"正".repeat(90_000), "links":links}));
+            }
+            Ok(
+                json!({"results":(0..3).map(|i| json!({"url":format!("https://ir.example/{}/{i}", args["query"].as_str().unwrap().len()), "content":"snippet"})).collect::<Vec<_>>()}),
+            )
+        }
+    }
+    #[tokio::test]
+    async fn prefetch_drops_navigation_links_and_bounds_total_page_text() {
+        let (input, _) = prepare(
+            &BulkyPageTool,
+            "【HONE 财报工作流参数】\nmode: analysis\ncompany: TEM\n",
+        )
+        .await;
+        assert!(!input.contains("navigation 7"));
+        let page_chars = input.matches('正').count();
+        assert!(page_chars <= MAX_PREFETCH_PAGE_CHARS, "{page_chars}");
+        assert!(page_chars >= MAX_PAGE_CHARS * 3, "{page_chars}");
+        assert!(input.contains("raw_content_truncated"));
+    }
+
     #[tokio::test]
     async fn missing_sources_are_context_and_do_not_block_the_workflow() {
         let tool = SourceTool {

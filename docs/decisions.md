@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-09-05
+Last updated: 2026-10-11
 
 ## D-2026-03-07-01 Maintain LLM Collaboration Context In-Repo
 
@@ -1229,6 +1229,7 @@ Last updated: 2026-09-05
 
 - Status: Deployed and production verified.
 - Supersedes: only the global configured-runner execution choice in `D-2026-08-04-01`. The administrator gate, forced `earnings-research` skill, evidence workflow, PDF contract, actor ownership, and no-external-workflow boundary remain unchanged.
+- Terminal clause partially superseded_by: `D-2026-10-11-02`. When the PDF step cannot complete, the host now closes from the report the model submitted to the renderer (host render, else Markdown with a PDF-missing note) instead of discarding it; model prose never submitted to the renderer still fails closed.
 - Content/renderer clauses superseded by: `D-2026-08-10-01`. OpenCode routing, current-turn isolation, exact failure recovery, buffered output, actor-owned PDF persistence, and terminal enforcement remain active.
 - Problem: model override alone cannot move an earnings turn from a globally configured Codex ACP runner to Gemini. Passing `google/gemini-3.1-pro-preview` to Codex would select an invalid Codex model, while changing the global runner would also change ordinary chat. A per-turn runner switch also changes context ownership: Codex needs one current native turn, whereas OpenCode needs Hone's fresh ephemeral compiled replay containing the invoked skill and retained context.
 - Decision: `agent.earnings_workflow` owns the exact trusted route and defaults to `runner=opencode_acp`, `model=google/gemini-3.1-pro-preview`. Only the Web API branch that has reauthenticated a public administrator and recognized the structured/direct earnings activation may create the internal `AgentRunRunnerOverride`. `AgentSession` rejects that override without verified administrator prompt authority, disables native-Codex input/observation behavior for the turn, and `ExecutionService` constructs OpenCode independently of the global runner. Ordinary chat continues using its existing global runner and model.
@@ -1806,8 +1807,41 @@ implementation work.
 - owner: Codex / user-requested workflow
 - related_files: `crates/hone-web-api/src/routes/company_analysis/`; `packages/app/src/components/company-analysis-dialog.tsx`; `skills/earnings-research/scripts/`
 - related_docs: `docs/runbooks/company-full-analysis.md`; `crates/hone-web-api/src/routes/company_analysis/original/README.md`
-- Decision: 用 HONE 独立阶段执行器迁移指定分支；原 system/user Prompt、分支依赖和组装顺序不改。金融与搜索工具替换原子流程的数据接口；进度回调写入 HONE PostgreSQL，前端按服务端 UUID 读取。原 Dify 的鉴权码、外部上传与外部进度服务不作为运行依赖。
+- Decision: 用 HONE 独立阶段执行器迁移指定分支；原 system/user Prompt、分支依赖和组装顺序不改。（Prompt 条款由 `D-2026-10-11-02` 细化：原快照仍逐字保留并以哈希固定，修订以 `revisions/` 叠加。）金融与搜索工具替换原子流程的数据接口；进度回调写入 HONE PostgreSQL，前端按服务端 UUID 读取。原 Dify 的鉴权码、外部上传与外部进度服务不作为运行依赖。
 - Durability: 每节点保存正文及用量；两分钟执行租约每 20 秒续期，恢复更换 attempt token。PDF 每个 attempt 使用独立 actor OSS key，回读 hash 后才完成，部署 drain 包含这些研究任务。
 - Rendering: 保留全报告和 quote 中的假设；不执行原清理节点的 blockquote 删除。离线 Mermaid 仅作排版；无法绘制的图保留源文并标注技术提示，不删除正文、不触发内容改写。macOS 优先使用 headless shell 解决桌面 Chrome 的 CJK 打印缺字。
 - Verification: 自动化检查与真实 TEM canary 见对应 handoff；不以固定章节数量、来源覆盖或数字门禁评判内容。
 - Risks: 原 Prompt 的分析质量取决于模型与来源，进度百分比是原阶段权重而非时间预测。标题节点采用同一配置模型替代原 qwen-plus 传输。
+
+## D-2026-10-11-01 Allowlisted email login, Insights influencer stream, decluttered research desk
+
+- title: 白名单邮箱登录、Insights 同步大V速报、研究台与官网重构
+- status: accepted
+- created_at: 2026-10-11
+- updated_at: 2026-10-11
+- owner: Claude / user-requested product overhaul
+- related_files: `memory/src/web_auth.rs`; `crates/hone-core/src/cloud_runtime.rs`; `crates/hone-web-api/src/{email_verification.rs,routes/public.rs,routes/public_admin.rs}`; `packages/app/src/components/{public-login-form.tsx,public-admin-whitelist-panel.tsx,community-influencer-feed.tsx,influencer-digest-dashboard.tsx}`; `packages/app/src/pages/{public-home.tsx,public-research.tsx,public-community.tsx}`
+- related_docs: `docs/invariants.md` (public login, admin allowlist, Insights streams); `docs/handoffs/2026-10-11-public-site-research-insights-email-login.md`
+- Decision (login): Email becomes a second allowlisted login method next to phone/SMS, not a new identity domain. An administrator attaches an email to an allowlist entry (or creates an email-only entry); it lives in `cloud_web_user_external_state.email_address` with identity `domestic_invite`, so paid-access semantics stay those of the invite list. Email edits are audited `update_email` actions outside the five-per-day create allowance. The sign-in send path issues and sends the code only after a uniform acceptance (same as SMS), skips revoked entries, and Stripe Checkout requests can no longer flip an allowlisted identity to `international_email`. Codes are sent through the configured transactional `email` block (`no-reply@hone-claw.com`), with the legacy env trio as a fallback.
+- Decision (Insights): 大V速报 posts appear in Insights as their own client-side tab that reads the existing influencer-digest snapshot. Merging them into the official community feed was rejected: it would break the PG-canonical archive, opaque cursors, `latest_content_id` freshness checks, read receipts and the R2 edge snapshots, and would label attributed opinion as 官方/只读.
+- Decision (research desk): one card grammar, sections instead of filter tabs, one admin-only 内测板块 section instead of a "未发布" badge per card, management in a separate `?group=admin` view, and the per-section explanations folded into one guide.
+- Decision (site): the home page follows the README positioning (AI infrastructure research assistant), uses only production captures or labelled interface examples generated from the current UI, and drops retired captures of the 0.1.x console and the April infographics.
+- Verification: storage tests for email allowlist create/edit/clear/duplicate/purchase-identity/revoked flows against PostgreSQL; web-api tests for the config-driven sender, uniform send acceptance and admin projection; 665 web unit tests, typecheck and public build; browser verification of desk, Insights, login and allowlist panel on desktop/mobile/light/dark with a local mock API.
+- Risks: email login stays 503 until `email.account_id`, `email.from_address` and `HONE_CLOUDFLARE_EMAIL_API_TOKEN` resolve in production; the Cloudflare Email Sending daily quota is shared with push email.
+
+## D-2026-10-11-02 Report quick-nav reliability and shared valuation rules
+
+- title: 三类报告（公司完整分析 / 财报分析 / 财报前瞻）不再因 PDF 或传输问题丢失报告；估值逻辑按 2026-10-11 修订统一
+- status: accepted (code + local verification; production canary pending)
+- created_at: 2026-10-11
+- updated_at: 2026-10-11
+- owner: Claude / user-requested reliability and prompt review
+- related_files: `skills/earnings-research/SKILL.md`; `skills/earnings-research/scripts/render_report_pdf.py`; `crates/hone-web-api/src/routes/company_analysis/{workflow.rs,mod.rs,store.rs,revisions/}`; `crates/hone-channels/src/{agent_session/earnings_salvage.rs,agent_session/core.rs,tool_trace.rs,earnings_materials.rs,turn_builder.rs}`; `crates/hone-tools/src/skill_tool.rs`; `crates/hone-llm/src/resolver.rs`; `packages/app/src/{components/company-analysis-dialog.tsx,lib/company-analysis.ts,lib/public-chat.ts,pages/chat.tsx,lib/api.ts}`
+- related_docs: `docs/handoffs/2026-10-11-report-reliability-and-valuation-prompts.md`; `docs/invariants.md` (earnings success contract, company full analysis); `docs/runbooks/company-full-analysis.md`
+- supersedes: the terminal "text-only fallback is not a completed workflow" clause of `D-2026-08-05-02` and invariants' "terminal response without persisted PDF is rejected" sentence, for runs that did submit a report to the renderer.
+- Problem: users frequently got no report. Earnings runs discarded a finished report whenever the PDF step did not complete (renderer/script failure, uncertain renderer state, a timeout while the model re-typed the report after a successful render); the whole report travelled as one argv string that exceeds Linux's 128 KiB per-argument limit for long Chinese reports; the draft carried into the fresh retry was read from the wrong (top-level) field. Company analysis streamed long sections through a client whose 120 s total HTTP deadline also bounds the body, failed a section cut at 16k tokens three identical times, let a transient DB error or a decorative diagram/title node kill the task, and exposed only a PDF, so a render failure hid a finished report. The chat UI swallowed pre-stream 4xx/503 refusals and fetched the PDF card once.
+- Decision (closure, not content): the report submitted to the renderer is the deliverable. After all existing in-session and fresh-session recovery, the host reuses a completed PDF, else renders the submitted Markdown with the same renderer into the actor sandbox, else publishes the Markdown with an explicit PDF-missing note. Failure prose that was never submitted is still not a report. The renderer gains a script-free last attempt for diagram/formula documents. Company analysis: long-generation provider (900 s HTTP deadline, 32k tokens, 240 s idle / 720 s per call), continuation on `Length`, 4 attempts with backoff, retried checkpoint writes, tolerant heartbeats, one automatic continuation from checkpoints, optional diagram/title, and a Markdown endpoint available as soon as the report is assembled. The model replies with a short confirmation after a successful render instead of re-typing the report.
+- Decision (prompts): the user-supplied 2026-10-11 revision is integrated where its own usage notes say: valuation rules injected at each mode's valuation position (company chapter 5, analysis chapter 7, preview 1.2.3), the original prompts and stage order kept, and the full single-run prompts not pasted into single-chapter nodes. One rules block in `SKILL.md` is the single source; company analysis reads it at compile time. Non-valuation sections only gain short fact-discipline notes from the same document. The company snapshot stays verbatim (hash-pinned); revisions live in `revisions/`.
+- Governance: none of this inspects or scores report content. Mode routing, payload transport, artifact closure, timeouts and retries are technical boundaries consistent with `D-2026-08-12-01`.
+- Verification: see the handoff; production quality still needs real canaries (one company analysis, one analysis, one preview).
+- Risks: a host-rendered or Markdown-only closure reflects the model's submitted draft, which may not have passed a later in-session fix; the host render adds up to ~115 s at the end of a failing run; the larger valuation sections increase output length, cost and latency.
