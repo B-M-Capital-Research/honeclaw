@@ -1,10 +1,10 @@
 # Public site, Research Workspace, Insights overhaul + email allowlist login
 
 - title: Public site redesign, Research Workspace overhaul, Insights influencer sync, allowlisted email login
-- status: in_progress (implementation + local verification complete; awaiting review, commit and deploy)
+- status: archived (deployed and technically accepted 2026-10-12; remaining verification limits in handoffs)
 - created_at: 2026-10-11
 - updated_at: 2026-10-12
-- owner: Claude (session with contact@honeclaw.app)
+- owner: Claude (implementation); Codex (readiness and rollout)
 - related_files:
   - `packages/app/src/pages/public-home.tsx`, `public-site.css`, `lib/public-content.ts`
   - `packages/app/src/pages/public-research.tsx`, `public-research.css`, `lib/public-workspace-research.ts`
@@ -54,20 +54,24 @@
 - [x] Home page redesign, nav/footer fixes, retired images removed, page-title fix
 - [x] Tests: Rust (memory/web-api/core), web 665, typecheck, public build, targeted CI regressions
 - [x] Docs: invariants, repo-map, decisions, handoff
-- [ ] Commit / deploy (user decision); production email-send smoke test after deploy
+- [x] Commit / deploy (authorized 2026-10-12). Real email delivery was not exercised; see the rollout handoff.
 
 ## Production readiness and rollout (2026-10-12)
 
 User authorized reviewing both October 11 Claude changes, completing any gaps, and deploying when ready. This continuation includes the report reliability / shared valuation changes documented in `docs/handoffs/2026-10-11-report-reliability-and-valuation-prompts.md`.
 
-- [ ] Review the auth/storage/UI and report transport/renderer changes, preserve unrelated `hone-quant/` and generated `output/` content, and fix concrete readiness issues.
-- [ ] Preserve the currently deployed `42ed74f5` query-pool / synchronous-bridge repair by integrating its published branch before rollout; do not replace it with the older main runtime.
-- [ ] Verify changed Rust formatting, workspace check/tests with local PostgreSQL, Web tests/typecheck/public build, Worker checks and CI regressions; verify relevant browser flows.
-- [ ] Inspect production revision, managed access, email configuration, active work, and rollback targets before changing production.
-- [ ] Commit the reviewed changes, build the exact Linux runtime and matching public/skill bundles, and deploy them together with rollback evidence.
-- [ ] Verify exact live revision/assets, cloud health, auth and report paths, and real canaries where production access permits.
-- [ ] Update both handoffs and any affected runbooks/invariants; record evidence and remaining risks; archive this plan and remove its active index only after rollout acceptance.
+- [x] Review the auth/storage/UI and report transport/renderer changes, preserve unrelated `hone-quant/` and generated `output/` content, and fix concrete readiness issues.
+- [x] Preserve the currently deployed `42ed74f5` query-pool / synchronous-bridge repair by integrating its published branch before rollout; do not replace it with the older main runtime.
+- [x] Verify changed Rust formatting, workspace check/tests with local PostgreSQL, Web tests/typecheck/public build, Worker checks and CI regressions; verify relevant browser flows.
+- [x] Inspect production revision, managed access, email configuration, active work, and rollback targets before changing production.
+- [x] Commit the reviewed changes, build the exact Linux runtime and matching public/skill bundles, and deploy them together with rollback evidence.
+- [x] Verify exact live revision/assets, cloud health, auth and report paths; explicitly record real-canary limits.
+- [x] Update both handoffs and any affected runbooks/invariants; record evidence and remaining risks; archive this plan and remove its active index only after rollout acceptance.
 
 Readiness findings: direct managed-host SSH confirmed production `42ed74f5` (IAP transport failed). Email issuance/verification previously wrote a stale full external-state snapshot; added locked compare-and-exchange with address-change, revocation and one-time-code replay regressions. Restore README_EN provider configuration documentation and reuse the reviewed `943dc2bd` streaming fixture repair. Baseline finance static regression reports 10 failures and needs comparison with current behavior before acceptance.
 
 Linux CI at `501b3bb1` exposed a second email-readiness issue: the planner evaluated `pg_get_constraintdef` against concurrently dropped temporary relations before the schema filter. Resolve the exact visible table's constraint OID first, then inspect its definition in a separate PL/pgSQL statement. Add concurrent old-constraint upgrade/teardown regression; rebuild the immutable release from the corrected commit before cutover.
+
+## Closure — 2026-10-12
+
+Application revision `1ca6197c` is deployed on the backend and Cloudflare Pages and pushed to main. All todo items are closed; both handoffs preserve final tests, immutable hashes, rollback targets and the unverified real-email/full-report limits. Runtime binaries, public fallback and earnings assets were separately verified against their exact-revision manifests. No formal release tag was requested or created. This plan is archived and removed from the active index; no extra runbook change is needed because the existing deployment procedure was followed.

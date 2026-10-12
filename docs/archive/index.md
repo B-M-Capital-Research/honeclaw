@@ -2,6 +2,19 @@
 
 Last updated: 2026-10-12
 
+## 2026-10-12
+
+### October 11 public-site, email-login and report-reliability rollout
+
+- Status: done / deployed; real email delivery and complete model-report canaries remain unverified.
+- Plan: `docs/archive/plans/public-site-research-insights-overhaul-2026-10-11.md`
+- Handoffs: `docs/handoffs/2026-10-11-public-site-research-insights-email-login.md`, `docs/handoffs/2026-10-11-report-reliability-and-valuation-prompts.md`
+- Commit: `1ca6197c5c9efb1fa4affe6b7a458fd25cacb8fd` on main; includes the deployed `42ed74f5` query/bridge repair. No release tag.
+- Verification: Rust2909 + PostgreSQL97; Web669; Worker45; auth E2E3; PDF/Markdown E2E6; exact runtime/hash/storage/skill and live browser acceptance. CI remains red on the same ten pre-existing finance static assertions; 24/25 individual regression scripts pass.
+- Build/export: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/38204510638 and https://github.com/B-M-Capital-Research/honeclaw/actions/runs/38205717801
+- Conclusion: both batches are live. Readiness review repaired stale email challenge writes and a concurrent schema-migration catalog race. Rollback targets, asset manifests, real model connectivity and Linux renderer evidence are retained in the handoffs.
+- Next entry: real allowlisted email receipt/login; isolated complete report canaries for quality/cost/latency. No content-validator gate added.
+
 ## 2026-09-20
 
 ### Public API Latency Diagnosis and Connection Optimization

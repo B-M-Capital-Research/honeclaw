@@ -1,18 +1,18 @@
 # Public site, Research Workspace, Insights and allowlisted email login
 
 - title: 官网重设计 / Research Workspace 重构 / Insights 同步大V速报 / 白名单邮箱登录
-- status: in_progress (implementation and local verification complete; not yet committed or deployed)
+- status: done (deployed 2026-10-12; real email delivery remains unverified)
 - created_at: 2026-10-11
-- updated_at: 2026-10-11
-- owner: Claude (session with contact@honeclaw.app)
+- updated_at: 2026-10-12
+- owner: Claude (implementation); Codex (readiness fixes and production rollout)
 - related_files:
   - Auth: `memory/src/web_auth.rs`, `crates/hone-core/src/cloud_runtime.rs`, `crates/hone-web-api/src/{email_verification.rs,lib.rs,types.rs,routes/public.rs,routes/public_admin.rs,routes/mod.rs}`
   - Frontend auth: `packages/app/src/components/{public-login-form.tsx,public-admin-whitelist-panel.tsx}`, `packages/app/src/lib/{api.ts,types.ts}`
   - Insights: `packages/app/src/components/{community-influencer-feed.tsx,influencer-digest-dashboard.tsx}`, `packages/app/src/pages/public-community.{tsx,css}`, `packages/app/src/lib/public-community-timeline.ts`
   - Research desk: `packages/app/src/pages/public-research.{tsx,css}`, `packages/app/src/pages/public-workspace.css`
   - Home: `packages/app/src/pages/public-home.{tsx,css}`, `packages/app/src/lib/public-content.ts` (`landing`), `packages/app/src/components/public-nav.tsx`, `packages/app/public/home-*.jpg`, `packages/app/index.html`, `packages/app/src/entry.tsx`
-- related_docs: `docs/current-plans/public-site-research-insights-overhaul-2026-10-11.md`, `docs/decisions.md` (D-2026-10-11-01), `docs/invariants.md`, `docs/repo-map.md`
-- related_prs: none yet
+- related_docs: `docs/archive/plans/public-site-research-insights-overhaul-2026-10-11.md`, `docs/decisions.md` (D-2026-10-11-01), `docs/invariants.md`, `docs/repo-map.md`
+- related_prs: none; application commit `1ca6197c5c9efb1fa4affe6b7a458fd25cacb8fd` pushed to main
 
 ## Summary
 
@@ -76,3 +76,29 @@ Review the working tree diff, commit, and deploy web-api and the public bundle t
 - Restored README_EN OpenRouter configuration documentation and incorporated the existing `943dc2bd` streaming test fixture correction. SMS browser fixtures now use the current ToS version and billing response shape.
 - Production inspection confirmed `42ed74f5` is live. Its published branch has been integrated so this rollout preserves the query pool and synchronous bridge repair.
 - Web 669/669, typecheck/public build and Worker typecheck/45 tests passed before integration. The finance static contract has the identical ten failures on unchanged `83f0929a`; it is a documented existing baseline, not new application behavior. Integrated verification and deployment evidence follow below.
+
+## Production rollout accepted — 2026-10-12
+
+- status: done / deployed. This section supersedes the earlier local-only status and readiness follow-up; the October 11 review remains historical evidence.
+- Application revision: `1ca6197c5c9efb1fa4affe6b7a458fd25cacb8fd`. Both October 11 change sets are committed and on `main`; no release tag was created. Unrelated untracked `hone-quant/` and `output/` were excluded.
+- Preserved the live `42ed74f5` dedicated synchronous-query connection repair by merging its published branch. The withdrawn `3e26eb4f` state was not deployed by itself.
+- Additional fixes: email challenge issuance/consumption uses transactional compare-and-exchange; the email audit migration resolves its exact table constraint OID before inspecting the definition, avoiding planner evaluation against concurrently dropped test schemas. Added concurrent old-constraint migration/teardown coverage. Renderer salvage uses private temporary directories; company streaming retains a bounded chunk; secret-environment tests run in a child process and payload cleanup asserts the exact file. README and SMS browser fixture baseline issues were corrected.
+
+### Verification and evidence
+
+- Final local workspace Rust tests: **2,909 passed, 0 failed, 121 ignored**. Explicit memory PostgreSQL integration suite: **97 passed** (including email authentication regressions). Final changed-file formatting and workspace compilation passed. Development PostgreSQL was the existing local instance on port 5432 with an explicit non-empty test password, as documented in the report handoff.
+- Web **669 passed**, typecheck and clean exact-revision public build passed; community Worker typecheck and **45 tests passed**. Browser fixtures: SMS/ToS/email **3 passed**, PDF/Markdown delivery **6 passed**.
+- Linux CI [38204502572](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/38204502572): formatting, compile, Rust tests, explicit PostgreSQL tests and frontend/Worker checks passed. CI overall remains red solely on the **same ten existing finance static assertions** reproduced on clean `83f0929a`; all 25 local regression scripts were executed individually, with 24 passing and that one unchanged baseline failure. This is not an all-green CI claim; no gate was disabled and no content rejection logic was added to make it pass.
+- [Runtime build](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/38204510638) and [verified artifact export](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/38205717801) succeeded. Image digest: `sha256:ad3941bd9508851aca2bebdf8adb4da658258cb1481ec0fa89e664256d52f730`; exported archive SHA-256: `6b5a75c61e795620fd6e83c3337e3064fd8be4323d659276469e8d669c4ce63e`.
+- Runtime, matching fallback frontend and earnings skill were verified before cutover. Two zero-active-work samples preceded the managed stop/start; existing unit signal/timeout behavior was preserved. These samples are not a lossless quiesce protocol. The independent deployment job completed with acceptance, without rollback.
+- The processes owning both HTTP listeners and the CLI supervisor resolve to the candidate bundle. Live HTTP binary SHA-256: `39fcff1fc58da73724bb40d470a51048fda2aba638d5d567bdcf73b2816f2bed`. Exact revision, PostgreSQL/object-storage health, authoritative cloud storage, role `all` and zero local durable dependencies were checked again after the metadata cache interval. Eight concurrent skill list/detail reads passed; earnings-research is enabled and loaded from the system root.
+- Live auth probes: malformed email send **400**, unauthenticated admin invites **401**, unauthenticated company-analysis tasks **401**. The sender fallback is configured as `no-reply@hone-claw.com` and the existing credential is present. No real verification email was sent; Cloudflare's send credential did not expose a zone for a read-only domain check, so mail delivery is not claimed verified.
+- Cloudflare Pages production deployment `8265365b-2ec6-499c-a12b-4e75a1637d89` succeeded from the same application commit. Chrome verified the new homepage, populated Research sections and the selected Insights 大V速报 tab with live entries. The existing ten-message chat retained the same IDs, order and text through backend and frontend updates.
+- Origin fallback entry: `/assets/index-CCgP6Vm2.js`; public Pages entry: `/assets/index-uz4t8qSX.js` (SHA-256 `89a045c87bec4106069bdda345ecc1e5b11d567a47a6a00b48685739ffeb77dc`), replacing public `/assets/index-CqGkMAe9.js`. Pages and local entry JavaScript are identical after normalizing referenced asset hashes. Public chat `/assets/chat-DXr9e1Hs.js` (SHA-256 `c8498df7549a174c95553a3bca83789548b52ea3f49f7ba134090ded7a299764`) likewise matches local chat code except asset references, with `markdown_ready` present. Public security headers retain HSTS, CSP frame-ancestors none, DENY, nosniff and strict-origin-when-cross-origin.
+- Operator-retained evidence directory: sibling `honeclaw-artifacts/claude-rollout-20261012/` (outside the repository). It contains final Rust/PG logs, per-script regression results and baseline comparison, exact asset manifests, immutable runtime export, model/renderer smoke evidence, live acceptance JSON and served-asset comparison. Managed-host deployment evidence and restricted environment backup are under `/var/lib/hone/deployments/<application-revision>/`; never publish the environment backup. Runtime artifacts can be regenerated through the documented exact-revision export workflow after the Actions artifact expires.
+
+### Rollback and remaining limits
+
+Restore the verified runtime `42ed74f5` plus the previous frontend/earnings trees `9a2f27c7`, and the restricted pre-deploy environment backup; use the same idle-checked supervised procedure. The old targets and checksum manifests remain intact. The additive `update_email` audit constraint does not require deleting rows for rollback. Roll back Pages to its prior production deployment if reverting the complete user-facing version.
+
+No further code or deployment work remains for the two October 11 batches. Real allowlisted email receipt/login and three complete model report canaries were not run; model connectivity and 32k configuration, renderer/transport, persistence contracts and mocked download flows were verified instead. The known finance static baseline and real-content evaluation remain explicit follow-ups, not claimed successes. See the report handoff for the quality/cost/latency canary scope.
