@@ -532,6 +532,10 @@ Key config sections:
 - `event_engine`
 - `language`
 
+`nano_banana.provider` selects the image API transport. `openrouter` keeps the existing
+chat-completions path; `atlascloud` submits one task to `generateImage` and performs bounded
+prediction polling, using credentials from the matching `llm.providers` entry.
+
 Implementation note:
 
 - The config loader lives in `crates/hone-core/src/config/mod.rs` as a façade, with the concrete type definitions split into `src/config/{agent,channels,event_engine,server}.rs`
