@@ -1,3 +1,4 @@
+import { TOS_VERSION } from "../src/lib/tos";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 const PHONE = "13800138000";
@@ -30,8 +31,11 @@ function buildUser() {
     in_flight: 0,
     remaining_today: 17,
     has_password: false,
+    identity_kind: "domestic_invite",
+    is_admin: false,
+    billing: { access_granted: true, entitlements: [], has_duplicate_active_subscriptions: false },
     tos_accepted_at: "2026-05-12T08:00:00Z",
-    tos_version: "2.1",
+    tos_version: TOS_VERSION,
   };
 }
 
@@ -134,12 +138,31 @@ async function installPublicAuthMocks(
         await fulfillJson(route, { error: "验证码不正确或已过期" }, 401);
         return;
       }
-      if (body.tos_version !== "2.1") {
+      if (body.tos_version !== TOS_VERSION) {
         await fulfillJson(route, { error: "需同意用户协议与隐私政策" }, 400);
         return;
       }
       state.loggedIn = true;
       state.rememberLong = !!body.remember;
+      await fulfillJson(route, { user: buildUser() });
+      return;
+    }
+
+    if (path === "/api/public/auth/email/send") {
+      state.sendCalls += 1;
+      state.lastSendBody = request.postData() ?? "";
+      await fulfillJson(route, { ok: true });
+      return;
+    }
+    if (path === "/api/public/auth/email/login") {
+      state.loginCalls += 1;
+      state.lastLoginBody = request.postData() ?? "";
+      const body = JSON.parse(state.lastLoginBody);
+      if (body.email_address !== "member@example.com" || body.verify_code !== "12345678" || body.tos_version !== TOS_VERSION) {
+        await fulfillJson(route, { error: "验证码不正确或已过期" }, 401);
+        return;
+      }
+      state.loggedIn = true;
       await fulfillJson(route, { user: buildUser() });
       return;
     }
@@ -181,8 +204,8 @@ test("SMS login sends code, requires ToS, and signs in", async ({ page }) => {
 
   await expect.poll(() => mock.loginCalls).toBe(1);
   expect(mock.lastLoginBody).toContain('"remember":true');
-  expect(mock.lastLoginBody).toContain('"tos_version":"2.1"');
-  await expect(page.getByText("账号信息")).toBeVisible();
+  expect(mock.lastLoginBody).toContain(`"tos_version":"${TOS_VERSION}"`);
+  await expect(page.getByRole("heading", { name: "账户信息", exact: true })).toBeVisible();
 });
 
 test("clicking ToS / Privacy links inside checkbox row does not toggle the box", async ({
@@ -210,4 +233,21 @@ test("clicking ToS / Privacy links inside checkbox row does not toggle the box",
 
   await tosBox.click();
   await expect(tosBox).toHaveAttribute("aria-checked", "true");
+});
+
+
+test("allowlisted email login sends and verifies an eight-digit code", async ({ page }) => {
+  const mock = await installPublicAuthMocks(page, { loggedIn: false });
+  await page.goto("/me");
+  await page.getByRole("tab", { name: "邮箱", exact: true }).click();
+  await page.getByLabel("邮箱地址", { exact: true }).fill("member@example.com");
+  await page.getByRole("button", { name: "获取验证码" }).click();
+  await expect.poll(() => mock.sendCalls).toBe(1);
+  expect(JSON.parse(mock.lastSendBody).email_address).toBe("member@example.com");
+  await page.getByLabel("邮箱验证码").fill("12345678");
+  await page.getByRole("checkbox").nth(1).click();
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect.poll(() => mock.loginCalls).toBe(1);
+  expect(JSON.parse(mock.lastLoginBody).tos_version).toBe(TOS_VERSION);
+  await expect(page.getByRole("heading", { name: "账户信息", exact: true })).toBeVisible();
 });

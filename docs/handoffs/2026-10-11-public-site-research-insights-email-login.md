@@ -68,3 +68,11 @@ All four requests are implemented and verified locally: the home page is rebuilt
 ## Next Entry Point
 
 Review the working tree diff, commit, and deploy web-api and the public bundle together, since the frontend calls the new admin email endpoint. After deploy, sign in with an allowlisted email end to end.
+
+## Rollout readiness follow-up — 2026-10-12
+
+- status: in_progress; user authorized production deployment after review.
+- Fixed stale email issuance/verification writes restoring an administrator-changed address. Verification now uses a locked compare-and-exchange, including revocation and single-consumption behavior. PostgreSQL auth suite: 34/34.
+- Restored README_EN OpenRouter configuration documentation and incorporated the existing `943dc2bd` streaming test fixture correction. SMS browser fixtures now use the current ToS version and billing response shape.
+- Production inspection confirmed `42ed74f5` is live. Its published branch has been integrated so this rollout preserves the query pool and synchronous bridge repair.
+- Web 669/669, typecheck/public build and Worker typecheck/45 tests passed before integration. The finance static contract has the identical ten failures on unchanged `83f0929a`; it is a documented existing baseline, not new application behavior. Integrated verification and deployment evidence follow below.

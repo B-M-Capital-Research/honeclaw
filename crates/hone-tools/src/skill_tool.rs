@@ -744,6 +744,33 @@ mod tests {
 
     #[tokio::test]
     async fn execute_does_not_inherit_server_secrets() {
+        // Do not overwrite DATABASE_URL in the parallel PostgreSQL test runner.
+        // A child running only this test owns the deliberately invalid secret.
+        if std::env::var_os("HONE_SKILL_SECRET_TEST_CHILD").is_none() {
+            let output = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                tokio::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "skill_tool::tests::execute_does_not_inherit_server_secrets",
+                        "--nocapture",
+                    ])
+                    .env("HONE_SKILL_SECRET_TEST_CHILD", "1")
+                    .env("DATABASE_URL", "postgres://must-not-leak")
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .expect("secret isolation test deadline")
+            .expect("secret isolation child");
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
         let _guard = env_lock();
         clear_test_env();
         let root = make_temp_dir("hone_skill_tool_clean_env");
@@ -781,9 +808,6 @@ mod tests {
             custom,
             root.join("runtime").join("skill_registry.json"),
         );
-        unsafe {
-            std::env::set_var("DATABASE_URL", "postgres://must-not-leak");
-        }
         let result = tool
             .execute(serde_json::json!({
                 "skill_name": "clean-env",
@@ -793,9 +817,6 @@ mod tests {
             .expect("execute");
 
         assert_eq!(result["script_execution"]["summary"], "absent");
-        unsafe {
-            std::env::remove_var("DATABASE_URL");
-        }
         std::fs::remove_dir_all(root).ok();
     }
 
@@ -821,6 +842,7 @@ mod tests {
             concat!(
                 "test \"$1\" = --input || exit 3\n",
                 "cat \"$2\" > \"$HONE_SKILL_DIR/payload.json\"\n",
+                "printf '%s' \"$2\" > \"$HONE_SKILL_DIR/payload-path.txt\"\n",
                 "printf '{\"success\":true,\"summary\":\"ok\",\"artifacts\":[{\"kind\":\"image\",\"path\":\"%s/test.png\",\"mime\":\"image/png\"}],\"warnings\":[]}' \"$HONE_SKILL_DIR\"\n"
             ),
         )
@@ -864,17 +886,8 @@ mod tests {
             report_spec["report_markdown"]
         );
         // The private payload file is removed once the script has finished.
-        let leftovers = fs::read_dir(std::env::temp_dir())
-            .expect("temp dir")
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("hone-skill-payload-")
-            })
-            .count();
-        assert_eq!(leftovers, 0);
+        let payload_path = fs::read_to_string(skill_dir.join("payload-path.txt")).unwrap();
+        assert!(!std::path::Path::new(&payload_path).exists());
         clear_test_env();
         std::fs::remove_dir_all(root).ok();
     }
