@@ -1,6 +1,23 @@
 # Archive Index
 
-Last updated: 2026-09-14
+Last updated: 2026-10-12
+
+## 2026-09-20
+
+### Public API Latency Diagnosis and Connection Optimization
+
+- Status: original rollout withdrawn; repair 42ed74f5 deployed; sustained observation in_progress
+- Plan: `docs/current-plans/public-api-connection-performance.md`
+- Handoff: `docs/handoffs/2026-09-20-public-api-latency-diagnosis.md`
+- Decision: `docs/decisions.md#d-2026-09-20-02-exclusive-query-connections-and-optimized-source-runtime`
+- Commit: `3e26eb4fe574ff9aae94ddb2b21732c9f8ede416`; branch `codex/api-query-pool-performance-20260920` (main not advanced)
+- Build: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35498221222
+- Verification: 8 optimized pool safety and 93 explicit PostgreSQL memory regressions; isolated workspace 2874 passed with 3 pre-existing failures; exact immutable runtime/storage acceptance; 13 live message IDs/order/content unchanged; 140 common-auth-path rejection checks.
+- Repair verification: confirmed cross-runtime old/new control; core 13, skill registry 5, reply finalizer 8 and sampler 11 pass; 2,048 lifecycle queries pass. Full repaired workspace: 2,880 passed / 3 known baseline failures / 117 ignored; Web649; Worker45+typecheck; CI23/24 with identical finance baseline failure. Initial live listener/hash/storage, 12 concurrent skill reads, 140 auth-rejection probes and unchanged 13-message browser history passed. Longer observation remains active.
+- Current conclusion: initial latency improved, but the candidate was withdrawn after an HTTP responsiveness regression. Service and browser history recovered on the previous runtime. A candidate-introduced cross-runtime driver/bridge deadlock is reproduced by old/new controls. Dedicated-connection repair 42ed74f5 is deployed and initially accepted; original production stacks were not retained, so unique historical attribution remains bounded. The original 3e26eb4f acceptance stays withdrawn.
+- Repair build/export: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35506673286 and https://github.com/B-M-Capital-Research/honeclaw/actions/runs/35507261859
+- Runbook: `docs/runbooks/api-liveness-monitoring.md`
+- Next entry point: restore observer management connectivity and read actual bounded-canary completion/current health, then finish the first 24-hour observation. At 13:08 UTC public lightweight paths responded, but the management readback was unavailable; the last server checkpoint remains historical. Persistent single-instance monitoring was accepted earlier. Do not merge or redeploy withdrawn 3e26eb4f as accepted.
 
 ## 2026-09-14
 

@@ -14,6 +14,23 @@ WORKFLOW=.github/workflows/runtime-image.yml
 DOCKERFILE=deploy/runtime/Dockerfile
 STAGE_SCRIPT=scripts/stage_ghcr_runtime.sh
 
+# Runtime images must not silently ship an unoptimized dependency graph again.
+# Keep dev's overflow/debug assertions while optimizing production CPU work.
+runtime_profile="$(awk '/^\[profile.source-runtime\]/{inside=1;next} /^\[/{inside=0} inside{print}' Cargo.toml)"
+grep -Eq '^opt-level[[:space:]]*=[[:space:]]*3$' <<<"$runtime_profile" \
+    || fail "source-runtime must optimize production code and dependencies"
+grep -Eq '^inherits[[:space:]]*=[[:space:]]*"dev"$' <<<"$runtime_profile" \
+    || fail "source-runtime must retain existing overflow/debug assertion semantics"
+
+grep -Fq 'packages: read' "$WORKFLOW" \
+    || fail "runtime export must use job-scoped read-only registry access"
+grep -Fq '[[ "$EXPORT_REVISION" =~ ^[0-9a-f]{40}$ ]]' "$WORKFLOW" \
+    || fail "runtime export must validate an exact source revision"
+grep -Fq 'bash runtime-release/tools/verify_runtime_bundle.sh runtime-release "$EXPORT_REVISION"' "$WORKFLOW" \
+    || fail "runtime export must verify payload and revision before upload"
+grep -Fq 'sha256sum runtime-bundle.tar.gz > runtime-bundle.tar.gz.sha256' "$WORKFLOW" \
+    || fail "runtime export must retain a transfer checksum"
+
 grep -Fq 'platforms: linux/amd64' "$WORKFLOW" \
     || fail "runtime workflow must publish only linux/amd64"
 grep -Fq 'packages: write' "$WORKFLOW" \

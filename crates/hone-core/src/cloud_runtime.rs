@@ -23,6 +23,9 @@ use url::Url;
 use crate::config::{CloudConfig, HoneConfig, OssConfig, PostgresConfig};
 use crate::{ActorIdentity, HoneError, HoneResult, LlmAuditRecord};
 
+mod query_pool;
+use query_pool::{PgConnection, PgQueryClient, PgQueryPool};
+
 type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<sha2::Sha256>;
 
@@ -207,6 +210,7 @@ pub struct CloudHealth {
 pub struct CloudPgRuntime {
     config: PostgresConfig,
     isolated_test_connection: Option<String>,
+    dedicated_query_connections: bool,
 }
 
 static CLOUD_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
@@ -1494,6 +1498,12 @@ pub struct CloudSessionListEntry {
 static PG_CLIENT_CACHE: LazyLock<Mutex<BTreeMap<String, Arc<PgClient>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
+// Ordinary autocommit queries never borrow the schema/event-store connection.
+// In particular, migration BEGIN/COMMIT and session locks cannot leak into them.
+static PG_QUERY_POOLS: LazyLock<Mutex<BTreeMap<String, Arc<PgQueryPool>>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+const PG_QUERY_POOL_SIZE: usize = 4;
+
 fn community_publish_lock_name(source: &str, external_id: &str) -> HoneResult<String> {
     let source = source.trim();
     let external_id = external_id.trim();
@@ -1610,7 +1620,19 @@ impl CloudPgRuntime {
         config.postgres.is_configured().then(|| Self {
             config: config.postgres.clone(),
             isolated_test_connection: None,
+            dedicated_query_connections: false,
         })
+    }
+
+    /// Keep ordinary query connections on the runtime executing this handle.
+    ///
+    /// Synchronous bridges must use this policy before entering a short-lived
+    /// runtime: their caller may block the runtime that owns a pooled driver's
+    /// task or an outstanding pool lease. Fresh connections avoid both wait
+    /// cycles without changing SQL, actor predicates or transaction ownership.
+    pub fn with_dedicated_query_connections(mut self) -> Self {
+        self.dedicated_query_connections = true;
+        self
     }
 
     /// 为依赖真实 PostgreSQL 的测试创建一个独立缓存连接。
@@ -1634,6 +1656,7 @@ impl CloudPgRuntime {
         Ok(Self {
             config: self.config.clone(),
             isolated_test_connection: Some(namespace),
+            dedicated_query_connections: self.dedicated_query_connections,
         })
     }
 
@@ -1665,8 +1688,28 @@ impl CloudPgRuntime {
         })
     }
 
-    async fn connect_client(&self) -> HoneResult<Arc<PgClient>> {
-        self.connect_new_client().await.map(Arc::new)
+    async fn connect_client(&self) -> HoneResult<PgQueryClient> {
+        // EventStore's pg_temp fixtures must stay on their owning connection.
+        // Memory tests use named schemas and can exercise the production pool.
+        if self
+            .isolated_test_connection
+            .as_deref()
+            .is_some_and(|namespace| !namespace.starts_with("hone_memory_"))
+        {
+            return Ok(PgQueryClient::pinned(self.connect_cached_client().await?));
+        }
+        if self.dedicated_query_connections {
+            return Ok(PgQueryClient::dedicated(
+                self.connect_managed_client().await?,
+            ));
+        }
+        let pool = PG_QUERY_POOLS
+            .lock()
+            .map_err(|_| HoneError::Config("Postgres query pool 锁失败".into()))?
+            .entry(self.client_cache_key())
+            .or_insert_with(|| Arc::new(PgQueryPool::new(PG_QUERY_POOL_SIZE)))
+            .clone();
+        pool.acquire(self.connect_managed_client()).await
     }
 
     /// 获取进程内复用、带断线驱逐的 PostgreSQL client。
@@ -1714,6 +1757,9 @@ impl CloudPgRuntime {
         }
         if let Ok(mut cache) = PG_CLIENT_CACHE.lock() {
             cache.remove(&self.client_cache_key());
+        }
+        if let Ok(mut pools) = PG_QUERY_POOLS.lock() {
+            pools.remove(&self.client_cache_key());
         }
     }
 
@@ -1779,18 +1825,23 @@ impl CloudPgRuntime {
     }
 
     async fn connect_new_client(&self) -> HoneResult<PgClient> {
+        Ok(self.connect_managed_client().await?.detach())
+    }
+
+    async fn connect_managed_client(&self) -> HoneResult<PgConnection> {
         let proxy = self.config.resolved_proxy();
         if proxy.trim().is_empty() {
             let (client, connection) =
                 tokio_postgres::connect(&self.config.resolved_database_url(), NoTls)
                     .await
                     .map_err(|err| HoneError::Config(format!("Postgres 连接失败: {err}")))?;
-            tokio::spawn(async move {
+            let driver = tokio::spawn(async move {
                 if let Err(error) = connection.await {
                     tracing::warn!("postgres connection task ended: {error}");
                 }
             });
-            self.prepare_client(&client).await?;
+            let client = PgConnection::new(client, driver.abort_handle());
+            self.prepare_client(client.client()).await?;
             return Ok(client);
         }
 
@@ -1807,12 +1858,13 @@ impl CloudPgRuntime {
             .connect_raw(stream, NoTls)
             .await
             .map_err(|err| HoneError::Config(format!("Postgres 代理连接失败: {err}")))?;
-        tokio::spawn(async move {
+        let driver = tokio::spawn(async move {
             if let Err(error) = connection.await {
                 tracing::warn!("postgres proxied connection task ended: {error}");
             }
         });
-        self.prepare_client(&client).await?;
+        let client = PgConnection::new(client, driver.abort_handle());
+        self.prepare_client(client.client()).await?;
         Ok(client)
     }
 
@@ -6253,7 +6305,9 @@ WHERE actor_storage_key = $1
 
     pub async fn list_portfolios(&self) -> HoneResult<Vec<CloudPortfolioRecord>> {
         let client = self.connect_client().await?;
-        self.list_portfolios_with_client(&client).await
+        client
+            .run(self.list_portfolios_with_client(client.raw()))
+            .await
     }
 
     pub async fn list_portfolios_cached(&self) -> HoneResult<Vec<CloudPortfolioRecord>> {
@@ -7994,6 +8048,7 @@ mod tests {
         let runtime = CloudPgRuntime {
             config: PostgresConfig::default(),
             isolated_test_connection: None,
+            dedicated_query_connections: false,
         };
         let update = CloudCommunityResourceBackfillUpdate {
             resource_id: 1,

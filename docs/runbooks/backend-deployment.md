@@ -198,11 +198,63 @@ the token in command arguments/history, reuse a broad personal token, copy the
 temporary config into `/root/.docker`, or leave any registry credential on the
 host. A failed minimal-auth export stops before staging or cutover.
 
+### Supervised runtime cutover and acceptance
+
+`hone-web.service` can supervise a `hone-cli` parent with a separate
+`hone-console-page` HTTP child. Resolve the processes that own the configured
+LISTEN sockets; verify their service cgroup, executable paths and SHA-256 against
+the candidate bundle, and compare the Web hash with `/api/meta.build.binary_sha256`.
+Checking only `MainPID` or `ActiveState=active` is insufficient. Also verify the
+supervisor identity and preserve the existing channel topology.
+
+Take a deployment lock, verify both candidate and rollback bundles, preserve at
+least 2 GiB free after staging, and recheck active chats immediately before the
+managed stop. Read the actual unit's signal/stop settings: zero-active samples
+are not a quiesce protocol and a default SIGTERM/control-group stop does not
+provide the CLI's SIGINT drain behavior. Do not claim lossless draining from
+these checks alone. Never add an unreviewed forced kill to a routine rollout.
+
+A timed-out `systemctl restart` client does not mean the systemd job has stopped.
+Use bounded stop/start operations and observe terminal unit/job state before
+starting the next release. If a stop is unconfirmed, restore the verified old
+link for the next start, retain evidence, and explicitly report rollback pending;
+do not launch competing restart jobs or call the service restored prematurely.
+Run the cutover independently of the SSH session and keep its private log.
+
+Acceptance includes lightweight control/unauthenticated status probes, exact
+revision, authoritative PostgreSQL/object storage and zero local durable
+dependencies. Repeat metadata health beyond its 30-second cache interval. For
+connection-runtime changes, exercise real read-only synchronous bridge entry
+points (such as concurrent skill list/detail reads), verify existing browser
+history consistency, and continue independent observation beyond the original
+failure window. These probes do not replace isolated actor/session/write safety
+regressions and must not create production chat messages as a canary.
+
 ### Public frontend fallback alongside an immutable runtime
 
 The GHCR runtime manifest does not include a public Web bundle. Do not point `HONE_PUBLIC_WEB_DIST_DIR` at an absent path inside `/opt/hone/current`, and do not add files or symlinks to the verified runtime release. Build `dist-public` from the same exact source revision in a clean checkout, retain a per-file size/SHA manifest, and stage it separately under `/opt/hone/public-web/releases/<revision>/dist-public`. Verify the complete manifest before atomically pointing `/opt/hone/public-web/current` at that release's `dist-public` directory. Set `HONE_PUBLIC_WEB_DIST_DIR=/opt/hone/public-web/current` in the managed environment with a restricted backup, then use the normal idle-checked service restart. If the old value exists only in the unit's `Environment=` setting, verify that source and add the reviewed override to its `EnvironmentFile`; do not assume the key already exists in that file. Keep the previous public bundle for rollback as well as the previous binary release.
 
 After restart, compare the loopback `8088/chat` and public Pages entry/chunk hashes with the exact source build. A successful Pages deployment does not prove the origin fallback exists. The September 5 recovery found the previous path missing and loopback `/chat` returning 404; see its handoff for the accepted replacement and exact hashes.
+
+If the operator's existing GitHub login cannot read the private registry, do not
+expand its scopes merely to deploy. `Runtime Image` also supports an
+`export_revision` input for an **already published exact 40-character SHA**:
+
+```bash
+gh workflow run runtime-image.yml --ref <reviewed-workflow-ref> -f export_revision=<exact-runtime-sha>
+gh run download <export-run-id> -n runtime-bundle-<exact-runtime-sha> -D <local-export-dir>
+```
+
+This mode skips compilation and publishing. Its job has `packages: read`, pulls
+the immutable image, verifies the embedded revision and every payload file, and
+uploads a seven-day artifact with `runtime-bundle.tar.gz`, its SHA-256 file and
+`IMAGE_DIGEST`. The job's registry credential never reaches the operator or
+managed host. Transfer only this bundle and its checksum through the managed
+access path; verify the archive checksum locally and remotely, extract into a
+new release-root staging directory, and run `verify_runtime_bundle.sh` with the
+exact expected revision before moving it to `<revision>-ghcr-runtime`. Preserve
+the same disk floor, current/rollback retention, drain and cutover checks as the
+direct GHCR path. Archive download and staging do not authorize a restart.
 
 The current GHCR runtime bundle is executable-only: it contains the six managed
 binaries, release metadata, the soul asset, and verification tooling, but it

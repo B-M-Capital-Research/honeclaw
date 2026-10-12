@@ -1,7 +1,7 @@
 # Current Plan Index
 
-最后更新：2026-10-11
-状态：有 16 个活跃任务
+最后更新：2026-10-12
+状态：有 17 个活跃任务
 
 ## 说明
 
@@ -15,6 +15,11 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
+
+- **Public API 性能优化上线与隔离验证**
+  - 状态：`in_progress`
+  - 计划：`docs/current-plans/public-api-connection-performance.md`
+  - 摘要：已复现并修复同步桥与连接池的跨运行时死锁；42ed74f5 已上线并初验，采样器已持久化；观察端 DNS/管理通道异常，公开轻量接口可达，长窗口结果待读回
 
 - **官网重设计 / Research Workspace 重构 / Insights 同步大V速报 / 白名单邮箱登录**
   - 状态：`in_progress`

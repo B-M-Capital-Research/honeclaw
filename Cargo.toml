@@ -114,10 +114,11 @@ hone-event-engine = { path = "crates/hone-event-engine" }
 debug = 1
 incremental = false
 
-# Direct-source deployments need useful line-level backtraces without retaining
-# full dev debuginfo or incremental object graphs in every worktree.
+# Production must optimize CPU-heavy paths (including PostgreSQL SCRAM), while
+# retaining line-level backtraces and the existing source-runtime output path.
 [profile.source-runtime]
 inherits = "dev"
+opt-level = 3
 debug = 1
 incremental = false
 
