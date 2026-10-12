@@ -2069,17 +2069,18 @@ CREATE TABLE IF NOT EXISTS cloud_web_admin_actions (
 -- IF NOT EXISTS` 不会改它;只有约束定义里还没有 update_email 时才重建,
 -- 保持幂等,热路径上通常只多一次目录查询。
 DO $$
+DECLARE
+  action_constraint_oid oid;
 BEGIN
-  IF EXISTS (
-    SELECT 1
+  -- Resolve the visible table first. Calling pg_get_constraintdef in a catalog
+  -- filter lets the planner inspect constraints from other schemas before the
+  -- filter, including temporary relations concurrently being dropped.
+  SELECT c.oid INTO action_constraint_oid
     FROM pg_constraint c
-    JOIN pg_class t ON t.oid = c.conrelid
-    JOIN pg_namespace n ON n.oid = t.relnamespace
-    WHERE n.nspname = current_schema()
-      AND t.relname = 'cloud_web_admin_actions'
-      AND c.conname = 'cloud_web_admin_actions_action_check'
-      AND pg_get_constraintdef(c.oid) NOT LIKE '%update_email%'
-  ) THEN
+    WHERE c.conrelid = 'cloud_web_admin_actions'::regclass
+      AND c.conname = 'cloud_web_admin_actions_action_check';
+  IF action_constraint_oid IS NOT NULL
+     AND pg_get_constraintdef(action_constraint_oid) NOT LIKE '%update_email%' THEN
     ALTER TABLE cloud_web_admin_actions
       DROP CONSTRAINT cloud_web_admin_actions_action_check;
     ALTER TABLE cloud_web_admin_actions
@@ -7988,6 +7989,63 @@ mod tests {
         let source = include_str!("cloud_runtime.rs");
         assert!(source.contains("SET record = record - 'api_key_plaintext'"));
         assert!(source.contains("20260727_remove_web_invite_plaintext_api_keys"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn email_audit_migration_survives_concurrent_temporary_schema_teardown() {
+        let base = CloudPgRuntime::from_cloud_config(&CloudConfig::default())
+            .expect("PostgreSQL tests require HONE_POSTGRES_*");
+        let mut tasks = tokio::task::JoinSet::new();
+        for _ in 0..8 {
+            let base = base.clone();
+            tasks.spawn(async move {
+                for _ in 0..3 {
+                    let pg = base
+                        .with_isolated_test_connection(format!(
+                            "email_audit_{}",
+                            uuid::Uuid::new_v4().simple()
+                        ))
+                        .unwrap();
+                    pg.ensure_schema().await.unwrap();
+                    let db = pg.connect_cached_client().await.unwrap();
+                    db.batch_execute(
+                        "ALTER TABLE cloud_web_admin_actions
+                         DROP CONSTRAINT cloud_web_admin_actions_action_check;
+                         ALTER TABLE cloud_web_admin_actions
+                         ADD CONSTRAINT cloud_web_admin_actions_action_check
+                         CHECK (action IN ('create', 'disable'));",
+                    )
+                    .await
+                    .unwrap();
+                    pg.ensure_schema().await.unwrap();
+                    pg.ensure_schema().await.unwrap();
+                    let oid: u32 = db
+                        .query_one(
+                            "SELECT oid FROM pg_constraint
+                             WHERE conrelid = 'cloud_web_admin_actions'::regclass
+                               AND conname = 'cloud_web_admin_actions_action_check'",
+                            &[],
+                        )
+                        .await
+                        .unwrap()
+                        .get(0);
+                    let definition: String = db
+                        .query_one("SELECT pg_get_constraintdef($1)", &[&oid])
+                        .await
+                        .unwrap()
+                        .get(0);
+                    assert!(definition.contains("update_email"));
+                    // Remove the relation while the other tasks inspect catalogs.
+                    db.batch_execute("DROP TABLE cloud_web_admin_actions")
+                        .await
+                        .unwrap();
+                    pg.evict_cached_test_client();
+                }
+            });
+        }
+        while let Some(result) = tasks.join_next().await {
+            result.unwrap();
+        }
     }
 
     #[test]
