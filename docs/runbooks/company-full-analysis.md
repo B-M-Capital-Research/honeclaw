@@ -3,7 +3,7 @@
 - title: 公司完整分析任务、进度与 PDF
 - status: active
 - created_at: 2026-09-14
-- updated_at: 2026-10-11
+- updated_at: 2026-10-13
 - owner: HONE maintainers
 - related_files: crates/hone-web-api/src/routes/company_analysis/; skills/earnings-research/scripts/render_report_pdf.py
 
@@ -15,7 +15,9 @@ Dependencies: configured PostgreSQL, OpenRouter provider credentials, FMP and se
 
 Model transport (2026-10-11): nodes use `LlmResolver::openrouter_model_for_long_generation` — a 900 s HTTP deadline instead of the interactive 120 s total deadline (which also bounds a streamed body and used to cut long sections off), 32k output tokens, a 240 s idle and 720 s overall bound per call. A section that stops at the token limit is continued in the same conversation (up to two continuations). Each node gets four attempts with 5/20/45 s backoff. The configured model must accept `max_tokens=32000`.
 
-Prompts: `original/` is the verbatim, hash-pinned snapshot. `revisions/` replaces the `全跑完-美` valuation node (same 5.1/5.2/5.3 format, plus the shared valuation rules read from `skills/earnings-research/SKILL.md`, the raw quote/financial JSON and consensus/price-target data) and adds one short fact-discipline note per node. The report carries a `股票代码 · 研究日期` line under its title.
+Prompts (2026-10-13): chapters follow the verbatim 公司完整分析 Prompt V4 in `revisions/v4/prompt.md`; `v4.rs` gives each node the shared research framework, the method/model/valuation sections its chapter needs and only its own chapter outline (see `revisions/README.md`). The report opens with a title, a security/fiscal-year/time line and a short summary written after valuation, and ends with an appendix of sources, core assumptions and data gaps. `original/` remains the hash-pinned Dify snapshot (formatter, searches, illustration). Expect more sequential stages than before (chapter 2.5–2.8 → 4 → 5 → summary), so a run takes longer and uses more output tokens.
+
+Prompt canary: `HONE_CANARY_CONFIG=<config with OpenRouter/FMP/search keys> HONE_CANARY_COMPANY=MU bash tests/regression/manual/test_company_analysis_canary.sh` runs the same pipeline without a task row or OSS and writes `report.md`, `nodes/`, `usage.json` and `report.pdf` under `target/company-analysis-canary/<company>/`; rerunning resumes from `checkpoint.json`. `HONE_CANARY_OUT=<dir> cargo test -p hone-web-api --lib company_analysis_prompt_dump -- --ignored` writes each node's composed system prompt for review without calling a model.
 
 The shared earnings renderer requires Python 3, Chromium and CJK fonts. Deploy its whole `scripts/vendor/` directory (Mermaid, KaTeX, fonts and licenses), preserving the executable script and the existing membership image path. macOS prefers the installed Playwright headless shell because desktop Chrome can print missing CJK glyphs. Linux uses system Chromium. All rendering scripts/fonts are offline; external HTML resource loads are blocked by CSP.
 

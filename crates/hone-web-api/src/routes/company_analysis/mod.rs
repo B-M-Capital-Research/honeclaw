@@ -1,5 +1,6 @@
 //! Administrator-only company analysis, preserving the original full-US DAG.
 mod store;
+mod v4;
 mod workflow;
 
 use crate::state::AppState;

@@ -83,7 +83,7 @@ The host supplies automatically searched and read public source candidates in th
 
 ## Valuation rules — shared HONE revision
 
-The 2026-10-11 HONE valuation revision. The same block is used by 公司完整分析 (chapter 5), 财报分析 (chapter 7) and 财报前瞻 (1.2.3); the mode prompt below names where it applies. It refines only the valuation content; every other section keeps the original prompt.
+The 2026-10-11 HONE valuation revision, used by 财报分析 (chapter 7) and 财报前瞻 (1.2.3); the mode prompt below names where it applies. It refines only the valuation content; every other section keeps the original prompt. 公司完整分析 moved to its own Prompt V4 on 2026-10-13 and no longer reads this block.
 
 ```text
 【HONE 估值规则（2026-10-11 修订，三类报告共用）】

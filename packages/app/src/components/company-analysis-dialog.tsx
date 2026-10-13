@@ -29,7 +29,16 @@ export function CompanyAnalysisDialog(props: { openRequest: number; disabled: bo
     "财务分析": t("财务分析", "Financial analysis"),
     "全跑完-美": t("估值分析", "Valuation"),
     "基于报告内容生成名字": t("报告整理", "Report assembly"),
-  }[stage] ?? stage);
+    "v4.公司简介": t("公司简介", "Company overview"),
+    "v4.产品与商业模式": t("产品与商业模式", "Products and business model"),
+    "v4.产品分析附图": t("业务图解", "Business diagrams"),
+    "v4.竞争与价值传导": t("竞争与价值传导", "Competition and value drivers"),
+    "v4.管理团队": t("管理团队", "Management"),
+    "v4.财务分析": t("财务与前瞻模型", "Financials and forward model"),
+    "v4.估值分析": t("估值分析", "Valuation"),
+    "v4.标题与摘要": t("标题与摘要", "Title and summary"),
+    "v4.附录": t("来源与假设附录", "Sources and assumptions"),
+  }[stage] ?? stage.replace(/^v4\./, ""));
   const close = () => { if (!busy()) setOpen(false); };
   const running = () => task()?.status === "running";
 

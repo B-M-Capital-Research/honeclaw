@@ -2819,3 +2819,5 @@ Use this file as the historical entry point for completed or paused work that sh
 - 2026-09-08：流式 HTTP 529 有界重试，状态 `done`；[plan](plans/stream-http-529-retry-2026-09-08.md) / [handoff](../handoffs/stream-http-529-retry-2026-09-08.md) / [bug](../bugs/scheduler_heartbeat_minimax_http_transport_failure_no_retry.md)。41 测试与编译通过，P1 PostgreSQL/runtime 恢复留待运维。
 
 - 2026-10-11：三类报告（公司完整分析 / 财报分析 / 财报前瞻）可靠交付与共用估值 Prompt 修订，状态 `done`（待部署与真实 canary）；[handoff](../handoffs/2026-10-11-report-reliability-and-valuation-prompts.md) / decision `D-2026-10-11-02` / runbook `docs/runbooks/company-full-analysis.md`。PDF 失败不再丢失报告（主机复用/自行渲染/带说明交付 Markdown），公司分析长输出与传输修复、Markdown 下载；无内容门禁。
+
+- 2026-10-13：公司完整分析改用 Prompt V4（全章节，逐字保存并按节点选取），新增可复用真实 canary 脚本，状态 `done`（真实 canary 待跑）；[handoff](../handoffs/2026-10-13-company-analysis-prompt-v4.md) / decision `D-2026-10-13-01` / runbook `docs/runbooks/company-full-analysis.md` / regression `tests/regression/manual/test_company_analysis_canary.sh`。

@@ -147,7 +147,8 @@
 ## 财报前瞻 / 财报分析工作流约束
 
 - `skills/earnings-research/` 必须沿用直接迁移的 BamangResearch/Dify 原工作流、原阶段顺序和原 Prompt；修复内容质量时优先改进取数、搜索、Prompt、模型选择和真实 canary 评审，不得另建第二套内容裁判流程
-- Prompt 修订以“在原 Prompt 内叠加”的方式进行，不删除原有章节与要求：2026-10-11 起三类报告（财报前瞻 1.2.3、财报分析第 7 章、公司完整分析第 5 章）共用 `SKILL.md` 中 `## Valuation rules — shared HONE revision` 的同一份估值规则，公司完整分析在编译期读取它；公司完整分析的 `original/` 快照保持逐字（哈希由单测固定），修订放在 `routes/company_analysis/revisions/`。不得把整份单次报告 Prompt 塞进只输出单章的节点
+- Prompt 修订以“在原 Prompt 内叠加”的方式进行，不删除原有章节与要求：财报前瞻 1.2.3 与财报分析第 7 章共用 `SKILL.md` 中 `## Valuation rules — shared HONE revision` 的估值规则
+- 公司完整分析自 2026-10-13 起采用用户提供的《公司完整分析通用 Prompt V4》：逐字保存在 `routes/company_analysis/revisions/v4/prompt.md`（哈希由单测固定），由 `v4.rs` 按节点选取共用研究框架章节与本节点的章节目录，不改写原文；`original/` 快照仍逐字保留（财务指标整理、检索模板与业务图解继续使用）。不得把整份单次报告 Prompt 的全部章节目录塞进只输出单章的节点；换版时替换 `prompt.md` 与哈希，并用 `tests/regression/manual/test_company_analysis_canary.sh` 做真实 canary 评审
 - 终稿交付以“模型交给 renderer 的报告”为准：PDF 步骤无法完成时由主机复用已完成的 PDF、自行渲染或带“PDF 未生成”说明交付 Markdown，不得把已完成的报告丢弃；从未提交给 renderer 的模型失败说明不是报告
 - 不得在 MCP、runner、renderer、终稿组装或 PDF 链路重新引入机械内容门禁，包括但不限于：`evidence_manifest`、逐句/逐行来源映射、逐字摘录校验、报告全量 URL/数字覆盖、固定标题/字段/新闻数量/页数/句数、机构 schema、占位符/来源数量内容拒绝，以及由 validator 驱动的反复改写
 - 财报真实性由研究流程负责：事实缺失或矛盾时针对性搜索；仍不可核验时明确披露或省略；不得编造来源、URL、机构、引语、数字、事件或因果关系。模型必须综合成连贯中文分析，不得为证明出处而把英文搜索片段或 URL 清单直接当正文
