@@ -1,0 +1,34 @@
+--- a/server.mjs
++++ b/server.mjs
+@@ -401,6 +401,18 @@
+ }
+ 
+ function chatToAntigravityRequest(chat) {
++  // OpenAI tool results need only tool_call_id/content. Resolve the Gemini
++  // function name from the exact caller-visible id, including its signature.
++  const toolNames = new Map();
++  for (const msg of chat.messages || []) {
++    if (msg.role !== "assistant") continue;
++    for (const call of msg.tool_calls || []) {
++      if (typeof call.id === "string" && call.id &&
++          typeof call.function?.name === "string" && call.function.name) {
++        toolNames.set(call.id, call.function.name);
++      }
++    }
++  }
+   const systemParts = [];
+   const contents = [];
+   const push = (role, part) => {
+@@ -425,7 +437,11 @@
+         response = { result: text };
+       }
+       const { upstreamId } = decodeToolCallId(msg.tool_call_id);
+-      const functionResponse = { name: msg.name || "tool", response };
++      const name = toolNames.get(msg.tool_call_id) || msg.name;
++      if (typeof name !== "string" || !name.trim()) {
++        throw new Error("tool response has no matching function name");
++      }
++      const functionResponse = { name, response };
+       if (upstreamId) functionResponse.id = upstreamId;
+       push("user", { functionResponse });
+       continue;

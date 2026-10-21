@@ -332,6 +332,19 @@ Custom providers use explicit OpenCode execution budgets (default context
 capacity. Keep `0 < output_max_tokens < context_window`; the built-in OpenRouter
 route keeps its own model metadata.
 
+The existing Gemini proxy must also preserve standard OpenAI multi-turn tool
+messages. `role=tool` messages need not include `name`: recover the function name
+from the matching assistant `tool_calls[].id`, using the exact encoded ID so
+thought signatures survive unchanged. Do not substitute a generic `tool` name.
+A first-turn forced tool call is insufficient: verify both the tool call and a
+second request containing its result without `name`, then a full earnings report.
+The 2026-10-21 recovery retained a minimal proxy patch under
+`scripts/patches/gemini-proxy-tool-response-names.patch`; apply it to a private
+copy first, compare the deployed source hash, and retain an owner-only rollback.
+Do not commit the full host proxy source or its OAuth state. Use a separate
+loopback port and copied private auth state for a shadow canary before restarting
+the live proxy during an idle interval.
+
 The OpenRouter credential remains in canonical config under
 `llm.providers.openrouter.api_key/api_keys`; it is injected into the OpenCode
 child and must not be copied into `agent.opencode`, an environment file, the

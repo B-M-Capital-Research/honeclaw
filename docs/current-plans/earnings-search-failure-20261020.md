@@ -57,6 +57,7 @@
 - [x] 验证现有 Gemini 纯文本和工具调用能力，以及新 Tavily key 的真实搜索。
 - [x] 在 config/earnings runner/OpenCode provider 层支持配置指定的可信供应商，保留当前轮隔离、管理员和 PDF/artifact 边界；不改原 Prompt、不新增内容门禁。
 - [ ] 补充旧 OpenRouter 兼容、自定义 provider、缺失/无效配置及凭证路由回归；运行定向 Rust/回归与部署必需门禁。
+- [ ] 修复现有 Gemini 代理的标准 OpenAI 工具结果兼容：按 tool_call_id 恢复函数名；保留最小补丁、无账号回归和真实双轮/整报告证据，更新 backend-deployment runbook 与原 handoff。
 - [ ] 原子更新受保护 canonical 配置与精确 revision 部署，保留回滚；避免打断活跃用户任务。
 - [ ] 使用独立 actor 做真实 WDC 前瞻，核对成功搜索、近期资料、模型身份、PDF 与持久化交付。
 - [x] 更新 docs/runbooks/backend-deployment.md、docs/runbooks/opencode-setup.md、docs/invariants.md 与 docs/repo-map.md 的供应商路由约定，记录必要 decision。
@@ -65,3 +66,7 @@
 ### Recovery risks
 
 现有 Gemini 代理的聊天能力与已失败的 Google grounding 是不同路径，必须分别实测。新 key 只通过 stdin 进入受保护文件，不进入仓库或日志。真实 canary 必须有时间/成本边界，失败保留报告和精确错误。
+
+### 2026-10-21 canary finding
+
+首次真实 WDC canary 在 todowrite 后第二轮返回 Gemini 400。对同一响应做有/无工具 name 对照：省略 name 时 400，提供正确 name 时 200/OK；OpenCode 按标准省略 name，既有代理错误补为 tool。范围扩展到代理协议修复，原 Prompt 和内容质量流程不变。

@@ -82,3 +82,17 @@
 ## Next Entry Point
 
 先按 `docs/runbooks/backend-deployment.md` 的财报供应商诊断顺序恢复实际模型余额和搜索路径，再执行隔离报告 canary；不要以重复点击失败任务来验证配额是否恢复。
+
+
+## 2026-10-21 恢复阶段（in_progress）
+
+用户授权现有 Gemini 替代财报专用 OpenRouter 模型，并提供新 Tavily key。
+从 origin/main `f7d87aff` 建独立恢复分支，未混入原工作区本地 V4 提交或其它未提交工作。
+实现 `agent.earnings_workflow.provider` 指定服务器注册的 OpenAI-compatible provider，默认 OpenRouter 兼容；自定义凭据只注入隔离子进程环境，不序列化到 OpenCode 配置。
+
+首个精确 revision `5ad8e7ba` 的 WDC canary 在首次 todowrite 后第二轮返回 Gemini 400。
+同一工具调用做对照：标准消息省略工具 name 返回 400，补正确 name 返回 200/OK。
+根因是既有代理把省略 name 的工具结果替换成 `tool`，与实际调用名不一致；OpenCode 按标准省略该字段，thought signature 在本地事件和会话存储中完整保留。
+恢复范围包含最小代理协议补丁和多轮回归；原研究 Prompt、内容治理和 renderer 边界均未改变。
+
+阶段验证：Rust workspace 2919 passed / 0 failed / 121 ignored；cargo check 通过；Web 669 passed；Worker typecheck 与 45 tests 通过；原有 25 个 CI regression 脚本 24 通过，finance automation 为 40/50，与 origin/main `f7d87aff` 相同 10 项失败，后续 14 项逐项完成。未把已有失败描述为全绿。
