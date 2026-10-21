@@ -1,7 +1,7 @@
 # Current Plan Index
 
 最后更新：2026-10-21
-状态：有 17 个活跃任务
+状态：有 16 个活跃任务
 
 ## 说明
 
@@ -15,11 +15,6 @@
   - 如已有计划页，移入 `docs/archive/plans/*.md`
 
 ## 活跃任务
-
-- **财报 Gemini 路由切换与搜索恢复**
-  - 状态：`in_progress`
-  - 计划：`docs/current-plans/earnings-search-failure-20261020.md`
-  - 摘要：用户授权使用现有 Gemini 替代财报 OpenRouter，并恢复 Tavily 搜索，完成真实报告验收后上线
 
 - **Public API 性能优化上线与隔离验证**
   - 状态：`in_progress`

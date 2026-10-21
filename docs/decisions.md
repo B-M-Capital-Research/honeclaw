@@ -1868,7 +1868,7 @@ implementation work.
 ## D-2026-10-21-01 Config-owned earnings provider routing
 
 - title: 财报专用路由支持现有 OpenAI-compatible 供应商
-- status: accepted（实现/上线验证进行中）
+- status: deployed（2026-10-21 精确 runtime / canonical config / 真实搜索验收完成）
 - created_at: 2026-10-21
 - updated_at: 2026-10-21
 - owner: Codex / user-authorized recovery

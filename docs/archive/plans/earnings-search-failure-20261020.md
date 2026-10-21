@@ -1,7 +1,7 @@
 # 财报前瞻失败与资料新鲜度排查
 
 - title: 财报前瞻失败与资料新鲜度排查
-- status: in_progress（2026-10-21 用户授权现有 Gemini 替换及 Tavily 恢复）
+- status: archived（2026-10-21 已上线并完成恢复验收）
 - created_at: 2026-10-20
 - updated_at: 2026-10-21
 - owner: Codex
@@ -15,6 +15,8 @@
   - docs/runbooks/backend-deployment.md
   - docs/runbooks/opencode-setup.md
   - docs/handoffs/2026-09-13-earnings-workflow-refactor.md
+
+以下初始 Scope/Validation/Risks 保留 10 月 20 日诊断阶段；后续用户授权恢复范围与结果见 2026-10-21 节。
 
 ## Goal
 
@@ -56,12 +58,12 @@
 
 - [x] 验证现有 Gemini 纯文本和工具调用能力，以及新 Tavily key 的真实搜索。
 - [x] 在 config/earnings runner/OpenCode provider 层支持配置指定的可信供应商，保留当前轮隔离、管理员和 PDF/artifact 边界；不改原 Prompt、不新增内容门禁。
-- [ ] 补充旧 OpenRouter 兼容、自定义 provider、缺失/无效配置及凭证路由回归；运行定向 Rust/回归与部署必需门禁。
-- [ ] 修复现有 Gemini 代理的标准 OpenAI 工具结果兼容：按 tool_call_id 恢复函数名；保留最小补丁、无账号回归和真实双轮/整报告证据，更新 backend-deployment runbook 与原 handoff。
-- [ ] 原子更新受保护 canonical 配置与精确 revision 部署，保留回滚；避免打断活跃用户任务。
-- [ ] 使用独立 actor 做真实 WDC 前瞻，核对成功搜索、近期资料、模型身份、PDF 与持久化交付。
+- [x] 补充旧 OpenRouter 兼容、自定义 provider、缺失/无效配置及凭证路由回归；运行定向 Rust/回归与部署必需门禁。
+- [x] 修复现有 Gemini 代理的标准 OpenAI 工具结果兼容：按 tool_call_id 恢复函数名；保留最小补丁、无账号回归和真实双轮/整报告证据，更新 backend-deployment runbook 与原 handoff。
+- [x] 原子更新受保护 canonical 配置与精确 revision 部署，保留回滚；避免打断活跃用户任务。
+- [x] 使用独立 actor 做真实 WDC 前瞻，核对成功搜索、近期资料、模型身份、PDF 与持久化交付。
 - [x] 更新 docs/runbooks/backend-deployment.md、docs/runbooks/opencode-setup.md、docs/invariants.md 与 docs/repo-map.md 的供应商路由约定，记录必要 decision。
-- [ ] 更新原 handoff 为已恢复/验证状态，归档本计划并同步 docs/current-plan.md 和 docs/archive/index.md。
+- [x] 更新原 handoff 为已恢复/验证状态，归档本计划并同步 docs/current-plan.md 和 docs/archive/index.md。
 
 ### Recovery risks
 
@@ -70,3 +72,18 @@
 ### 2026-10-21 canary finding
 
 首次真实 WDC canary 在 todowrite 后第二轮返回 Gemini 400。对同一响应做有/无工具 name 对照：省略 name 时 400，提供正确 name 时 200/OK；OpenCode 按标准省略 name，既有代理错误补为 tool。范围扩展到代理协议修复，原 Prompt 和内容质量流程不变。
+
+### 完整 canary 与上线阶段
+
+- 现有 medium 档：WDC 完整前瞻 166.3 秒成功，10 次搜索/10 credits、4 份主机预取原文、1 次 renderer/1.543 秒、9 页 PDF；重启后历史/下载/哈希一致。
+- 人工复核记录 DCF 无量化桥的调整、部分机构来源呈现缺口及五级标题排版问题；不能把技术闭环当作事实质量全验收，也未新增内容门禁。
+- 同账号 flash-high 完整对照亦技术成功，但 DCF 算术错误、最新新闻使用和来源呈现未改善；最终选择现有 medium，不扩大模型试验。
+- 线上代理最小补丁已接受：精确源码 SHA `11d831f2aa58dd5428d08bb4d63aca48cfaaae4884b6fe7159d30c43b13f01bc`，无 name 标准工具双轮均 200；canonical config 切换另行验收。精确 runtime 构建 `39608620192`、export `39613151201` 均成功，正部署同一 `5ad8e7ba` 不可变产物。
+
+
+### 最终状态
+
+- 2026-10-21 22:09:40（北京时间）`5ad8e7ba` 精确运行包和 canonical 配置已上线，provider/model/key 生效读回、真实搜索、Web/Feishu 及 PG/OSS 双轮验收完成。
+- 独立 medium/high 报告对照已完成，选择 medium；原 Prompt/阶段顺序/renderer 内容边界不变。研究质量、legacy MCP 元数据和不同 OpenCode 版本验证范围在 handoff 明示。
+- 原工作区未更改；临时 canary/PG/SSH/shadow 已清理，凭据不进入仓库。PR #59 承载应用/代理补丁与文档。
+- 计划移入 `docs/archive/plans/`，活跃索引移除并更新历史索引；无需继续把已完成供应商恢复保留为活跃任务。

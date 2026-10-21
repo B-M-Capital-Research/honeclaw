@@ -1,8 +1,6 @@
 --- a/server.mjs
 +++ b/server.mjs
-@@ -401,6 +401,18 @@
- }
- 
+@@ -403,4 +403,16 @@
  function chatToAntigravityRequest(chat) {
 +  // OpenAI tool results need only tool_call_id/content. Resolve the Gemini
 +  // function name from the exact caller-visible id, including its signature.

@@ -1,9 +1,9 @@
 # 财报前瞻失败与搜索资料缺失诊断
 
 - title: 财报前瞻失败与搜索资料缺失诊断
-- status: done（诊断完成；供应商恢复与恢复后完整报告验收待执行）
+- status: done / deployed（供应商及技术交付已恢复；研究质量和遗留 MCP 风险见下）
 - created_at: 2026-10-20
-- updated_at: 2026-10-20
+- updated_at: 2026-10-21
 - owner: Codex
 - related_files:
   - crates/hone-channels/src/core/bot_core.rs
@@ -17,13 +17,13 @@
   - docs/runbooks/backend-deployment.md
   - docs/handoffs/2026-09-13-earnings-workflow-refactor.md
   - docs/handoffs/2026-10-11-report-reliability-and-valuation-prompts.md
-- related_prs: none
+- related_prs: https://github.com/B-M-Capital-Research/honeclaw/pull/59
 
 ## Summary
 
-此次调查已区分三个供应商故障：财报专用 OpenRouter 账户余额不足；主搜索 Gemini 请求返回 404；回退 Tavily 达到套餐额度上限。它们分别解释近期整条前瞻失败与此前 PDF 成功但缺少最新网页资料。
+此次调查已区分三个供应商故障：财报专用 OpenRouter 账户余额不足；主搜索 Gemini 请求返回 404；回退 Tavily 达到套餐额度上限。它们分别解释近期整条前瞻失败与此前 PDF 成功但缺少最新网页资料。2026-10-21 已按用户授权上线现有 Gemini 专用路由和新 Tavily 凭证，修复代理多轮工具协议；隔离 WDC 前瞻和线上配置/服务/搜索验收完成。
 
-以下任务时间均为北京时间。诊断不等于恢复验收；没有更改生产代码、模型、凭证、额度或服务进程，也没有重放用户任务。
+以下任务时间均为北京时间。接下来 What Changed、Verification、Risks / Follow-ups 与 Next Entry Point 保留 10 月 20 日诊断阶段快照；当时未修改生产或重放用户任务。10 月 21 日用户授权的恢复结果见后续章节。
 
 ## What Changed
 
@@ -84,7 +84,7 @@
 先按 `docs/runbooks/backend-deployment.md` 的财报供应商诊断顺序恢复实际模型余额和搜索路径，再执行隔离报告 canary；不要以重复点击失败任务来验证配额是否恢复。
 
 
-## 2026-10-21 恢复阶段（in_progress）
+## 2026-10-21 恢复阶段（done / deployed）
 
 用户授权现有 Gemini 替代财报专用 OpenRouter 模型，并提供新 Tavily key。
 从 origin/main `f7d87aff` 建独立恢复分支，未混入原工作区本地 V4 提交或其它未提交工作。
@@ -96,3 +96,43 @@
 恢复范围包含最小代理协议补丁和多轮回归；原研究 Prompt、内容治理和 renderer 边界均未改变。
 
 阶段验证：Rust workspace 2919 passed / 0 failed / 121 ignored；cargo check 通过；Web 669 passed；Worker typecheck 与 45 tests 通过；原有 25 个 CI regression 脚本 24 通过，finance automation 为 40/50，与 origin/main `f7d87aff` 相同 10 项失败，后续 14 项逐项完成。未把已有失败描述为全绿。
+
+
+第二轮隔离 canary 的搜索已恢复（主机预取 2 次、模型搜索 8 次全部成功，4 次 news/month，4 份原文正文），但技能加载进程退出，未调用 renderer。最小 stdio 复现证实 `SkillTool::persist_invoked_skill` 仍调用测试构造器 `SessionStorage::new`；缺少 `HONE_POSTGRES_*` 时 panic。线上进程确有全部五项 PG 环境变量，本地隔离配置原先只内联 YAML；补临时数据库环境后同样技能调用退出 0 且无 stderr，因此按线上环境契约重跑。
+
+已知遗留项（本次不扩大修改）：`crates/hone-tools/src/skill_tool.rs` 中 invoked-skill 元数据持久化误走隔离测试 schema；即使配置 PG 环境也不能写入真实会话。它与宿主消息及 PDF 附件持久化不是同一入口。后续应改用配置所属 PostgreSQL runtime，并对真实 actor 会话元数据追加测试；不要把此 canary 环境修正表述为已修复该持久化问题。
+
+
+### 完整 Gemini canary 对照与选择
+
+两轮均使用 runtime `5ad8e7ba`、同一原 Prompt/skills、同一供应商身份和修复后的 shadow proxy；独立本地 PostgreSQL 与测试 actor，不重放生产用户会话。
+
+| 配置 | 终态 / 时间 | 搜索 / 原文 | Renderer / PDF | 人工复核 |
+| --- | --- | --- | --- | --- |
+| gemini-3.8-flash-medium | success / 166.3 秒 | 10 次成功、10 credits；4 份预取正文 | 1 次 / 1.543 秒；9 页、2,644,989 bytes | 连贯中文、Q1 FY2027 / 上期 Q4 一致，近期 10/16、10/20 消息进入终稿；DCF $175.37 跳至 $415–440 无量化桥，机构出处呈现不足 |
+| gemini-3.8-flash-high | success / 145.5 秒 | 11 次成功、11 credits；4 份预取正文 | 1 次 / 0.993 秒；9 页、2,687,911 bytes | 本次样本未见改善；终值现值写 1284.5 亿，而按自身输入应约 509.16 亿；财报日期与预取电话会日期矛盾；未有效综合返回的 10/20–21 消息 |
+
+选择保留 `gemini-3.8-flash-medium`；没有根据档位名称推定质量更好。medium 的主机历史/PDF 在重启隔离服务后仍可下载且 SHA256 不变：`7361a200b8e1f400bf58dd85cdcc47ac8a73716fc7f9f4f11131846268d3da1e`。9 页逐页查看，主体没有裁切/重叠，但 H5 Markdown 标记仍以文字显示；未把测试 PDF 当作内容和排版均已合格的对外交付。
+
+medium 模型累计输入/输出 900,785/15,347 tokens，high 为 659,039/16,778；自定义 provider cost 字段为 0，不是已核实的费用或免费结论。两轮都有可恢复的数据类型/目录/grep 错误，均未重现 Gemini 400 或 MCP 断开。完整 canary 只证明实际取材、模型执行、技术交付和附件持久化恢复；事实和估值质量仍须后续研究流程迭代，未新增自动内容门禁。
+
+最小证据保存在操作者目录 `honeclaw-artifacts/earnings-gemini-recovery-20261021/`：`canary/medium-high-canary-comparison.json`、两轮 `observed-tool-evidence.json`、medium `persistence-after-restart.json` 与 renderer 原稿/PDF；密钥及会话凭据不进入仓库。
+
+
+### 生产切换与最终验收
+
+- 北京时间 **2026-10-21 22:09:40** 完成验收；生产精确 runtime 为 `5ad8e7ba980407711147f0900cd68d4e1d77debd`，来源 `ghcr_linux_oci`。应用改动在该提交，代理最小补丁及无账号回归在 `fb043599`；后续文档提交不改变已部署二进制。
+- [构建 39608620192](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/39608620192)、[导出 39613151201](https://github.com/B-M-Capital-Research/honeclaw/actions/runs/39613151201) 均成功。镜像 digest `sha256:e4c7dc8e786ac44c8830d4a588f98909c527a3629bd482b6ce29e94bcc443f86`；导出 tar SHA256 `a2e736b19c4ad62a0355e0839381db8bd2b5c92cf7aba336986d70a06a245ce7`。本机下载遇网络 EOF，改由部署主机经短期 artifact URL 下载相同产物，校验一致；GitHub 凭据没有传给生产，也没有在生产编译。
+- `/srv/honeclaw/config.yaml` 与 `/srv/honeclaw/data/runtime/effective-config.yaml` 读回一致：`opencode_acp / gemini_build / gemini-3.8-flash-medium`，执行预算 `context_window=131072 / output_max_tokens=32768`，搜索 `https://api.tavily.com/search`，实际所选 key 与用户提供值一致。旧 `/var/lib/hone/data/runtime/effective-config.yaml` 仍不是本服务真相源。
+- 保留其它配置、`/etc/hone/runtime.env`、公开站点和 earnings skill 链接；新旧版本之间无数据库迁移。三次空闲检查后向 CLI 主进程发 SIGINT，确认旧监听和 Web/Feishu 锁释放，再启动精确版本；没有强杀或双实例竞争。
+- 新 Web 和 Feishu 的 cgroup、锁持有者、进程路径、二进制哈希均通过，跨 metadata cache 的两轮验收成功；`hone-web.service` 为 active、`NRestarts=0`、主 PID `3691590`。PostgreSQL/OSS 健康，cloud authoritative、local durable dependencies=0；skills 并发读取、公开页面 fallback 和匿名接口 401 均通过。
+- 线上真实 Tavily 查询 HTTP 200、3 条结果；用量 API 亦 HTTP 200，返回 Researcher / plan_limit=1000（即时 plan_usage=0 仅为该 API 快照，不据此推断 canary 无计费）。代理源码 SHA256 为 `11d831f2aa58dd5428d08bb4d63aca48cfaaae4884b6fe7159d30c43b13f01bc`，上线时标准无 name 工具结果双轮均 HTTP 200。
+- OpenCode 生产版本 1.18.13 对隔离 `hone_earnings` provider/model/budgets 的解析已单独验证；本地完整 canary 使用 1.19.0。没有向生产聊天写入合成报告，也没有声称已重跑全部历史失败用户任务。财报分析模式未另做完整报告 canary。
+- 私有部署脚本通过 17 项故障注入/原子写/回滚/锁/版本/冷启动等待测试；首次验收有界等待通道子进程就绪，35 秒后的复验保持严格检查。CI 新代理回归通过，原 finance 基线失败范围未扩大。
+
+### 留存、回滚与后续入口
+
+- 私有服务端证据：`/var/lib/hone/deployments/earnings-gemini-20261021/` 内的 `runtime-cutover/acceptance.json`、`runtime-cutover/config.before.yaml`、`runtime-cutover/rollback.json`、`runtime-cutover.log`、`proxy-cutover/acceptance.json`、`live-verification.json`。本机最小证据：`/Users/bytedance/Desktop/honeclaw-artifacts/earnings-gemini-recovery-20261021/` 下 canary 对照/PDF/原稿、测试日志、runtime 下载/验收日志。涉及凭据或会话的文件仅留在受保护目录，不进仓库。
+- `/opt/hone/previous` 指向 `1ca6197c5c9efb1fa4affe6b7a458fd25cacb8fd-ghcr-runtime`。若回滚应用，必须同时恢复 `config.before.yaml`，旧二进制不支持新的 earnings provider 字段；按 backend-deployment runbook 的空闲/SIGINT/停止确认/精确版本验收执行，不能仅换链接。该回滚会重新暴露旧 OpenRouter 余额和搜索供应商故障；代理协议修复可独立保留。
+- 临时本地 canary 服务、专用 PostgreSQL 和两个 SSH 转发已停止；shadow proxy 已停止且其复制的 OAuth 文件删除；临时本地明文 canary 配置已删除，保留脱敏配置。原生产 OAuth 文件未被替换，正式代理和 Web 继续 active。
+- 下一步如继续改善研究质量，应从原 Prompt 内的估值推导、针对性原文读取和机构出处披露入手，以真实样本人工/模型评审验证，不能增加机械内容拒绝。另行修复已记录的 invoked-skill 元数据误用测试 schema 问题并保留真实 actor 回归。本次供应商恢复已完成，以上不是已验证解决的问题。
