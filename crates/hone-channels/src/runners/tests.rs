@@ -5,6 +5,7 @@ use hone_core::agent::{
 };
 use hone_core::config::{
     AgentConversationStrategy, CodexAcpConfig, GeminiAcpConfig, OpencodeAcpConfig,
+    OpencodeProviderOverride,
 };
 use hone_core::{ActorIdentity, ToolExecutionObserver};
 use hone_memory::restore_tool_message;
@@ -34,9 +35,9 @@ use super::gemini_cli::{
     render_gemini_cli_tool_status,
 };
 use super::opencode_acp::{
-    build_opencode_acp_prompt_text, configured_opencode_model_id, effective_opencode_args,
-    handle_opencode_session_update, isolated_opencode_config, opencode_api_key_log_status,
-    resolve_command_path_with_env,
+    build_opencode_acp_prompt_text, configure_opencode_credentials, configured_opencode_model_id,
+    effective_opencode_args, handle_opencode_session_update, isolated_opencode_config,
+    opencode_api_key_log_status, resolve_command_path_with_env,
 };
 use super::tool_reasoning::{
     RunnerToolObserver, render_runner_tool_label, runner_context_messages,
@@ -273,6 +274,99 @@ fn explicit_openrouter_route_overrides_global_provider_filters() {
         payload["provider"]["openrouter"]["options"]
             .get("apiKey")
             .is_none()
+    );
+}
+
+fn custom_earnings_opencode_config() -> OpencodeAcpConfig {
+    OpencodeAcpConfig {
+        model: "vendor/exact-model".to_string(),
+        provider_override: Some(OpencodeProviderOverride {
+            id: "hone_earnings".to_string(),
+            api_base_url: "http://127.0.0.1:8898/v1".to_string(),
+            api_key: "custom-provider-test-secret".to_string(),
+            context_window: 131_072,
+            output_max_tokens: 32_768,
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn custom_opencode_provider_preserves_exact_model_and_isolates_the_route_without_writing_a_key() {
+    let mut config = custom_earnings_opencode_config();
+    // An explicit custom provider must win even if the ordinary route had
+    // OpenRouter settings. The workflow resolver also clears these fields.
+    config.api_base_url = "https://openrouter.ai/api/v1".to_string();
+    config.openrouter_api_key = Some("sk-or-unrelated-test-secret".to_string());
+    assert_eq!(
+        configured_opencode_model_id(&config).as_deref(),
+        Some("hone_earnings/vendor/exact-model")
+    );
+    let rendered = isolated_opencode_config(&config);
+    assert!(!rendered.contains("custom-provider-test-secret"));
+    assert!(!rendered.contains("sk-or-unrelated-test-secret"));
+    let payload: Value = serde_json::from_str(&rendered).unwrap();
+    assert_eq!(
+        payload["enabled_providers"],
+        serde_json::json!(["hone_earnings"])
+    );
+    assert_eq!(payload["disabled_providers"], serde_json::json!([]));
+    assert!(payload["provider"].get("openrouter").is_none());
+    let provider = &payload["provider"]["hone_earnings"];
+    assert_eq!(provider["npm"], "@ai-sdk/openai-compatible");
+    assert_eq!(provider["options"]["baseURL"], "http://127.0.0.1:8898/v1");
+    assert_eq!(
+        provider["options"]["apiKey"],
+        "{env:HONE_OPENCODE_PROVIDER_API_KEY}"
+    );
+    assert_eq!(provider["models"].as_object().unwrap().len(), 1);
+    assert_eq!(
+        provider["models"]["vendor/exact-model"]["name"],
+        "vendor/exact-model"
+    );
+    assert_eq!(
+        provider["models"]["vendor/exact-model"]["limit"]["context"],
+        131_072
+    );
+    assert_eq!(
+        provider["models"]["vendor/exact-model"]["limit"]["output"],
+        32_768
+    );
+    assert_eq!(payload["model"], "hone_earnings/vendor/exact-model");
+    for agent in ["plan", "build"] {
+        assert_eq!(payload["agent"][agent]["model"], payload["model"]);
+    }
+    for tool in ["bash", "edit", "webfetch", "websearch", "skill", "task"] {
+        assert_eq!(payload["permission"][tool], "deny");
+    }
+    assert_eq!(payload["permission"]["external_directory"]["*"], "deny");
+}
+
+#[test]
+fn custom_opencode_credential_is_scoped_to_the_child_environment() {
+    let config = custom_earnings_opencode_config();
+    let mut command = tokio::process::Command::new("opencode");
+    configure_opencode_credentials(&mut command, &config);
+    let env: HashMap<_, _> = command.as_std().get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("HONE_OPENCODE_PROVIDER_API_KEY")],
+        Some(std::ffi::OsStr::new("custom-provider-test-secret"))
+    );
+    assert_eq!(env[std::ffi::OsStr::new("OPENROUTER_API_KEY")], None);
+
+    let config = OpencodeAcpConfig {
+        openrouter_api_key: Some("legacy-test-secret".to_string()),
+        ..Default::default()
+    };
+    configure_opencode_credentials(&mut command, &config);
+    let env: HashMap<_, _> = command.as_std().get_envs().collect();
+    assert_eq!(
+        env[std::ffi::OsStr::new("HONE_OPENCODE_PROVIDER_API_KEY")],
+        None
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("OPENROUTER_API_KEY")],
+        Some(std::ffi::OsStr::new("legacy-test-secret"))
     );
 }
 

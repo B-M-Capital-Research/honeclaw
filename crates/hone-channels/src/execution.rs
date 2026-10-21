@@ -185,7 +185,7 @@ impl ExecutionService {
             }
             ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator => self
                 .core
-                .create_openrouter_opencode_runner_with_model_override(
+                .create_earnings_opencode_runner_with_model_override(
                     tool_registry,
                     request.model_override.as_deref(),
                 )?,
@@ -708,6 +708,43 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("OpenRouter credential"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn prepare_routes_verified_earnings_to_explicit_compatible_provider_without_openrouter() {
+        let root = temp_root("execution_earnings_custom_provider");
+        let core = make_test_core(&root, "codex_acp").await;
+        let mut core = match Arc::try_unwrap(core) {
+            Ok(core) => core,
+            Err(_) => panic!("test core should have a unique owner"),
+        };
+        core.config.agent.earnings_workflow.provider = "gemini_build".to_string();
+        core.config.llm.providers.insert(
+            "gemini_build".to_string(),
+            hone_core::config::LlmProviderEntryConfig {
+                kind: "openai_compatible".to_string(),
+                base_url: "http://127.0.0.1:8898/v1".to_string(),
+                api_key: "test-compatible-provider-key".to_string(),
+                ..Default::default()
+            },
+        );
+        assert!(core.config.llm.openrouter_key_pool().is_empty());
+        let actor = ActorIdentity::new("web", "database-admin", None::<String>).expect("actor");
+        let mut request = make_request(
+            actor,
+            ExecutionMode::PersistentConversation,
+            ExecutionRunnerSelection::OpencodeAcpTrustedAdministrator,
+        );
+        request.model_override = Some("gemini-example".to_string());
+        let prepared = ExecutionService::new(Arc::new(core))
+            .prepare(request)
+            .expect("explicit compatible provider should not require an OpenRouter credential");
+        assert_eq!(prepared.runner_name, "opencode_acp");
+        assert!(matches!(
+            prepared.runner_request.conversation,
+            crate::runners::RunnerConversationInput::EphemeralCompiledPrompt { .. }
+        ));
         let _ = std::fs::remove_dir_all(root);
     }
 

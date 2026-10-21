@@ -1,6 +1,6 @@
 # Runbook: Backend Deployment
 
-Last updated: 2026-09-13
+Last updated: 2026-10-21
 
 ## When to Use
 
@@ -286,9 +286,9 @@ because the new binary image is active. Before cutover:
    workflow PDF sharing page; a direct shell smoke with inherited environment
    does not prove the skill subprocess can find it.
 
-### Earnings workflow OpenRouter route
+### Earnings workflow provider route
 
-The 2026-09-13 TEM comparison selected Claude Opus 4.8 for the production earnings route, using the unchanged original Dify prompts. The repository default remains configurable; explicitly set the reviewed model when provisioning a host.
+The 2026-09-13 TEM comparison selected OpenRouter Claude Opus 4.8. On 2026-10-21 the user requested the existing Gemini provider because the OpenRouter account was out of credits. Provider/model changes require a complete report canary with the unchanged original prompts; a text or tool-call smoke alone does not establish report quality.
 
 The administrator-only earnings preview and earnings analysis turns have a
 dedicated runner/model route. They do not inherit the global chat model:
@@ -297,8 +297,40 @@ dedicated runner/model route. They do not inherit the global chat model:
 agent:
   earnings_workflow:
     runner: "opencode_acp"
+    provider: "openrouter" # backward-compatible default
     model: "anthropic/claude-opus-4.8"
 ```
+
+To bind an existing OpenAI-compatible provider, set the dedicated provider and
+exact model explicitly:
+
+```yaml
+agent:
+  earnings_workflow:
+    runner: "opencode_acp"
+    provider: "gemini_build"
+    model: "gemini-3.8-flash-medium"
+    context_window: 131072
+    output_max_tokens: 32768
+llm:
+  providers:
+    gemini_build:
+      kind: "openai_compatible"
+      base_url: "http://127.0.0.1:8898/v1"
+      api_key: "" # provision through the protected secret path
+```
+
+The server resolves only the named `llm.providers` entry and creates an isolated
+OpenCode `hone_earnings` provider using `@ai-sdk/openai-compatible`. The credential
+is passed as `HONE_OPENCODE_PROVIDER_API_KEY` to the child; generated OpenCode
+JSON contains only an environment reference. Unknown/empty providers, missing
+credentials and incompatible provider kinds fail explicitly. This route never
+silently falls back to OpenRouter or changes ordinary chat. The default
+`provider=openrouter` retains the existing OpenRouter key-pool compatibility.
+Custom providers use explicit OpenCode execution budgets (default context
+131072 and output 32768 tokens); these are operator limits, not inferred model
+capacity. Keep `0 < output_max_tokens < context_window`; the built-in OpenRouter
+route keeps its own model metadata.
 
 The OpenRouter credential remains in canonical config under
 `llm.providers.openrouter.api_key/api_keys`; it is injected into the OpenCode
@@ -313,6 +345,7 @@ Before restart, validate only non-secret fields and credential presence:
 
 ```text
 agent.earnings_workflow.runner = opencode_acp
+agent.earnings_workflow.provider = openrouter
 agent.earnings_workflow.model = anthropic/claude-opus-4.8
 llm.providers.openrouter.kind = openrouter
 llm.providers.openrouter.base_url = https://openrouter.ai/api/v1
@@ -328,6 +361,10 @@ complete the forced `earnings-research` skill and persist/download its PDF.
 Missing credentials, an unsupported workflow runner, a different response
 model, or fallback to the global model is a stop condition.
 
+For a custom provider, check its exact configured kind/base URL/model and require
+`hone_earnings/<model>` in the ACP trace. Do not rely on a proxy's static models
+list; execute a real tool round trip through the configured model.
+
 An explicit OpenRouter route must remain enabled even when the operator's global
 OpenCode config filters providers. The isolated runtime config sets
 `enabled_providers=["openrouter"]` and clears `disabled_providers` only when an
@@ -339,6 +376,35 @@ reachable at the same address on a workstation. Use a loopback-only SSH forward
 for that approved proxy and override only the isolated canary config. Never copy
 production user/session/database state. Verify one search response and direct
 public source reading before judging a report produced from missing inputs.
+
+For failed reports, distinguish model admission, source retrieval and PDF
+delivery before changing the renderer or prompts:
+
+- Resolve the live service's canonical and effective configuration paths first.
+  Old effective-config files elsewhere on the host are not evidence of the active
+  route. Print only the search endpoint, key count and selected model; never dump
+  the config or process environment.
+- Check the actual `search.endpoint`. A loopback Tavily-compatible proxy can
+  use separate upstream authentication and a fallback provider. Identify that
+  route before probing usage. `scripts/diagnose_fmp_tavily.sh` currently calls
+  Tavily directly and does not honor the custom endpoint, so it cannot by itself
+  validate the proxy. A minimal real search must use the active route.
+- With the actual upstream credential kept in memory, Tavily's authenticated
+  `GET /usage` can distinguish key and account usage. Retain only the usage/limit
+  fields and HTTP status. A plan-limit response is not proof of an expired key.
+- For the dedicated OpenRouter route, inspect authenticated `GET /api/v1/key`
+  and `GET /api/v1/credits` separately. A key can have ample weekly allowance
+  while the account balance (`total_credits - total_usage`) cannot cover a model
+  request's reservation. An in-flight-credit rejection before any renderer call
+  is a model admission failure, not a PDF error.
+- Correlate the report's exact ACP session with search results and renderer
+  completion. A successful PDF does not prove source acquisition succeeded:
+  retrieval remains best effort, with missing evidence disclosed or omitted by
+  the research process. Do not add a content-rejection gate as an outage fix.
+
+After restoring provider availability, run one isolated complete report and
+inspect its current sources, news dates and downloadable artifact. Connectivity
+and balance probes alone do not establish report-quality acceptance.
 
 The renderer stages output with per-attempt Chromium profiles and a total budget
 below the host's 120-second script timeout. It recognizes a complete PDF even

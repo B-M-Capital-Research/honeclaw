@@ -50,6 +50,9 @@ pub(crate) fn earnings_workflow_execution_override(
     if model.is_empty() {
         return Err("agent.earnings_workflow.model must not be empty".to_string());
     }
+    if config.provider.trim().is_empty() {
+        return Err("agent.earnings_workflow.provider must not be empty".to_string());
+    }
     Ok(TrustedChatExecutionOverride {
         runner,
         runner_name: "opencode_acp",
@@ -953,6 +956,10 @@ mod tests {
         let mut missing_model = EarningsWorkflowConfig::default();
         missing_model.model.clear();
         assert!(earnings_workflow_execution_override(&missing_model).is_err());
+
+        let mut missing_provider = EarningsWorkflowConfig::default();
+        missing_provider.provider.clear();
+        assert!(earnings_workflow_execution_override(&missing_provider).is_err());
     }
 
     /// Public chat must tell the user what the turn is waiting on, in product
