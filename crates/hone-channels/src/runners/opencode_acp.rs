@@ -40,6 +40,7 @@ use super::types::{
 
 const OPENCODE_ACP_SESSION_KEY: &str = "opencode_acp_session_id";
 const OPENCODE_LOG_DETAIL_CHARS: usize = 400;
+const CUSTOM_PROVIDER_API_KEY_ENV: &str = "HONE_OPENCODE_PROVIDER_API_KEY";
 // Preserve a complete draft and the exact renderer diagnostics while the
 // native session is still healthy. Once OpenCode compacts, AgentSession starts
 // a fresh isolated process and carries the rejected draft forward instead.
@@ -233,7 +234,11 @@ pub(crate) fn configured_opencode_model_id(config: &OpencodeAcpConfig) -> Option
             .unwrap_or(false)
         || config.api_key.starts_with("sk-or-");
 
-    let model = if is_openrouter && !model.starts_with("openrouter/") {
+    let model = if let Some(provider) = &config.provider_override {
+        // The configured model is the exact upstream model id, even when it
+        // contains a slash. Only this transport layer adds the OpenCode id.
+        format!("{}/{model}", provider.id)
+    } else if is_openrouter && !model.starts_with("openrouter/") {
         format!("openrouter/{model}")
     } else {
         model.to_string()
@@ -447,7 +452,31 @@ pub(crate) fn isolated_opencode_config(config: &OpencodeAcpConfig) -> String {
     });
 
     let api_base_url = config.api_base_url.trim();
-    if !api_base_url.is_empty() {
+    if let Some(provider) = &config.provider_override {
+        payload["enabled_providers"] = serde_json::json!([provider.id]);
+        payload["disabled_providers"] = serde_json::json!([]);
+        payload["provider"] = serde_json::json!({
+            (&provider.id): {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "HONE earnings provider",
+                "options": {
+                    "baseURL": provider.api_base_url,
+                    "apiKey": format!("{{env:{CUSTOM_PROVIDER_API_KEY_ENV}}}")
+                },
+                "models": {
+                    (config.model.trim()): {
+                        "name": config.model.trim(),
+                        // Custom models otherwise default to zero limits in
+                        // OpenCode. These are operator-selected run budgets.
+                        "limit": {
+                            "context": provider.context_window,
+                            "output": provider.output_max_tokens
+                        }
+                    }
+                }
+            }
+        });
+    } else if !api_base_url.is_empty() {
         // OPENCODE_CONFIG is merged with the operator's global config. A
         // global enabled_providers allowlist must not hide this explicit route.
         payload["enabled_providers"] = serde_json::json!(["openrouter"]);
@@ -500,6 +529,36 @@ fn prepare_opencode_runtime(
     Ok(config_path)
 }
 
+pub(crate) fn configure_opencode_credentials(
+    command: &mut tokio::process::Command,
+    config: &OpencodeAcpConfig,
+) {
+    if let Some(provider) = &config.provider_override {
+        command.env_remove("OPENROUTER_API_KEY");
+        command.env(CUSTOM_PROVIDER_API_KEY_ENV, &provider.api_key);
+    } else {
+        // No custom provider is allowed to reuse an ambient credential from a
+        // prior route; ordinary OpenCode auth behaviour otherwise stays intact.
+        command.env_remove(CUSTOM_PROVIDER_API_KEY_ENV);
+        if let Some(key) = configured_openrouter_api_key(config) {
+            command.env("OPENROUTER_API_KEY", key);
+        }
+    }
+}
+
+fn configured_openrouter_api_key(config: &OpencodeAcpConfig) -> Option<&str> {
+    if config.provider_override.is_some() {
+        None
+    } else if !config.api_key.trim().is_empty() {
+        Some(config.api_key.trim())
+    } else {
+        config
+            .openrouter_api_key
+            .as_deref()
+            .filter(|key| !key.trim().is_empty())
+    }
+}
+
 async fn run_opencode_acp(
     config: &OpencodeAcpConfig,
     timeouts: RunnerTimeouts,
@@ -525,16 +584,11 @@ async fn run_opencode_acp(
     })?;
     let opencode_config_path = prepare_opencode_runtime(config, &request.working_directory)?;
 
-    let injected_openrouter_api_key = if !config.api_key.trim().is_empty() {
-        Some(config.api_key.trim())
+    let api_key_status = if config.provider_override.is_some() {
+        format!("{CUSTOM_PROVIDER_API_KEY_ENV} injected from Hone config")
     } else {
-        config
-            .openrouter_api_key
-            .as_deref()
-            .filter(|key| !key.trim().is_empty())
+        opencode_api_key_log_status(configured_openrouter_api_key(config)).to_string()
     };
-
-    let api_key_status = opencode_api_key_log_status(injected_openrouter_api_key);
     let model_status = configured_opencode_model_id(config)
         .map(|model| format!("model={}", opencode_log_detail(&model)))
         .unwrap_or_else(|| "model=<not set, using opencode default>".to_string());
@@ -563,12 +617,9 @@ async fn run_opencode_acp(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     configure_acp_command_process_group(&mut command);
-    // opencode 的 provider.openrouter 配置不支持 apiKey 字段；Hone 只在用户把 key
-    // 写入 config.yaml 时把它桥接给子进程。若 Hone 未显式注入，则继续使用用户本机
-    // opencode 的 auth / provider 配置。
-    if let Some(api_key) = injected_openrouter_api_key {
-        command.env("OPENROUTER_API_KEY", api_key);
-    }
+    // Keys stay in the child environment; the custom provider config contains
+    // only an env reference, and the legacy OpenRouter path keeps its own key.
+    configure_opencode_credentials(&mut command, config);
 
     let child = command.spawn().map_err(|e| AgentSessionError {
         kind: AgentSessionErrorKind::SpawnFailed,

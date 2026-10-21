@@ -19,7 +19,10 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use hone_core::cloud_runtime::CloudPgRuntime;
-use hone_core::config::{AgentConversationStrategy, AgentRunnerKind, HoneConfig};
+use hone_core::config::{
+    AgentConversationStrategy, AgentRunnerKind, HoneConfig, OpencodeAcpConfig,
+    OpencodeProviderOverride,
+};
 use hone_core::{ActorIdentity, LlmAuditSink};
 use hone_event_engine::EventStore;
 use hone_llm::{LlmProvider, LlmResolver};
@@ -782,7 +785,7 @@ impl HoneBotCore {
         )))
     }
 
-    pub(crate) fn create_openrouter_opencode_runner_with_model_override(
+    pub(crate) fn create_earnings_opencode_runner_with_model_override(
         &self,
         _tool_registry: ToolRegistry,
         model_override: Option<&str>,
@@ -792,20 +795,7 @@ impl HoneBotCore {
             return Ok(factory());
         }
 
-        let model = model_override
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "earnings workflow OpenRouter model is missing".to_string())?;
-        let pool = self.config.llm.openrouter_key_pool();
-        let key = pool.first().ok_or_else(|| {
-            "earnings workflow OpenRouter credential is missing from config".to_string()
-        })?;
-        let mut opencode_config = self.config.agent.opencode.clone();
-        opencode_config.model = model.to_string();
-        opencode_config.variant = String::new();
-        opencode_config.api_base_url = "https://openrouter.ai/api/v1".to_string();
-        opencode_config.api_key.clear();
-        opencode_config.openrouter_api_key = Some(key.to_string());
+        let opencode_config = earnings_opencode_config(&self.config, model_override)?;
         Ok(Box::new(OpencodeAcpRunner::new(
             opencode_config,
             RunnerTimeouts {
@@ -955,6 +945,81 @@ impl HoneBotCore {
     }
 }
 
+/// Resolve only the server-selected earnings provider. A missing or invalid
+/// explicit route must never borrow the ordinary chat/OpenRouter credential.
+fn earnings_opencode_config(
+    config: &HoneConfig,
+    model_override: Option<&str>,
+) -> Result<OpencodeAcpConfig, String> {
+    let model = model_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "earnings workflow model is missing".to_string())?;
+    let provider_name = config.agent.earnings_workflow.provider.trim();
+    if provider_name.is_empty() {
+        return Err("agent.earnings_workflow.provider must not be empty".to_string());
+    }
+    let mut opencode = config.agent.opencode.clone();
+    opencode.model = model.to_string();
+    opencode.variant.clear();
+    opencode.api_key.clear();
+    opencode.openrouter_api_key = None;
+    opencode.provider_override = None;
+    if provider_name == "openrouter" {
+        let pool = config.llm.openrouter_key_pool();
+        let key = pool.first().ok_or_else(|| {
+            "earnings workflow OpenRouter credential is missing from config".to_string()
+        })?;
+        opencode.api_base_url = "https://openrouter.ai/api/v1".to_string();
+        opencode.openrouter_api_key = Some(key.to_string());
+        return Ok(opencode);
+    }
+
+    let provider = config.llm.providers.get(provider_name).ok_or_else(|| {
+        "earnings workflow provider is not configured in llm.providers".to_string()
+    })?;
+    if provider.kind.trim() != "openai_compatible" {
+        return Err("earnings workflow provider kind must be openai_compatible".to_string());
+    }
+    let context_window = config.agent.earnings_workflow.context_window;
+    let output_max_tokens = config.agent.earnings_workflow.output_max_tokens;
+    if context_window == 0 || output_max_tokens == 0 || output_max_tokens >= context_window {
+        return Err(
+            "earnings workflow custom provider requires 0 < output_max_tokens < context_window"
+                .to_string(),
+        );
+    }
+    let api_base_url = provider.base_url.trim();
+    let endpoint = reqwest::Url::parse(api_base_url).map_err(|_| {
+        "earnings workflow provider base_url must be a valid HTTP(S) URL".to_string()
+    })?;
+    if !matches!(endpoint.scheme(), "http" | "https")
+        || endpoint.host_str().is_none()
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.query().is_some()
+        || endpoint.fragment().is_some()
+    {
+        return Err(
+            "earnings workflow provider base_url must be HTTP(S) without credentials, query or fragment"
+                .to_string(),
+        );
+    }
+    let pool = provider.effective_key_pool();
+    let key = pool.first().ok_or_else(|| {
+        "earnings workflow provider credential is missing from config".to_string()
+    })?;
+    opencode.api_base_url.clear();
+    opencode.provider_override = Some(OpencodeProviderOverride {
+        id: "hone_earnings".to_string(),
+        api_base_url: api_base_url.to_string(),
+        api_key: key.to_string(),
+        context_window,
+        output_max_tokens,
+    });
+    Ok(opencode)
+}
+
 fn cloud_cron_storage_failure(error: &impl std::fmt::Display) -> String {
     format!("PostgreSQL cron 存储初始化失败: {error}")
 }
@@ -968,6 +1033,137 @@ fn configured_event_store_path(config: &HoneConfig) -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("./data"))
         .join("event-store")
+}
+
+#[cfg(test)]
+mod earnings_provider_tests {
+    use super::earnings_opencode_config;
+    use hone_core::config::{HoneConfig, LlmProviderEntryConfig};
+
+    fn custom_provider_config() -> HoneConfig {
+        let mut config = HoneConfig::default();
+        config.agent.earnings_workflow.provider = "gemini_build".to_string();
+        config.llm.providers.insert(
+            "gemini_build".to_string(),
+            LlmProviderEntryConfig {
+                kind: "openai_compatible".to_string(),
+                base_url: "http://127.0.0.1:8898/v1".to_string(),
+                api_keys: vec!["configured-gemini-test-key".to_string()],
+                ..Default::default()
+            },
+        );
+        config
+    }
+
+    #[test]
+    fn default_earnings_route_preserves_legacy_openrouter_key_pool() {
+        let mut config = HoneConfig::default();
+        config.llm.openrouter.api_key = "legacy-openrouter-test-key".to_string();
+        config.agent.opencode.api_key = "ordinary-chat-key".to_string();
+        config.agent.opencode.variant = "high".to_string();
+        let route = earnings_opencode_config(&config, Some("google/example-model")).unwrap();
+        assert_eq!(route.model, "google/example-model");
+        assert_eq!(route.api_base_url, "https://openrouter.ai/api/v1");
+        assert_eq!(
+            route.openrouter_api_key.as_deref(),
+            Some("legacy-openrouter-test-key")
+        );
+        assert!(route.provider_override.is_none());
+        assert!(route.api_key.is_empty());
+        assert!(route.variant.is_empty());
+    }
+
+    #[test]
+    fn explicit_earnings_provider_uses_only_its_configured_route() {
+        let mut config = custom_provider_config();
+        config.llm.openrouter.api_key = "unrelated-openrouter-key".to_string();
+        config.agent.opencode.api_key = "ordinary-chat-key".to_string();
+        config.agent.opencode.api_base_url = "https://ordinary.example/v1".to_string();
+        config.agent.opencode.variant = "high".to_string();
+        let route = earnings_opencode_config(&config, Some("vendor/exact-model")).unwrap();
+        assert_eq!(route.model, "vendor/exact-model");
+        assert!(route.api_key.is_empty());
+        assert!(route.api_base_url.is_empty());
+        assert!(route.openrouter_api_key.is_none());
+        assert!(route.variant.is_empty());
+        let provider = route.provider_override.unwrap();
+        assert_eq!(provider.id, "hone_earnings");
+        assert_eq!(provider.api_base_url, "http://127.0.0.1:8898/v1");
+        assert_eq!(provider.api_key, "configured-gemini-test-key");
+        assert_eq!(provider.context_window, 131_072);
+        assert_eq!(provider.output_max_tokens, 32_768);
+        assert_eq!(config.agent.opencode.api_key, "ordinary-chat-key");
+    }
+
+    #[test]
+    fn invalid_explicit_earnings_provider_never_falls_back_to_openrouter() {
+        let mut config = custom_provider_config();
+        config.llm.openrouter.api_key = "otherwise-valid-openrouter-key".to_string();
+        for provider in ["", " ", "missing"] {
+            config.agent.earnings_workflow.provider = provider.to_string();
+            assert!(earnings_opencode_config(&config, Some("model")).is_err());
+        }
+        config.agent.earnings_workflow.provider = "gemini_build".to_string();
+        config.llm.providers.get_mut("gemini_build").unwrap().kind = "google".to_string();
+        assert!(earnings_opencode_config(&config, Some("model")).is_err());
+        let provider = config.llm.providers.get_mut("gemini_build").unwrap();
+        provider.kind = "openai_compatible".to_string();
+        provider.api_keys.clear();
+        assert!(earnings_opencode_config(&config, Some("model")).is_err());
+    }
+
+    #[test]
+    fn custom_earnings_execution_budgets_must_leave_room_for_input() {
+        let mut config = custom_provider_config();
+        for (context, output) in [
+            (0, 32_768),
+            (131_072, 0),
+            (32_768, 32_768),
+            (16_384, 32_768),
+        ] {
+            config.agent.earnings_workflow.context_window = context;
+            config.agent.earnings_workflow.output_max_tokens = output;
+            assert!(earnings_opencode_config(&config, Some("model")).is_err());
+        }
+        config.agent.earnings_workflow.context_window = 262_144;
+        config.agent.earnings_workflow.output_max_tokens = 65_536;
+        let provider = earnings_opencode_config(&config, Some("model"))
+            .unwrap()
+            .provider_override
+            .unwrap();
+        assert_eq!(provider.context_window, 262_144);
+        assert_eq!(provider.output_max_tokens, 65_536);
+        // The built-in route keeps provider-owned model metadata.
+        config.agent.earnings_workflow.provider = "openrouter".to_string();
+        config.agent.earnings_workflow.context_window = 0;
+        config.agent.earnings_workflow.output_max_tokens = 0;
+        config.llm.openrouter.api_key = "openrouter-test-key".to_string();
+        assert!(earnings_opencode_config(&config, Some("model")).is_ok());
+    }
+
+    #[test]
+    fn earnings_provider_rejects_invalid_or_credential_bearing_endpoints_without_echoing_them() {
+        let mut config = custom_provider_config();
+        for endpoint in [
+            "",
+            "not-a-url",
+            "file:///etc/secret-test-value",
+            "https://secret-test-value@example.test/v1",
+            "https://user:secret-test-value@example.test/v1",
+            "https://example.test/v1?api_key=secret-test-value",
+            "https://example.test/v1#secret-test-value",
+        ] {
+            config
+                .llm
+                .providers
+                .get_mut("gemini_build")
+                .unwrap()
+                .base_url = endpoint.to_string();
+            let error = earnings_opencode_config(&config, Some("model")).unwrap_err();
+            assert!(!error.contains("secret-test-value"));
+        }
+        assert!(earnings_opencode_config(&custom_provider_config(), Some(" ")).is_err());
+    }
 }
 
 #[cfg(test)]

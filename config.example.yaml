@@ -774,7 +774,16 @@ agent:
     # Administrator-only earnings preview/analysis route. This does not change
     # the runner or model used by ordinary conversations.
     runner: "opencode_acp"
+    # Defaults to the legacy-compatible OpenRouter route. To use another provider,
+    # name an llm.providers entry with kind=openai_compatible, base_url and api_key/api_keys.
+    provider: "openrouter"
+    # Exact model id exposed by the selected provider, without an OpenCode prefix.
     model: "google/gemini-3.1-pro-preview"
+    # Custom-provider OpenCode execution budgets, not claims about model capacity.
+    # Set within the endpoint's supported limits; require 0 < output < context.
+    # The built-in OpenRouter route continues using its own model metadata.
+    context_window: 131072
+    output_max_tokens: 32768
   hone_cloud:
     # Hosted service route seeded by this sample; runtime appends /api/public/v1/chat/completions when needed.
     base_url: "https://hone-claw.com"

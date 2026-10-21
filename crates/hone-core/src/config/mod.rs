@@ -26,6 +26,7 @@ pub use agent::{
     AuxiliaryLlmConfig, CodexAcpConfig, EarningsWorkflowConfig, GeminiAcpConfig, HoneCloudConfig,
     KimiConfig, LlmConfig, LlmProfileEntryConfig, LlmProfileParamsConfig, LlmProviderEntryConfig,
     LlmProviderOptionsConfig, LlmReasoningConfig, OpenRouterConfig, OpencodeAcpConfig,
+    OpencodeProviderOverride,
 };
 pub use channels::{
     ChatScope, DiscordConfig, DiscordGroupReplyConfig, DiscordWatchConfig, FeishuConfig,

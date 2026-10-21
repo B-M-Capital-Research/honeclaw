@@ -495,17 +495,30 @@ pub struct EarningsWorkflowConfig {
     /// Dedicated trusted runner for the administrator-only earnings workflows.
     #[serde(default = "default_earnings_workflow_runner")]
     pub runner: String,
+    /// Provider registry entry used only for this workflow. The default keeps
+    /// the historical OpenRouter route and its legacy config-only key pool.
+    #[serde(default = "default_provider")]
+    pub provider: String,
     /// Exact provider model id. OpenCode adds its provider prefix at the
-    /// transport boundary after the OpenRouter credential route is resolved.
+    /// transport boundary after the configured credential route is resolved.
     #[serde(default = "default_earnings_workflow_model")]
     pub model: String,
+    /// OpenCode execution budget for a custom provider, not a claim about the
+    /// model's physical capacity. Ignored by the built-in OpenRouter route.
+    #[serde(default = "default_earnings_context_window")]
+    pub context_window: u32,
+    #[serde(default = "default_earnings_output_max_tokens")]
+    pub output_max_tokens: u32,
 }
 
 impl Default for EarningsWorkflowConfig {
     fn default() -> Self {
         Self {
             runner: default_earnings_workflow_runner(),
+            provider: default_provider(),
             model: default_earnings_workflow_model(),
+            context_window: default_earnings_context_window(),
+            output_max_tokens: default_earnings_output_max_tokens(),
         }
     }
 }
@@ -613,6 +626,31 @@ pub struct OpencodeAcpConfig {
     /// `OpenRouter` API Key（运行时注入，来自 config.yaml 的 `OpenRouter` key pool，不写入 YAML）
     #[serde(skip)]
     pub openrouter_api_key: Option<String>,
+    /// Trusted per-turn OpenAI-compatible route, never read from or written to YAML.
+    #[serde(skip)]
+    pub provider_override: Option<OpencodeProviderOverride>,
+}
+
+#[derive(Clone)]
+pub struct OpencodeProviderOverride {
+    pub id: String,
+    pub api_base_url: String,
+    pub api_key: String,
+    pub context_window: u32,
+    pub output_max_tokens: u32,
+}
+
+impl std::fmt::Debug for OpencodeProviderOverride {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("OpencodeProviderOverride")
+            .field("id", &self.id)
+            .field("api_base_url", &self.api_base_url)
+            .field("api_key", &"<redacted>")
+            .field("context_window", &self.context_window)
+            .field("output_max_tokens", &self.output_max_tokens)
+            .finish()
+    }
 }
 
 impl Default for OpencodeAcpConfig {
@@ -625,6 +663,7 @@ impl Default for OpencodeAcpConfig {
             api_base_url: default_opencode_api_base_url(),
             api_key: String::new(),
             openrouter_api_key: None,
+            provider_override: None,
         }
     }
 }
@@ -776,6 +815,12 @@ fn default_earnings_workflow_runner() -> String {
 fn default_earnings_workflow_model() -> String {
     "google/gemini-3.1-pro-preview".to_string()
 }
+fn default_earnings_context_window() -> u32 {
+    131_072
+}
+fn default_earnings_output_max_tokens() -> u32 {
+    32_768
+}
 fn default_opencode_api_base_url() -> String {
     String::new()
 }
@@ -808,6 +853,52 @@ fn default_opencode_args() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{AgentConversationStrategy, AgentRunnerKind};
+
+    #[test]
+    fn earnings_provider_defaults_to_openrouter_but_keeps_explicit_selection() {
+        let legacy: super::EarningsWorkflowConfig =
+            serde_yaml::from_str("model: google/gemini-3.1-pro-preview\n").unwrap();
+        assert_eq!(legacy.provider, "openrouter");
+        assert_eq!(legacy.context_window, 131_072);
+        assert_eq!(legacy.output_max_tokens, 32_768);
+        assert_eq!(
+            super::EarningsWorkflowConfig::default().provider,
+            "openrouter"
+        );
+        let selected: super::EarningsWorkflowConfig =
+            serde_yaml::from_str("provider: gemini_build\nmodel: gemini-example\n").unwrap();
+        assert_eq!(selected.provider, "gemini_build");
+        let empty: super::EarningsWorkflowConfig = serde_yaml::from_str("provider: ''\n").unwrap();
+        assert!(
+            empty.provider.is_empty(),
+            "explicit empty must not silently select OpenRouter"
+        );
+    }
+
+    #[test]
+    fn opencode_provider_override_is_runtime_only_and_debug_redacts_its_key() {
+        let config = super::OpencodeAcpConfig {
+            provider_override: Some(super::OpencodeProviderOverride {
+                id: "hone_earnings".to_string(),
+                api_base_url: "http://127.0.0.1:8898/v1".to_string(),
+                api_key: "private-runtime-test-key".to_string(),
+                context_window: 131_072,
+                output_max_tokens: 32_768,
+            }),
+            ..Default::default()
+        };
+        let yaml = serde_yaml::to_string(&config).unwrap();
+        assert!(!yaml.contains("provider_override"));
+        assert!(!yaml.contains("private-runtime-test-key"));
+        assert!(!format!("{config:?}").contains("private-runtime-test-key"));
+        let restored: super::OpencodeAcpConfig = serde_yaml::from_str(&yaml).unwrap();
+        assert!(restored.provider_override.is_none());
+        let injected: super::OpencodeAcpConfig = serde_yaml::from_str(
+            "provider_override: {id: untrusted, api_base_url: 'http://127.0.0.1', api_key: ignored}\n",
+        )
+        .unwrap();
+        assert!(injected.provider_override.is_none());
+    }
 
     #[test]
     fn agent_default_daily_conversation_limit_is_one_hundred() {

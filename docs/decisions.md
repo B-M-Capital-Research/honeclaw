@@ -1249,6 +1249,7 @@ Last updated: 2026-10-12
 - Terminal clause partially superseded_by: `D-2026-10-11-02`. When the PDF step cannot complete, the host now closes from the report the model submitted to the renderer (host render, else Markdown with a PDF-missing note) instead of discarding it; model prose never submitted to the renderer still fails closed.
 - Content/renderer clauses superseded by: `D-2026-08-10-01`. OpenCode routing, current-turn isolation, exact failure recovery, buffered output, actor-owned PDF persistence, and terminal enforcement remain active.
 - Problem: model override alone cannot move an earnings turn from a globally configured Codex ACP runner to Gemini. Passing `google/gemini-3.1-pro-preview` to Codex would select an invalid Codex model, while changing the global runner would also change ordinary chat. A per-turn runner switch also changes context ownership: Codex needs one current native turn, whereas OpenCode needs Hone's fresh ephemeral compiled replay containing the invoked skill and retained context.
+- Provider transport binding superseded by `D-2026-10-21-01`; the remaining authority and workflow boundaries stay in force.
 - Decision: `agent.earnings_workflow` owns the exact trusted route and defaults to `runner=opencode_acp`, `model=google/gemini-3.1-pro-preview`. Only the Web API branch that has reauthenticated a public administrator and recognized the structured/direct earnings activation may create the internal `AgentRunRunnerOverride`. `AgentSession` rejects that override without verified administrator prompt authority, disables native-Codex input/observation behavior for the turn, and `ExecutionService` constructs OpenCode independently of the global runner. Ordinary chat continues using its existing global runner and model.
 - Credential boundary: the model string is safe configuration; the OpenRouter API key is not. Runtime reuses the config-owned `llm.providers.openrouter.api_key/api_keys` pool, injects the selected key into the OpenCode child only, and derives the transport model `openrouter/google/gemini-3.1-pro-preview`. No provider key may be committed, passed as a command argument, written into protocol fixtures, or logged. A missing credential or invalid workflow route fails truthfully instead of falling back to another provider/model.
 - Skill/PDF consequence: the earnings skill is runner-neutral. It assembles the complete render JSON in memory and calls the host-side `skill_tool` script boundary on Codex or OpenCode; it does not require an actor-local spec file and does not launch a fallback renderer.
@@ -1862,3 +1863,19 @@ implementation work.
 - Governance: none of this inspects or scores report content. Mode routing, payload transport, artifact closure, timeouts and retries are technical boundaries consistent with `D-2026-08-12-01`.
 - Verification: see the handoff; production quality still needs real canaries (one company analysis, one analysis, one preview).
 - Risks: a host-rendered or Markdown-only closure reflects the model's submitted draft, which may not have passed a later in-session fix; the host render adds up to ~115 s at the end of a failing run; the larger valuation sections increase output length, cost and latency.
+
+
+## D-2026-10-21-01 Config-owned earnings provider routing
+
+- title: 财报专用路由支持现有 OpenAI-compatible 供应商
+- status: deployed（2026-10-21 精确 runtime / canonical config / 真实搜索验收完成）
+- created_at: 2026-10-21
+- updated_at: 2026-10-21
+- owner: Codex / user-authorized recovery
+- related_files: `crates/hone-core/src/config/agent.rs`; `crates/hone-channels/src/core/bot_core.rs`; `crates/hone-channels/src/execution.rs`; `crates/hone-channels/src/runners/opencode_acp.rs`
+- related_docs: `docs/runbooks/backend-deployment.md`; `docs/runbooks/opencode-setup.md`; `docs/handoffs/2026-10-20-earnings-search-diagnosis.md`
+- supersedes: the OpenRouter-only transport binding of `D-2026-08-05-02`; administrator authority, original prompts and all report/PDF boundaries remain unchanged.
+- Context: 近期 WDC 前瞻在 OpenRouter 余额不足时失败，用户明确要求使用现有 Gemini；主搜索 Gemini grounding 已返回 404，Tavily 回退额度也已耗尽。
+- Decision: `agent.earnings_workflow.provider` 默认 `openrouter` 保持旧配置兼容；显式配置绑定可信 `llm.providers` 中的 `openai_compatible` entry。OpenCode 使用独立 `hone_earnings` provider 与精确 model，秘密只注入子进程环境。缺失/错误配置直接报错，不静默切换供应商。用户提供的新 Tavily key 经验证后直接用于官方搜索 endpoint，独立于 Gemini 聊天路径。
+- Verification: 默认兼容、provider 错误路径、模型映射和凭证不落盘回归；现有 Gemini 文本/工具调用、Tavily 真实查询及完整 WDC 前瞻验收，结果见 handoff。
+- Risks: 文本与工具 smoke 不证明长报告质量；Gemini 兼容代理静态 models 列表可能过时，必须实测精确配置。模型切换不修改 Prompt 或引入内容裁判。

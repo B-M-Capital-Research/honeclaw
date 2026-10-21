@@ -1,6 +1,6 @@
 # Runbook: OpenCode Setup
 
-Last updated: 2026-08-05
+Last updated: 2026-10-21
 
 ## When to Use
 
@@ -220,6 +220,7 @@ global runner unchanged and configure the dedicated per-turn route instead:
 agent:
   earnings_workflow:
     runner: "opencode_acp"
+    provider: "openrouter"
     model: "google/gemini-3.1-pro-preview"
 
 llm:
@@ -237,6 +238,18 @@ pool to inject `OPENROUTER_API_KEY` only into the OpenCode child and converts
 the workflow model to `openrouter/google/gemini-3.1-pro-preview` at the
 transport boundary. Ordinary conversations still use `agent.runner` and its
 normal model.
+
+The earnings route can also bind an existing `llm.providers` entry with
+`kind: openai_compatible`: set `agent.earnings_workflow.provider` to that exact
+entry name and `model` to its exact model ID. For example, the managed Gemini
+provider uses `gemini_build` and `gemini-3.8-flash-medium`. Hone registers a
+separate `hone_earnings` OpenCode provider, routes Chat Completions to that
+entry's `base_url`, and injects its key only via
+`HONE_OPENCODE_PROVIDER_API_KEY`. The generated JSON uses an environment
+reference, and the transport model becomes `hone_earnings/<model>`. Missing or
+invalid configuration stops the turn instead of falling back to OpenRouter.
+See `docs/runbooks/backend-deployment.md` for protected configuration and the
+complete report/PDF acceptance procedure.
 
 If you explicitly want Hone to override your local OpenCode default, then add:
 

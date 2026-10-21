@@ -1,6 +1,22 @@
 # Archive Index
 
-Last updated: 2026-10-12
+Last updated: 2026-10-21
+
+## 2026-10-21
+
+### 财报 Gemini 替换与 Tavily 搜索恢复
+
+- Status: done / deployed；研究质量和遗留 invoked-skill 元数据问题另行留档。
+- Plan: `docs/archive/plans/earnings-search-failure-20261020.md`
+- Handoff: `docs/handoffs/2026-10-20-earnings-search-diagnosis.md`
+- Decision: `docs/decisions.md#d-2026-10-21-01-config-owned-earnings-provider-routing`
+- PR: https://github.com/B-M-Capital-Research/honeclaw/pull/59
+- Runtime: `5ad8e7ba980407711147f0900cd68d4e1d77debd`；代理补丁/回归 `fb043599`。
+- Build / export: https://github.com/B-M-Capital-Research/honeclaw/actions/runs/39608620192 / https://github.com/B-M-Capital-Research/honeclaw/actions/runs/39613151201
+- Runbooks: `docs/runbooks/backend-deployment.md`、`docs/runbooks/opencode-setup.md`
+- Verification: Rust 2919 / Web 669 / Worker 45；25/26 CI regression 通过，finance 同基线 10 项失败；两轮隔离真实 WDC、9 页 PDF 逐页查看及 medium 重启持久化；精确 Linux 版本/配置/标准工具双轮/线上 Tavily/存储/进程与锁验收通过。
+- Conclusion: 财报 OpenRouter 余额不足、搜索 Gemini 404 和 Tavily 额度耗尽均被真实响应定位；用户授权切换为现有 Gemini medium 与新 key 直连 Tavily，协议补丁解决第二轮 Gemini 400。原 Prompt 与内容边界不变，未重放生产用户任务。
+- Next entry: 估值推导/机构出处的研究流程质量迭代，以及独立 MCP 元数据持久化修复；不要把技术成功解释为报告全部事实合格。
 
 ## 2026-10-12
 
