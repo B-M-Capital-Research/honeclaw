@@ -22,7 +22,8 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use hone_channels::prompt::DEFAULT_FINANCE_DOMAIN_POLICY;
+const FINANCE_RESEARCH_CORE_SKILL: &str =
+    include_str!("../../../skills/finance-research-core/SKILL.md");
 use hone_core::config::HoneConfig;
 use hone_llm::{LlmProvider, Message, OpenAiCompatibleProvider, OpenRouterProvider};
 
@@ -122,7 +123,7 @@ fn judge(raw: &str, case: &CaseSpec) -> (bool, String) {
 
 async fn run_case(spec: &ModelSpec, case: &CaseSpec) -> Result<CaseResult> {
     let system_prompt = format!(
-        "你是金融分析助手。严格遵守以下领域边界与投研约束：\n\n{DEFAULT_FINANCE_DOMAIN_POLICY}\n\n请用简体中文回答。"
+        "你是金融分析助手。严格遵守以下领域边界与投研约束：\n\n{FINANCE_RESEARCH_CORE_SKILL}\n\n请用简体中文回答。"
     );
     let messages = vec![
         Message {

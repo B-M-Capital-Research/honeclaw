@@ -115,6 +115,7 @@ PUBLIC_CHAT_STATE="packages/app/src/lib/public-chat.ts"
 PUBLIC_CHAT_TYPES="packages/app/src/lib/types.ts"
 SCHEDULER="crates/hone-channels/src/scheduler.rs"
 SOUL="soul.md"
+FINANCE_CORE_SKILL="skills/finance-research-core/SKILL.md"
 AGENT_DISCOVERY_IMPL="$(sed -n '/pub(crate) fn build_agent_discovered_investment(/,/^fn tool_call_targets_entity(/p' "$INVESTMENT_GUARD")"
 AGENT_DISCOVERY_CONTEXT_IMPL="$(sed -n '/fn append_agent_entity_discovery_context(/,/^fn explicit_dollar_mentions(/p' "$INVESTMENT_GUARD")"
 INTERACTIVE_OBSERVATION_IMPL="$(sed -n '/Interactive entity discovery is owned/,/let Some(contract) = contract else/p' "$AGENT_CORE")"
@@ -169,10 +170,10 @@ else
   record success "8.stock_research-conditionality" "valuation mode wording is conditional instead of categorical"
 fi
 
-if contains 'DEFAULT_FINANCE_DOMAIN_POLICY' "$PROMPT_FILE" && contains 'static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);' "$PROMPT_FILE"; then
-  record success "9.runtime-finance-prompt" "global finance prompt is injected at runtime"
+if contains 'let static_system = String::new();' "$PROMPT_FILE" && contains '领域边界与核心投研约束' "$FINANCE_CORE_SKILL"; then
+  record success "9.runtime-finance-prompt" "main harness leaves system_prompt empty and offloads finance domain policy to the on-demand skill"
 else
-  record fail "9.runtime-finance-prompt" "global finance prompt injection is missing"
+  record fail "9.runtime-finance-prompt" "empty system_prompt or finance-research-core skill contract is missing"
 fi
 
 if contains 'missing_deep_single_stock_sections' "$INVESTMENT_GUARD" && contains 'missing_deep_fund_sections' "$INVESTMENT_GUARD" && contains 'missing_deep_crypto_sections' "$INVESTMENT_GUARD" && contains 'let Some(contract) = contract else' "$AGENT_CORE" && contains 'missing_investment_response_sections' "$AGENT_CORE" && contains 'enforce_server_data_time_prefix' "$AGENT_CORE" && ! contains 'missing_agent_discovered_truth_violations' "$INVESTMENT_GUARD" && ! contains 'agent_discovered_contract' "$AGENT_CORE"; then
@@ -181,7 +182,7 @@ else
   record fail "10.typed-deep-stock-response-contract" "typed deep validation is missing or Interactive discovery can still enter the strict rewrite path"
 fi
 
-if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体发现与证据加载必须在主 agent loop 内完成' "$PROMPT_FILE" && contains '不要求把千变万化的问法硬塞进闭合标签' "$PROMPT_FILE"; then
+if contains 'name: "query".to_string()' "$DATA_FETCH" && contains '必须先用 search' "$DATA_FETCH" && contains '实体发现与证据加载必须在主 agent loop 内完成' "$FINANCE_CORE_SKILL" && contains '不要求把千变万化的问法硬塞进闭合标签' "$FINANCE_CORE_SKILL"; then
   record success "13.entity-search-contract" "DataFetch search and the open-ended main agent loop own first-stage entity discovery"
 else
   record fail "13.entity-search-contract" "first-stage entity discovery is not owned by DataFetch search and the open-ended main agent loop"
@@ -332,43 +333,43 @@ else
   record fail "48.rendered-units-and-identity-anchored-search" "unit conversion can regress into prose, coverage can shrink to the user's own language, or one article can again become the core reason"
 fi
 
-if contains 'B. 单股深度分析' "$SOUL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
+if contains 'B. 单股深度分析' "$FINANCE_CORE_SKILL" && contains 'create_strict_actor_runner' "$EXECUTION"; then
   record success "12.full-prompt-and-safe-runner" "full response contract and actor-bound fallback remain in the repository"
 else
   record fail "12.full-prompt-and-safe-runner" "full prompt or strict actor runner regressed"
 fi
 
-if contains '交互式投研由同一主 Agent 在标准工具循环内完成' "$SOUL" && contains '仅完整 `Stop + Done` 终稿一次发送并原样持久化' "$SOUL" && contains '工具结果原样留在当前上下文中' "$INVESTMENT_GUARD" && contains '完整 Stop + Done 自然终稿一次发送并原样持久化' "$INVESTMENT_GUARD" && contains '必须由主 Agent 自己把“数据时间：运行时时区' "$PROMPT_FILE" && contains 'pub answer_time_local: String' "$PROMPT_FILE" && contains 'answer_time_local: now.format("%Y-%m-%d %H:%M").to_string()' "$PROMPT_FILE" && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'answer_time: &str'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" != *'hone_core::local_now()'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'与上方 Session 上下文来自同一次时钟读取'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'【本轮最终回答契约：由主 Agent 一次完成】'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'第一可见字符必须是“数”'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'禁止在该行之前输出 `---`、Markdown 标题'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'否则忽略本节格式，正常回答用户原问题'* ]] && contains 'return one complete natural `Stop + Done` final answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
+if contains '交互式投研由同一主 Agent 在标准工具循环内一次形成完整终稿' "$FINANCE_CORE_SKILL" && contains '仅完整 `Stop + Done` 终稿一次发送并原样持久化' "$FINANCE_CORE_SKILL" && contains '工具结果原样留在当前上下文中' "$INVESTMENT_GUARD" && contains '完整 Stop + Done 自然终稿一次发送并原样持久化' "$INVESTMENT_GUARD" && contains '必须由主 Agent 自己把“数据时间：北京时间' "$FINANCE_CORE_SKILL" && contains 'pub answer_time_local: String' "$PROMPT_FILE" && contains 'answer_time_local: now.format("%Y-%m-%d %H:%M").to_string()' "$PROMPT_FILE" && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'answer_time: &str'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" != *'hone_core::local_now()'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'与上方 Session 上下文来自同一次时钟读取'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'【本轮最终回答契约：由主 Agent 一次完成】'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'第一可见字符必须是“数”'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'禁止在该行之前输出 `---`、Markdown 标题'* ]] && [[ "$AGENT_DISCOVERY_CONTEXT_IMPL" == *'否则忽略本节格式，正常回答用户原问题'* ]] && contains 'return one complete natural `Stop + Done` final answer' "$STOCK_RESEARCH" && contains 'Time anchor first and Interactive answer ownership' "$MARKET_ANALYSIS" && contains 'first visible line' "$MARKET_ANALYSIS" && ! contains 'server-provided' "$STOCK_RESEARCH" && ! contains 'server-owned' "$STOCK_RESEARCH" && ! contains 'server-provided' "$MARKET_ANALYSIS" && ! contains 'server-owned' "$MARKET_ANALYSIS"; then
   record success "18.agent-owned-time-first" "one Session timestamp anchors the main Agent's time-first answer and no post-processor owns that line"
 else
   record fail "18.agent-owned-time-first" "time-first ownership can regress to a server-authored prefix or disappear from a canonical prompt layer"
 fi
 
-if contains '证券实体发现不可跳过，须在主 agent loop 内完成' "$SOUL" && contains '用户直接输入 `NBIS`、`INTL`、`RMBS` 这类股票代码是正常用法' "$SOUL" && contains 'A plain ticker such as `NBIS`, `INTL`, `RMBS`, or `CRWV` is normal user input' "$STOCK_RESEARCH" && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" && contains 'An exact-symbol route keeps its symbol constraint' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
+if contains '实体发现与证据加载必须在主 agent loop 内完成' "$FINANCE_CORE_SKILL" && contains '普通 ticker（如 `NBIS`、`INTL`、`RMBS`）是标准输入' "$FINANCE_CORE_SKILL" && contains 'A plain ticker such as `NBIS`, `INTL`, `RMBS`, or `CRWV` is normal user input' "$STOCK_RESEARCH" && contains 'identity_match="exact_symbol"' "$STOCK_RESEARCH" && contains 'An exact-symbol route keeps its symbol constraint' "$STOCK_RESEARCH" && contains 'agent_discovery_query_is_explicit_symbol' "$INVESTMENT_GUARD" && contains 'missing_required_agent_seed_symbols' "$INVESTMENT_GUARD" && contains 'provider_lookup_variants' "$INVESTMENT_GUARD"; then
   record success "19.plain-ticker-agent-discovery" "plain tickers enter the open Agent loop, preserve exact-symbol lookup, and cannot be silently omitted from the observed search trace"
 else
   record fail "19.plain-ticker-agent-discovery" "the prompt or runtime can regress into rejecting, rewriting, guessing, or silently omitting ordinary ticker requests"
 fi
 
-if contains '每个公司或证券问题先调用 DataFetch `search`' "$SOUL" && contains 'DataFetch 本轮同代码 quote' "$SOUL" && contains '禁止声称“没有实时行情”' "$SOUL" && contains 'never claim that real-time/current market data was not requested' "$STOCK_RESEARCH"; then
+if contains '第一轮优先对全部候选并行调用本轮 `data_fetch(search)`' "$FINANCE_CORE_SKILL" && contains '结构化行情是明确公司/证券问题的第一事实来源' "$FINANCE_CORE_SKILL" && contains '禁止声称“没有实时行情”' "$FINANCE_CORE_SKILL" && contains 'never claim that real-time/current market data was not requested' "$STOCK_RESEARCH"; then
   record success "20.current-data-capability" "DataFetch/search/quote usage and false capability denial are explicitly constrained"
 else
   record fail "20.current-data-capability" "the prompt no longer guarantees current-turn market-data usage"
 fi
 
-if contains 'B. 单股深度分析' "$SOUL" && contains '7. Bull / Bear / Base Case' "$SOUL" && contains '9. 动作建议：买、等、减、卖、观察，并给触发条件' "$SOUL" && contains '三、估值纪律' "$SOUL" && contains '四、辩证框架' "$SOUL" && contains '六、输出纪律' "$SOUL"; then
-  record success "21.large-prompt-single-stock-template" "the pre-71a4498e single-stock, valuation, scenario, and output contracts remain complete"
+if contains 'B. 单股深度分析' "$FINANCE_CORE_SKILL" && contains '7. Bull / Bear / Base Case' "$FINANCE_CORE_SKILL" && contains '9. 动作建议：买、等、减、卖、观察，并给触发条件' "$FINANCE_CORE_SKILL" && contains '三、估值纪律、辩证框架、持仓记忆与输出纪律' "$FINANCE_CORE_SKILL"; then
+  record success "21.large-prompt-single-stock-template" "the single-stock, valuation, scenario, and output contracts remain complete in finance-research-core skill"
 else
   record fail "21.large-prompt-single-stock-template" "the large prompt was compacted or lost its single-stock contract again"
 fi
 
-if contains 'C.1 大盘 / 区域市场 / 跨市场分析' "$SOUL" && contains '2. 已核验行情事实：每个代表标的独立写出同代码现价、涨跌幅与报价时间口径' "$SOUL" && contains '5. 动作建议、触发条件与证伪条件' "$SOUL" && contains '### Broad / Regional Market Output Contract' "$MARKET_ANALYSIS"; then
+if contains 'C.1 大盘 / 区域市场 / 跨市场分析' "$FINANCE_CORE_SKILL" && contains '2. 已核验行情事实（每个代表标的独立写出同代码现价、涨跌幅与报价时间口径）' "$FINANCE_CORE_SKILL" && contains '5. 动作建议、触发条件与证伪条件' "$FINANCE_CORE_SKILL" && contains '### Broad / Regional Market Output Contract' "$MARKET_ANALYSIS"; then
   record success "22.full-market-template" "broad and mixed-market answers keep their five-section current-evidence template"
 else
   record fail "22.full-market-template" "the broad-market response template is incomplete"
 fi
 
-if contains '先锁定用户所指市场或证券与目标时段' "$SOUL" \
+if contains '先锁定用户所指市场或证券与目标时段' "$FINANCE_CORE_SKILL" \
   && contains 'Target session before cause' "$MARKET_ANALYSIS" \
   && contains 'Never substitute a larger move from another day' "$MARKET_ANALYSIS" \
   && contains 'fn market_move_temporal_context(' "$INVESTMENT_GUARD" \
@@ -427,13 +428,13 @@ else
   record fail "42.market-move-prepublication-consistency" "an impossible date, change-vs-percentage mixup, false exchange/session claim, snippet-only cause, substituted scope, or rejected draft can again cross the visible terminal boundary"
 fi
 
-if contains 'C. 板块 / 技术 / 产业链分析' "$SOUL" && contains '精确核验至少三个相关代表证券' "$SOUL" && contains '6. 主要上市公司对比：每个代表证券独立写出本轮同代码现价与数据时间口径' "$SOUL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
+if contains 'C. 板块 / 技术 / 产业链分析' "$FINANCE_CORE_SKILL" && contains '核验至少三个代表证券' "$FINANCE_CORE_SKILL" && contains '6. 主要上市公司对比（每个代表证券独立写出本轮同代码现价与数据时间口径）' "$FINANCE_CORE_SKILL" && contains '### Sector / Industry Output Contract' "$MARKET_ANALYSIS"; then
   record success "23.full-sector-template" "sector research keeps representative discovery, exact quotes, and the nine-section template"
 else
   record fail "23.full-sector-template" "the sector template or representative-security evidence contract is incomplete"
 fi
 
-if contains '本轮公司财务数据未核验' "$SOUL" && contains '本轮公司财务数据未核验' "$STOCK_RESEARCH" && contains '不得从记忆编造收入、利润率、现金流、净债务或估值倍数' "$SOUL" && contains 'data_fetch(data_type="quote", ticker="comma-separated exact symbols")' "$MARKET_ANALYSIS" && ! contains 'data_fetch(data_type="market")' "$MARKET_ANALYSIS"; then
+if contains '本轮公司财务数据未核验' "$FINANCE_CORE_SKILL" && contains '本轮公司财务数据未核验' "$STOCK_RESEARCH" && contains '不得从记忆编造收入、利润率、现金流、净债务或估值倍数' "$FINANCE_CORE_SKILL" && contains 'data_fetch(data_type="quote", ticker="comma-separated exact symbols")' "$MARKET_ANALYSIS" && ! contains 'data_fetch(data_type="market")' "$MARKET_ANALYSIS"; then
   record success "24.layered-missing-data-disclosure" "financial gaps are disclosed without fabrication or a nonexistent market endpoint"
 else
   record fail "24.layered-missing-data-disclosure" "missing financials can still be fabricated or widened into a false market-data outage"
@@ -463,7 +464,7 @@ else
   record fail "28.agent-owned-natural-final" "production Interactive finance can regress into a finish/control handoff, rewrite, speculative visible output, premature header commit, or canned failure tail"
 fi
 
-if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS' "$FUNCTION_AGENT" && contains 'finance_loop_keeps_identity_rounds_off_the_research_budget_before_forcing_final' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_EVIDENCE_RESCUE_ROUNDS' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_FINANCE_RESERVED_OPEN_RESEARCH_CALLS' "$FUNCTION_AGENT" && contains 'unresolvable_identity_never_closes_a_finance_turn_without_open_research' "$FUNCTION_AGENT" && contains 'fn research_answer_without_evidence(' "$FUNCTION_AGENT" && contains 'preloaded_evidence_calls' "$FUNCTION_AGENT" && contains 'pub preloaded_evidence_calls: u32' "$RUNNER_TYPES" && contains 'fn run_pre_turn_enrichment(' "$INVESTMENT_GUARD" && contains 'fn is_us_extended_session(' "$INVESTMENT_GUARD" && contains 'us_extended_session_covers_pre_and_post_market_only' "$INVESTMENT_GUARD" && contains 'pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists' "$AGENT_TESTS" && contains 'overnight_enrichment_keeps_yesterdays_post_session_summary' "$AGENT_TESTS" && contains 'hone_session_summaries' "$DATA_FETCH" && contains 'extended_hours_summaries_expose_the_post_market_move_across_days' "$DATA_FETCH" && contains 'fn us_session_at(' "$INVESTMENT_GUARD" && contains '【美股时段对齐：服务端时钟事实】' "$INVESTMENT_GUARD" && contains '不得因常规时段未开盘就回答' "$INVESTMENT_GUARD" && contains 'PRETURN_ENRICHMENT_DEADLINE' "$INVESTMENT_GUARD" && contains 'speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere' "$AGENT_TESTS" && contains 'fn pre_turn_web_query(' "$INVESTMENT_GUARD" && contains 'public_tool_status_names_the_work_without_leaking_internals' "$WEB_CHAT" && contains 'pre_turn_enrichment_window_is_not_silent' "$WEB_CHAT" && contains 'preturn.enrichment' "$AGENT_CORE" && contains 'pre_turn_web_query_carries_both_market_dates' "$INVESTMENT_GUARD" && contains '"time_range": "week"' "$INVESTMENT_GUARD" && contains 'time_range' "$WEB_SEARCH" && contains 'time_range_is_an_opt_in_provider_constraint' "$WEB_SEARCH" && contains '【本轮前置检索结果：上下文，不是结论】' "$INVESTMENT_GUARD" && contains 'pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract' "$AGENT_TESTS" && contains 'pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input' "$AGENT_TESTS" && contains 'CANONICAL_RESEARCH_ANSWER_HEADER' "$FUNCTION_AGENT" && contains 'research_evidence_precondition_ignores_what_the_claim_says' "$FUNCTION_AGENT" && contains 'memory_only_listing_claim_is_sent_back_with_tools_required' "$FUNCTION_AGENT" && contains 'listing_denial_by_company_name_is_caught_like_a_symbol_denial' "$FUNCTION_AGENT" && contains 'fn listing_entity_labels(' "$FUNCTION_AGENT" && contains 'clause_subject_grammar_alone_yields_a_tentative_seed_not_an_explicit_code' "$INVESTMENT_GUARD" && contains '本轮候选种子均为低置信' "$INVESTMENT_GUARD" && contains 'finance_loop_enforces_intrinsic_web_limit_without_request_budget_then_forces_final' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'A narrow pre-publication market-move' "$FUNCTION_AGENT" && contains 'it never chooses or' "$FUNCTION_AGENT" && contains 'if active_business_round && !evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源经实际尝试后明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$PROMPT_FILE" && contains '摘要只按原文范围使用' "$SOUL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$SOUL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
+if contains 'struct ResearchEvidenceLedger' "$FUNCTION_AGENT" && contains 'identity_only_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_quote_attempts: u32' "$FUNCTION_AGENT" && contains 'post_identity_asset_route_attempts: u32' "$FUNCTION_AGENT" && contains 'fn completion_signal_available' "$FUNCTION_AGENT" && contains 'fn evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_TOOL_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_DATA_FETCH_CALLS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_WEB_SEARCH_CALLS' "$FUNCTION_AGENT" && contains 'finance_loop_keeps_identity_rounds_off_the_research_budget_before_forcing_final' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_IDENTITY_ROUNDS' "$FUNCTION_AGENT" && contains 'MAX_AGENT_OWNED_FINANCE_EVIDENCE_RESCUE_ROUNDS' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_FINANCE_RESERVED_OPEN_RESEARCH_CALLS' "$FUNCTION_AGENT" && contains 'unresolvable_identity_never_closes_a_finance_turn_without_open_research' "$FUNCTION_AGENT" && contains 'fn research_answer_without_evidence(' "$FUNCTION_AGENT" && contains 'preloaded_evidence_calls' "$FUNCTION_AGENT" && contains 'pub preloaded_evidence_calls: u32' "$RUNNER_TYPES" && contains 'fn run_pre_turn_enrichment(' "$INVESTMENT_GUARD" && contains 'fn is_us_extended_session(' "$INVESTMENT_GUARD" && contains 'us_extended_session_covers_pre_and_post_market_only' "$INVESTMENT_GUARD" && contains 'pre_turn_enrichment_preloads_the_extended_hours_bar_when_one_exists' "$AGENT_TESTS" && contains 'overnight_enrichment_keeps_yesterdays_post_session_summary' "$AGENT_TESTS" && contains 'hone_session_summaries' "$DATA_FETCH" && contains 'extended_hours_summaries_expose_the_post_market_move_across_days' "$DATA_FETCH" && contains 'fn us_session_at(' "$INVESTMENT_GUARD" && contains '【美股时段对齐：服务端时钟事实】' "$INVESTMENT_GUARD" && contains '不得因常规时段未开盘就回答' "$INVESTMENT_GUARD" && contains 'PRETURN_ENRICHMENT_DEADLINE' "$INVESTMENT_GUARD" && contains 'speculative_snapshot_is_discarded_when_the_registry_resolves_elsewhere' "$AGENT_TESTS" && contains 'fn pre_turn_web_query(' "$INVESTMENT_GUARD" && contains 'public_tool_status_names_the_work_without_leaking_internals' "$WEB_CHAT" && contains 'pre_turn_enrichment_window_is_not_silent' "$WEB_CHAT" && contains 'preturn.enrichment' "$AGENT_CORE" && contains 'pre_turn_web_query_carries_both_market_dates' "$INVESTMENT_GUARD" && contains '"time_range": "week"' "$INVESTMENT_GUARD" && contains 'time_range' "$WEB_SEARCH" && contains 'time_range_is_an_opt_in_provider_constraint' "$WEB_SEARCH" && contains '【本轮前置检索结果：上下文，不是结论】' "$INVESTMENT_GUARD" && contains 'pre_turn_enrichment_loads_evidence_as_context_not_as_a_contract' "$AGENT_TESTS" && contains 'pre_turn_enrichment_puts_resolved_market_data_in_the_turn_input' "$AGENT_TESTS" && contains 'CANONICAL_RESEARCH_ANSWER_HEADER' "$FUNCTION_AGENT" && contains 'research_evidence_precondition_ignores_what_the_claim_says' "$FUNCTION_AGENT" && contains 'memory_only_listing_claim_is_sent_back_with_tools_required' "$FUNCTION_AGENT" && contains 'listing_denial_by_company_name_is_caught_like_a_symbol_denial' "$FUNCTION_AGENT" && contains 'fn listing_entity_labels(' "$FUNCTION_AGENT" && contains 'clause_subject_grammar_alone_yields_a_tentative_seed_not_an_explicit_code' "$INVESTMENT_GUARD" && contains '本轮候选种子均为低置信' "$INVESTMENT_GUARD" && contains 'finance_loop_enforces_intrinsic_web_limit_without_request_budget_then_forces_final' "$FUNCTION_AGENT" && contains 'unsearched_symbol_scoped_data_fetch_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'pre_search_quote_does_not_satisfy_post_search_floor' "$FUNCTION_AGENT" && contains 'broad_market_data_fetch_can_finish_without_security_search' "$FUNCTION_AGENT" && contains 'crypto_search_plus_crypto_quote_unlocks_without_stock_profile' "$FUNCTION_AGENT" && contains 'web_only_after_identity_search_does_not_unlock_finish' "$FUNCTION_AGENT" && contains 'natural_direct_final_before_finish_signal_is_preserved_without_service_veto' "$FUNCTION_AGENT" && contains 'A narrow pre-publication market-move' "$FUNCTION_AGENT" && contains 'it never chooses or' "$FUNCTION_AGENT" && contains 'if active_business_round && !evidence_floor_satisfied' "$FUNCTION_AGENT" && contains 'POST_IDENTITY_EVIDENCE_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'AGENT_OWNED_RESEARCH_SYSTEM_INSTRUCTION' "$FUNCTION_AGENT" && contains 'ToolChoiceMode::Required' "$FUNCTION_AGENT" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENROUTER" && contains 'tool_choice_mode == ToolChoiceMode::Required' "$OPENAI_COMPATIBLE" && contains '必要来源经实际尝试后明确不可得并可如实披露' "$FUNCTION_AGENT" && contains '未明确标注 forward 时不得称为 Forward PE' "$FUNCTION_AGENT" && contains '关系、事件与估值证据纪律' "$FINANCE_CORE_SKILL" && contains '搜索摘要只按原文范围使用' "$FINANCE_CORE_SKILL" && contains '未取得资产负债表中的现金、债务或可直接使用的企业价值' "$FINANCE_CORE_SKILL" && contains 'this metadata does not establish a market session' "$DATA_FETCH" && contains '只有 `extended_hours` 的规范化 bar 与 hone_session_summaries 可以核验美股扩展时段' "$DATA_FETCH" && contains '年度数据不得写成 TTM' "$FUNCTION_AGENT" && contains '输入不完整时使用一种可严谨计算的方法并明确披露缺项，禁止补数' "$INVESTMENT_GUARD" && contains 'disclosed_valuation_gap' "$INVESTMENT_GUARD"; then
   record success "29.same-agent-evidence-stage-advisory" "the Agent receives entity/quote/asset-route sequencing, while hard batch/call ceilings bound work and the structural ledger stays advisory; only the narrow market-move consistency boundary can withhold an invalid body"
 else
   record fail "29.same-agent-evidence-stage-advisory" "security sequencing can regress into a no-search/crypto dead end, or the runtime can again turn its ledger into a publication veto"
@@ -615,10 +616,10 @@ if contains 'struct ResearchIdentityRouteEvidence' "$FUNCTION_AGENT" \
   && contains '`identity_match=exact_symbol`' "$DATA_FETCH" \
   && contains '`supersedes_query`' "$DATA_FETCH" \
   && contains '不得把两个标的共用一条路线' "$DATA_FETCH" \
-  && contains '稳定且互不复用、区分大小写并原样复用的 `entity_route`' "$SOUL" \
-  && contains 'call-scoped `identity_match`' "$SOUL" \
-  && contains '`refines_query` 与 `supersedes_query` 严格互斥' "$SOUL" \
-  && contains '不要依赖服务端按逗号' "$SOUL" \
+  && contains '稳定且互不复用、区分大小写并原样复用的 `entity_route`' "$FINANCE_CORE_SKILL" \
+  && contains 'call-scoped `identity_match`' "$FINANCE_CORE_SKILL" \
+  && contains '`refines_query` 与 `supersedes_query` 严格互斥' "$FINANCE_CORE_SKILL" \
+  && contains '不要依赖服务端按逗号' "$FINANCE_CORE_SKILL" \
   && contains 'stable, distinct, case-sensitive `entity_route` key' "$STOCK_RESEARCH" \
   && contains '`identity_match` is call-scoped' "$STOCK_RESEARCH" \
   && contains '`refines_query` and `supersedes_query` are strictly mutually exclusive' "$STOCK_RESEARCH" \
@@ -722,14 +723,14 @@ if contains 'pub(crate) async fn extract_image_text' "$ATTACHMENT_VISION" \
   && contains 'web_image_finance_turn_preserves_the_header_format_with_whole_answer_buffering' "$AGENT_TESTS" \
   && contains 'double_incomplete_natural_final_emits_no_canned_business_partial' "$AGENT_TESTS" \
   && contains 'ordinary_non_finance_direct_query_reaches_the_agent_and_gets_an_answer' "$AGENT_TESTS" \
-  && contains '不得仅因领域不同而拒绝' "$PROMPT_FILE" \
-  && contains '必须由主 Agent 自己把“数据时间：运行时时区' "$PROMPT_FILE" \
+  && contains '不得仅因领域不同而拒绝' "$FINANCE_CORE_SKILL" \
+  && contains '必须由主 Agent 自己把“数据时间：北京时间' "$FINANCE_CORE_SKILL" \
   && contains 'precommitted_service_prefix_allows_non_executable_image_skill_loading' "$FUNCTION_AGENT" \
   && contains 'active_empty_retries_once_then_recovers_with_a_tools_disabled_answer' "$FUNCTION_AGENT" \
   && contains 'active_step_timeout_recovers_with_a_tools_disabled_answer' "$FUNCTION_AGENT" \
   && contains 'active_provider_error_recovers_with_a_tools_disabled_answer' "$FUNCTION_AGENT" \
   && ! contains 'NON_FINANCE_BOUNDARY_REPLY' "$AGENT_HELPERS" \
-  && ! contains '非金融问题：直接礼貌拒绝' "$PROMPT_FILE" \
+  && ! contains '非金融问题：直接礼貌拒绝' "$FINANCE_CORE_SKILL" \
   && ! contains '本轮研究未能完成，暂未形成可供参考的标的结论' "$AGENT_CORE" \
   && ! contains 'AGENT_OWNED_FINANCE_PERSISTENT_TOOL_ERROR' "$FUNCTION_AGENT"; then
   record success "43.interactive-no-generic-refusal-and-image-evidence" "Interactive image evidence is OCR-backed, every Web finance turn buffers the unchanged answer format until complete, blocked tools and recoverable model failures get a same-Agent answer, and ordinary non-finance questions are not domain-refused"

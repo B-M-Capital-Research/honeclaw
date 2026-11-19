@@ -93,13 +93,19 @@ Pick `heartbeat` only for "tell me when X happens" requests that carry no clock 
 
 ### Strict Rules
 
+- **真实工具为唯一权威真相源**：用户要求查看、核对、更新、列出、创建、取消或删除“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。
+- **取消全部任务**：用户明确说“取消/删除所有定时任务或心跳任务”时，直接调用 `cron_job(action="remove_all")`；这句明确请求本身就是授权，不要再逐条确认、逐条循环删除或只关闭其中一项。
+- **自动推送边界与 `automatic_push`**：自动推送不只有定时任务——事件即时推送与每日摘要推送由 `notification_prefs` 管理，删完全部 cron 也不会停。`cron_job` 的 `list` / `remove_all` 结果带有 `automatic_push`：只有 `all_automatic_push_stopped=true` 才可以说“已经没有任何自动提醒”；否则必须逐项说明 `remaining_sources` 里仍会按计划触发的来源，并提示用户可以要求关闭全部自动提醒。禁止在仍有来源时输出“已全部关闭”“不会再有任何推送”“当前没有任何自动任务”这类结论。
+- **全量关闭自动提醒**：用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”，或反复表示“关不掉、还在推、明明关了还收到”时，先按 `automatic_push` 核对仍有触发的来源，直接调用 `notification_prefs(action="disable_all")` 一次性收口（同时关闭事件即时/摘要推送并删除全部定时/心跳任务）；禁止只调用 `disable` 后就声称所有自动提醒都已取消。
+- **Web 渠道送达边界**：Web 渠道的定时任务结果只保证写入当前 Hone 会话，并在网页在线且 SSE 连接存在时实时追加到页面；当前没有 Web Push / 手机系统通知能力，不要承诺会出现在手机通知中心，也不要引导用户排查手机通知权限；若用户明确需要手机系统级提醒，应说明当前 Web 渠道不支持并建议改用已配置的外部通知渠道。
+- **工具不可用时的用户态表达**：如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`cloud_sessions`、`cloud_cron_jobs`、`cloud_cron_job_runs` 或“当前沙盒”等实现细节。
 - Any add, update, or cancel action **must actually call the `cron_job` tool**; never reply "updated" or "added" without calling the tool
 - Updates are **single-step**: call `update` directly, and the tool saves immediately without extra confirmation
 - **You must check the `success` field** in the tool response. If it is `false`, do not say the task succeeded; explain the error and retry.
 - Prefer `job_id` for exact matching. If `job_id` is unknown, you may pass a name keyword and let the tool find the unique match
 - **Resolve every ticker that goes into `task_prompt`** with `data_fetch(data_type="search")` first, and write the confirmed symbol into the prompt verbatim. A wrong or substituted symbol here is burned into every future run: never replace a user-named security with a parent, a brand owner, or a similar-looking code (SanDisk `SNDK` is not Western Digital `WDC`). If resolution is ambiguous, ask before creating the task.
 - **Feasibility check before `add`**: run the task's own data path once in this turn (the same `data_fetch` / `web_search` calls the task will make). If the core metric cannot be retrieved now, say so and either narrow the task to what is retrievable or ask the user before creating it — a task that cannot produce its core number will push an empty briefing every day.
-- **Never echo raw parameters back to the user.** `repeat`, `heartbeat`, `enabled=true`, `bypass_quiet_hours`, `job_id` and `task_prompt` are call-shape details: report them as natural language ("每 30 分钟检查一次", "已启用", "工作日 09:30", "已豁免勿扰时段") instead.
+- **Never echo raw parameters back to the user.** `repeat`, `heartbeat`, `enabled=true`, `enabled=false`, `bypass_quiet_hours=true`, `job_id` and `task_prompt` are call-shape details: report them as natural language ("每 30 分钟检查一次", "已启用 / 已停用", "工作日 09:30", "遵守勿扰 / 豁免勿扰") instead.
 - When a task is created or changed, restate back in one line **what will be checked, at what local time, how often, and where it will be delivered**, so the user can catch a wrong ticker or a wrong hour immediately.
 
 ### Event-Driven Reminder Linkage

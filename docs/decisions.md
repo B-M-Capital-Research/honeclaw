@@ -1,6 +1,24 @@
 # Decisions
 
-Last updated: 2026-10-12
+Last updated: 2026-11-19
+
+## D-2026-11-19-01 Empty Main Harness System Prompt and Offload Policies to Skills & User Prompt
+
+- title: 主对话 Harness System Prompt 置空，领域策略下沉到 Skill，其余运行时引导挪到 User Prompt
+- status: Accepted
+- created_at: 2026-11-19
+- updated_at: 2026-11-19
+- owner: antigravity
+- related_files: `soul.md`; `crates/hone-channels/src/prompt.rs`; `crates/hone-channels/src/turn_builder.rs`; `crates/hone-channels/src/runners/codex_acp.rs`; `skills/finance-research-core/SKILL.md`; `skills/hari-invest/SKILL.md`; `skills/company_portrait/SKILL.md`; `skills/scheduled_task/SKILL.md`; `skills/notification_preferences/SKILL.md`
+- related_docs: `docs/handoffs/2026-11-19-harness-prompt-slim-and-skill-offload.md`; `docs/archive/plans/harness-prompt-slim-and-skill-offload.md`
+- Context: 主对话 harness 原本每轮向 `system_prompt` 注入 ~32 KB `soul.md` 与 12,000+ 字硬编码策略（`DEFAULT_FINANCE_DOMAIN_POLICY`、`DEFAULT_HARI_INVEST_POLICY`、`DEFAULT_COMPANY_PROFILE_POLICY`、`DEFAULT_USER_INFO_BOUNDARY_POLICY`、`DEFAULT_CRON_TASK_POLICY` 等），再加上渠道排版、群聊隐私、语言要求、管理员提示和动态命中的公司卡/行业基线，造成严重上下文膨胀与跨场景指令冗余。
+- Decision:
+  1. 主对话 harness 的 `system_prompt` 置空（`soul.md` 置空，`build_prompt_bundle_at` 输出空的 `static_system`）；`codex_acp` 在 `developer_instructions` 为空时不再写入空的 `developer_instructions` 配置项。
+  2. 原硬编码领域策略下沉到 Skill 按需加载：新建 `skills/finance-research-core/SKILL.md` 承接通用金融纪律、任务路由、估值/辩证/输出纪律、用户信息边界与能力全景；其余策略合入 `skills/hari-invest/SKILL.md`、`skills/company_portrait/SKILL.md`、`skills/scheduled_task/SKILL.md` 和 `skills/notification_preferences/SKILL.md`。
+  3. 其余按轮/按渠道运行时引导（渠道格式指南、群聊隐私守卫、语言要求、基础模型提示、管理员提示、`SkillTool` 指引、命中的 `company_research_baseline` / `industry_baseline`）统一迁入 `PromptBundle.turn_guidance`，由 `compose_user_input` / `compose_runtime_input`（及 native Codex turn 组装路径）挪入 user prompt。
+  4. 改动范围限定在主对话 harness，不动 `dedicated_earnings_workflow`、Event Engine 和 Web API 的独立 LLM 管道。
+- Verification: `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`、`cargo test -p hone-channels --lib`（888 passed, 0 failed）、`rustfmt --check`。
+- Risks: 领域策略转为 Skill 按需加载后，依赖 `skill_runtime` / 模型在相关轮次正确触发 `skill_tool` 加载对应 Skill；若真实对话中发现某类问题未自动加载 `finance-research-core` 等核心 Skill，需进一步调优对应 Skill 的 `description` / `when_to_use` / `aliases` 检索权重。
 
 ## D-2026-09-20-02 Exclusive Query Connections and Optimized Source Runtime
 

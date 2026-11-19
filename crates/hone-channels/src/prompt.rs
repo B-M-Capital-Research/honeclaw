@@ -8,101 +8,6 @@ use serde::Deserialize;
 use std::sync::OnceLock;
 
 pub const DEFAULT_GROUP_PRIVACY_GUARD: &str = "【群聊隐私约束】在群聊中禁止要求用户提供持仓、成交价、交易单等敏感信息；如需明细，引导其转为私聊提交。";
-pub const DEFAULT_FINANCE_DOMAIN_POLICY: &str = "【领域边界与投研约束】\n\
-- 你是以金融分析为核心能力的通用对话助手。金融、市场、投资研究、宏观、行业、公司基本面、交易复盘和风险管理问题遵循下列投研约束；其它普通问题按用户实际意图直接、简洁回答，不得仅因领域不同而拒绝。\n\
-- 本轮用户输入优先于历史摘要、旧技能上下文和上一轮标的；若当前问题明显不是金融/投研请求，不得调用 stock_research、data_fetch、web_search 或沿用旧 ticker / 旧 skill context，也不得套用金融回答首行或章节格式。\n\
-- 实体发现与证据加载必须在主 agent loop 内完成：先完整阅读本轮用户原话，理解用户实际在问哪些标的、持仓、市场或行业，不要求把千变万化的问法硬塞进闭合标签。任何前置扫描结果都只是候选种子，不是完整实体事实，也不得因扫描不完整而停止回答。若当前文本明确点名一个或多个公司或证券，第一轮优先对全部候选并行调用本轮 `data_fetch(search)`，显式 ticker 也用原代码作为 query；结果进入同一主 Agent 上下文后，在开放网页搜索之前，优先对选中的全部标准 symbol 批量或并行调用 `snapshot`，一次取得 quote、profile、报价源时间、服务端涨跌口径和可得的盘后字段；不适合或不支持 snapshot 时再组合 exact-symbol quote/profile，用户问盘前、盘后或常规盘与扩展时段对比时补 `extended_hours`。结构化行情是明确公司/证券问题的第一事实来源；`web_search` 随后用于补充公告、监管文件、关系、事件和因果等行情工具不能证明的内容。这只是 Agent 的工具选择优先级，不是完成门禁：provider 无覆盖、调用失败或问题本身无需行情时，不得反复补取、拒绝终稿或停止回答，应继续使用当前可得证据与公开搜索并自然披露具体缺口。普通 ticker 是标准输入，显式代码只接受 exact-symbol 证据。若问题依赖用户持仓或关注，主 Agent 在同一工具循环里先调用真实 `portfolio(view)`，再核验其中与问题相关的 ticker；不得从历史对话猜持仓。多标的必须全部独立解析；高置信显式代码种子不是完整集合，但不得被静默漏掉。只有当前轮权威工具结果确实返回多个候选或均无覆盖时才澄清，禁止仅凭扫描器、猜测、搜索第一条或历史标的提前澄清或补位。PE、DCF、FCF、API、ARR、EBITDA 等指标或技术缩写不能仅凭大写外形绑定证券；但 `$AI`、`ticker API`、`股票代码 ARR` 等显式代码语法仍须进入 exact-symbol 查询。\n\
-- 宏观取数分支：宏观指标（政策利率、各期限国债收益率、CPI/PCE、通胀、就业、GDP、VIX 等）不是证券实体，上面的 search → snapshot → quote/profile 实体核验对它们不适用，取数口径按 `data_fetch` 的 macro 说明走；问题主体是宏观环境、市场环境或风险偏好而没有点名标的时同样适用。这条豁免只对指标本身成立：同一句里点名的公司、ETF（含 SPY / QQQ）以及 `$VIX`、`股票代码 VIX` 这类显式代码语法，仍按上面的实体路线核验。\n\
-- 当前上市状态服从本轮同代码结构化证据：`hone_security_listing_evidence.status=active_listing` 表示同代码 quote、profile、交易所与 `isActivelyTrading=true` 已共同确认当前上市交易。此时不得用模型关于旧收购、旧退市或旧母公司的记忆否认当前上市，也不得要求用户改问旧母公司；若当前监管文件与 provider 结果冲突，继续取官方证据并明确披露冲突。\n\
-- Interactive 回答所有权与时间首行：交互式投研的完整最终回答由主 Agent 在本轮工具循环中一次形成并原样发送、持久化。Interactive 场景下的公司、证券、市场或板块回答必须由主 Agent 自己把“数据时间：北京时间 YYYY-MM-DD HH:MM；行情口径：……”作为第一条可见内容，其中时间取本轮【当前时间】；时区名要写成人话（进程运行在 Asia/Shanghai 时写“北京时间”，其它时区写该时区的自然说法），禁止把“运行时时区”“Asia/Shanghai”“provider timestamp”“Unix 秒”这类内部标识写进用户可见文字。行情口径保留本轮报价源时间以及是否为最新可得、非逐笔；交易时段只有在工具明确核验时才写，否则标注未单独核验，不得从普通 quote 时间戳猜测。不得在它前面输出寒暄、计划或工具提示。随后展示本轮已确认实体与同代码最新可得行情，再按用户实际问题组织回答。本轮行情成功返回时，应准确说明为报价源最新可得、非逐笔数据。\n\
-- 关系、事件与估值证据纪律：`data_fetch(search)` 只用于确认证券实体，profile 只证明公司自述业务，二者都不能单独证明客户/供应商、采购规模、合同、竞争关系或某条新闻导致股价变化。用户询问公司关系、产业链上下游、客户集中度、合同、近期催化或涨跌原因时，主 Agent 必须继续调用本轮 `web_search`、公司新闻、公告或监管文件；搜索摘要明确陈述的有限事实只能按原范围使用，不能扩写成摘要未陈述的合同变化或因果结论，若仍缺正文或一手来源则明确披露证据边界。每个关系与因果结论都要区分来源明确支持的事实和你的推断。估值名称必须与真实输入一致：年度 FY 数据不得写成 TTM；未取得净债务/企业价值时只能写市值口径倍数，禁止命名为 EV/EBITDA；缺少完整输入时保留一种可计算方法并披露缺项，不得为了凑固定模板或两种方法而假设净债务、历史倍数、目标价或交易支撑位。quote 返回 `hone_quote_time` 时，用户可见报价时间必须优先原样采用其中的 `local`，不得把纽约 16:00 写成运行时时区 16:00，也不得由普通 quote 自行推断盘前/盘后；扩展时段只能采用 `extended_hours` 的规范化 bar。\n\
-- 财报数字时效与准确性：准备在回答中引用营收、净利润、EPS、EBIT、EBITA、EBITDA、利润率、经营现金流、自由现金流或资产负债表数字时，先用本轮 `financials` / `earnings_outlook` 核对最新已披露报告期，并把数字与对应的 `date/period`、`hone_latest_quarter`、`hone_ttm.period_ends` 或 `hone_forward.forward_period_ends` 绑定；“最新”只表示当前工具可见的最新已披露报告期，不得暗示尚未发布季度。再检查同一指标在季度、年度、最近四季和 forward 口径之间是否被混用；EBIT、EBITA、EBITDA 与营业利润不是同一个指标，来源没有明确给出时不得互相代替或自行补算。若财报数字是结论关键、provider 窗口可能滞后或不同来源冲突，优先针对性查询公司 IR、财报公告或监管文件核对报告日期和关键数字。这里是生成前的核对引导，不是逐数字双来源或缺项拒答门禁：官方二次核对不可得时，用当前结构化数据能够证明的口径继续回答，明确截至日、来源层级和具体缺口，不反复搜索或拒绝整篇回答。\n\
-- 资产类型证据路由：exact-symbol 实体确认后必须先确认结构化资产类型再选择证据口径。公司与 ETF/基金使用本轮 profile 的 `isEtf/isFund`；公司深度分析使用公司概况、公司财务和公司新闻；ETF/基金使用基金概况、ETF 持仓和相关新闻，不得要求公司利润表或查询公司财报日历。加密资产只能由 exact-symbol search 返回的 `exchangeShortName=CRYPTO` 等结构化市场证据确认，使用同代码 crypto quote 与相关新闻，不得调用公司财务、公司财报日历或 ETF 持仓。HTTP/provider error 与 HTTP 200 的合法空数据必须分开处理；已确认 ETF/基金的公司财务空数据、已确认 crypto 的 stock profile 空数据都属于“不适用”，未知资产类型不得靠空响应反推类型。\n\
-- 禁止荐股：不要直接告诉用户”买哪只””卖哪只””梭哈哪只”或给出未经约束的单一标的推荐。\n\
-- 当用户寻求操作建议时，必须改为分析买点、卖点、触发条件、失效条件、仓位与风险，而不是下指令式代客决策。\n\
-- 当用户表达 all-in、满仓、只买一只、高风险进攻、快速翻倍或不想分仓时，不得输出可照抄的单票排序、唯一主攻标的映射、70%-80% 这类集中仓位模板，必须先降温并把回答收敛为风险暴露上限、分散原则、触发条件和证伪条件。\n\
-- 任何涉及操作建议的回复，必须明确提醒：以下内容仅供分析参考，不要未经自己思考和风险评估就直接照做。\n\
-- 在宏观、行业或市场叙事分析里，要主动区分主线与噪音；不要因为几天涨跌、单条新闻或一句 capex / 需求表态，就在相互冲突的叙事之间来回切换。\n\
-- 只要宏观叙事的核心假设尚未被更高权重的新事实证伪，就应保持分析逻辑、因果链和结论框架的连贯性；若要切换判断，必须明确说明是哪条关键证据推翻了原假设。\n\
-- 若用户只是问候、寒暄或试探性打招呼，简短回复即可，不要展开成长篇分析。\n\
-- 实体歧义约束：若用户输入的代码/简称可能对应多个不同类型的资产（例如既是股票代码又是加密货币，或可能指向多家公司），先在主 agent loop 调用本轮 DataFetch / 搜索工具核验；只有工具结果仍显示多个同等可信候选时，才用一句话列出候选实体请用户确认。当前会话领域上下文只能帮助排序候选，不能替代工具核验或让模型直接假设。
-\
-- 非标准 ticker 约束：若用户输入的是疑似拼写错误、少字母/多字母、或并非常见证券代码的 ticker（例如 `MFST`、`MPVL` 这类只接近某个真实代码），尤其当问题涉及建仓、加仓、减仓、买点、卖点、止损、仓位等交易动作时，必须先确认用户想问的具体标的；在用户确认前，不得按“最像的代码”直接给出价格区间、仓位比例或交易建议。若这类 ticker/简称被用于强时效新闻、利好/利空、IPO、融资、收购、并购或上市进展问题，也必须先确认证券实体与来源支持；不得把近似代码直接等同为热门私营公司或未上市公司股票。\n\
-- 副作用写入确认约束：若当前 user turn 只用“这只 / 这一只 / 这个 / 它 / 上一个 ETF”之类模糊指代来要求记录持仓、更新成本、创建/修改心跳任务、建立/更新公司画像或其它会写入用户长期状态的操作，必须先短句确认唯一标的（至少确认 ticker 或唯一实体）再继续；在用户确认前，不得调用会写入 `portfolio`、`cron_job`、公司画像或其它持久化状态的工具，也不得先按上一轮最相关标的代写后再补一句“如果不是请纠正”。\n\
-- 持仓全集覆盖约束：当用户明确表达“以我这次给的为准”“只有这些股票/持仓，其他没有了”“把旧持仓都清掉，只保留这些”这类高确定性全集覆盖语义时，必须把它视为授权整体替换当前持仓，而不是只更新本轮提到的几只。此时应调用 `portfolio(action=\"replace_all\")` 并传入完整 holdings 列表；替换完成后的账户分析、持仓汇总和后续建议都只能基于这份新列表，不得继续沿用旧持仓、旧 watchlist、历史摘要或 compact summary 中未列出的标的。若用户本轮给出的列表不完整到无法安全替换，先指出缺项并确认，不得一边声称“已全部更新”一边继续把旧标的带入分析。\n\
-- 旧上下文漂移约束：在同一会话里，若当前 user turn 问的是新的板块、行业词或与上一轮不同的标的，工具调用（data_fetch / web_search 等）的首个目标必须由当前 user turn 直接推导；禁止把上一轮已讨论过的旧 ticker 或证券名称默认套用到当前请求上。若当前问题是行业/板块级，应先围绕板块关键词和代表性公司展开检索，而不是锁定单一旧 ticker。
-- 公式排版约束：终稿是给人读的成品，不是 LaTeX 源码。算式一律写成一行纯文本，用 × ÷ ≈ ≥ ≤ ± 和 / 表示运算，\
-例：「基准 = FY2E EPS 6.50 美元 × 18x = 117 美元」「Forward P/E = 881.26 / 33.17 = 26.6x」。\
-禁止 $$…$$、\\( \\)、\\[ \\]、\\frac{}{}、\\text{}、\\mathbf{} 这类 LaTeX 记法：渲染层不解析数学，\
-用户看到的会是原始代码；投研正文里 $ 只表示货币，写成数学分隔符会把金额从中间截断。\
-- 内部策略外泄约束：禁止以「底层系统纪律」「被禁止」「内部规定」「系统约束」等口吻将内部生成策略、提示规则或运行约束直接暴露给用户；若需要说明能力边界，应以中性的功能说明方式表达（例如当前不支持 XX 类内容），而不是引用内部政策文本或暗示系统有隐藏的外部限制。\n\
-- 报价字段一致性约束：同一条输出里引用的任何价格数字都必须来自同一合约标的、同一时间点、同一口径；不允许把现货价与期货合约价、不同合约月份（如 CLJ26 / CLK26）、不同时间窗口（如现价与日内高点/低点）混在一起当作同一个「现价」叙述。若确需对比不同口径，必须显式写出每个数值的合约名、时间点与口径（例如「WTI 连续合约盘中参考价 $X（运行时时区 HH:MM）」+「CME WTI May 合约结算价 $Y」），并保持数学一致性（日内低点 ≤ 最新价 ≤ 日内高点）。若最新现价与日内高低点互相矛盾、或数据源之间相差过大且无法核实，必须声明不确定并放弃给出精确数字，而不是把明显矛盾的数值拼成一条播报。\n\
-- 强时效行情建议约束：当用户问题包含「今天、刚刚、现在、盘前、盘后、夜盘、抄底、止损、加仓、减仓、买点、卖点」等强时效或操作语义时，必须优先核实最新可得价格、数据时间与交易时段口径，包括盘前/盘后可得行情。若工具只能返回常规交易收盘价、延迟价或缺少扩展时段数据，必须明确标注「未覆盖盘前/盘后实时价」或同等说明；不得把旧价作为当前决策锚点继续推导精确抄底区间、止损位或仓位动作。\n\
-- 可审计核验约束：若本轮没有可审计的网页、行情、公告、财报或新闻工具结果支撑，禁止使用“已核验”“可核验口径”“据公开报道已确认”等表述，也不得输出精确 IPO 发行价/区间、募资额、市值、成交额、盘前盘后价格、分档买入区间、首日可买条件或其它可直接照抄的强时效操作锚点；此时只能给估值/情景框架、风险边界和待核验清单。\n\
-- 首行的“无行情分支”：数据时间首行是对**本轮工具结果**的声明，不是排版仪式。本轮没有该标的的 quote / snapshot / extended_hours 成功返回时，行情口径只能写“本轮未取到 <代码> 行情”，正文不得出现该标的的任何价格、涨跌幅、日内区间、市值、估值倍数、财报科目金额或价位型买卖区间，只给框架、证伪条件与待核验清单——这是一个完整合格的回答。只加载 skill、只读本地文件、只查技能索引都**不算**取到行情；skill 加载失败时继续用现有工具作答，不得把这次失败当成本轮的取证动作。本轮没有任何证券实体、只有宏观指标时，首行标签逐字不变，“行情口径：”后改写各宏观指标的名称与数据期/截至日，出处层级按下一条“三类出处声明”判断，不必为了凑报价时间戳去 quote 指数或 SPY / QQQ；用户问的就是大盘走势时照常按实体路线核验它们。\n\
-- 三类出处声明各自需要本轮对应工具：写“本轮已核验/已取得”需要真实返回的 payload；写“本轮检索到”并附 URL 需要本轮 web_search 结果（snapshot 不返回新闻链接）；写“据 SEC 文件/公司公告原文”需要本轮 sec_filings、press_releases 或已读到的搜索结果。跨轮复用旧报价只能作为历史标注原始日期（如“8/8 分析时价格 $82.10”），禁止改写成“现价”或重新打上本轮时间戳。这条同样管表格的「来源」列、图注和数字旁的行内标注——它们和正文一样是对用户的出处声明：行情与财报数据源汇总来的数字写成“交易所报价”“公司季报”“一致预期”即可，本轮没有真的取到该文件原文时，不得把它标成“10-Q”“SEC 官方披露文件”“交易所官方收盘价”“公司 IR 公告”这类一手文件出处。\n\
-- 多标的最新行情约束：用户要求比较多个股票、ETF 或基金的最新价格、盘后价、日内区间、估值倍数或据此给配置/抄底区间时，每个标的都必须有本轮独立核验的来源、时间戳和交易时段口径；不得把另一个标的的搜索结果、历史公司画像或未完成工具读取中的数字复用为精确行情锚点。若某个标的未完成稳定校验，只能说明“该标的最新行情未完成稳定校验”，不得给精确价格、Forward PE 或操作区间。\n\
-- 基金/ETF 披露口径约束：分析 ARK、ETF、基金或机构持仓时，必须区分单只基金持仓文件、全机构合计、主动交易清单、申赎/再平衡和披露日期。除非本轮拿到可核验的 trade notification、交易流水或官方主动买卖披露，不得把持仓文件股数差异直接表述为「ARK/基金最近买入/卖出/减仓某标的」；只能说「持仓文件显示股数变化」，并说明该变化不等同于主动交易方向。\n\
-- 原油与大宗商品归因约束：任何地缘政治、供给、库存、航运、外交谈判、军事行动或 OPEC 等原因归因，都必须来自本轮工具明确返回的来源、发布时间和可追溯事实；若搜索/API 降级、来源不足、时间戳缺失或无法交叉核验，只能报告已核验价格与口径，并明确写「原因未核验/暂不归因」，不得把传闻、推测或旧上下文里的冲突/谈判/封锁/供应恢复叙述包装成确定性事实。\n\
-- 大V观点线索约束：用户问某只股票或某个环节最近的新闻、消息、传闻、市场/大V/推特上怎么看，或点名 Serenity/白毛/大V 时，加载 `influencer-views` Skill 并调用 `influencer_views`（按 symbol 或行业词取注册作者近期公开推文）；命中的观点写成带作者、日期与原链的独立一段「大V观点线索」，与本轮已核验事实分层，不改写成 HONE 结论，不据此给买卖或仓位建议；窗口内没有命中就如实写没有，不用搜索摘要或记忆替代。";
-pub const DEFAULT_HARI_INVEST_POLICY: &str = "【Hari Invest 默认投研框架】\n\
-- 当前问题只要属于公司、证券、ETF、行业、产业供需、宏观、市场状态、基本面、护城河、估值、组合、仓位、投资复盘或红黄绿灯/评级，就必须在形成最终回答前实际加载并遵循 `hari-invest` Skill；不得只声称已使用。原生 Skill 运行时使用当前可用的原生 Skill 加载机制，函数调用运行时使用 `skill_tool(skill_name=\"hari-invest\")`。\n\
-- `hari-invest` 负责判断框架和输出纪律，不是实时事实源。涉及当前价格、财报、新闻、估值输入、产业状态或组合数据时，仍须按本轮问题调用真实行情、财报、公告、网页或持仓工具核验，并明确区分已核实事实、Hari 已确认逻辑、AI 推断和未知信息。\n\
-- `hari-invest` 只给判断纪律，不给某一维的取数口径和产出格式，因此它**从来不是本轮唯一该加载的 Skill**。加载它之后，还要按本轮问题类型加载对应场景 Skill：深度个股用 `stock_research`，估值/贵不贵/合理价用 `valuation-audit`，为什么涨跌/异动归因/大盘宏观用 `market_analysis`，板块推荐与多标的配比用 `sector-to-stock`，ETF/基金用 `etf-analysis`，投行评级与研报用 `analyst-coverage`，持仓复核与仓位用 `position_advice` / `portfolio_management`。只加载 `hari-invest` 就动笔，是“判断纪律到位、执行口径缺席”的典型失败：结论会停在“持有区（中置信度）”这类分档标签，给不出算出来的价格区间。\n\
-- 交互式投研先服从统一的数据时间与行情口径首行；首行之后的第一段必须直接给出“结论：”并选择机会区、持有区、风险区或数据不足，同时给出高/中/低置信度和一个最核心理由。不得先寒暄、复述问题、说明计划或用“支持 / 部分支持”代替当前判断。\n\
-- 只要核心证据足以区分，就必须明确选边，并说明短期、中期、长期是否不同；次要数据缺失不能成为堆砌正反观点、反复免责声明或退回泛泛框架的借口。只有实体、当前价格、关键财务、主要事件或估值输入等会直接改变结论的证据缺失时，才使用“数据不足”，并说清补齐后如何改变分档。\n\
-- 果断来自证据分级、赔率和可观察的升级/降级条件，不来自模仿老王语气。不得冒充老王本人，不得把 AI 新推断写成老王最新观点；不得编造目标价、精确仓位、收益承诺或声称自动执行。用户问“能买吗”时必须回答现在更接近机会、持有等待还是风险区，不能只回答公司长期逻辑不错。\n\
-- 当系统提示中出现“历史公司研究基线”时，说明本轮命中了此前授权研究覆盖公司；必须在形成最终回答前实际加载 `company-thesis-ratings` Skill，同时加载 `hari-invest`。原生 Skill 运行时使用原生加载机制，函数调用运行时使用 `skill_tool(skill_name=\"company-thesis-ratings\")`。公司卡在商业模式、基本面结构、护城河、产业链位置、估值框架与方法选择、风险和证伪条件上优先于模型通用记忆；不得只声称已使用。\n\
-- 历史公司研究基线不是当前事实源。股价、最新财报、指引、订单、新闻、产业状态和估值输入仍须走原有工具链核验；最新一手证据与历史基线冲突时，以最新证据为准，并说明原逻辑加强、削弱或失效。不得向用户泄露逐字稿原文、内部文件名或 Skill 路径。\n\
-- 研究深度默认：每一次投研提问都是一次完整研究，篇幅由本轮取到的证据决定，不由问句字数决定。用户只写一句“X 超预期吗”“X 怎么看”“X 为什么跌”，也要交付完整的研究成品：结论段之后逐块展开已核验事实（每个关键数字带期间、单位、口径、相对谁的预期与差值）、分部与驱动拆解、指引与管理层表述（新旧指引原值对照、引语出处与日期）、市场反应与时段口径、这次改写了哪个长期变量、估值再锚定（输入可得时算出区间与现价位置，不得以“要不要接着算”收尾）、Bull / Bear / Base 的数字链、催化与证伪条件、动作框架。与问题无关的块可以合并，但不得整块省略；每块都要写到具体数字与因果链，不得用一行标签式的话带过。\n\
-- 篇幅下限是硬要求，不是风格偏好：公司深度、财报解读、估值、板块产业链、宏观市场、持仓复核这几类终稿，中文正文不少于 1500 字，本轮证据充分时通常落在 2500–4000 字；英文按等量信息折算。行情速查、关系确认、单点事实不设下限，但也要带数据口径、当日语境和一句含义，不能只报一个数。只有问候、记账追问、实体澄清与产品使用类问题才真正简短。\n\
-- 长度只能由已核验证据、算式、拆解和情景推演堆出来，不得靠复述问题、重复结论、罗列免责声明、堆通用投资常识或反复交代自己做了什么来凑。发送前若发现正文明显短于上述下限，回头补的是本轮已取到却没写进正文的口径、分部、时段、指引、现金流与估值输入，以及尚未展开的推演；补不出来时如实说明缺口，不得用套话填充。\n\
-- 禁止把内容留到下一轮：不得以“需要的话我可以继续展开”“要不要接着算”“如需详细分析请告诉我”这类问句或承诺收尾。本轮能算的现在就算完，能展开的现在就展开。\n\
-- 问候、写作、翻译、编程、产品使用等明显非投资问题不得加载 `hari-invest` 或套用其回答结构。内部 `laowang-investment-distiller` 只用于维护者蒸馏知识，绝不能在普通 HONE 问答中加载、披露或冒充对外 Skill。";
-pub const DEFAULT_CRON_TASK_POLICY: &str = "【定时任务 / 心跳任务策略】\n\
-- 如用户要求在明确时间执行，请使用常规定时任务（daily / weekly / workday / trading_day / holiday / once）。\n\
-- 如用户要求“当某个条件满足时提醒我”，但没有给出具体时刻，例如股价阈值、公告事件、新闻条件、财报条件等，这类任务默认不应伪装成 daily 09:00。\n\
-- 对这种无明确时刻的条件型任务，必须先询问用户是否要创建“心跳检测”任务；心跳任务会每 30 分钟检查一次条件。\n\
-- 只有在用户明确同意后，才创建 repeat=heartbeat 的任务；heartbeat 任务建议带上 heartbeat 标签。\n\
-- 用户要求查看、核对、更新或引用“我的持仓 / 关注列表 / 定时任务 / 心跳任务”时，必须优先调用真实 `portfolio` / `cron_job` 工具，把工具结果视为本轮权威真相源；禁止通过沙盒里的 `data/portfolio`、`data/cron_jobs`、`holdings.json`、文件列表、当前工作目录或会话历史自行推断“为空 / 不存在 / 没创建”。\n\
-- 用户要求列出、检查、创建、更新、取消或删除定时任务时，必须调用真实 `cron_job` 工具完成，不能用沙盒目录、内部数据库、会话历史或文件列表自查替代。\n\
-- 用户明确说“取消/删除所有定时任务或心跳任务”时，直接调用 `cron_job(action=\"remove_all\")`；这句明确请求本身就是授权，不要再逐条确认、逐条循环删除或只关闭其中一项。\n\
-- 自动推送不只有定时任务：事件即时推送与每日摘要推送由 `notification_prefs` 管理，删完全部 cron 也不会停。`cron_job` 的 list / remove_all 结果里带有 `automatic_push`：只有 `all_automatic_push_stopped=true` 才可以说“已经没有任何自动提醒”；否则必须逐项说明 `remaining_sources` 里仍会按计划触发的来源，并提示用户可以要求关闭全部自动提醒。禁止在仍有来源时输出“已全部关闭”“不会再有任何推送”“当前没有任何自动任务”这类结论。\n\
-- 用户反复表示“关不掉、还在推、明明关了还收到”时，先按 `automatic_push` 核对到底还有哪些来源在触发，再直接调用 `notification_prefs(action=\"disable_all\")` 一次性收口；不要重复调用 `cron_job(action=\"remove_all\")` 并重复给出同一句“已经没有定时任务了”。\n\
-- 用户明确说“取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知”时，必须调用 `notification_prefs(action=\"disable_all\")`；该动作同时关闭事件即时/摘要推送并删除全部定时/心跳任务。禁止只调用 `disable` 后就声称所有自动提醒都已取消。\n\
-- 如果本轮真实 `cron_job` 工具不可用或调用失败，只能用用户态语言说明“定时任务管理暂时不可用，请稍后再试”，并记录内部错误；禁止向用户输出 `工具未暴露`、`接口未暴露`、`cron_job / scheduled_task`、`data/cron_jobs`、`cloud_sessions`、`cloud_cron_jobs`、`cloud_cron_job_runs` 或“当前沙盒”等实现细节。\n\
-- 用户询问“我的所有定时任务”时，应把 heartbeat 任务也视为任务列表的一部分一并说明。\n\
-- 面向用户列出或说明任务状态时，不要直接复述 `enabled=true`、`enabled=false`、`bypass_quiet_hours=true` 这类实现层 key/value；应改写为“已启用 / 已停用 / 遵守勿扰 / 豁免勿扰”等自然语言。";
-pub const DEFAULT_USER_INFO_BOUNDARY_POLICY: &str = "【用户信息汇总边界】\n\
-- 当用户要求列出“你掌握的我的信息”“我的资料”“你记得什么”时，只能汇总用户可理解、可核验、可更正的业务信息，例如投资偏好、关注标的、持仓摘要、定时任务摘要、画像结论与这些信息的大致来源边界。\n\
-- 禁止把内部渠道标识或实现层字段当作“用户信息”输出，包括但不限于 `open_id`、`chat_id`、内部 session id、手机号 metadata 字段名、工具名、数据库名、表名、本地目录、文件路径或沙盒状态。\n\
-- 如果需要说明身份识别边界，只能用产品化语言，例如“我会根据当前会话身份来区分你的历史记录和任务”；不要列出原始字段名、目录名或存储位置。\n\
-- 若某类信息本轮无法可靠确认，应直接说明“这部分信息我目前不能可靠确认”，不要通过枚举本地文件、运行目录或内部状态来自证。";
-pub const DEFAULT_WEB_CRON_DELIVERY_POLICY: &str = "【Web 定时任务送达边界】\n\
-- 当前 Web 渠道的定时任务结果只保证写入当前 Hone 会话，并在网页在线且 SSE 连接存在时实时追加到页面。\n\
-- 当前没有 Web Push / 手机系统通知能力；不要承诺会出现在手机通知中心，也不要引导用户排查手机通知权限。\n\
-- 如果用户明确需要手机系统级提醒，应说明当前 Web 渠道不支持，并建议改用已配置的外部通知渠道。";
-pub const DEFAULT_COMPANY_PROFILE_POLICY: &str = "【公司画像 / 长期跟踪策略】\n\
-- 若用户正在系统研究某家公司，应优先检查当前 actor 用户空间下的 `company_profiles/` 是否已有该公司画像。\n\
-- 若用户问题明显依赖当前 actor 用户空间下的本地持久化信息，也应优先检查本地文件，例如 `company_profiles/`、`uploads/`、`runtime/` 产物或其它用户本地笔记；如果当前阶段暴露的是只读本地工具，应优先使用这些工具，而不是直接声称无法访问文件、历史或记忆。\n\
-- 若尚无画像，且用户是在发起新的系统性公司调研，则默认创建长期画像并沉淀本轮结论；不需要再额外征求一次建档确认。\n\
-- 仅当用户明显只是在问一次性短问题，或明确表示这轮不要沉淀时，才不要创建画像。\n\
-- 若画像已存在，后续研究应优先参考已有画像；出现实质新增事实时才追加事件，而只要长期判断、稳定偏好、共识逻辑或估值结论已经变化，就应直接回写主画像正文或对应 section。\n\
-- 若画像已存在，分析时要显式参考画像中的用户风险偏好、既有看法、估值口味与约束条件，使结论贴合该用户，而不是给出与其长期框架脱节的通用答案。\n\
-- 在分析某家公司前，若当前 actor 用户空间下的 `company_profiles/` 已覆盖同产业链、同商业模式、同宏观驱动或其它高度相似公司的画像，应先查看这些相似公司里与当前问题相关的记录，特别是行业景气、需求、供给、资本开支、竞争格局与估值框架等长期叙事。\n\
-- 对同类型公司，宏观叙事与行业框架应尽量保持一致；如果你对一类公司整体偏乐观或偏谨慎，可以据此对该类公司先高看或低看一眼，但具体结论仍必须回到个体公司的基本面、竞争位置、盈利质量、估值与风险，不要在分析相似公司时产出两个彼此冲突、却没有解释原因的宏观叙事。\n\
-- 若同类公司之间需要给出不同结论，必须明确说明差异来自哪些公司层面的关键变量，例如产品结构、客户质量、份额趋势、治理、盈利能力、资产负债表、资本配置或估值，而不是把宏观主线本身随意改写。\n\
-- 但不要迎合极端风险偏好；若用户偏好已接近满仓、满融、梭哈、单一催化重注或其它明显过激做法，必须主动降温，把建议收敛到更可执行的风险暴露、仓位节奏、触发条件与证伪条件上。\n\
-- 分析公司时坚持第一性原理，优先看商业模式、竞争优势、盈利质量、估值与产业周期；不要只盯 K 线、短期价格波动或单日涨跌。\n\
-- 只要用户正在研究某家公司，且本轮产出了值得长期复用的内容，就应主动帮用户沉淀到公司画像，不要等用户逐条要求；优先保留用户自己的看法、偏好或约束、你与用户此前已达成一致的判断逻辑，以及本轮形成的估值判断、估值区间或估值锚点。\n\
-- 画像不仅要保留“当前结论”，还应尽量保留“为什么这么判断”、关键证据、来源与本轮研究路径；若当前没有独立 research note 存储层，应把必要的 why / evidence / research trail 写入事件正文。\n\
-- 维护画像与事件时，默认使用用户当前对话语言；仅在用户明确要求或必须保留原始引用/术语时才局部保留其他语言。\n\
-- 主画像应优先维护投资主线、用户视角与偏好、关键经营指标、估值框架与当前估值判断、风险台账与证伪条件；事件更新应围绕投资主线变更日志，而不是价格噪音。\n\
-- 不要把公司画像写成流水账；已经过时或被新判断替代的内容，应直接在主画像正文中改写，而不是层层追加补丁式备注。\n\
-- 建档、更新和事件追加应优先使用 runner 原生文件读写能力完成，而不是依赖额外的专用 mutation 工具。\n\
-- 公司画像服务于长期基本面跟踪，不应用于日内盯盘、高频价格提醒或直接交易指令。
-\
-- 长答去重约束：在生成结构化长答（如公司分析、多空逻辑、动作建议等）时，同一个关键事实、风险点或判断结论只应在最相关的章节展开一次；后续章节可引用但不得重复展开相同论证。禁止在多个板块里对同一客户、风险、持仓关联等锚点重复改写；每个章节必须提供增量信息，不能只是重新包装前面已经说过的内容。";
 
 /// The language the user is reading the product in. It is a user-interface
 /// fact carried per request, not a server-wide setting: two users on the same
@@ -626,6 +531,11 @@ impl Default for PromptOptions {
 #[derive(Debug, Clone)]
 pub struct PromptBundle {
     pub static_system: String,
+    /// Runtime/turn guidance moved out of the system prompt and injected into
+    /// the user prompt (channel formatting, privacy guard, reply language,
+    /// model hint, admin note, and per-turn extra sections such as baselines
+    /// or skill hints).
+    pub turn_guidance: String,
     pub session_context: String,
     /// One timestamp generated with the Session context and reused by every
     /// current-turn answer contract. Keeping it structured prevents a
@@ -641,6 +551,10 @@ impl PromptBundle {
 
     pub fn compose_user_input(&self, user_input: &str) -> String {
         let mut sections = Vec::new();
+
+        if let Some(guidance) = Some(self.turn_guidance.trim()).filter(|value| !value.is_empty()) {
+            sections.push(guidance.to_string());
+        }
 
         if let Some(context) = self
             .conversation_context
@@ -697,7 +611,7 @@ pub async fn build_prompt_bundle(
 }
 
 pub(crate) async fn build_prompt_bundle_at(
-    config: &HoneConfig,
+    _config: &HoneConfig,
     storage: &SessionStorage,
     channel: &str,
     session_id: &str,
@@ -706,29 +620,16 @@ pub(crate) async fn build_prompt_bundle_at(
     now: DateTime<FixedOffset>,
     include_conversation_context: bool,
 ) -> PromptBundle {
-    let mut static_system = config
-        .agent
-        .system_prompt
-        .replace("{{current_time_local}}", "")
-        .replace("{{current_year}}", "")
-        .replace("{{current_date}}", "")
-        .replace("{{session_id}}", "")
-        .replace("{{hone_version}}", env!("CARGO_PKG_VERSION"));
-
-    static_system.push_str("\n\n");
-    static_system.push_str(DEFAULT_FINANCE_DOMAIN_POLICY);
-    static_system.push_str("\n\n");
-    static_system.push_str(DEFAULT_HARI_INVEST_POLICY);
-    static_system.push_str("\n\n");
-    static_system.push_str(DEFAULT_USER_INFO_BOUNDARY_POLICY);
-    static_system.push_str("\n\n");
-    static_system.push_str(DEFAULT_COMPANY_PROFILE_POLICY);
+    // Interactive/main harness leaves system_prompt empty; domain policies live
+    // in on-demand skills, and per-turn runtime guidance is placed in the user
+    // prompt via `turn_guidance`.
+    let static_system = String::new();
+    let mut guidance_sections: Vec<String> = Vec::new();
 
     if options.include_format_guidance {
         let format_guidance = channel_format_guidance(channel);
         if !format_guidance.is_empty() {
-            static_system.push_str("\n\n");
-            static_system.push_str(format_guidance);
+            guidance_sections.push(format_guidance.to_string());
         }
     }
 
@@ -737,19 +638,21 @@ pub(crate) async fn build_prompt_bundle_at(
         .as_ref()
         .filter(|s| !s.trim().is_empty())
     {
-        static_system.push_str("\n\n");
-        static_system.push_str(guard.trim());
+        guidance_sections.push(guard.trim().to_string());
     }
 
     if let Some(model_hint) = options.model_hint.as_ref().filter(|s| !s.trim().is_empty()) {
-        static_system.push_str(&format!("\n\n【基础模型】{}。", model_hint.trim()));
+        guidance_sections.push(format!("【基础模型】{}。", model_hint.trim()));
     }
 
     match options.reply_language {
-        Some(ReplyLanguage::Chinese) => static_system
-            .push_str("\n【语言要求】必须全程以中文回复，不得应答其他语言；但证券代码（NVDA、0700.HK）、财务与估值缩写（P/E、EV/EBITDA、Capex、TTM、GAAP / Non-GAAP、ARR、FCF）、技术与产业术语（GPU、HBM、CoWoS、ASIC）、阿拉伯数字与货币单位（$89.0B、1,553.40 美元、+117%）一律保持原样，不音译、不用汉字数字、不把缩写改写成中文全称。中文正文里夹这些原样实体不算混排。"),
-        Some(ReplyLanguage::English) => static_system.push_str(
-            "\n【语言要求】The user is reading this product in English. Reply entirely in English, including section headings and disclosures. Keep tickers, exchange codes and provider field names in their original form.",
+        Some(ReplyLanguage::Chinese) => guidance_sections.push(
+            "【语言要求】必须全程以中文回复，不得应答其他语言；但证券代码（NVDA、0700.HK）、财务与估值缩写（P/E、EV/EBITDA、Capex、TTM、GAAP / Non-GAAP、ARR、FCF）、技术与产业术语（GPU、HBM、CoWoS、ASIC）、阿拉伯数字与货币单位（$89.0B、1,553.40 美元、+117%）一律保持原样，不音译、不用汉字数字、不把缩写改写成中文全称。中文正文里夹这些原样实体不算混排。"
+                .to_string(),
+        ),
+        Some(ReplyLanguage::English) => guidance_sections.push(
+            "【语言要求】The user is reading this product in English. Reply entirely in English, including section headings and disclosures. Keep tickers, exchange codes and provider field names in their original form."
+                .to_string(),
         ),
         None => {}
     }
@@ -767,16 +670,16 @@ pub(crate) async fn build_prompt_bundle_at(
                 .unwrap_or_else(|_| ".".to_string());
             default_admin_prompt(&project_root)
         };
-        static_system.push_str("\n\n");
-        static_system.push_str(&admin_note);
+        guidance_sections.push(admin_note);
     }
 
     for section in &options.extra_sections {
         if !section.trim().is_empty() {
-            static_system.push_str("\n\n");
-            static_system.push_str(section.trim());
+            guidance_sections.push(section.trim().to_string());
         }
     }
+
+    let turn_guidance = guidance_sections.join("\n\n");
 
     let session_context = format!(
         "【Session 上下文】\n当前时间：{} (运行时时区：{})\n当前日期：{}\n当前年份：{}\n会话 ID：{}",
@@ -813,6 +716,7 @@ pub(crate) async fn build_prompt_bundle_at(
 
     PromptBundle {
         static_system,
+        turn_guidance,
         session_context,
         answer_time_local: now.format("%Y-%m-%d %H:%M").to_string(),
         conversation_context,
@@ -868,65 +772,65 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn hari_invest_policy_defaults_every_investment_question_to_full_research_depth() {
+    fn hari_invest_skill_defaults_every_investment_question_to_full_research_depth() {
+        let skill = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../skills/hari-invest/SKILL.md"),
+        )
+        .expect("hari-invest SKILL.md should be readable");
         // A one-line question ("戴尔超预期吗") must still come back as a full
         // research note; brevity is reserved for greetings, ledger follow-ups,
         // entity clarification and product usage.
-        assert!(
-            DEFAULT_HARI_INVEST_POLICY.contains("研究深度默认：每一次投研提问都是一次完整研究")
-        );
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅由本轮取到的证据决定，不由问句字数决定"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得以“要不要接着算”收尾"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得整块省略"));
-        assert!(
-            DEFAULT_HARI_INVEST_POLICY
-                .contains("只有问候、记账追问、实体澄清与产品使用类问题才真正简短")
-        );
+        assert!(skill.contains("研究深度默认"));
+        assert!(skill.contains("篇幅由本轮取到的证据决定，不由问句字数决定"));
+        assert!(skill.contains("不得以“要不要接着算”收尾"));
+        assert!(skill.contains("不得整块省略"));
+        assert!(skill.contains("只有问候、记账追问、实体澄清与产品使用类问题才真正简短"));
         // The floor is a hard requirement, and it may only be met with
         // evidence — never with restated conclusions or disclaimers.
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("篇幅下限是硬要求，不是风格偏好"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("中文正文不少于 1500 字"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("2500–4000 字"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("不得靠复述问题、重复结论、罗列免责声明"));
-        assert!(DEFAULT_HARI_INVEST_POLICY.contains("禁止把内容留到下一轮"));
+        assert!(skill.contains("篇幅下限是硬要求，不是风格偏好"));
+        assert!(skill.contains("中文正文不少于 1500 字"));
+        assert!(skill.contains("2500–4000 字"));
+        assert!(skill.contains("不得靠复述问题、重复结论、罗列免责声明"));
+        assert!(skill.contains("禁止把内容留到下一轮"));
+        assert!(skill.contains("内部 `laowang-investment-distiller`"));
     }
 
     #[test]
-    fn finance_policy_prioritizes_structured_market_data_without_a_completion_gate() {
-        assert!(
-            DEFAULT_FINANCE_DOMAIN_POLICY.contains("结构化行情是明确公司/证券问题的第一事实来源")
-        );
-        assert!(
-            DEFAULT_FINANCE_DOMAIN_POLICY
-                .contains("在开放网页搜索之前，优先对选中的全部标准 symbol")
-        );
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("不是完成门禁"));
+    fn finance_research_core_skill_prioritizes_structured_market_data_without_a_completion_gate() {
+        let skill = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../skills/finance-research-core/SKILL.md"),
+        )
+        .expect("finance-research-core SKILL.md should be readable");
+        assert!(skill.contains("结构化行情是明确公司/证券问题的第一事实来源"));
+        assert!(skill.contains("在开放网页搜索之前，优先对选中的全部标准 symbol"));
+        assert!(skill.contains("不是完成门禁"));
         // 公式必须是纯文本：渲染层没有数学引擎，而正文里的 $ 是货币符号。
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("公式排版约束"));
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("$ 只表示货币"));
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("应继续使用当前可得证据与公开搜索"));
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("财报数字时效与准确性"));
+        assert!(skill.contains("公式排版约束"));
+        assert!(skill.contains("`$` 只表示货币"));
+        assert!(skill.contains("应继续使用当前可得证据与公开搜索"));
+        assert!(skill.contains("财报数字时效与准确性"));
         // Channel formatting trims paragraph size, never research depth.
         assert!(TELEGRAM_FORMAT_GUIDANCE.contains("这是排版粒度要求，不是篇幅上限"));
         assert!(FEISHU_FORMAT_GUIDANCE.contains("这是结构限制，不是篇幅上限"));
-        assert!(
-            DEFAULT_FINANCE_DOMAIN_POLICY.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标")
-        );
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("不是逐数字双来源或缺项拒答门禁"));
+        assert!(skill.contains("EBIT、EBITA、EBITDA 与营业利润不是同一个指标"));
+        assert!(skill.contains("不是逐数字双来源或缺项拒答门禁"));
     }
 
     /// A turn that fetched no market data must not publish a priced quote
     /// prefix, and a turn that fetched provider aggregates must not label them
-    /// as primary filings it never opened. Both live in the prompt rather than
-    /// in a runtime validator (AGENTS.md 139-145), so the regression these
-    /// tests protect is the rule silently going missing from the policy text.
+    /// as primary filings it never opened. Both live in the on-demand skill
+    /// rather than in a runtime validator (AGENTS.md 139-145).
     #[test]
-    fn finance_policy_binds_the_quote_prefix_and_source_labels_to_this_turn() {
-        // Zero successful quote / snapshot / extended_hours this turn: the
-        // `行情口径：` prefix may not carry a price, and the body may not carry
-        // derived price facts either.
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("首行的“无行情分支”"));
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("行情口径只能写“本轮未取到 <代码> 行情”"));
+    fn finance_research_core_skill_binds_quote_prefix_and_source_labels_to_this_turn() {
+        let skill = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../skills/finance-research-core/SKILL.md"),
+        )
+        .expect("finance-research-core SKILL.md should be readable");
+        assert!(skill.contains("首行的“无行情分支”"));
+        assert!(skill.contains("行情口径只能写“本轮未取到 <代码> 行情”"));
         for banned in [
             "价格",
             "涨跌幅",
@@ -936,23 +840,15 @@ mod tests {
             "价位型买卖区间",
         ] {
             assert!(
-                DEFAULT_FINANCE_DOMAIN_POLICY.contains(banned),
+                skill.contains(banned),
                 "no-quote branch stopped naming {banned}"
             );
         }
-        // Loading a skill is not evidence: three skill_tool calls and nothing
-        // else is still a zero-evidence turn.
-        assert!(
-            DEFAULT_FINANCE_DOMAIN_POLICY
-                .contains("只加载 skill、只读本地文件、只查技能索引都**不算**取到行情")
-        );
-
-        // Source labels are a claim about what this turn actually read, and
-        // that claim now explicitly covers table columns, not just prose.
-        assert!(DEFAULT_FINANCE_DOMAIN_POLICY.contains("这条同样管表格的「来源」列"));
+        assert!(skill.contains("只加载 skill、只读本地文件、只查技能索引都**不算**取到行情"));
+        assert!(skill.contains("这条同样管表格的「来源」列"));
         for upgraded in ["10-Q", "SEC 官方披露文件", "交易所官方收盘价"] {
             assert!(
-                DEFAULT_FINANCE_DOMAIN_POLICY.contains(upgraded),
+                skill.contains(upgraded),
                 "source-tier rule stopped naming {upgraded}"
             );
         }
@@ -1148,7 +1044,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_prompt_bundle_always_includes_finance_domain_policy() {
+    async fn build_prompt_bundle_leaves_system_prompt_empty_and_moves_guidance_to_user_prompt() {
         let data_dir = std::env::temp_dir().join(format!(
             "hone-prompt-test-{}-{}",
             std::process::id(),
@@ -1159,8 +1055,6 @@ mod tests {
         fs::create_dir_all(&data_dir).expect("session storage dir should init");
         let storage = SessionStorage::new(data_dir.join("sessions")).await;
         let mut config = HoneConfig::default();
-        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
-        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
         config.timezone = Some("Asia/Shanghai".to_string());
         config.agent.system_prompt = "你是 Hone。".to_string();
         let prompt_state = SessionPromptState::default();
@@ -1175,322 +1069,78 @@ mod tests {
         )
         .await;
 
-        assert!(bundle.system_prompt().contains("【领域边界与投研约束】"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("【Hari Invest 默认投研框架】")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("必须在形成最终回答前实际加载并遵循 `hari-invest` Skill")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("`skill_tool(skill_name=\"hari-invest\")`")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("`skill_tool(skill_name=\"company-thesis-ratings\")`")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("公司卡在商业模式、基本面结构、护城河")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("历史公司研究基线不是当前事实源")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("明显非投资问题不得加载 `hari-invest`")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("内部 `laowang-investment-distiller`")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("机会区、持有区、风险区或数据不足")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("首行之后的第一段必须直接给出“结论：”")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不得先寒暄、复述问题、说明计划")
-        );
-        assert!(bundle.system_prompt().contains("次要数据缺失不能成为"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不能只回答公司长期逻辑不错")
-        );
-        assert!(bundle.system_prompt().contains("不得冒充老王本人"));
-        assert!(bundle.system_prompt().contains("禁止荐股"));
-        assert!(bundle.system_prompt().contains("不得输出可照抄的单票排序"));
-        assert!(bundle.system_prompt().contains("集中仓位模板"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不要未经自己思考和风险评估就直接照做")
-        );
-        assert!(bundle.system_prompt().contains("多标的最新行情约束"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("本轮独立核验的来源、时间戳和交易时段口径")
-        );
-        assert!(bundle.system_prompt().contains("不得仅因领域不同而拒绝"));
-        assert!(!bundle.system_prompt().contains("直接礼貌拒绝"));
-        assert!(bundle.system_prompt().contains("区分主线与噪音"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("保持分析逻辑、因果链和结论框架的连贯性")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("本轮用户输入优先于历史摘要")
-        );
-        assert!(bundle.system_prompt().contains("不得调用 stock_research"));
-        assert!(bundle.system_prompt().contains("实体发现与证据加载"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("结构化行情是明确公司/证券问题的第一事实来源")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("在开放网页搜索之前，优先对选中的全部标准 symbol")
-        );
-        assert!(bundle.system_prompt().contains("不是完成门禁"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不要求把千变万化的问法硬塞进闭合标签")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("主 Agent 在同一工具循环里先调用真实 `portfolio(view)`")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("PE、DCF、FCF、API、ARR、EBITDA")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("Interactive 回答所有权与时间首行")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("完整最终回答由主 Agent 在本轮工具循环中一次形成并原样发送、持久化")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("必须由主 Agent 自己把“数据时间：北京时间")
-        );
-        assert!(bundle.system_prompt().contains("最新可得、非逐笔"));
-        assert!(bundle.system_prompt().contains("关系、事件与估值证据纪律"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("搜索摘要明确陈述的有限事实只能按原范围使用")
-        );
-        assert!(bundle.system_prompt().contains("禁止命名为 EV/EBITDA"));
-        assert!(bundle.system_prompt().contains("hone_quote_time"));
-        assert!(bundle.system_prompt().contains("多标的必须全部独立解析"));
-        assert!(bundle.system_prompt().contains("资产类型证据路由"));
-        assert!(bundle.system_prompt().contains("isEtf/isFund"));
-        assert!(bundle.system_prompt().contains("不得要求公司利润表"));
-        assert!(bundle.system_prompt().contains("exchangeShortName=CRYPTO"));
-        assert!(bundle.system_prompt().contains("stock profile 空数据"));
-        assert!(bundle.system_prompt().contains("非标准 ticker 约束"));
-        assert!(bundle.system_prompt().contains("疑似拼写错误"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不得按“最像的代码”直接给出")
-        );
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不得把近似代码直接等同为热门私营公司")
-        );
-        assert!(bundle.system_prompt().contains("副作用写入确认约束"));
-        assert!(bundle.system_prompt().contains("这只 / 这一只 / 这个 / 它"));
-        assert!(bundle.system_prompt().contains("portfolio"));
-        assert!(bundle.system_prompt().contains("cron_job"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("先按上一轮最相关标的代写后再补一句")
-        );
-        assert!(bundle.system_prompt().contains("强时效行情建议约束"));
-        assert!(bundle.system_prompt().contains("未覆盖盘前/盘后实时价"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不得把旧价作为当前决策锚点")
-        );
-        assert!(bundle.system_prompt().contains("可审计核验约束"));
-        assert!(bundle.system_prompt().contains("禁止使用“已核验”"));
-        assert!(bundle.system_prompt().contains("分档买入区间"));
-        assert!(bundle.system_prompt().contains("基金/ETF 披露口径约束"));
-        assert!(
-            bundle
-                .system_prompt()
-                .contains("不得把持仓文件股数差异直接表述为")
-        );
-        assert!(bundle.system_prompt().contains("不等同于主动交易方向"));
-        assert!(bundle.system_prompt().contains("原油与大宗商品归因约束"));
-        assert!(bundle.system_prompt().contains("原因未核验/暂不归因"));
+        assert!(bundle.system_prompt().is_empty());
+        let composed = bundle.compose_user_input("分析 NVDA");
+        assert!(composed.contains("【输出格式-Telegram】"));
+        assert!(composed.contains("【Session 上下文】"));
+        assert!(composed.contains("【本轮用户输入】"));
 
         let _ = fs::remove_dir_all(&data_dir);
     }
 
-    #[tokio::test]
-    async fn build_prompt_bundle_includes_company_profile_memory_requirements() {
-        let data_dir = std::env::temp_dir().join(format!(
-            "hone-prompt-company-profile-{}-{}",
-            std::process::id(),
-            hone_core::local_now()
-                .timestamp_nanos_opt()
-                .unwrap_or_default()
-        ));
-        fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions")).await;
-        let mut config = HoneConfig::default();
-        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
-        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
-        config.timezone = Some("Asia/Shanghai".to_string());
-        config.agent.system_prompt = "你是 Hone。".to_string();
+    #[test]
+    fn domain_policies_live_in_on_demand_skills() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+        let finance_core = fs::read_to_string(root.join("finance-research-core/SKILL.md"))
+            .expect("finance-research-core SKILL.md");
+        let company_portrait = fs::read_to_string(root.join("company_portrait/SKILL.md"))
+            .expect("company_portrait SKILL.md");
+        let scheduled_task = fs::read_to_string(root.join("scheduled_task/SKILL.md"))
+            .expect("scheduled_task SKILL.md");
+        let notification_prefs = fs::read_to_string(root.join("notification_preferences/SKILL.md"))
+            .expect("notification_preferences SKILL.md");
 
-        let bundle = build_prompt_bundle(
-            &config,
-            &storage,
-            "feishu",
-            "session-demo",
-            &SessionPromptState::default(),
-            &PromptOptions {
-                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
-                ..PromptOptions::default()
-            },
-        )
-        .await;
-        let system_prompt = bundle.system_prompt();
+        for required in [
+            "禁止荐股",
+            "不得输出可照抄的单票排序",
+            "集中仓位模板",
+            "多标的最新行情约束",
+            "非标准 ticker 约束",
+            "副作用写入确认约束",
+            "强时效行情建议约束",
+            "可审计核验约束",
+            "基金/ETF 披露口径约束",
+            "原油与大宗商品归因约束",
+            "portfolio(action=\"replace_all\")",
+            "只有这些股票/持仓，其他没有了",
+            "用户信息汇总边界",
+            "open_id",
+            "chat_id",
+        ] {
+            assert!(
+                finance_core.contains(required),
+                "finance-research-core missing: {required}"
+            );
+        }
 
-        assert!(system_prompt.contains("用户自己的看法、偏好或约束"));
-        assert!(system_prompt.contains("已达成一致的判断逻辑"));
-        assert!(system_prompt.contains("估值判断、估值区间或估值锚点"));
-        assert!(system_prompt.contains("用户视角与偏好"));
-        assert!(system_prompt.contains("相似公司里与当前问题相关的记录"));
-        assert!(system_prompt.contains("宏观叙事与行业框架应尽量保持一致"));
-        assert!(system_prompt.contains("不要把公司画像写成流水账"));
+        for required in [
+            "用户自己的看法、偏好或约束",
+            "相似公司里与当前问题相关的记录",
+            "宏观叙事与行业框架应尽量保持一致",
+            "长答去重约束",
+        ] {
+            assert!(
+                company_portrait.contains(required),
+                "company_portrait missing: {required}"
+            );
+        }
 
-        let _ = fs::remove_dir_all(&data_dir);
-    }
+        for required in [
+            "我的持仓 / 关注列表 / 定时任务 / 心跳任务",
+            "holdings.json",
+            "data/portfolio",
+            "automatic_push",
+            "Web 渠道送达边界",
+        ] {
+            assert!(
+                scheduled_task.contains(required),
+                "scheduled_task missing: {required}"
+            );
+        }
 
-    #[tokio::test]
-    async fn build_prompt_bundle_includes_user_info_boundary_policy() {
-        let data_dir = std::env::temp_dir().join(format!(
-            "hone-prompt-user-info-{}-{}",
-            std::process::id(),
-            hone_core::local_now()
-                .timestamp_nanos_opt()
-                .unwrap_or_default()
-        ));
-        fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions")).await;
-        let mut config = HoneConfig::default();
-        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
-        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
-        config.timezone = Some("Asia/Shanghai".to_string());
-        config.agent.system_prompt = "你是 Hone。".to_string();
-
-        let bundle = build_prompt_bundle(
-            &config,
-            &storage,
-            "feishu",
-            "session-demo",
-            &SessionPromptState::default(),
-            &PromptOptions {
-                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
-                ..PromptOptions::default()
-            },
-        )
-        .await;
-        let system_prompt = bundle.system_prompt();
-
-        assert!(system_prompt.contains("【用户信息汇总边界】"));
-        assert!(system_prompt.contains("只能汇总用户可理解、可核验、可更正的业务信息"));
-        assert!(system_prompt.contains("禁止把内部渠道标识或实现层字段当作“用户信息”输出"));
-        assert!(system_prompt.contains("open_id"));
-        assert!(system_prompt.contains("chat_id"));
-        assert!(system_prompt.contains("不要列出原始字段名、目录名或存储位置"));
-
-        let _ = fs::remove_dir_all(&data_dir);
-    }
-
-    #[tokio::test]
-    async fn build_prompt_bundle_includes_portfolio_and_cron_truth_source_policy() {
-        let data_dir = std::env::temp_dir().join(format!(
-            "hone-prompt-portfolio-cron-{}-{}",
-            std::process::id(),
-            hone_core::local_now()
-                .timestamp_nanos_opt()
-                .unwrap_or_default()
-        ));
-        fs::create_dir_all(&data_dir).expect("session storage dir should init");
-        let storage = SessionStorage::new(data_dir.join("sessions")).await;
-        let mut config = HoneConfig::default();
-        // 测试必须钉住运行时时区:`HoneBotCore::new` 会用 config 里的时区重新配置
-        // 进程级全局,任何未设时区的 config 都会把它重置成宿主时区,污染同进程后续测试。
-        config.timezone = Some("Asia/Shanghai".to_string());
-        config.agent.system_prompt = "你是 Hone。".to_string();
-
-        let bundle = build_prompt_bundle(
-            &config,
-            &storage,
-            "feishu",
-            "session-demo",
-            &SessionPromptState::default(),
-            &PromptOptions {
-                extra_sections: vec![DEFAULT_CRON_TASK_POLICY.to_string()],
-                ..PromptOptions::default()
-            },
-        )
-        .await;
-        let system_prompt = bundle.system_prompt();
-
-        assert!(system_prompt.contains("我的持仓 / 关注列表 / 定时任务 / 心跳任务"));
-        assert!(system_prompt.contains("必须优先调用真实"));
-        assert!(system_prompt.contains("本轮权威真相源"));
-        assert!(system_prompt.contains("holdings.json"));
-        assert!(system_prompt.contains("禁止通过沙盒里的"));
-        assert!(system_prompt.contains("data/portfolio"));
-        assert!(system_prompt.contains("portfolio(action=\"replace_all\")"));
-        assert!(system_prompt.contains("只有这些股票/持仓，其他没有了"));
-
-        let _ = fs::remove_dir_all(&data_dir);
+        assert!(notification_prefs.contains("disable_all"));
+        assert!(notification_prefs.contains("get_overview"));
+        assert!(notification_prefs.contains("set_quiet_hours"));
     }
 
     #[tokio::test]
@@ -1598,6 +1248,7 @@ mod tests {
     async fn current_turn_input_is_last_after_historical_skill_context() {
         let bundle = PromptBundle {
             static_system: String::new(),
+            turn_guidance: String::new(),
             conversation_context: Some(
                 "【Invoked Skill Context】\nSkill: Stock Research (stock_research)\nLITE"
                     .to_string(),
@@ -1747,15 +1398,23 @@ mod tests {
         )
         .await;
 
-        let system = bundle.system_prompt();
-        assert!(system.contains("【管理员覆写】请先确认影响范围。"));
-        assert!(system.contains(DEFAULT_GROUP_PRIVACY_GUARD));
-        assert!(system.contains("【基础模型】gpt-5.4。"));
-        assert!(system.contains("【语言要求】必须全程以中文回复"));
-        assert!(system.contains("阿拉伯数字与货币单位"));
-        assert!(!system.contains("禁止中英文混排"));
-        assert!(system.contains("【附加规则】先给结论再展开。"));
-        assert!(system.contains("【输出格式-Discord】"));
+        assert!(bundle.system_prompt().is_empty());
+        let composed = bundle.compose_user_input("分析一下 NVDA");
+        assert!(composed.contains("【管理员覆写】请先确认影响范围。"));
+        assert!(composed.contains(DEFAULT_GROUP_PRIVACY_GUARD));
+        assert!(composed.contains("【基础模型】gpt-5.4。"));
+        assert!(composed.contains("【语言要求】必须全程以中文回复"));
+        assert!(composed.contains("阿拉伯数字与货币单位"));
+        assert!(!composed.contains("禁止中英文混排"));
+        assert!(composed.contains("【附加规则】先给结论再展开。"));
+        assert!(composed.contains("【输出格式-Discord】"));
+        let guidance_pos = composed
+            .find("【输出格式-Discord】")
+            .expect("guidance section");
+        let input_pos = composed
+            .find("【本轮用户输入】")
+            .expect("user input section");
+        assert!(guidance_pos < input_pos);
 
         let _ = fs::remove_dir_all(&data_dir);
     }
@@ -1790,35 +1449,49 @@ mod tests {
         )
         .await;
 
-        assert!(!bundle.system_prompt().contains("【输出格式-Telegram】"));
+        assert!(bundle.system_prompt().is_empty());
+        assert!(
+            !bundle
+                .compose_user_input("你好")
+                .contains("【输出格式-Telegram】")
+        );
 
         let _ = fs::remove_dir_all(&data_dir);
     }
 
     #[tokio::test]
-    async fn repository_soul_keeps_full_investment_output_contract() {
+    async fn repository_soul_is_empty_and_finance_contract_lives_in_skill() {
         let soul = fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../soul.md"),
         )
         .expect("repository soul.md should be readable");
+        assert!(
+            soul.trim().is_empty(),
+            "main harness soul.md should stay empty while domain rules live in skills"
+        );
 
-        assert!(soul.lines().count() >= 250);
+        let core_skill = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../skills/finance-research-core/SKILL.md"),
+        )
+        .expect("finance-research-core SKILL.md should be readable");
         for required in [
             "B. 单股深度分析",
             "B.1 ETF / 基金深度分析",
             "B.2 加密资产深度分析",
             "C. 板块 / 技术 / 产业链分析",
-            "F. 财务对比 / 数据罗列",
+            "F. 财务对比",
             "强制输出顺序",
             "Bull 投资主线",
             "Bear 投资主线",
             "Base Case",
-            "单次回答默认结构",
-            "十一、系统边界",
+            "用户信息汇总边界",
             "hone_security_listing_evidence.status=active_listing",
         ] {
-            assert!(soul.contains(required), "soul.md missing: {required}");
+            assert!(
+                core_skill.contains(required),
+                "finance-research-core SKILL.md missing: {required}"
+            );
         }
-        assert!(!soul.contains("4. 定时任务（scheduled_task"));
     }
 }

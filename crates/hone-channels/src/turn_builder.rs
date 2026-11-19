@@ -173,16 +173,6 @@ impl<'a> PromptTurnBuilder<'a> {
         use_native_codex_turn_input: bool,
     ) -> PromptTurnInput {
         let mut prompt_options = self.prompt_options.clone();
-        if self.allow_cron {
-            prompt_options
-                .extra_sections
-                .push(crate::prompt::DEFAULT_CRON_TASK_POLICY.to_string());
-            if self.actor.channel == "web" {
-                prompt_options
-                    .extra_sections
-                    .push(crate::prompt::DEFAULT_WEB_CRON_DELIVERY_POLICY.to_string());
-            }
-        }
         if let Some(company_research) = crate::prompt::company_research_baseline(user_input) {
             prompt_options.extra_sections.push(company_research);
         }
@@ -250,13 +240,24 @@ impl<'a> PromptTurnBuilder<'a> {
             )
         };
 
-        PromptTurnInput {
-            system_prompt: bundle.system_prompt(),
-            runtime_input: if use_native_codex_turn_input {
+        let runtime_input = if use_native_codex_turn_input {
+            let guidance = bundle.turn_guidance.trim();
+            if guidance.is_empty() {
                 compose_native_codex_turn_input(prompt_time_local, user_input)
             } else {
-                compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra)
-            },
+                format!(
+                    "【当前时间】\n{} (运行时时区)\n\n{guidance}\n\n【本轮用户输入】\n{}",
+                    prompt_time_local.format("%Y-%m-%d %H:%M:%S"),
+                    user_input.trim()
+                )
+            }
+        } else {
+            compose_runtime_input(&bundle, &runtime_user_input, self.recv_extra)
+        };
+
+        PromptTurnInput {
+            system_prompt: bundle.system_prompt(),
+            runtime_input,
             answer_time_local: bundle.answer_time_local,
         }
     }
@@ -353,6 +354,10 @@ pub(crate) fn compose_runtime_input(
     }
 
     let mut sections = Vec::new();
+
+    if let Some(guidance) = Some(bundle.turn_guidance.trim()).filter(|value| !value.is_empty()) {
+        sections.push(guidance.to_string());
+    }
 
     if let Some(extra) = extra {
         sections.push(extra.to_string());
@@ -463,6 +468,7 @@ mod tests {
     fn runtime_input_with_recv_extra_keeps_current_turn_last() {
         let bundle = PromptBundle {
             static_system: String::new(),
+            turn_guidance: String::new(),
             conversation_context: Some(
                 "【历史会话总结】\n旧 LITE stock_research 上下文".to_string(),
             ),

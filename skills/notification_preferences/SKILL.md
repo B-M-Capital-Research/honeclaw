@@ -30,7 +30,9 @@ macro_event, social_post
 | 用户说法 | 调用 |
 |---------|------|
 | "先别推了" / "静音" | `notification_prefs(action="disable")` |
+| "取消所有自动提醒 / 关闭所有自动推送 / 以后不要自动通知" | `notification_prefs(action="disable_all")`（同时关闭事件即时/摘要推送并删除全部定时/心跳任务） |
 | "恢复推送" / "开回来" | `notification_prefs(action="enable")` |
+| "半夜别推 / 几点后别打扰我 / 第二天再发" | `notification_prefs(action="set_quiet_hours", value={"from":"23:00","to":"07:00"})`（如需特定事件在勿扰时段仍立即推送，使用 `exempt_kinds`） |
 | "只看重要的" | `notification_prefs(action="set_min_severity", value="high")` |
 | "一般的也推吧" | `notification_prefs(action="set_min_severity", value="medium")` |
 | "只推我持仓相关的" | `notification_prefs(action="set_portfolio_only", value=true)` |
@@ -55,4 +57,6 @@ macro_event, social_post
 - 全局(部署方)可能在 `config.yaml` 里把某个 kind 关了——那类事件无论如何都不会推给任何人,即使用户把它放进 `allow_kinds`。这条解释给用户,不要误以为是工具问题。
 - `price_high_pct*` 是首次即时提醒阈值，`price_realert_step_pct` 是首次命中后的最小前进步长。系统 poller 只产生固定候选档；用户阈值不落在候选网格上时，真实首次 band 会向上落到下一条候选档，必须以 `get_overview` 返回的示例为准。
 - `immediate_kinds` 里的 `price_alert` 不能绕过显式价格阈值；价格事件始终由最终价格策略判断。
+- 推送概览类问题（"我的推送怎么配的 / 推送日程 / 都什么时候推什么 / quiet 设了没 / 哪些 cron 会被静音吞 / 我都收到些什么"等）：必须先调 `notification_prefs(action="get_overview")`，把返回的 `display_text` **整段原样呈现**给用户，再用一两句补充亮点（quiet_hours 是否启用、有几条 cron 落在 quiet 区间会被吞、即时推阈值是否非默认）。不要 dump 原始 prefs JSON，也不要把 `display_text` 拆开重写或加 markdown 标题。
+- 勿扰时段（quiet_hours）机制：区间内所有即时推 hold、digest fire 跳过；到 `to` 时刻把仍新鲜的事件合并发一条早间合集；过保鲜期事件（PriceAlert / VolumeSpike 隔夜失效）直接 drop。若用户要求某些 kind 在静音时段也立即响（如"财报夜里也得通知我"），使用 `exempt_kinds`。
 - 用户没说"所有人"、"全局"时,不要尝试改别人的配置——本工具构造时已硬绑定到当前用户,也没有这个能力。

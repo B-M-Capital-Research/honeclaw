@@ -4424,7 +4424,9 @@ async fn resolve_prompt_input_keeps_system_prompt_stable_when_related_skills_cha
         .await;
 
     assert_eq!(system_with_match, system_without_match);
-    assert!(system_with_match.contains("【SkillTool】"));
+    assert!(system_with_match.is_empty());
+    assert!(runtime_with_match.contains("【SkillTool】"));
+    assert!(runtime_without_match.contains("【SkillTool】"));
     assert!(!system_with_match.contains("turn-0 可用技能索引"));
     assert!(!system_with_match.contains("alpha_skill"));
     assert!(!system_with_match.contains("【Skills relevant to your task】"));
@@ -4549,7 +4551,7 @@ async fn trusted_codex_interactive_turn_uses_only_time_and_current_user_content(
             .any(|tool| tool == "skill_tool"),
         "trusted skill scripts must execute through the host-side skill_tool boundary"
     );
-    assert!(system_prompt.contains("【领域边界与投研约束】"));
+    assert!(system_prompt.is_empty());
     assert_eq!(
         std::fs::canonicalize(native_skill_link).expect("native Codex skill link"),
         std::fs::canonicalize(&skill_dir).expect("source skill dir")
@@ -5524,10 +5526,16 @@ async fn resolve_prompt_input_warns_web_cron_cannot_send_mobile_system_push() {
         .resolve_prompt_input("session-demo", "3 分钟后提醒我")
         .await;
 
-    assert!(system_prompt.contains("【Web 定时任务送达边界】"));
-    assert!(system_prompt.contains("只保证写入当前 Hone 会话"));
-    assert!(system_prompt.contains("当前没有 Web Push / 手机系统通知能力"));
-    assert!(system_prompt.contains("不要承诺会出现在手机通知中心"));
+    assert!(system_prompt.is_empty());
+    let skill = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../skills/scheduled_task/SKILL.md"),
+    )
+    .expect("scheduled_task SKILL.md");
+    assert!(skill.contains("Web 渠道送达边界"));
+    assert!(skill.contains("只保证写入当前 Hone 会话"));
+    assert!(skill.contains("当前没有 Web Push / 手机系统通知能力"));
+    assert!(skill.contains("不要承诺会出现在手机通知中心"));
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -5545,15 +5553,19 @@ async fn resolve_prompt_input_maps_cron_enabled_flags_to_user_language() {
         .resolve_prompt_input("session-demo", "我有哪些定时任务")
         .await;
 
-    assert!(system_prompt.contains("【定时任务 / 心跳任务策略】"));
-    assert!(system_prompt.contains("必须调用真实 `cron_job` 工具完成"));
-    assert!(system_prompt.contains("不能用沙盒目录、内部数据库、会话历史或文件列表自查替代"));
-    assert!(system_prompt.contains("定时任务管理暂时不可用，请稍后再试"));
-    assert!(system_prompt.contains("禁止向用户输出 `工具未暴露`"));
-    assert!(system_prompt.contains("`cloud_cron_job_runs`"));
-    assert!(system_prompt.contains("不要直接复述 `enabled=true`"));
-    assert!(system_prompt.contains("已启用 / 已停用"));
-    assert!(system_prompt.contains("豁免勿扰"));
+    assert!(system_prompt.is_empty());
+    let skill = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../skills/scheduled_task/SKILL.md"),
+    )
+    .expect("scheduled_task SKILL.md");
+    assert!(skill.contains("真实工具为唯一权威真相源"));
+    assert!(skill.contains("定时任务管理暂时不可用，请稍后再试"));
+    assert!(skill.contains("禁止向用户输出 `工具未暴露`"));
+    assert!(skill.contains("`cloud_cron_job_runs`"));
+    assert!(skill.contains("enabled=true"));
+    assert!(skill.contains("已启用 / 已停用"));
+    assert!(skill.contains("豁免勿扰"));
 
     let _ = std::fs::remove_dir_all(root);
 }

@@ -182,7 +182,7 @@ pub(crate) fn codex_acp_process_config(
             );
         }
     }
-    if let Some(instructions) = developer_instructions {
+    if let Some(instructions) = developer_instructions.filter(|value| !value.trim().is_empty()) {
         values.insert(
             "developer_instructions".to_string(),
             Value::String(instructions.to_string()),
