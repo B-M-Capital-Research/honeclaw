@@ -7,6 +7,7 @@ import {
   setCachedCommunityFeed,
   setCachedPublicUser,
 } from "@/lib/public-session-cache";
+import { invalidatePublicAuth, PUBLIC_AUTH_INVALIDATED } from "./public-auth-lifecycle";
 import type { PublicAuthUserInfo } from "@/lib/types";
 
 const user = (userId: string) =>
@@ -65,5 +66,28 @@ describe("signed-in user survives a route change", () => {
     setCachedCommunityFeed([{ id: "private-b" }]);
     setCachedPublicUser(null);
     expect(cachedCommunityFeed()).toBeNull();
+  });
+});
+
+describe("auth invalidation clears account-owned caches", () => {
+  it("clears current user and private feed on a lifecycle invalidation", () => {
+    setCachedPublicUser(user("u-a"));
+    setCachedCommunityFeed([{ id: "private-a" }]);
+    invalidatePublicAuth();
+    expect(cachedPublicUser()).toBeNull();
+    expect(cachedCommunityFeed()).toBeNull();
+  });
+  it("invalidates on account replacement, but preserves same-account refreshes", () => {
+    setCachedPublicUser(user("u-a"));
+    let count = 0;
+    const changed = () => { count += 1; };
+    window.addEventListener(PUBLIC_AUTH_INVALIDATED, changed);
+    try {
+      setCachedPublicUser(user("u-a"));
+      expect(count).toBe(0);
+      setCachedPublicUser(user("u-b"));
+      expect(count).toBe(1);
+      expect(cachedPublicUser()?.user_id).toBe("u-b");
+    } finally { window.removeEventListener(PUBLIC_AUTH_INVALIDATED, changed); setCachedPublicUser(null); }
   });
 });

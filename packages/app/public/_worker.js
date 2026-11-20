@@ -27,14 +27,19 @@ function requestWantsHtml(request) {
   return (request.headers.get("accept") || "").includes("text/html");
 }
 
-export function withSecurityHeaders(response) {
+const TRADE_MANAGER_ENTRIES = new Set(['/trade-manager/', '/trade-manager/index.html']);
+const TRADE_MANAGER_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+
+export function withSecurityHeaders(response, pathname = '') {
   const headers = new Headers(response.headers);
   headers.set("strict-transport-security", STRICT_TRANSPORT_SECURITY);
   headers.set("x-content-type-options", "nosniff");
   headers.set("referrer-policy", "strict-origin-when-cross-origin");
   if (responseLooksLikeHtml(response)) {
-    headers.set("content-security-policy", "frame-ancestors 'none'");
-    headers.set("x-frame-options", "DENY");
+    const tradeManager = TRADE_MANAGER_ENTRIES.has(pathname);
+    headers.set("content-security-policy", tradeManager ? TRADE_MANAGER_CSP : "frame-ancestors 'none'");
+    headers.set("x-frame-options", tradeManager ? "SAMEORIGIN" : "DENY");
+    if (tradeManager) headers.set("cache-control", "no-store");
   }
   return new Response(response.body, {
     status: response.status,
@@ -110,6 +115,25 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const response = await env.ASSETS.fetch(request);
+
+    // A missing tool bundle must never embed the /chat SPA recursively.
+    if (url.pathname.startsWith('/trade-manager/')) {
+      const entry = TRADE_MANAGER_ENTRIES.has(url.pathname);
+      if (response.status === 404 || (!entry && responseLooksLikeHtml(response))) {
+        return withSecurityHeaders(new Response('Trade manager asset unavailable', {
+          status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+        }));
+      }
+      if (entry && request.method !== 'HEAD' && responseLooksLikeHtml(response)) {
+        const html = await response.clone().text();
+        if (!html.includes('<meta name="hone-tool" content="trade-manager">')) {
+          return withSecurityHeaders(new Response('Trade manager bundle not installed', {
+            status: 503, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+          }));
+        }
+      }
+      return withSecurityHeaders(response, url.pathname);
+    }
 
     if (isStaticResourceRequest(url.pathname)) {
       if (response.status === 404 || responseLooksLikeHtml(response)) {

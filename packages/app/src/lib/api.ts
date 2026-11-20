@@ -64,6 +64,7 @@ import {
   friendlyBackendErrorMessage,
 } from "./backend";
 import { useLocale } from "./i18n";
+import { assertPublicAuthCurrent, invalidatePublicAuth, publicAuthEpoch } from "./public-auth-lifecycle";
 import {
   setCachedCommunityFeed,
   setCachedPublicUser,
@@ -324,12 +325,17 @@ export async function publicSmsLogin(input: {
   remember: boolean;
   tos_version: string;
 }) {
+  invalidatePublicAuth();
   const response = await apiFetch("/api/public/auth/sms/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  // Cookie changes are shared by tabs, including tabs without a populated
+  // account cache. Invalidate again to cover pages opened during login.
+  invalidatePublicAuth();
+  setCachedPublicUser(payload.user);
   return payload.user;
 }
 
@@ -341,10 +347,14 @@ export async function getPublicDevLoginConfig() {
 }
 
 export async function publicDevLogin() {
+  invalidatePublicAuth();
   const response = await apiFetch("/api/public/auth/dev-login", {
     method: "POST",
   });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  // Cookie changes are shared by tabs, including tabs without a populated
+  // account cache. Invalidate again to cover pages opened during login.
+  invalidatePublicAuth();
   setCachedPublicUser(payload.user);
   return payload.user;
 }
@@ -367,16 +377,22 @@ export async function publicEmailLogin(input: {
   remember: boolean;
   tos_version: string;
 }) {
+  invalidatePublicAuth();
   const response = await apiFetch("/api/public/auth/email/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  // Cookie changes are shared by tabs, including tabs without a populated
+  // account cache. Invalidate again to cover pages opened during login.
+  invalidatePublicAuth();
+  setCachedPublicUser(payload.user);
   return payload.user;
 }
 
 export async function publicLogout() {
+  invalidatePublicAuth();
   // Clear synchronously. The chat page intentionally does not await logout,
   // and no route may paint private data from the old session while the network
   // request is still in flight.
@@ -395,8 +411,10 @@ export async function publicLogout() {
 }
 
 export async function getPublicAuthMe(signal?: AbortSignal) {
-  const response = await apiFetch("/api/public/auth/me", { signal });
+  const epoch = publicAuthEpoch();
+  const response = await apiFetch("/api/public/auth/me", { signal, cache: "no-store" });
   const payload = await parseJson<{ user: PublicAuthUserInfo }>(response);
+  assertPublicAuthCurrent(epoch);
   // Remember it so the next route can paint before its own round-trip.
   setCachedPublicUser(payload.user);
   return payload.user;
@@ -521,16 +539,18 @@ export async function disablePublicAdminInvite(userId: string) {
 }
 
 export async function getPublicChatBootstrap(signal?: AbortSignal) {
+  const epoch = publicAuthEpoch();
   try {
     const response = await apiFetch("/api/public/bootstrap", {
       signal,
       cache: "no-store",
     });
     const payload = await parseJson<PublicChatBootstrapResponse>(response);
+    assertPublicAuthCurrent(epoch);
     setCachedPublicUser(payload.user);
     return payload;
   } catch (error) {
-    if (isUnauthorizedApiError(error)) setCachedPublicUser(null);
+    if (epoch === publicAuthEpoch() && isUnauthorizedApiError(error)) setCachedPublicUser(null);
     throw error;
   }
 }

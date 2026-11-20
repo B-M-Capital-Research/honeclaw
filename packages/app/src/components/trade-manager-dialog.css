@@ -1,0 +1,22 @@
+.trade-manager-dialog::backdrop { background: rgb(12 24 20 / 55%); }
+.trade-manager-dialog { width: min(1600px, calc(100vw - 32px)); max-width: none; max-height: none; margin: auto; padding: 0; height: min(1000px, calc(100dvh - 32px)); display: none; flex-direction: column; overflow: hidden; border: 1px solid var(--public-border, #dce3df); border-radius: 18px; background: var(--public-surface, #fff); color: var(--public-text, #182c23); box-shadow: 0 24px 90px rgb(0 0 0 / 24%); }
+.trade-manager-dialog[open] { display: flex; }
+.trade-manager-dialog__header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 20px; border-bottom: 1px solid var(--public-border, #dce3df); }
+.trade-manager-dialog__header h2 { margin: 0; font-size: 17px; }
+.trade-manager-dialog__header p { margin: 3px 0 0; color: var(--public-text-muted, #58695f); font-size: 12px; }
+.trade-manager-dialog button { flex-shrink: 0; min-height: 40px; border: 1px solid var(--public-border, #dce3df); border-radius: 9px; padding: 6px 14px; background: var(--public-surface, #fff); color: inherit; cursor: pointer; font: inherit; }
+.trade-manager-dialog button:focus-visible { outline: 3px solid #298368; outline-offset: 2px; }
+.trade-manager-dialog__frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #f6f8f6; }
+.trade-manager-dialog__status { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+@media (max-width: 820px) { .trade-manager-dialog { height: 100dvh; width: 100vw; border: 0; border-radius: 0; } .trade-manager-dialog__header { padding: 10px 12px; } }
+.trade-manager-dialog__notice { flex-shrink: 0; padding: 12px 20px; background: #fff4d9; color: #634405; border-bottom: 1px solid #e8d29d; }
+.trade-manager-dialog__notice p { margin: 0 0 8px; } .trade-manager-dialog__notice button + button { margin-left: 8px; }
+
+.trade-manager-dialog__download { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #edf7f2; color: #173b2c; border-bottom: 1px solid #bfddce; }
+.trade-manager-dialog__download > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.trade-manager-dialog__download strong { font-size: 13px; }
+.trade-manager-dialog__download p { margin: 4px 0 0; font-size: 12px; }
+.trade-manager-dialog__download a { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 40px; padding: 6px 14px; border-radius: 9px; background: #235d46; color: #fff; font-size: 14px; text-decoration: underline; }
+.trade-manager-dialog__download a:focus-visible { outline: 3px solid #298368; outline-offset: 2px; }
+.trade-manager-dialog__download-error { padding: 12px 20px; margin: 0; color: #8f2929; background: #fff1f0; }
+@media (max-width: 640px) { .trade-manager-dialog__download { flex-wrap: wrap; padding: 10px 12px; } .trade-manager-dialog__download > div { flex-basis: 100%; } }

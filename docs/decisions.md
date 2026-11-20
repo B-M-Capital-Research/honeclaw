@@ -1897,3 +1897,15 @@ implementation work.
 - Governance: no content validator, fixed-field check or rewrite loop was added; prompt quality is judged by real canaries. The manual canary runs the production pipeline code outside the web service.
 - Risks: deeper sequential chain → longer runs and more output tokens per report; quality unverified until a real canary; tasks created under the old prompts regenerate their chapters on resume.
 
+## 2026-11-16 · Private trade workspace adapter
+
+- title: Hone `/chat` 工具箱接入个人交易管理工具（独立 PostgreSQL 账本 + 同源静态 iframe）
+- status: accepted (merged to workspace; pending production deploy & staging acceptance)
+- created_at: 2026-11-16
+- updated_at: 2026-11-20
+- owner: Codex / merged on 2026-11-20
+- related_files: `crates/hone-web-api/src/routes/trade_manager.rs`, `crates/hone-web-api/src/routes/trade_manager/`, `packages/app/public/trade-manager/`, `packages/app/src/components/trade-manager-dialog.tsx`, `packages/app/public/_worker.js`, `packages/app/src/pages/chat.tsx`
+- decision: Reuse native Hone auth, public workflow menu and PostgreSQL. Preserve the existing pure trade model in a same-origin static iframe; replace browser persistence with actor-owned snapshots and session-bound revision writes. Keep the ledger separate from subscription portfolios to avoid unintended synchronization.
+- verification: See `docs/handoffs/2026-11-16-trade-manager.md` and executable regression tests.
+- risks: Real-cookie, reverse-proxy and production migration checks belong to the staging/production rollout. The iframe is a UI boundary, not an authorization boundary.
+

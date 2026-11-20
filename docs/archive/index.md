@@ -2821,3 +2821,5 @@ Use this file as the historical entry point for completed or paused work that sh
 - 2026-10-11：三类报告（公司完整分析 / 财报分析 / 财报前瞻）可靠交付与共用估值 Prompt 修订，状态 `done`（待部署与真实 canary）；[handoff](../handoffs/2026-10-11-report-reliability-and-valuation-prompts.md) / decision `D-2026-10-11-02` / runbook `docs/runbooks/company-full-analysis.md`。PDF 失败不再丢失报告（主机复用/自行渲染/带说明交付 Markdown），公司分析长输出与传输修复、Markdown 下载；无内容门禁。
 
 - 2026-10-13：公司完整分析改用 Prompt V4（全章节，逐字保存并按节点选取），新增可复用真实 canary 脚本，状态 `done`（真实 canary 待跑）；[handoff](../handoffs/2026-10-13-company-analysis-prompt-v4.md) / decision `D-2026-10-13-01` / runbook `docs/runbooks/company-full-analysis.md` / regression `tests/regression/manual/test_company_analysis_canary.sh`。
+
+- 2026-11-16（2026-11-20 合入主干）· [Hone 交易管理工具](../handoffs/2026-11-16-trade-manager.md)：已在 `/chat` 工具箱工作流菜单接入，含前端弹窗、静态模块、Pages `_worker.js` 同源 CSP 例外、Rust PostgreSQL API 与数据库迁移脚本，状态 `done`（本地全量验证通过，待部署与真实生产账号验收）。[归档计划](plans/trade-manager.md) · [接入手册](../runbooks/trade-manager.md) · [API](../runbooks/trade-manager-api.md)。

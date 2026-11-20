@@ -25,12 +25,16 @@ import {
   sendPublicFinanceCalendar,
   openPublicPush,
   publicLogout,
+  publicSmsLogin,
+  publicEmailLogin,
+  publicDevLogin,
 } from "./api";
 import {
   FRIENDLY_BACKEND_UNAVAILABLE_MESSAGE,
   resetApiFetchRetryDelayForTests,
   setApiFetchRetryDelayForTests,
 } from "./backend";
+import { invalidatePublicAuth, PUBLIC_AUTH_INVALIDATED } from "./public-auth-lifecycle";
 import {
   cachedCommunityFeed,
   cachedPublicUser,
@@ -1148,5 +1152,81 @@ describe("public push API", () => {
     );
     expect(payload.unread_count).toBe(0);
     expect(payload.push.content).toBe("完整内容");
+  });
+});
+
+describe("in-flight session data after invalidation", () => {
+  test("late auth/me does not restore the logged-out account cache", async () => {
+    let release!: (value: Response) => void;
+    globalThis.fetch = (() => new Promise<Response>((resolve) => { release = resolve; })) as unknown as typeof fetch;
+    const pending = getPublicAuthMe();
+    invalidatePublicAuth();
+    release(new Response(JSON.stringify({ user: { user_id: "old-user" } }), { headers: { "content-type": "application/json" } }));
+    await expect(pending).rejects.toHaveProperty("name", "AbortError");
+    expect(cachedPublicUser()).toBeNull();
+  });
+  test("late bootstrap does not restore old private messages after logout", async () => {
+    let release!: (value: Response) => void;
+    globalThis.fetch = (() => new Promise<Response>((resolve) => { release = resolve; })) as unknown as typeof fetch;
+    const pending = getPublicChatBootstrap();
+    invalidatePublicAuth();
+    release(new Response(JSON.stringify({ user: { user_id: "old-user" }, messages: [{ content: "private" }] }), { headers: { "content-type": "application/json" } }));
+    await expect(pending).rejects.toHaveProperty("name", "AbortError");
+    expect(cachedPublicUser()).toBeNull();
+  });
+  test("logout notifies before its network response even without a populated cache", async () => {
+    setCachedPublicUser(null);
+    let release!: (value: Response) => void;
+    let invalidated = false;
+    const changed = () => { invalidated = true; };
+    window.addEventListener(PUBLIC_AUTH_INVALIDATED, changed);
+    globalThis.fetch = (() => new Promise<Response>((resolve) => { release = resolve; })) as unknown as typeof fetch;
+    try {
+      const pending = publicLogout();
+      expect(invalidated).toBe(true);
+      release(new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } }));
+      await pending;
+    } finally { window.removeEventListener(PUBLIC_AUTH_INVALIDATED, changed); }
+  });
+});
+
+describe("login lifecycle invalidation", () => {
+  const logins = [
+    ["sms", () => publicSmsLogin({ phone_number: "test", verify_code: "000000", remember: false, tos_version: "test" })],
+    ["email", () => publicEmailLogin({ email_address: "test@example.test", verify_code: "000000", remember: false, tos_version: "test" })],
+    ["dev", () => publicDevLogin()],
+  ] as const;
+  for (const [kind, login] of logins) {
+    test(`${kind} login invalidates at start and after cookie replacement even with an empty local cache`, async () => {
+      setCachedPublicUser(null);
+      const notifications: Array<string | null> = [];
+      const changed = () => { notifications.push(cachedPublicUser()?.user_id ?? null); };
+      window.addEventListener(PUBLIC_AUTH_INVALIDATED, changed);
+      let release!: (value: Response) => void;
+      globalThis.fetch = (() => new Promise<Response>((resolve) => { release = resolve; })) as unknown as typeof fetch;
+      try {
+        const pending = login();
+        expect(notifications).toHaveLength(1);
+        // Another page may have restored the old shared cookie while login waits.
+        setCachedPublicUser({ user_id: "old-cookie-owner" } as never);
+        release(new Response(JSON.stringify({ user: { user_id: "new-cookie-owner" } }), { headers: { "content-type": "application/json" } }));
+        const result = await pending;
+        expect(notifications).toHaveLength(2);
+        expect(result.user_id).toBe("new-cookie-owner");
+        expect(cachedPublicUser()?.user_id).toBe("new-cookie-owner");
+      } finally { window.removeEventListener(PUBLIC_AUTH_INVALIDATED, changed); }
+    });
+  }
+  test("same-account relogin still invalidates a previous cookie session", async () => {
+    setCachedPublicUser({ user_id: "same-owner" } as never);
+    let count = 0;
+    const changed = () => { count += 1; };
+    window.addEventListener(PUBLIC_AUTH_INVALIDATED, changed);
+    mockFetch(new Response(JSON.stringify({ user: { user_id: "same-owner" } }), { headers: { "content-type": "application/json" } }));
+    try {
+      await publicDevLogin();
+      expect(count).toBe(2);
+      expect(cachedPublicUser()?.user_id).toBe("same-owner");
+    } finally { window.removeEventListener(PUBLIC_AUTH_INVALIDATED, changed); }
   });
 });

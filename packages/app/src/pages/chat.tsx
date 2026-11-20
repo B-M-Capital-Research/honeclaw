@@ -21,6 +21,8 @@ import { PublicLoginForm } from "@/components/public-login-form";
 import { PublicNav } from "@/components/public-nav";
 import { ChatShareModal } from "@/components/chat-share-modal";
 import { CompanyAnalysisDialog } from "@/components/company-analysis-dialog";
+import { TradeManagerDialog, tradeManagerLabel, tradeManagerHint } from "@/components/trade-manager-dialog";
+import { onPublicAuthInvalidated, publicAuthEpoch } from "@/lib/public-auth-lifecycle";
 import {
   AgentWorkspaceHistoryDrawer,
   AgentWorkspaceIcon,
@@ -2235,6 +2237,7 @@ function Composer(props: {
   remaining: number | undefined;
   dailyLimit: number | undefined;
   calendarOpenRequest: number;
+  userId?: string;
   isAdmin: boolean;
   onOpenPanel: (panel: string) => void;
   onStartEarnings: (input: EarningsWorkflowStart) => Promise<void>;
@@ -2252,6 +2255,7 @@ function Composer(props: {
   const [previewSeq, setPreviewSeq] = createSignal(0);
   const [analysisSeq, setAnalysisSeq] = createSignal(0);
   const [companyAnalysisSeq, setCompanyAnalysisSeq] = createSignal(0);
+  const [tradeManagerSeq, setTradeManagerSeq] = createSignal(0);
   let taRef: HTMLTextAreaElement | undefined;
   let imgInputRef: HTMLInputElement | undefined;
   let fileInputRef: HTMLInputElement | undefined;
@@ -2379,6 +2383,15 @@ function Composer(props: {
       // reachable from 工具 on desktop and the 「+」 sheet on phones.
       secondary: true,
     },
+    ...(props.userId ? [{
+      id: "trade-manager",
+      label: tradeManagerLabel(),
+      hint: tradeManagerHint(),
+      icon: () => <ToolIcon name="earnings-analysis" />,
+      run: () => setTradeManagerSeq((seq) => seq + 1),
+      secondary: true,
+      independentOfChat: true,
+    }] : []),
     ...(props.isAdmin
       ? [
           {
@@ -2676,6 +2689,7 @@ function Composer(props: {
           openRequest={analysisSeq()}
         />
       </Show>
+      <TradeManagerDialog openRequest={tradeManagerSeq()} userId={props.userId} />
       <FinanceCalendarDialog
         onSent={props.onCalendarSent}
         openRequest={props.calendarOpenRequest + calendarSeq()}
@@ -3256,9 +3270,22 @@ export default function PublicChatPage() {
     setCachedPublicUser(user);
   };
 
-  const logoutPublicChat = () => {
-    setCachedPublicUser(null);
-    void publicLogout();
+  const clearPublicChatSession = () => {
+    sessionSyncGeneration += 1;
+    localSendGeneration += 1;
+    activeController?.abort();
+    restoreController?.abort();
+    if (restoreRetryTimer !== undefined) window.clearTimeout(restoreRetryTimer);
+    restoreRetryTimer = undefined;
+    setMessages(reconcile([], { key: "id" }));
+    setPendingAttachments(reconcile([], { key: "path" }));
+    setDraft("");
+    setIsSending(false);
+    setCanStop(false);
+    setBackgroundPending(null);
+    setPushDetail(undefined);
+    setWorkspaceCommunity([]);
+    setHistoryDrawerOpen(false);
     pushUserId = undefined;
     setPushDetailOpen(false);
     setPushUnreadCount(0);
@@ -3266,6 +3293,11 @@ export default function PublicChatPage() {
     setCurrentUser(null);
     setSessionInfo(null);
     setAuthState("logged_out");
+  };
+  onCleanup(onPublicAuthInvalidated(clearPublicChatSession));
+  const logoutPublicChat = () => {
+    // publicLogout synchronously broadcasts invalidation before its request.
+    void publicLogout().catch(() => {});
   };
 
   const focusWorkspaceComposer = () => {
@@ -3816,6 +3848,7 @@ export default function PublicChatPage() {
     scrollToBottom();
 
     const controller = new AbortController();
+    const sendAuthEpoch = publicAuthEpoch();
     activeController = controller;
     setCanStop(true);
     let reachedStreamEof = false;
@@ -4048,6 +4081,9 @@ export default function PublicChatPage() {
         }
       }
     } finally {
+      // Logout aborts the stream; its finally must not start a fresh bootstrap
+      // while the logout request is still invalidating the server cookie.
+      if (sendAuthEpoch !== publicAuthEpoch()) return;
       const shouldStayAtBottom =
         stickToBottom || isBottomPinned() || distanceFromBottom() < 160;
       if (shouldStayAtBottom) pinToBottom(1600);
@@ -4326,8 +4362,9 @@ export default function PublicChatPage() {
                       onPickFiles={async (files) => {
                         setUploading(true);
                         try {
+                          const uploadEpoch = publicAuthEpoch();
                           const uploaded = await uploadPublicAttachments(files);
-                          setPendingAttachments([...pendingAttachments, ...uploaded.map((item) => ({ ...item, kind: item.kind as any }))]);
+                          if (uploadEpoch === publicAuthEpoch()) setPendingAttachments([...pendingAttachments, ...uploaded.map((item) => ({ ...item, kind: item.kind as any }))]);
                         } finally {
                           setUploading(false);
                         }
@@ -4342,6 +4379,7 @@ export default function PublicChatPage() {
                       remaining={sessionInfo()?.remainingToday}
                       dailyLimit={sessionInfo()?.dailyLimit}
                       calendarOpenRequest={calendarOpenRequest()}
+                      userId={authState() === "ready" ? currentUser()?.user_id : undefined}
                       isAdmin={currentUser()?.is_admin === true}
                       onOpenPanel={openChatPanel}
                       onStartEarnings={startEarningsWorkflow}

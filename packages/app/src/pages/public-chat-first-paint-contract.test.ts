@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 
+const api = readFileSync(new URL("../lib/api.ts", import.meta.url), "utf8");
 const chat = readFileSync(new URL("./chat.tsx", import.meta.url), "utf8");
 const sessionCache = readFileSync(
   new URL("../lib/public-session-cache.ts", import.meta.url),
@@ -27,7 +28,11 @@ describe("chat first-paint contract", () => {
     expect(warm).toContain("refreshPushUnread()");
     // Chat writes the cache on every auth answer, or the hint never appears.
     expect(chat).toContain("setCachedPublicUser(user)");
-    expect(chat).toContain("setCachedPublicUser(null)");
+    // Logout now owns synchronous cache invalidation centrally, including
+    // other tabs and embedded tools; chat subscribes to the same lifecycle.
+    expect(chat).toContain("void publicLogout()");
+    expect(chat).toContain("onPublicAuthInvalidated(clearPublicChatSession)");
+    expect(api.slice(api.indexOf("export async function publicLogout()"), api.indexOf("export async function getPublicAuthMe"))).toContain("setCachedPublicUser(null)");
   });
 
   it("lets the post-bootstrap effects adopt the warm reads instead of repeating them", () => {

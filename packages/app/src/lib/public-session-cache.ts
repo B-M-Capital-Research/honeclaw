@@ -1,5 +1,7 @@
 import { createSignal } from "solid-js";
 
+import { invalidatePublicAuth, onPublicAuthInvalidated } from "./public-auth-lifecycle";
+
 import type { PublicAuthUserInfo } from "@/lib/types";
 
 /**
@@ -23,6 +25,7 @@ export { cachedPublicUser };
 
 export function setCachedPublicUser(user: PublicAuthUserInfo | null) {
   const previousUserId = cachedPublicUser()?.user_id;
+  if (previousUserId && previousUserId !== user?.user_id) invalidatePublicAuth();
   if (user === null || (previousUserId && previousUserId !== user.user_id)) {
     // Community data belongs to the authenticated session. Never let a later
     // account paint the previous account's cached page while it revalidates.
@@ -74,3 +77,11 @@ export { cachedCommunityFeed };
 export function setCachedCommunityFeed(items: readonly unknown[] | null) {
   setCachedCommunityFeedSignal(items === null ? null : [...items]);
 }
+
+// A logout in another tab must remove private route caches immediately, without
+// calling setCachedPublicUser (which would rebroadcast the same event).
+onPublicAuthInvalidated(() => {
+  setCachedPublicUserSignal(null);
+  setCachedCommunityFeedSignal(null);
+  try { localStorage.removeItem(SESSION_HINT_KEY); } catch { /* memory is already clear */ }
+});

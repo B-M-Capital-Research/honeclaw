@@ -44,6 +44,7 @@ pub(crate) mod schedule;
 pub(crate) mod skills;
 pub(crate) mod stripe;
 pub(crate) mod task_runs;
+mod trade_manager;
 pub(crate) mod unsubscribe;
 pub(crate) mod users;
 pub(crate) mod valuation_lab;
@@ -544,6 +545,7 @@ pub fn build_public_app(state: Arc<AppState>) -> Router {
             get(daily_signals::handle_get_daily_signal_history),
         )
         .route("/portfolio", get(public_portfolio::handle_get_portfolio))
+        .nest("/trade-manager", trade_manager::router())
         .route(
             "/portfolio/holdings",
             post(public_portfolio::handle_create_holding),

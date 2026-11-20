@@ -349,3 +349,10 @@ The public-chat page also fences bootstrap reconciliation with sync/send generat
 - `packages/app/src/components/company-analysis-dialog.tsx` is opened from the administrator tools above the chat input (also while a chat reply is running). It submits only a company, polls the server-generated task ID, shows the active or latest task on open, resumes interrupted/failed jobs and downloads the authenticated PDF and the Markdown report (`/tasks/{id}/markdown`, available even when the PDF failed).
 - Phase completion callbacks persist actual progress; a renewable lease and attempt token fence checkpoint updates. `active_chat_runs` also counts these jobs for deployment drain. Final Markdown is assembled in source order, rendered through the earnings renderer's company mode, written to an actor/attempt-specific OSS object and read back with SHA-256 verification before reporting 100%.
 - The shared PDF renderer bundles strict, offline Mermaid and preserves quoted assumptions and code. It accepts arbitrary final Markdown within technical bounds; it does not judge the report's content. Operational details: `docs/runbooks/company-full-analysis.md`.
+
+## Per-user trade manager (engineering adapter)
+
+- `packages/app/src/components/trade-manager-dialog.tsx` opens the authenticated, same-origin `/trade-manager/index.html` from the public chat tool menu. Auth lifecycle events remove old iframe state on account transitions.
+- `packages/app/public/trade-manager/{app,model,data-tools,client-store}.js` supplies the independent manual trading ledger; only `client-store` talks to the authenticated API, with no financial browser persistence.
+- `crates/hone-web-api/src/routes/trade_manager.rs` and `trade_manager/{store,validation}.rs` own session-bound, actor-scoped PG snapshots, revision CAS, history and recovery. This is not the existing portfolio subscription store and never automatically synchronizes it.
+- Integration, rollout and rollback: [trade manager runbook](runbooks/trade-manager.md).
