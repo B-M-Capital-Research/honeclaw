@@ -1,6 +1,6 @@
 # Hone 个人交易管理工具工程交接
 
-- status: done — 已合入当前工作区主干，本地全量验证通过，未部署线上
+- status: done — 已合入主干并部署上线（2026-11-20）
 - created_at: 2026-11-16
 - updated_at: 2026-11-20
 - owner: Codex / Hone engineering
@@ -45,3 +45,20 @@
   - `cargo test -p hone-web-api --lib`：417 passed, 0 failed, 4 ignored
   - `cargo check --workspace --all-targets --exclude hone-desktop --exclude hone-user-app`：通过
 - 上线前置：按 `docs/runbooks/trade-manager.md` 在生产库先执行 `docs/sql/trade-manager-v1.sql`（若应用角色无 DDL 权限），再同步发布后端与公共前端，并在测试/线上完成真实账号与反向代理验收。
+
+## 2026-11-20 · 生产部署与线上验收记录
+
+- 提交：
+  - 主功能合入：`584ba8e169b0c93a19d5691668a03a3a594159d7`
+  - Cloudflare Pages 规范路径修复：`2a2a5af6bed8961337a6afbfa3d4bd0f9602c9f9`（Cloudflare Pages 会将 `/trade-manager/index.html` 308 规范重定向至 `/trade-manager/`；已将 iframe `src` 改为 `/trade-manager/?embedded=1`，并在 `onLoad` 同时放行 `/trade-manager/` 与 `/trade-manager/index.html`）
+- 数据库迁移：已在生产 PostgreSQL 执行 `docs/sql/trade-manager-v1.sql`，`cloud_trade_workspaces` 与 `cloud_trade_revisions` 建表完成。
+- 后端部署：
+  - GitHub Actions `Runtime Image`（run `44654584101`）构建成功，不可变镜像 digest `sha256:61f8b0ba547a45ba4d6f9c2f5ff22e7140e8e654a2b68c43bb478bff559137bb`
+  - 托管后端主机已暂存校验并原子切换 `/opt/hone/current` 至 `584ba8e169b0c93a19d5691668a03a3a594159d7-ghcr-runtime`（`/opt/hone/previous` 保留 `e899a34216470155b38a0c3a3b9e55a0b22355a4-ghcr-runtime` 供即时回滚）
+  - `/api/meta` 确认 `git_sha=584ba8e169b0c93a19d5691668a03a3a594159d7`、`binary_sha256=ca6923dfa9e763b7fb000ec998584e3a2a949a968cf18d04a0357623f2247535`、`cloud_postgres_health.ok=true`、`cloud_oss_health.ok=true`、`local_durable_dependency_count=0`
+- 前端部署与公网探针（`https://hone-claw.com`）：
+  - `/chat` 入口已由部署前 `/assets/index-CsXXIRTt.js` 更新至 `/assets/index-DoQJKLeO.js`（`chat-DY4DcmqF.js` 已包含 `/trade-manager/?embedded=1`）
+  - `GET /`：`200`，保持 `Content-Security-Policy: frame-ancestors 'none'`、`X-Frame-Options: DENY`、`Strict-Transport-Security: max-age=31536000`
+  - `GET /trade-manager/?embedded=1`：`200`，`Cache-Control: no-store`、`Content-Security-Policy` 含 `frame-ancestors 'self'`、`X-Frame-Options: SAMEORIGIN`
+  - `GET /api/public/trade-manager/state`（未登录）：`401`，`Cache-Control: no-store`、`Pragma: no-cache`、`Vary: Cookie`、`{"error":"未登录"}`
+- 后续人工确认：请使用真实账号登录 `https://hone-claw.com/chat`，在工具箱中打开“交易管理”做一轮保存/刷新/换号隔离实测。
