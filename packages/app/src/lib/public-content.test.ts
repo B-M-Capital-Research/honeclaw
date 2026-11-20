@@ -77,7 +77,7 @@ describe("public content key parity", () => {
 
   it("keeps the membership pricing strategy and benefits localized", () => {
     setLocale("zh");
-    expect(CONTENT.plan.full.price).toBe("¥1299");
+    expect(CONTENT.plan.full.price).toBe("¥1899");
     expect(CONTENT.plan.full.period).toBe("/ 年");
     expect(CONTENT.plan.full.promos).toEqual([
       "新加入立减 ¥100",

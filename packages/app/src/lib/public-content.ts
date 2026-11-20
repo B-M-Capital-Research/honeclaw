@@ -326,7 +326,7 @@ const CONTENT_ZH = {
     full: {
       name: "完整服务",
       badge: "推荐",
-      price: "¥1299",
+      price: "¥1899",
       period: "/ 年",
       promos: ["新加入立减 ¥100", "老带新再减 ¥100"],
       desc: "直播、社群、研报与 HONE 畅享，一次订阅全部打通。",
