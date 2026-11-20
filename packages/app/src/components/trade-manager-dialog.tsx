@@ -111,13 +111,14 @@ export function TradeManagerDialog(props: { openRequest: number; userId?: string
         </div>
       }>
         <iframe ref={frame} class="trade-manager-dialog__frame" title={tradeManagerLabel()}
-          src="/trade-manager/index.html?embedded=1"
+          src="/trade-manager/?embedded=1"
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups allow-modals"
           referrerpolicy="no-referrer"
           onLoad={(event) => {
             try {
               const location = event.currentTarget.contentWindow?.location;
-              if (!location || location.origin !== window.location.origin || location.pathname !== "/trade-manager/index.html") invalidate();
+              const allowedPath = location?.pathname === "/trade-manager/" || location?.pathname === "/trade-manager/index.html";
+              if (!location || location.origin !== window.location.origin || !allowedPath) invalidate();
             } catch { invalidate(); }
           }} />
       </Show>
