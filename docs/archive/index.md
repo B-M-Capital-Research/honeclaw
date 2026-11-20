@@ -2816,6 +2816,18 @@ Use this file as the historical entry point for completed or paused work that sh
 - Current conclusion: named-company/security research now resolves the entity and prefers a complete structured snapshot before open Web search, while Web remains available for announcements, relationships, events and causal evidence. Provider gaps remain non-blocking. Strict market-move evidence now uses server-computed `hone_change_basis.pct`, including the AAOI `129.10 → 124.82 = -3.32%` regression. Financial figures such as EBITA/EBITDA are additionally bound to the latest disclosed date/period and an explicit quarterly/TTM/forward window; stale or conflicting key figures prompt one targeted official-source check, without a dual-source or missing-data publication gate. Production runs exact revision `36785584…` from immutable digest `sha256:fc6029b4…`; PostgreSQL/OSS/cloud authority and public API acceptance are healthy, with `e08bb460…` retained for immediate rollback.
 - Next entry point: with action-time confirmation to create user-visible messages, run named-company, relationship, AAOI-style move and fresh-report financial-metric canaries; preserve these as model/tool-selection and generation guidance, and do not turn them into missing-data gates, forced retry loops or automatic answer rewrites.
 
+### Atlas Cloud Optional Image Provider
+
+- Status: done locally; external PR pending at archive time
+- Date: 2026-08-20
+- Plan: `docs/archive/plans/atlascloud-image-provider-2026-08-20.md`
+- Handoff: `docs/handoffs/2026-08-20-atlascloud-image-provider.md`
+- Decision / ADR: none; this extends the existing image adapter without changing the default
+- Related PRs / commits: external PR pending at archive time
+- Related regressions: `hone-integrations` local HTTP contract tests; `hone-core` config tests
+- Current conclusion: `nano_banana` keeps OpenRouter as its default and can optionally select Atlas Cloud credentials, submit one paid generation request, and perform bounded GET-only prediction polling while preserving the existing output/download contract.
+- Next entry point: `crates/hone-integrations/src/nano_banana.rs`; verify the live model schema before adding any model-specific request fields.
+
 - 2026-09-08：流式 HTTP 529 有界重试，状态 `done`；[plan](plans/stream-http-529-retry-2026-09-08.md) / [handoff](../handoffs/stream-http-529-retry-2026-09-08.md) / [bug](../bugs/scheduler_heartbeat_minimax_http_transport_failure_no_retry.md)。41 测试与编译通过，P1 PostgreSQL/runtime 恢复留待运维。
 
 - 2026-10-11：三类报告（公司完整分析 / 财报分析 / 财报前瞻）可靠交付与共用估值 Prompt 修订，状态 `done`（待部署与真实 canary）；[handoff](../handoffs/2026-10-11-report-reliability-and-valuation-prompts.md) / decision `D-2026-10-11-02` / runbook `docs/runbooks/company-full-analysis.md`。PDF 失败不再丢失报告（主机复用/自行渲染/带说明交付 Markdown），公司分析长输出与传输修复、Markdown 下载；无内容门禁。
