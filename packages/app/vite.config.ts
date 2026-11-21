@@ -19,7 +19,24 @@ export default defineConfig({
       communityEdgeDiscovery,
     ),
   },
-  plugins: [solid(), tailwindcss(), communityPdfAssets()],
+  plugins: [
+    solid(),
+    tailwindcss(),
+    communityPdfAssets(),
+    {
+      name: "hone-adventure-static-dir",
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === "/hone-adventure/") {
+            req.url = "/hone-adventure/index.html";
+          } else if (req.url?.startsWith("/hone-adventure/?")) {
+            req.url = "/hone-adventure/index.html" + req.url.slice("/hone-adventure/".length);
+          }
+          next();
+        });
+      },
+    },
+  ],
   optimizeDeps: {
     // Avoid a dev-server reload when the PDF display module is first opened.
     include: ["pdfjs-dist/legacy/build/pdf.mjs"],

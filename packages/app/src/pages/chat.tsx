@@ -1883,6 +1883,7 @@ function usePhoneLayout() {
 function ToolIcon(props: {
   name:
     | "data-center"
+    | "hone-adventure"
     | "influencer"
     | "calendar"
     | "earnings-preview"
@@ -1909,6 +1910,11 @@ function ToolIcon(props: {
         <Match when={props.name === "data-center"}>
           <path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" />
           <path d="m3 7 9 5 9-5M12 12v10M7.5 4.5l9 5" />
+        </Match>
+        <Match when={props.name === "hone-adventure"}>
+          <path d="M19 3 9 13l2 2L21 5V3h-2Z" />
+          <path d="m7.5 11.5-4.5 4.5 5 5 4.5-4.5" />
+          <path d="m5 3 1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2Z" />
         </Match>
         <Match when={props.name === "influencer"}>
           <path d="M3 10.5v3a1.5 1.5 0 0 0 1.5 1.5H7l5.5 4V5L7 9H4.5A1.5 1.5 0 0 0 3 10.5Z" />
@@ -2351,6 +2357,19 @@ function Composer(props: {
       run: () => {
         window.open(
           "https://b-m-capital-research.github.io/nexus-datacenter-ceo/",
+          "_blank",
+          "noopener,noreferrer",
+        );
+      },
+    },
+    {
+      id: "hone-adventure",
+      label: CONTENT.chat_page.workspace.hone_adventure_tip,
+      hint: CONTENT.chat_page.composer.hone_adventure_hint,
+      icon: () => <ToolIcon name="hone-adventure" />,
+      run: () => {
+        window.open(
+          "/hone-adventure/",
           "_blank",
           "noopener,noreferrer",
         );

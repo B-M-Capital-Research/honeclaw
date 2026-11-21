@@ -29,6 +29,7 @@ function requestWantsHtml(request) {
 
 const TRADE_MANAGER_ENTRIES = new Set(['/trade-manager/', '/trade-manager/index.html']);
 const TRADE_MANAGER_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
+const HONE_ADVENTURE_ENTRIES = new Set(['/hone-adventure/', '/hone-adventure/index.html']);
 
 export function withSecurityHeaders(response, pathname = '') {
   const headers = new Headers(response.headers);
@@ -133,6 +134,24 @@ export default {
         }
       }
       return withSecurityHeaders(response, url.pathname);
+    }
+
+    if (url.pathname.startsWith('/hone-adventure/')) {
+      const entry = HONE_ADVENTURE_ENTRIES.has(url.pathname);
+      if (response.status === 404 || (!entry && responseLooksLikeHtml(response))) {
+        return withSecurityHeaders(new Response('HONE Adventure asset unavailable', {
+          status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+        }));
+      }
+      if (entry && request.method !== 'HEAD' && responseLooksLikeHtml(response)) {
+        const html = await response.clone().text();
+        if (!/<meta\s+name="hone-game"\s+content="hone-adventure"\s*\/?>/i.test(html)) {
+          return withSecurityHeaders(new Response('HONE Adventure bundle not installed', {
+            status: 503, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+          }));
+        }
+      }
+      return withSecurityHeaders(response);
     }
 
     if (isStaticResourceRequest(url.pathname)) {

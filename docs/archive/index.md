@@ -1,6 +1,17 @@
 # Archive Index
 
-Last updated: 2026-10-12
+Last updated: 2026-11-21
+
+## 2026-11-21
+
+### HONE 历险记肉鸽割草游戏开发与上线
+
+- Status: done / deployed on Cloudflare Pages (`https://hone-claw.com/hone-adventure/`).
+- Plan: `docs/archive/plans/hone-adventure-game.md`
+- Handoff: `docs/handoffs/2026-11-21-hone-adventure-game.md`
+- Verification: `bun run typecheck:web`、`bun run test:web`（703 passed）、`bun run build:web:public`、Playwright `public-data-center.spec.ts`（桌面 1440px / 移动 390px 通过）及线上 HTTP 安全头/资源探针通过。
+- Conclusion: 全新设计 HONE 赛博投研肉鸽割草游戏《HONE 历险记》（4 名特工含曜金皮、9 类噪音怪与 4 大巨兽 Boss、8 武器×8 超武进化、三分支 9 项算力天赋矩阵、无尽与每日同种子挑战、WebGL+WebAudio 引擎与 3:4 战报海报），挂载到 `/chat` 的「3D 数据中心」旁并由 `_worker.js` 保护静态路由。
+- Next entry: `packages/app/public/hone-adventure/` 与 `packages/app/src/pages/chat.tsx`。
 
 ## 2026-10-12
 

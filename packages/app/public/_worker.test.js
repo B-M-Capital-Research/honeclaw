@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import worker, { withSecurityHeaders } from "./_worker.js";
 
 describe("Pages worker security headers", () => {
@@ -90,5 +91,27 @@ describe("trade manager scoped embedding", () => {
     const tool = {ASSETS:{fetch:async()=>new Response('<!doctype html><meta name="hone-tool" content="trade-manager">', {headers:{"content-type":"text/html"}})}};
     const found = await worker.fetch(new Request("https://hone-claw.com/trade-manager/index.html"), tool);
     expect(found.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+  });
+});
+
+describe("hone adventure standalone game guard", () => {
+  test("serves the game with strict DENY framing headers and refuses SPA fallback", async () => {
+    const missingEnv = {ASSETS: {fetch: async () => new Response("missing", {status: 404})}};
+    const missing = await worker.fetch(new Request("https://hone-claw.com/hone-adventure/", {headers: {accept: "text/html"}}), missingEnv);
+    expect(missing.status).toBe(404);
+
+    const spaEnv = {ASSETS: {fetch: async () => new Response("<!doctype html>", {headers: {"content-type": "text/html"}})}};
+    const missingJs = await worker.fetch(new Request("https://hone-claw.com/hone-adventure/missing.js"), spaEnv);
+    expect(missingJs.status).toBe(404);
+    const spaFallback = await worker.fetch(new Request("https://hone-claw.com/hone-adventure/"), spaEnv);
+    expect(spaFallback.status).toBe(503);
+
+    const realHtml = readFileSync(new URL("./hone-adventure/index.html", import.meta.url), "utf8");
+    const gameEnv = {ASSETS: {fetch: async () => new Response(realHtml, {headers: {"content-type": "text/html; charset=utf-8"}})}};
+    const found = await worker.fetch(new Request("https://hone-claw.com/hone-adventure/"), gameEnv);
+    expect(found.status).toBe(200);
+    expect(found.headers.get("x-frame-options")).toBe("DENY");
+    expect(found.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(found.headers.get("strict-transport-security")).toBe("max-age=31536000");
   });
 });

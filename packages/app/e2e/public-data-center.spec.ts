@@ -170,6 +170,38 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     await expect(draft).toHaveValue("保留这条尚未发送的问题");
     await demoPage.close();
 
+    // HONE 历险记 sits right beside 3D 数据中心 in both desktop chips and the mobile tools sheet.
+    const gameErrors: string[] = [];
+    const gamePagePromise = context.waitForEvent("page");
+    if (viewport.width <= 820) {
+      await page.getByRole("button", { name: "添加与工具", exact: true }).click();
+      const gameEntry = page.getByRole("menuitem", { name: /^HONE 历险记/ });
+      await expect(gameEntry).toBeVisible();
+      await gameEntry.click();
+    } else {
+      const dcEntry = page.getByRole("button", { name: "3D 数据中心", exact: true });
+      const gameEntry = page.getByRole("button", { name: "HONE 历险记", exact: true });
+      await expect(gameEntry).toBeVisible();
+      const dcBox = await dcEntry.boundingBox();
+      const gameBox = await gameEntry.boundingBox();
+      expect(dcBox).not.toBeNull();
+      expect(gameBox).not.toBeNull();
+      expect(gameBox!.x).toBeGreaterThan(dcBox!.x);
+      await gameEntry.click();
+    }
+    const gamePage = await gamePagePromise;
+    gamePage.on("pageerror", (error) => gameErrors.push(error.message));
+    await expect(gamePage).toHaveURL(/\/hone-adventure\/$/);
+    await gamePage.waitForFunction(
+      () => Boolean((window as unknown as { __honeAdventure?: { state: () => { sheetLoaded: boolean; mode: string } } }).__honeAdventure?.state().sheetLoaded),
+    );
+    expect(await gamePage.evaluate(() => window.opener === null)).toBe(true);
+    expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { state: () => { mode: string } } }).__honeAdventure.state().mode)).toBe("home");
+    expect(gameErrors).toEqual([]);
+    await expect(page).toHaveURL(/\/chat$/);
+    await expect(draft).toHaveValue("保留这条尚未发送的问题");
+    await gamePage.close();
+
     // The existing HONE scene remains available by its own route and research desk.
     await page.goto("/data-center");
     await expect(page.getByRole("heading", { name: "3D 数据中心", level: 1 })).toBeVisible();
