@@ -35,7 +35,7 @@ function ArticleBody(props: { post: PublicBlogPost }) {
   }
 
   return (
-    <>
+    <div class="pub-page public-blog-post-page">
       <Title>{props.post.title} | HONE Blog</Title>
       <Meta name="description" content={props.post.excerpt} />
       <Meta property="og:type" content="article" />
@@ -70,7 +70,7 @@ function ArticleBody(props: { post: PublicBlogPost }) {
 
           <button class="public-blog-language-card" onClick={switchLanguage}>
             <span>
-              {useLocale() === "zh" ? "English version" : CONTENT.chat_page.misc.blog_zh}
+              {useLocale() === "zh" ? "ENGLISH EDITION →" : `${CONTENT.chat_page.misc.blog_zh} →`}
             </span>
             <strong>{alternatePost().title}</strong>
             <em>{alternatePost().excerpt}</em>
@@ -88,19 +88,21 @@ function ArticleBody(props: { post: PublicBlogPost }) {
             <div class="public-blog-kicker">
               {useLocale() === "zh" ? CONTENT.chat_page.misc.blog_continue : "Keep reading"}
             </div>
-            <For each={related()}>
-              {(post) => (
-                <button onClick={() => navigate(`/blog/${post.slug}`)}>
-                  <span>{post.category}</span>
-                  <strong>{post.title}</strong>
-                </button>
-              )}
-            </For>
+            <div class="public-blog-keep-reading-grid">
+              <For each={related()}>
+                {(post) => (
+                  <button onClick={() => navigate(`/blog/${post.slug}`)}>
+                    <span>{post.category}</span>
+                    <strong>{post.title}</strong>
+                  </button>
+                )}
+              </For>
+            </div>
           </section>
         </Show>
       </main>
       <PublicFooter />
-    </>
+    </div>
   )
 }
 

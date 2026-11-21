@@ -10,6 +10,7 @@ const community = read("./public-community.css");
 const foundation = read("./public-foundation.css");
 const site = read("./public-site.css");
 const polish = read("./public-polish.css");
+const surfaceV7 = read("./public-surface-v7.css");
 
 describe("public theme surface contract", () => {
   it("keeps every public route in the whole-site theme audit inventory", () => {
@@ -70,5 +71,16 @@ describe("public theme surface contract", () => {
   it("keeps small accent text above the AA contrast floor in the light theme", () => {
     expect(foundation).toContain("--hone-coral-600: #b94432;");
     expect(roadmap).toContain(".status-badge.stable { background: #ecfdf5; color: #047857; }");
+  });
+
+  it("scopes the v7 square architectural palette to all public pages except /chat", () => {
+    expect(app).toContain("function syncPublicSurfaceScope(pathname: string)");
+    expect(app).toContain('pathname === "/chat" || pathname === "/__share-preview"');
+    expect(app).toContain('setAttribute("data-public-v7", "1")');
+    expect(app).toContain("<Router root={PublicRouteScope}>");
+    expect(surfaceV7).toContain('html[data-public-v7="1"]');
+    expect(surfaceV7).toContain('html[data-theme="dark"][data-public-v7="1"]');
+    expect(surfaceV7).toContain("--hone-radius-pill: 2px;");
+    expect(surfaceV7).not.toContain("!important");
   });
 });

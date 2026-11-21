@@ -17,13 +17,13 @@ export default function PublicBlogPage() {
   }
 
   return (
-    <div class="public-blog-page">
+    <div class="pub-page public-blog-page">
       <Title>HONE Blog</Title>
       <PublicNav />
 
       <main class="public-blog-main">
         <section class="public-blog-hero">
-          <div class="public-blog-kicker">HONE BLOG</div>
+          <div class="public-blog-kicker">01 / ENGINEERING & RESEARCH · HONE BLOG</div>
           <h1>{useLocale() === "zh" ? CONTENT.chat_page.misc.blog_eyebrow : "Engineering, product, and research practice"}</h1>
           <p>
             {useLocale() === "zh"
@@ -34,13 +34,14 @@ export default function PublicBlogPage() {
 
         <section class="public-blog-list" aria-label="Blog posts">
           <For each={posts()}>
-            {(post) => (
+            {(post, index) => (
               <article class="public-blog-card" onClick={() => openPost(post.slug)}>
                 <div class="public-blog-card-media">
                   <img src={post.heroImage} alt={post.title} loading="lazy" />
                 </div>
                 <div class="public-blog-card-body">
                   <div class="public-blog-meta">
+                    <span>0{index() + 1}</span>
                     <span>{post.category}</span>
                     <span>{formatDate(post.date, { month: "short", day: "numeric", year: "numeric" })}</span>
                     <span>{post.readTime}</span>
@@ -48,7 +49,7 @@ export default function PublicBlogPage() {
                   <h2>{post.title}</h2>
                   <p>{post.excerpt}</p>
                   <button type="button">
-                    {CONTENT.home_page.blog_cta}
+                    <span>{CONTENT.home_page.blog_cta}</span>
                     <span aria-hidden="true">→</span>
                   </button>
                 </div>

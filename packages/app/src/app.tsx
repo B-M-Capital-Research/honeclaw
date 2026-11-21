@@ -2,7 +2,7 @@ import "@/index.css"
 import { MarkedProvider } from "@hone-financial/ui/context/marked"
 import { ToastProvider } from "@hone-financial/ui/context/toast"
 import { MetaProvider, Title } from "@solidjs/meta"
-import { Navigate, Route, Router } from "@solidjs/router"
+import { Navigate, Route, Router, useLocation } from "@solidjs/router"
 import { ErrorBoundary, Suspense, createEffect, createSignal, lazy, type ParentProps } from "solid-js"
 import { BackendProvider } from "@/context/backend"
 import { ConsoleProvider } from "@/context/console"
@@ -17,6 +17,7 @@ import { PublicChatStartup } from "@/components/public-chat-startup"
 import { CONTENT } from "@/lib/public-content"
 import { initPublicPrefs } from "@/lib/public-prefs"
 import ConsoleLayout from "@/pages/layout"
+import "@/pages/public-surface-v7.css"
 
 const HomePage = lazy(() => import("@/pages/home"))
 const PublicChatPage = lazy(() => import("@/pages/chat"))
@@ -52,7 +53,27 @@ const SchedulePage = lazy(() => import("@/pages/schedule"))
 const SettingsPage = lazy(() => import("@/pages/settings"))
 const APP_SURFACE = import.meta.env.VITE_HONE_APP_SURFACE === "public" ? "public" : "admin"
 
+function syncPublicSurfaceScope(pathname: string) {
+  if (typeof document === "undefined") return
+  if (pathname === "/chat" || pathname === "/__share-preview") {
+    document.documentElement.removeAttribute("data-public-v7")
+  } else {
+    document.documentElement.setAttribute("data-public-v7", "1")
+  }
+}
+
 if (APP_SURFACE === "public") initPublicPrefs()
+if (APP_SURFACE === "public" && typeof window !== "undefined") {
+  syncPublicSurfaceScope(window.location.pathname)
+}
+
+function PublicRouteScope(props: ParentProps) {
+  const location = useLocation()
+  createEffect(() => {
+    syncPublicSurfaceScope(location.pathname)
+  })
+  return <>{props.children}</>
+}
 
 function Loading() {
   if (APP_SURFACE === "public" && window.location.pathname === "/chat") {
@@ -125,7 +146,7 @@ function PublicSurface() {
     <PublicProviders>
       <ErrorBoundary fallback={(error) => <AppErrorFallback error={error} />}>
         <Suspense fallback={<Loading />}>
-          <Router>
+          <Router root={PublicRouteScope}>
             <Route path="/" component={PublicSiteHomePage} />
             <Route path="/roadmap" component={PublicSiteRoadmapPage} />
             <Route path="/survey" component={PublicSurveyPage} />

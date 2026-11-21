@@ -27,6 +27,7 @@ import "@/pages/public-foundation.css";
 import "@/pages/public-site.css";
 import "@/pages/public-agent-workspace.css";
 import "@/pages/public-workspace.css";
+import "@/pages/public-surface-v7.css";
 
 export type PublicWorkspaceSection = "research" | "pushes" | "insights" | "me";
 

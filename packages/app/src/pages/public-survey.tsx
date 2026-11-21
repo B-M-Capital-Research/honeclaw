@@ -107,7 +107,7 @@ export default function PublicSurveyPage() {
   }
 
   return (
-    <>
+    <div class="pub-page public-survey-page">
       <Title>{S().title} | HONE</Title>
       <Meta name="description" content={S().intro} />
       <PublicNav />
@@ -315,6 +315,6 @@ export default function PublicSurveyPage() {
         </Show>
       </main>
       <PublicFooter />
-    </>
+    </div>
   )
 }

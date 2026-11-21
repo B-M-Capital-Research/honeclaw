@@ -1,81 +1,107 @@
-/* public-survey.css — 问卷页。沿用 --hone-* 设计令牌，深浅色自适应。 */
+/* public-survey.css — 问卷页（v7 · 2px 方角与统一字号标尺） */
+
+.public-survey-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--hone-paper-50);
+  background-image:
+    radial-gradient(840px 360px at 78% 0%, color-mix(in srgb, var(--hone-coral-500) 8%, transparent), transparent 72%),
+    linear-gradient(to right, color-mix(in srgb, var(--hone-line) 46%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--hone-line) 46%, transparent) 1px, transparent 1px);
+  background-size: 100% 620px, 64px 64px, 64px 64px;
+  background-repeat: no-repeat, repeat-x, repeat-x;
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-body);
+}
 
 .survey-main {
-  max-width: 46rem;
+  flex: 1;
+  width: min(820px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 3.5rem 1.25rem 5rem;
+  padding: 108px 0 80px;
 }
 
 .survey-head {
-  margin-bottom: 2rem;
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .survey-eyebrow {
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--hone-coral-500);
-  margin-bottom: 0.6rem;
+  color: var(--hone-coral-600);
+  margin-bottom: 10px;
 }
 
 .survey-head h1 {
-  font-size: clamp(1.6rem, 4vw, 2.25rem);
-  line-height: 1.25;
-  margin: 0 0 0.85rem;
+  font-family: var(--hone-font-display);
+  font-size: clamp(28px, 3.4vw, 38px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.028em;
+  margin: 0 0 12px;
   color: var(--hone-ink-950);
 }
 
 .survey-intro {
-  margin: 0 0 0.6rem;
-  line-height: 1.7;
-  color: var(--hone-ink-950);
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--hone-ink-800);
 }
 
 .survey-privacy {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 12px;
   line-height: 1.6;
-  color: var(--hone-ink-600);
+  color: var(--hone-ink-500);
 }
 
-/* Progress stays visible while scrolling: a 12-question form needs to keep
-   telling the reader how much is left. */
 .survey-progress {
   position: sticky;
-  /* Clears the fixed public nav (top 8px + 60px tall); at top: 0 the bar
-     scrolls underneath it and the reader loses the progress count. */
-  top: 4.5rem;
+  top: 60px;
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--hone-line);
+  border-radius: 2px;
   background: var(--hone-surface-raised);
-  font-size: 0.82rem;
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--hone-ink-600);
 }
 
 .survey-progress-track {
   flex: 1;
-  height: 4px;
-  border-radius: 999px;
+  height: 6px;
+  border-radius: 2px;
   background: var(--hone-paper-200);
   overflow: hidden;
 }
 
 .survey-progress-fill {
   height: 100%;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--hone-coral-500);
-  transition: width 0.25s ease;
+  transition: width 0.22s ease;
 }
 
 .survey-restored {
-  margin: 0 0 1rem;
-  padding: 0.55rem 0.8rem;
-  border-radius: 0.6rem;
-  font-size: 0.85rem;
-  background: color-mix(in srgb, var(--hone-coral-500) 10%, transparent);
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--hone-coral-500) 32%, var(--hone-line));
+  border-radius: 2px;
+  font-size: 13px;
+  background: color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised));
   color: var(--hone-ink-950);
 }
 
@@ -85,78 +111,83 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: 16px;
 }
 
 .survey-question {
-  padding: 1.25rem;
-  border: 1px solid var(--hone-paper-200);
-  border-radius: 0.9rem;
-  background: var(--hone-surface-raised, #fbfbfc);
+  padding: 22px 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: 2px;
+  background: var(--hone-surface-raised);
 }
 
 .survey-question-head {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 0.9rem;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .survey-question-index {
   flex: 0 0 auto;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 50%;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 2px;
   display: grid;
   place-items: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  background: var(--hone-coral-500);
-  color: #fff;
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
 }
 
 .survey-question h2 {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.5;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.45;
   color: var(--hone-ink-950);
 }
 
 .survey-question-hint,
 .survey-question-limit {
-  margin: 0.35rem 0 0;
-  font-size: 0.82rem;
+  margin: 4px 0 0;
+  font-size: 12px;
   line-height: 1.55;
-  color: var(--hone-ink-600);
+  color: var(--hone-ink-500);
 }
 
 .survey-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 .survey-option {
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--hone-paper-200);
-  border-radius: 999px;
-  background: var(--hone-surface-raised);
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: 2px;
+  background: var(--hone-control-surface);
   color: var(--hone-ink-950);
-  font-size: 0.88rem;
+  font-size: 14px;
   line-height: 1.4;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-  /* Comfortable tap target on a phone, where most of these will be filled. */
-  min-height: 2.35rem;
 }
 
 .survey-option:hover:not(.is-disabled) {
   border-color: var(--hone-coral-500);
+  background: var(--hone-paper-100);
 }
 
 .survey-option.is-selected {
-  border-color: var(--hone-coral-500);
-  background: var(--hone-coral-500);
-  color: #fff;
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  font-weight: 600;
 }
 
 .survey-option.is-disabled {
@@ -168,14 +199,14 @@
 .survey-textarea,
 .survey-contact input {
   width: 100%;
-  margin-top: 0.65rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--hone-paper-200);
-  border-radius: 0.6rem;
-  background: var(--hone-surface-raised);
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: 2px;
+  background: var(--hone-control-surface);
   color: var(--hone-ink-950);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 14px;
   line-height: 1.6;
   box-sizing: border-box;
 }
@@ -193,68 +224,83 @@
 }
 
 .survey-contact {
-  margin-top: 2rem;
-  padding: 1.25rem;
-  border: 1px dashed var(--hone-paper-200);
-  border-radius: 0.9rem;
+  margin-top: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: 2px;
+  background: var(--hone-surface-raised);
 }
 
 .survey-contact h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 650;
   color: var(--hone-ink-950);
 }
 
 .survey-contact label {
   display: block;
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--hone-ink-600);
 }
 
 .survey-contact-hint {
-  margin: 0.5rem 0 0;
-  font-size: 0.8rem;
+  margin: 8px 0 0;
+  font-size: 12px;
   line-height: 1.55;
-  color: var(--hone-ink-600);
+  color: var(--hone-ink-500);
 }
 
 .survey-error {
-  margin: 1.25rem 0 0;
-  padding: 0.6rem 0.85rem;
-  border-radius: 0.6rem;
-  font-size: 0.88rem;
-  background: color-mix(in srgb, #dc2626 12%, transparent);
-  color: #b91c1c;
+  margin: 18px 0 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--hone-error-600) 35%, transparent);
+  border-radius: 2px;
+  font-size: 14px;
+  background: color-mix(in srgb, var(--hone-error-600) 10%, var(--hone-surface-raised));
+  color: var(--hone-error-600);
 }
 
 .survey-submit-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 14px;
   flex-wrap: wrap;
-  margin-top: 2rem;
+  margin-top: 24px;
 }
 
 .survey-primary,
 .survey-secondary {
-  padding: 0.7rem 1.5rem;
-  border-radius: 999px;
-  font-size: 0.95rem;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 2px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: opacity 0.15s ease;
+  transition: background 0.16s ease, border-color 0.16s ease, opacity 0.15s ease;
 }
 
 .survey-primary {
-  background: var(--hone-coral-500);
-  color: #fff;
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
+}
+
+.survey-primary:hover:not(:disabled) {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
 }
 
 .survey-secondary {
-  background: transparent;
-  border-color: var(--hone-paper-200);
+  background: var(--hone-control-surface);
+  border-color: var(--hone-line-strong);
   color: var(--hone-ink-950);
+}
+
+.survey-secondary:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-paper-100);
 }
 
 .survey-primary:disabled {
@@ -263,107 +309,114 @@
 }
 
 .survey-submit-note {
-  font-size: 0.82rem;
-  color: var(--hone-ink-600);
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  color: var(--hone-ink-500);
 }
 
 .survey-done {
-  padding: 4rem 0;
+  padding: 56px 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: 2px;
+  background: var(--hone-surface-raised);
   text-align: center;
 }
 
 .survey-done-mark {
-  width: 3rem;
-  height: 3rem;
-  margin: 0 auto 1.25rem;
-  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 18px;
+  border-radius: 2px;
   display: grid;
   place-items: center;
-  font-size: 1.4rem;
-  background: var(--hone-coral-500);
-  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
 }
 
 .survey-done h1 {
-  margin: 0 0 0.75rem;
-  font-size: 1.6rem;
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 700;
   color: var(--hone-ink-950);
 }
 
 .survey-done p {
-  margin: 0 auto 1.75rem;
+  margin: 0 auto 24px;
   max-width: 32rem;
-  line-height: 1.7;
-  color: var(--hone-ink-950);
+  font-size: 14px;
+  line-height: 1.72;
+  color: var(--hone-ink-600);
 }
 
 .survey-done-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
 }
 
-/* Home-page entry card. */
 .survey-home-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.25rem;
+  gap: 20px;
   flex-wrap: wrap;
-  margin: 2.5rem auto;
-  max-width: 62rem;
-  padding: 1.4rem 1.6rem;
-  border: 1px solid var(--hone-paper-200);
-  border-radius: 1rem;
-  background: var(--hone-surface-raised, #fbfbfc);
+  margin: 40px auto;
+  max-width: 992px;
+  padding: 22px 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: 2px;
+  background: var(--hone-surface-raised);
 }
 
 .survey-home-card .survey-eyebrow {
-  margin-bottom: 0.4rem;
+  margin-bottom: 6px;
 }
 
 .survey-home-card h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 650;
   color: var(--hone-ink-950);
 }
 
 .survey-home-card p {
   margin: 0;
   max-width: 40rem;
-  font-size: 0.88rem;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.68;
   color: var(--hone-ink-600);
 }
 
-/* Every other surface keys off the app's own theme attribute. Keying this one
-   off the OS meant the survey could be dark while the page around it was
-   light, whenever the user had chosen a theme that differed from the system. */
 [data-theme="dark"] .survey-progress {
   background: var(--hone-surface-raised);
 }
 
-/* Most of these answers get tapped on a phone, and there are ~90 chips to get
-   through. Below the 44px guidance a mis-tap silently changes an answer, so
-   the touch layout trades density for a target people can actually hit. */
 @media (max-width: 640px) {
   .survey-main {
-    padding: 2.25rem 1rem 4rem;
+    width: calc(100% - 28px);
+    padding: 88px 0 64px;
+  }
+
+  .survey-progress {
+    top: 56px;
   }
 
   .survey-option {
-    min-height: 2.75rem;
-    padding: 0.6rem 0.95rem;
+    min-height: 44px;
+    padding: 9px 14px;
   }
 
-  .survey-question {
-    padding: 1rem;
+  .survey-question,
+  .survey-contact {
+    padding: 16px;
   }
 
   .survey-primary,
   .survey-secondary {
-    min-height: 2.75rem;
+    min-height: 44px;
   }
 
   .survey-submit-row {

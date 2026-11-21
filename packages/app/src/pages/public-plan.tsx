@@ -381,15 +381,21 @@ export default function PublicPlanPage() {
           display: flex;
           flex-direction: column;
           background:
-            radial-gradient(820px 400px at 82% -60px, color-mix(in srgb, var(--hone-coral-500) 10%, transparent), transparent 70%),
+            radial-gradient(880px 380px at 80% 0%, color-mix(in srgb, var(--hone-coral-500) 8%, transparent), transparent 72%),
+            linear-gradient(to right, color-mix(in srgb, var(--hone-line) 46%, transparent) 1px, transparent 1px),
+            linear-gradient(to bottom, color-mix(in srgb, var(--hone-line) 46%, transparent) 1px, transparent 1px),
             var(--hone-paper-50);
+          background-size: 100% 680px, 64px 64px, 64px 64px, auto;
+          background-repeat: no-repeat, repeat-x, repeat-x, repeat;
           color: var(--hone-ink-800);
           font-family: var(--hone-font-body);
+          font-size: 14px;
+          line-height: 1.7;
         }
         .hone-share-main {
-          width: min(1080px, calc(100% - 40px));
+          width: min(1160px, calc(100% - 40px));
           margin: 0 auto;
-          padding: 122px 0 88px;
+          padding: 108px 0 88px;
           flex: 1;
         }
 
@@ -398,24 +404,26 @@ export default function PublicPlanPage() {
           display: flex;
           align-items: flex-start;
           gap: 24px;
+          padding-bottom: 28px;
+          border-bottom: 1px solid var(--hone-line);
         }
         .hone-hub-avatar {
-          width: 96px;
-          height: 96px;
-          flex: 0 0 96px;
-          border: 1px solid var(--hone-line);
-          border-radius: 26px;
+          width: 88px;
+          height: 88px;
+          flex: 0 0 88px;
+          border: 1px solid var(--hone-line-strong);
+          border-radius: 2px;
           background: var(--hone-surface-raised);
-          box-shadow: var(--hone-shadow-md);
           object-fit: cover;
         }
         .hone-hub-id { min-width: 0; flex: 1; }
         .hone-share-eyebrow {
           color: var(--hone-coral-600);
           font-family: var(--hone-font-label);
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.16em;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
         }
         .hone-hub-id h1 {
           display: flex;
@@ -424,54 +432,58 @@ export default function PublicPlanPage() {
           gap: 10px 12px;
           margin: 8px 0 0;
           color: var(--hone-ink-950);
-          font-size: clamp(26px, 3.4vw, 34px);
-          line-height: 1.1;
-          letter-spacing: -0.04em;
+          font-family: var(--hone-font-display);
+          font-size: clamp(26px, 3.2vw, 34px);
+          font-weight: 700;
+          line-height: 1.18;
+          letter-spacing: -0.028em;
         }
         .hone-hub-id h1 span {
-          padding: 4px 10px;
+          padding: 3px 10px;
           border: 1px solid var(--hone-line);
-          border-radius: 999px;
+          border-radius: 2px;
           background: var(--hone-surface-raised);
-          color: var(--hone-ink-600);
-          font-size: 11px;
-          font-weight: 650;
-          letter-spacing: 0;
+          color: var(--hone-coral-600);
+          font-family: var(--hone-font-label);
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
         }
         .hone-hub-id > p {
-          max-width: 640px;
-          margin: 10px 0 0;
+          max-width: 680px;
+          margin: 12px 0 0;
           color: var(--hone-ink-600);
-          font-size: 13px;
-          line-height: 1.75;
+          font-size: 14px;
+          line-height: 1.72;
         }
         .hone-hub-stats {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          margin-top: 14px;
+          margin-top: 16px;
         }
         .hone-hub-stats > div {
           display: flex;
           align-items: baseline;
-          gap: 7px;
-          padding: 8px 13px;
+          gap: 8px;
+          padding: 9px 14px;
           border: 1px solid var(--hone-line);
-          border-radius: 11px;
+          border-radius: 2px;
           background: var(--hone-surface-raised);
         }
         .hone-hub-stats strong {
           color: var(--hone-ink-950);
-          font-size: 16px;
-          font-weight: 750;
+          font-family: var(--hone-font-label);
+          font-size: 18px;
+          font-weight: 700;
           letter-spacing: -0.02em;
           font-variant-numeric: tabular-nums;
         }
-        .hone-hub-stats small { color: var(--hone-ink-600); font-size: 11px; }
+        .hone-hub-stats small { color: var(--hone-ink-600); font-size: 12px; }
         .hone-hub-stats-note {
-          margin: 7px 2px 0;
-          color: var(--hone-ink-400, #a3a6a1);
-          font-size: 10px;
+          margin: 8px 0 0;
+          color: var(--hone-ink-400);
+          font-size: 12px;
         }
 
         /* 平台入口图标行 */
@@ -484,60 +496,59 @@ export default function PublicPlanPage() {
         .hone-hub-social {
           display: inline-flex;
           align-items: center;
-          gap: 7px;
+          gap: 8px;
           min-height: 38px;
-          padding: 0 14px 0 11px;
-          border: 1px solid var(--hone-line);
-          border-radius: 999px;
+          padding: 0 14px 0 12px;
+          border: 1px solid var(--hone-line-strong);
+          border-radius: 2px;
           background: var(--hone-surface-raised);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-family: inherit;
-          font-size: 12px;
-          font-weight: 700;
+          font-size: 13px;
+          font-weight: 600;
           text-decoration: none;
           white-space: nowrap;
-          transition: border-color 0.16s ease, transform 0.14s var(--hone-ease), box-shadow 0.16s ease;
+          transition: border-color 0.16s ease, background 0.16s ease;
         }
         .hone-hub-social:hover {
-          transform: translateY(-1px);
-          box-shadow: var(--hone-shadow-md);
+          background: var(--hone-paper-100);
         }
-        .hone-hub-social svg { width: 17px; height: 17px; flex: 0 0 17px; }
-        .hone-hub-social.is-youtube { color: #d0312d; }
-        .hone-hub-social.is-youtube:hover { border-color: color-mix(in srgb, #d0312d 45%, var(--hone-line)); }
-        .hone-hub-social.is-bilibili { color: #1a9ad6; }
-        .hone-hub-social.is-bilibili:hover { border-color: color-mix(in srgb, #1a9ad6 45%, var(--hone-line)); }
-        .hone-hub-social.is-zsxq { color: #17a35a; }
-        .hone-hub-social.is-zsxq:hover { border-color: color-mix(in srgb, #17a35a 45%, var(--hone-line)); }
-        .hone-hub-social.is-wechat { color: #09b83e; }
-        .hone-hub-social.is-wechat:hover { border-color: color-mix(in srgb, #09b83e 45%, var(--hone-line)); }
+        .hone-hub-social svg { width: 16px; height: 16px; flex: 0 0 16px; }
+        .hone-hub-social.is-youtube { color: #dc2626; }
+        .hone-hub-social.is-youtube:hover { border-color: #dc2626; }
+        .hone-hub-social.is-bilibili { color: #0284c7; }
+        .hone-hub-social.is-bilibili:hover { border-color: #0284c7; }
+        .hone-hub-social.is-zsxq { color: var(--hone-signal-green-ink); }
+        .hone-hub-social.is-zsxq:hover { border-color: var(--hone-signal-green); }
+        .hone-hub-social.is-wechat { color: #059669; }
+        .hone-hub-social.is-wechat:hover { border-color: #059669; }
         .hone-hub-social span { color: var(--hone-ink-950); }
 
         /* ── 双栏 ── */
         .hone-hub-grid {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 356px;
-          gap: 16px;
+          grid-template-columns: minmax(0, 1fr) 372px;
+          gap: 18px;
           align-items: start;
           margin-top: 28px;
         }
-        .hone-hub-content { display: grid; gap: 16px; min-width: 0; }
+        .hone-hub-content { display: grid; gap: 18px; min-width: 0; }
         .hone-hub-grid > * { min-width: 0; }
         .hone-hub-card {
           min-width: 0;
-          padding: 20px 22px;
+          padding: 24px;
           border: 1px solid var(--hone-line);
-          border-radius: 17px;
+          border-radius: 2px;
           background: var(--hone-surface-raised);
         }
         .hone-hub-label {
-          margin-bottom: 14px;
-          color: var(--hone-ink-400, #9aa09b);
+          margin-bottom: 16px;
+          color: var(--hone-coral-600);
           font-family: var(--hone-font-label);
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.15em;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
         }
 
@@ -545,86 +556,96 @@ export default function PublicPlanPage() {
         .hone-hub-channel {
           display: flex;
           align-items: center;
-          gap: 13px;
+          gap: 14px;
         }
         .hone-hub-channel img {
-          width: 46px;
-          height: 46px;
+          width: 44px;
+          height: 44px;
           border: 1px solid var(--hone-line);
-          border-radius: 50%;
+          border-radius: 2px;
           object-fit: cover;
         }
         .hone-hub-channel > div { min-width: 0; flex: 1; }
         .hone-hub-channel strong {
           display: block;
           color: var(--hone-ink-950);
-          font-size: 15px;
-          font-weight: 750;
-          letter-spacing: -0.01em;
+          font-size: 16px;
+          font-weight: 650;
+          line-height: 1.35;
         }
         .hone-hub-channel small {
           display: block;
-          margin-top: 2px;
+          margin-top: 3px;
           color: var(--hone-ink-600);
           font-size: 12px;
         }
         .hone-hub-channel.is-bilibili {
-          margin-top: 16px;
-          padding-top: 16px;
+          margin-top: 18px;
+          padding-top: 18px;
           border-top: 1px solid var(--hone-line);
         }
         .hone-hub-bili-mark {
-          width: 46px;
-          height: 46px;
-          flex: 0 0 46px;
+          width: 44px;
+          height: 44px;
+          flex: 0 0 44px;
           display: grid;
           place-items: center;
-          border-radius: 50%;
-          background: #e9f4fd;
-          color: #1a9ad6;
+          border: 1px solid var(--hone-line);
+          border-radius: 2px;
+          background: var(--hone-paper-100);
+          color: #0284c7;
         }
-        .hone-hub-bili-mark svg { width: 24px; height: 24px; }
+        .hone-hub-bili-mark svg { width: 22px; height: 22px; }
         .hone-hub-ghost-btn {
           flex: 0 0 auto;
           display: inline-flex;
           align-items: center;
-          min-height: 36px;
-          padding: 0 14px;
+          min-height: 38px;
+          padding: 0 15px;
           border: 1px solid var(--hone-line-strong);
-          border-radius: 10px;
+          border-radius: 2px;
           background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
-          font-size: 12px;
-          font-weight: 700;
+          font-size: 13px;
+          font-weight: 600;
           white-space: nowrap;
           text-decoration: none;
-          transition: border-color 0.16s ease;
+          transition: border-color 0.16s ease, background 0.16s ease;
         }
-        .hone-hub-ghost-btn:hover { border-color: var(--hone-ink-950); }
+        .hone-hub-ghost-btn:hover {
+          border-color: var(--hone-ink-950);
+          background: var(--hone-paper-100);
+        }
         .hone-hub-solid-btn {
           display: inline-flex;
           align-items: center;
-          min-height: 36px;
-          padding: 0 15px;
+          min-height: 38px;
+          padding: 0 16px;
           border: 1px solid var(--hone-ink-950);
-          border-radius: 10px;
+          border-radius: 2px;
           background: var(--hone-ink-950);
           color: var(--hone-action-fg);
           cursor: pointer;
-          font-size: 12px;
-          font-weight: 700;
+          font-size: 13px;
+          font-weight: 600;
           white-space: nowrap;
           text-decoration: none;
+          transition: background 0.16s ease, border-color 0.16s ease;
         }
-        .hone-hub-solid-btn:hover { opacity: 0.9; }
+        .hone-hub-solid-btn:hover {
+          border-color: var(--hone-action-bg);
+          background: var(--hone-action-bg);
+        }
 
         /* 近期视频 */
         .hone-hub-videos-label {
-          margin: 16px 0 10px;
-          color: var(--hone-ink-400, #9aa09b);
-          font-size: 11px;
-          font-weight: 700;
+          margin: 18px 0 10px;
+          color: var(--hone-ink-400);
+          font-family: var(--hone-font-label);
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
         }
         .hone-hub-videos {
           display: grid;
@@ -641,7 +662,7 @@ export default function PublicPlanPage() {
           position: relative;
           overflow: hidden;
           border: 1px solid var(--hone-line);
-          border-radius: 12px;
+          border-radius: 2px;
           background: var(--hone-paper-100);
         }
         .hone-hub-video-thumb img {
@@ -651,7 +672,7 @@ export default function PublicPlanPage() {
           object-fit: cover;
           transition: transform 0.2s var(--hone-ease);
         }
-        .hone-hub-video:hover .hone-hub-video-thumb img { transform: scale(1.04); }
+        .hone-hub-video:hover .hone-hub-video-thumb img { transform: scale(1.03); }
         .hone-hub-video-thumb i {
           position: absolute;
           right: 8px;
@@ -660,10 +681,10 @@ export default function PublicPlanPage() {
           place-items: center;
           width: 26px;
           height: 26px;
-          border-radius: 50%;
-          background: rgba(16, 18, 17, 0.78);
+          border-radius: 2px;
+          background: rgba(11, 18, 32, 0.84);
           color: #fff;
-          font-size: 10px;
+          font-size: 11px;
           font-style: normal;
         }
         .hone-hub-video strong {
@@ -672,52 +693,50 @@ export default function PublicPlanPage() {
           -webkit-line-clamp: 2;
           overflow: hidden;
           margin-top: 8px;
-          font-size: 12px;
-          font-weight: 650;
+          font-size: 13px;
+          font-weight: 600;
           line-height: 1.5;
-          letter-spacing: -0.01em;
         }
 
         /* HONE 工具卡 */
-        .hone-hub-product { display: flex; gap: 15px; }
+        .hone-hub-product { display: flex; gap: 16px; }
         .hone-hub-product-mark {
-          width: 46px;
-          height: 46px;
-          flex: 0 0 46px;
+          width: 44px;
+          height: 44px;
+          flex: 0 0 44px;
           display: grid;
           place-items: center;
-          border-radius: 13px;
-          background: #171917;
-          color: #fff;
-          font-size: 19px;
-          font-weight: 800;
+          border-radius: 2px;
+          background: var(--hone-ink-950);
+          color: var(--hone-action-fg);
+          font-family: var(--hone-font-label);
+          font-size: 18px;
+          font-weight: 700;
         }
         .hone-hub-product strong {
           color: var(--hone-ink-950);
-          font-size: 15px;
-          font-weight: 750;
-          letter-spacing: -0.01em;
+          font-size: 16px;
+          font-weight: 650;
         }
         .hone-hub-product p {
           margin: 6px 0 0;
           color: var(--hone-ink-600);
-          font-size: 12px;
+          font-size: 14px;
           line-height: 1.7;
         }
         .hone-hub-product-actions {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          margin-top: 12px;
+          margin-top: 14px;
         }
 
         /* ── 右栏会员卡 ── */
-        .hone-hub-rail { position: sticky; top: 96px; }
+        .hone-hub-rail { position: sticky; top: 84px; }
         .hone-hub-member {
-          border-color: color-mix(in srgb, var(--hone-coral-500) 32%, var(--hone-line));
-          background:
-            radial-gradient(420px 200px at 92% 0, color-mix(in srgb, var(--hone-coral-500) 9%, transparent), transparent 70%),
-            var(--hone-surface-raised);
+          border-color: var(--hone-line-strong);
+          border-top: 2px solid var(--hone-coral-500);
+          background: var(--hone-surface-raised);
         }
         .hone-hub-member-head {
           display: flex;
@@ -727,16 +746,17 @@ export default function PublicPlanPage() {
         }
         .hone-hub-member-head strong {
           color: var(--hone-ink-950);
-          font-size: 17px;
-          font-weight: 750;
+          font-size: 18px;
+          font-weight: 700;
           letter-spacing: -0.02em;
         }
-        .hone-hub-price { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+        .hone-hub-price { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
         .hone-hub-price b {
           color: var(--hone-ink-950);
-          font-size: 24px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
+          font-family: var(--hone-font-label);
+          font-size: 26px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
           font-variant-numeric: tabular-nums;
         }
         .hone-hub-price span { color: var(--hone-ink-600); font-size: 12px; }
@@ -744,21 +764,21 @@ export default function PublicPlanPage() {
           display: flex;
           flex-wrap: wrap;
           gap: 6px;
-          margin-top: 10px;
+          margin-top: 12px;
         }
         .hone-share-promos span {
-          padding: 3px 10px;
-          border-radius: 999px;
-          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 36%, transparent);
-          background: color-mix(in srgb, var(--hone-coral-500) 10%, var(--hone-surface-raised));
+          padding: 3px 9px;
+          border-radius: 2px;
+          border: 1px solid color-mix(in srgb, var(--hone-coral-500) 36%, var(--hone-line));
+          background: color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised));
           color: var(--hone-link);
-          font-size: 11px;
-          font-weight: 700;
+          font-size: 12px;
+          font-weight: 600;
           white-space: nowrap;
         }
         .hone-hub-benefits {
           display: grid;
-          gap: 11px;
+          gap: 12px;
           margin: 16px 0 0;
           padding: 16px 0 0;
           border-top: 1px solid var(--hone-line);
@@ -769,20 +789,20 @@ export default function PublicPlanPage() {
           width: 15px;
           height: 15px;
           flex: 0 0 15px;
-          margin-top: 2px;
-          color: var(--hone-coral-600);
+          margin-top: 3px;
+          color: var(--hone-signal-green-ink);
         }
         .hone-hub-benefits strong {
           display: block;
           color: var(--hone-ink-950);
-          font-size: 13px;
-          font-weight: 700;
+          font-size: 14px;
+          font-weight: 650;
         }
         .hone-hub-benefits small {
           display: block;
           margin-top: 2px;
           color: var(--hone-ink-600);
-          font-size: 11px;
+          font-size: 12px;
           line-height: 1.55;
         }
         .hone-share-buy {
@@ -790,33 +810,32 @@ export default function PublicPlanPage() {
           align-items: center;
           justify-content: center;
           gap: 10px;
-          min-height: 46px;
+          min-height: 44px;
           padding: 0 20px;
           border: 1px solid var(--hone-action-bg);
-          border-radius: var(--hone-radius-sm);
+          border-radius: 2px;
           background: var(--hone-action-bg);
           color: var(--hone-action-fg);
           cursor: pointer;
           font-size: 14px;
-          font-weight: 700;
+          font-weight: 600;
           white-space: nowrap;
-          transition: background 0.16s ease, border-color 0.16s ease, transform 0.14s var(--hone-ease), box-shadow 0.16s ease;
-          box-shadow: 0 8px 22px color-mix(in srgb, var(--hone-coral-500) 32%, transparent);
+          transition: background 0.16s ease, border-color 0.16s ease;
         }
         .hone-share-buy:hover {
-          border-color: var(--hone-coral-600);
-          background: var(--hone-coral-600);
-          transform: translateY(-1px);
+          border-color: var(--hone-ink-950);
+          background: var(--hone-ink-950);
         }
         .hone-share-buy b {
-          padding: 3px 10px;
-          border-radius: 999px;
-          background: rgba(255, 255, 255, 0.22);
+          padding: 2px 8px;
+          border-radius: 2px;
+          background: rgba(255, 255, 255, 0.2);
+          font-family: var(--hone-font-label);
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 600;
           font-variant-numeric: tabular-nums;
         }
-        .hone-hub-buy { width: 100%; margin-top: 16px; }
+        .hone-hub-buy { width: 100%; margin-top: 18px; }
         .hone-hub-trial-btn {
           display: flex;
           align-items: center;
@@ -824,44 +843,47 @@ export default function PublicPlanPage() {
           box-sizing: border-box;
           width: 100%;
           min-height: 40px;
-          margin-top: 9px;
+          margin-top: 8px;
           border: 1px solid var(--hone-line-strong);
-          border-radius: var(--hone-radius-sm);
+          border-radius: 2px;
           background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-size: 13px;
-          font-weight: 700;
+          font-weight: 600;
           text-decoration: none;
-          transition: border-color 0.16s ease;
+          transition: border-color 0.16s ease, background 0.16s ease;
         }
-        .hone-hub-trial-btn:hover { border-color: var(--hone-ink-950); }
+        .hone-hub-trial-btn:hover {
+          border-color: var(--hone-ink-950);
+          background: var(--hone-paper-100);
+        }
         .hone-hub-trial-hint {
-          margin: 9px 0 0;
-          color: var(--hone-ink-600);
-          font-size: 11px;
+          margin: 10px 0 0;
+          color: var(--hone-ink-500);
+          font-size: 12px;
           line-height: 1.6;
         }
         .hone-hub-foot {
-          margin: 12px 0 0;
+          margin: 14px 0 0;
           padding-top: 12px;
           border-top: 1px solid var(--hone-line);
-          color: var(--hone-ink-400, #a3a6a1);
-          font-size: 10px;
+          color: var(--hone-ink-400);
+          font-size: 12px;
           line-height: 1.6;
         }
         .hone-share-service {
           display: inline-flex;
           align-items: center;
-          min-height: 46px;
+          min-height: 44px;
           padding: 0 16px;
           border: 1px solid var(--hone-line-strong);
-          border-radius: var(--hone-radius-sm);
+          border-radius: 2px;
           background: var(--hone-control-surface);
           color: var(--hone-ink-950);
           cursor: pointer;
           font-size: 13px;
-          font-weight: 700;
+          font-weight: 600;
           white-space: nowrap;
           transition: border-color 0.16s ease;
         }
@@ -875,22 +897,21 @@ export default function PublicPlanPage() {
         }
         .hone-hub-posters-hint {
           margin: 12px 0 0;
-          color: var(--hone-ink-400, #a3a6a1);
-          font-size: 11px;
+          color: var(--hone-ink-400);
+          font-size: 12px;
         }
-        .hone-hub-channel-section { margin-top: 16px; }
+        .hone-hub-channel-section { margin-top: 18px; }
         .hone-share-poster {
           padding: 0;
           border: 1px solid var(--hone-line);
-          border-radius: 14px;
+          border-radius: 2px;
           background: var(--hone-paper-100);
           overflow: hidden;
           cursor: zoom-in;
-          transition: transform 0.18s var(--hone-ease), box-shadow 0.18s var(--hone-ease), border-color 0.18s ease;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
         }
         .hone-share-poster:hover {
-          transform: translateY(-3px);
-          border-color: color-mix(in srgb, var(--hone-coral-500) 36%, var(--hone-line));
+          border-color: var(--hone-coral-500);
           box-shadow: var(--hone-shadow-md);
         }
         .hone-share-poster img {
@@ -902,10 +923,10 @@ export default function PublicPlanPage() {
         }
 
         .hone-share-disclaimer {
-          margin: 22px 4px 0;
-          color: var(--hone-ink-400, #a3a6a1);
-          font-size: 11px;
-          line-height: 1.7;
+          margin: 28px 4px 0;
+          color: var(--hone-ink-400);
+          font-size: 12px;
+          line-height: 1.65;
           text-align: center;
         }
 
@@ -920,9 +941,7 @@ export default function PublicPlanPage() {
           display: grid;
           place-items: center;
           padding: 16px;
-          background: rgba(23, 32, 31, 0.5);
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
+          background: rgba(6, 10, 18, 0.82);
           animation: hone-share-fade 160ms ease both;
           cursor: zoom-out;
         }
@@ -932,11 +951,11 @@ export default function PublicPlanPage() {
           max-width: min(480px, 100%);
           max-height: calc(100dvh - 32px);
           margin: 0;
-          padding: 14px 14px 12px;
-          border: 1px solid var(--hone-line);
-          border-radius: 18px;
+          padding: 14px;
+          border: 1px solid var(--hone-line-strong);
+          border-radius: 2px;
           background: var(--hone-paper-50);
-          box-shadow: 0 40px 110px rgba(23, 32, 31, 0.32);
+          box-shadow: 0 32px 90px rgba(0, 0, 0, 0.45);
           animation: hone-share-rise 200ms var(--hone-ease) both;
           cursor: default;
         }
@@ -945,22 +964,22 @@ export default function PublicPlanPage() {
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          margin-bottom: 11px;
+          margin-bottom: 12px;
         }
         .hone-share-pop figcaption strong {
           color: var(--hone-ink-950);
           font-size: 14px;
-          font-weight: 700;
+          font-weight: 650;
         }
         .hone-share-pop figcaption button {
           width: 30px;
           height: 30px;
           display: grid;
           place-items: center;
-          border: 1px solid var(--hone-line);
-          border-radius: 50%;
+          border: 1px solid var(--hone-line-strong);
+          border-radius: 2px;
           background: var(--hone-control-surface);
-          color: var(--hone-ink-600);
+          color: var(--hone-ink-800);
           cursor: pointer;
           font-size: 16px;
           line-height: 1;
@@ -971,7 +990,7 @@ export default function PublicPlanPage() {
           height: auto;
           max-height: calc(100dvh - 140px);
           border: 1px solid var(--hone-line);
-          border-radius: 12px;
+          border-radius: 2px;
           background: #fff;
           object-fit: contain;
           -webkit-touch-callout: default;
@@ -980,39 +999,38 @@ export default function PublicPlanPage() {
         }
         .hone-share-pop small {
           display: block;
-          margin-top: 9px;
+          margin-top: 10px;
           color: var(--hone-ink-600);
-          font-size: 11px;
+          font-size: 12px;
           line-height: 1.55;
           text-align: center;
         }
         @keyframes hone-share-fade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes hone-share-rise {
-          from { opacity: 0; transform: translateY(12px) scale(0.985); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         /* ── 移动端：单列 + 吸附购买栏 ── */
         @media (max-width: 900px) {
-          .hone-share-main { width: calc(100% - 32px); padding: 96px 0 24px; }
-          .hone-hub-hero { gap: 14px; }
-          .hone-hub-avatar { width: 68px; height: 68px; flex-basis: 68px; border-radius: 19px; }
+          .hone-share-main { width: calc(100% - 28px); padding: 88px 0 24px; }
+          .hone-hub-hero { gap: 14px; padding-bottom: 20px; }
+          .hone-hub-avatar { width: 68px; height: 68px; flex-basis: 68px; border-radius: 2px; }
           .hone-hub-id h1 { font-size: 24px; }
-          .hone-hub-id > p { font-size: 12px; }
           .hone-hub-stats { gap: 6px; }
           .hone-hub-stats > div { padding: 7px 10px; }
-          .hone-hub-stats strong { font-size: 14px; }
-          .hone-hub-grid { grid-template-columns: 1fr; gap: 12px; margin-top: 20px; }
+          .hone-hub-stats strong { font-size: 16px; }
+          .hone-hub-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 20px; }
           .hone-hub-rail { position: static; }
-          .hone-hub-card { padding: 17px 16px; border-radius: 15px; }
-          .hone-hub-videos { grid-template-columns: repeat(3, 200px); max-width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+          .hone-hub-card { padding: 18px 16px; border-radius: 2px; }
+          .hone-hub-videos { grid-template-columns: repeat(3, 210px); max-width: 100%; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
           .hone-hub-videos::-webkit-scrollbar { display: none; }
-          .hone-hub-channel .hone-hub-ghost-btn { padding: 0 11px; font-size: 11px; }
+          .hone-hub-channel .hone-hub-ghost-btn { padding: 0 12px; font-size: 12px; }
           /* 海报：移动端横滑，避免 3 列挤成缩略图 */
           .hone-share-wall { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 156px; max-width: 100%; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
           .hone-share-wall::-webkit-scrollbar { display: none; }
           .hone-hub-socials { gap: 6px; margin-top: 14px; }
-          .hone-hub-social { min-height: 34px; padding: 0 12px 0 10px; font-size: 11px; }
+          .hone-hub-social { min-height: 36px; padding: 0 12px 0 10px; font-size: 12px; }
 
           .hone-share-dock {
             position: fixed;
@@ -1021,15 +1039,15 @@ export default function PublicPlanPage() {
             left: 0;
             z-index: 190;
             display: flex;
-            gap: 9px;
+            gap: 8px;
             padding: 10px max(14px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
             border-top: 1px solid var(--hone-line);
             background: color-mix(in srgb, var(--hone-paper-50) 96%, transparent);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
           }
-          .hone-share-dock .hone-share-buy { flex: 1; justify-content: center; min-height: 48px; }
-          .hone-share-dock .hone-share-service { flex: 0 0 auto; min-height: 48px; }
+          .hone-share-dock .hone-share-buy { flex: 1; justify-content: center; min-height: 46px; }
+          .hone-share-dock .hone-share-service { flex: 0 0 auto; min-height: 46px; }
 
           /* 吸附栏替代了底部 tabs 的空间占位 */
           .hone-share-page { padding-bottom: 0 !important; }

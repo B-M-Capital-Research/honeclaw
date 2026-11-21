@@ -17,14 +17,15 @@ function VersionBanner() {
         display: "inline-flex",
         "align-items": "center",
         gap: "10px",
-        padding: "6px 12px",
-        "border-radius": "999px",
+        padding: "5px 12px",
+        "border-radius": "2px",
         background: "color-mix(in srgb, var(--hone-coral-500) 8%, transparent)",
-        border: "1px solid color-mix(in srgb, var(--hone-coral-500) 25%, transparent)",
+        border: "1px solid color-mix(in srgb, var(--hone-coral-500) 28%, transparent)",
         color: "var(--hone-coral-600)",
+        "font-family": "var(--hone-font-label)",
         "font-size": "12px",
         "font-weight": "600",
-        "letter-spacing": "0.02em",
+        "letter-spacing": "0.04em",
       }}
     >
       {label}

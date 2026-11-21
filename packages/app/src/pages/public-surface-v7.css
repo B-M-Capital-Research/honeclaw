@@ -1,0 +1,713 @@
+/* public-surface-v7.css — HONE 全站非 /chat 公共页面统一设计系统（v7）
+   作用域：html[data-public-v7="1"]（涵盖 /、/blog、/plan、/roadmap、/survey、
+   /activate、/terms、/privacy 以及 /research、/community、/me、/pushes、
+   /data-center、/industry-map、/research-library、/valuation-lab）。
+   /chat 与 /__share-preview 不挂载该属性，保持原有对话工作台契约完全隔离。 */
+
+html[data-public-v7="1"] {
+  --hone-font-display: "Plus Jakarta Sans", "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-body: "Plus Jakarta Sans", "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-label: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+
+  --hone-ink-950: #0b1220;
+  --hone-ink-800: #1e293b;
+  --hone-ink-600: #475569;
+  --hone-ink-500: #526075;
+  --hone-ink-400: #64748b;
+
+  --hone-paper-50: #f4f6f9;
+  --hone-paper-100: #ebeef4;
+  --hone-paper-200: #dce2ec;
+  --hone-surface-raised: #ffffff;
+  --hone-control-surface: #ffffff;
+  --hone-sage-100: #e8eef8;
+
+  --hone-coral-500: #1d4ed8;
+  --hone-coral-600: #1e40af;
+  --hone-action-bg: #1d4ed8;
+  --hone-action-fg: #ffffff;
+  --hone-link: #1e40af;
+
+  --hone-inverse-bg: #0b1220;
+  --hone-inverse-fg: #f8fafc;
+  --hone-inverse-muted: #94a3b8;
+
+  --hone-line: rgba(15, 23, 42, 0.12);
+  --hone-line-strong: rgba(15, 23, 42, 0.24);
+  --hone-shadow-sm: 0 1px 2px rgba(11, 18, 32, 0.04);
+  --hone-shadow-md: 0 16px 40px rgba(11, 18, 32, 0.08);
+  --hone-login-shadow: 0 12px 32px rgba(11, 18, 32, 0.06);
+  --hone-focus-ring: #1d4ed8;
+
+  --hone-signal-green: #059669;
+  --hone-signal-green-soft: #e6f6f0;
+  --hone-signal-green-ink: #047857;
+  --hone-signal-red: #dc2626;
+  --hone-signal-red-soft: #fef2f2;
+  --hone-signal-red-ink: #b91c1c;
+  --hone-signal-neutral: #64748b;
+  --hone-signal-neutral-soft: #e9eef5;
+  --hone-signal-neutral-ink: #475569;
+
+  /* 全面收敛为 2px 建筑感方角 */
+  --hone-radius-xs: 2px;
+  --hone-radius-sm: 2px;
+  --hone-radius-md: 2px;
+  --hone-radius-lg: 2px;
+  --hone-radius-pill: 2px;
+}
+
+html[data-theme="dark"][data-public-v7="1"] {
+  --hone-ink-950: #f1f5f9;
+  --hone-ink-800: #cbd5e1;
+  --hone-ink-600: #94a3b8;
+  --hone-ink-500: #94a3b8;
+  --hone-ink-400: #8596ad;
+
+  --hone-paper-50: #090d14;
+  --hone-paper-100: #111826;
+  --hone-paper-200: #1a2436;
+  --hone-surface-raised: #0e1522;
+  --hone-control-surface: #0b101b;
+  --hone-sage-100: #131d30;
+
+  --hone-coral-500: #3b82f6;
+  --hone-coral-600: #60a5fa;
+  --hone-action-bg: #60a5fa;
+  --hone-action-fg: #090d14;
+  --hone-link: #60a5fa;
+
+  --hone-inverse-bg: #111a2b;
+  --hone-inverse-fg: #f8fafc;
+  --hone-inverse-muted: #94a3b8;
+
+  --hone-line: rgba(226, 232, 240, 0.12);
+  --hone-line-strong: rgba(226, 232, 240, 0.25);
+  --hone-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --hone-shadow-md: 0 20px 48px rgba(0, 0, 0, 0.45);
+  --hone-login-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+  --hone-focus-ring: #60a5fa;
+
+  --hone-signal-green: #34d399;
+  --hone-signal-green-soft: rgba(52, 211, 153, 0.15);
+  --hone-signal-green-ink: #34d399;
+  --hone-signal-red: #f87171;
+  --hone-signal-red-soft: rgba(248, 113, 113, 0.15);
+  --hone-signal-red-ink: #f87171;
+  --hone-signal-neutral: #94a3b8;
+  --hone-signal-neutral-soft: rgba(148, 163, 184, 0.16);
+  --hone-signal-neutral-ink: #cbd5e1;
+}
+
+html[data-public-v7="1"] body {
+  background-color: var(--hone-paper-50);
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-body);
+}
+
+/* ── 统一全站顶部导航 PublicNav（彻底清除旧版圆角白底胶囊与珊瑚发光阴影） ── */
+
+html[data-public-v7="1"] .pub-nav {
+  top: 0;
+  right: 0;
+  left: 0;
+  width: auto;
+  height: 60px;
+  padding: 0 max(20px, calc((100vw - 1160px) / 2));
+  border: 0;
+  border-bottom: 1px solid var(--hone-line);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--hone-paper-50) 93%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+html[data-public-v7="1"] .pub-nav.is-scrolled {
+  top: 0;
+  background: color-mix(in srgb, var(--hone-paper-50) 97%, transparent);
+  box-shadow: 0 1px 0 var(--hone-line);
+}
+
+html[data-public-v7="1"] .hone-brand-mark {
+  border-radius: 2px;
+  border: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .hone-brand-word {
+  font-family: var(--hone-font-display);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+html[data-public-v7="1"] .pub-nav-primary {
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-public-v7="1"] .pub-nav-link,
+html[data-public-v7="1"] .pub-nav-more-trigger,
+html[data-public-v7="1"] .pub-nav-buy,
+html[data-public-v7="1"] .pub-nav-cta,
+html[data-public-v7="1"] .pub-nav-lang,
+html[data-public-v7="1"] .pub-nav-lang button,
+html[data-public-v7="1"] .pub-nav-hamburger,
+html[data-public-v7="1"] .pub-nav-more-panel,
+html[data-public-v7="1"] .pub-nav-more-links a,
+html[data-public-v7="1"] .pub-nav-utility-links a,
+html[data-public-v7="1"] .pub-nav-utility-item,
+html[data-public-v7="1"] .pub-mobile-menu,
+html[data-public-v7="1"] .pub-mobile-menu-links a,
+html[data-public-v7="1"] .pub-mobile-menu-buy,
+html[data-public-v7="1"] .pub-mobile-tabs,
+html[data-public-v7="1"] .pub-mobile-tab {
+  border-radius: 2px;
+}
+
+html[data-public-v7="1"] .pub-nav-link {
+  position: relative;
+  min-height: 36px;
+  padding: 0 13px;
+  background: transparent;
+  color: var(--hone-ink-600);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-link:hover {
+  background: color-mix(in srgb, var(--hone-ink-950) 5%, transparent);
+  color: var(--hone-ink-950);
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-link.is-active {
+  background: transparent;
+  color: var(--hone-ink-950);
+  font-weight: 650;
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-link.is-active::after {
+  content: "";
+  position: absolute;
+  right: 13px;
+  bottom: 4px;
+  left: 13px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--hone-coral-500);
+}
+
+html[data-public-v7="1"] .pub-nav-more-trigger {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+html[data-public-v7="1"] .pub-nav-buy {
+  min-height: 36px;
+  padding: 0 15px;
+  border: 1px solid var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-buy:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-cta {
+  min-height: 36px;
+  padding: 0 15px;
+  border: 1px solid var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] .pub-nav-cta:hover {
+  border-color: var(--hone-coral-500);
+  background: var(--hone-coral-500);
+  color: var(--hone-action-fg);
+  transform: none;
+}
+
+html[data-public-v7="1"] .pub-nav-more-panel {
+  border: 1px solid var(--hone-line-strong);
+  background: var(--hone-surface-raised);
+  box-shadow: var(--hone-shadow-md);
+}
+
+html[data-public-v7="1"] .pub-nav-more-links span,
+html[data-public-v7="1"] .pub-nav-utility-links span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-public-v7="1"] .pub-nav-utility-links small {
+  font-size: 11px;
+}
+
+@media (max-width: 768px) {
+  html[data-public-v7="1"] .pub-nav {
+    height: calc(56px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+  }
+
+  html[data-public-v7="1"] .pub-mobile-menu {
+    border-radius: 0;
+  }
+
+  html[data-public-v7="1"] .pub-mobile-menu-buy small {
+    border-radius: 2px;
+  }
+}
+
+/* ── 统一全站页脚 PublicFooter ── */
+
+html[data-public-v7="1"] .pub-footer {
+  padding: 64px 24px 32px;
+  border-top: 1px solid rgba(226, 232, 240, 0.12);
+  background: #090d14;
+  color: #94a3b8;
+  font-family: var(--hone-font-body);
+}
+
+html[data-public-v7="1"] .pub-footer-inner {
+  max-width: 1160px;
+}
+
+@media (min-width: 961px) {
+  html[data-public-v7="1"] .pub-footer-grid {
+    grid-template-columns: 1.35fr repeat(4, minmax(0, 1fr));
+  }
+}
+
+html[data-public-v7="1"] .pub-footer-column h4 {
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #64748b;
+}
+
+html[data-public-v7="1"] .pub-footer-column a,
+html[data-public-v7="1"] .pub-footer-column button,
+html[data-public-v7="1"] .pub-footer-brand p {
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
+html[data-public-v7="1"] .pub-footer-column a:hover,
+html[data-public-v7="1"] .pub-footer-column button:hover {
+  color: #60a5fa;
+}
+
+html[data-public-v7="1"] .pub-footer-bottom,
+html[data-public-v7="1"] .pub-footer-bottom strong {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── 登录门禁与 /activate 激活页（非 /chat 路由下） ── */
+
+html[data-public-v7="1"] .public-login-screen {
+  background-color: var(--hone-paper-50);
+  background-image:
+    radial-gradient(840px 380px at 78% 0%, color-mix(in srgb, var(--hone-coral-500) 8%, transparent), transparent 72%),
+    linear-gradient(to right, color-mix(in srgb, var(--hone-line) 48%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--hone-line) 48%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 64px 64px, 64px 64px;
+}
+
+html[data-public-v7="1"] .public-login-card,
+html[data-public-v7="1"] .public-activate-card,
+html[data-public-v7="1"] .public-login-methods,
+html[data-public-v7="1"] .public-login-methods button,
+html[data-public-v7="1"] .public-login-dev-button,
+html[data-public-v7="1"] .public-activate-provider,
+html[data-public-v7="1"] .public-activate-steps span,
+html[data-public-v7="1"] .public-activate-offer,
+html[data-public-v7="1"] .public-login-card input,
+html[data-public-v7="1"] .public-login-card button,
+html[data-public-v7="1"] .public-activate-card input,
+html[data-public-v7="1"] .public-activate-card button,
+html[data-public-v7="1"] .public-prefs-trigger,
+html[data-public-v7="1"] .public-prefs-popover,
+html[data-public-v7="1"] .public-prefs-seg,
+html[data-public-v7="1"] .public-prefs-seg button {
+  border-radius: 2px;
+}
+
+/* ── 工作台子页面共享壳（/research、/community、/me、/pushes 及产业子页） ── */
+
+html[data-public-v7="1"] .public-workspace-page {
+  --workspace-bg: var(--hone-paper-50);
+  --workspace-panel: var(--hone-surface-raised);
+  --workspace-soft: var(--hone-paper-100);
+  --workspace-line: var(--hone-line);
+  --workspace-ink: var(--hone-ink-950);
+  --workspace-muted: var(--hone-ink-500);
+
+  --agent-rail: var(--hone-paper-100);
+  --agent-surface: var(--hone-surface-raised);
+  --agent-line: var(--hone-line);
+  --agent-ink: var(--hone-ink-950);
+  --agent-muted: var(--hone-ink-600);
+  --agent-subtle: var(--hone-ink-400);
+  --agent-accent: var(--hone-coral-500);
+
+  background: var(--workspace-bg);
+  color: var(--workspace-ink);
+  font-family: var(--hone-font-body);
+}
+
+html[data-public-v7="1"] .public-workspace-page .agent-workspace-sidebar {
+  border-right: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+}
+
+html[data-public-v7="1"] .public-workspace-page .agent-workspace-topbar {
+  border-bottom: 1px solid var(--hone-line);
+  background: color-mix(in srgb, var(--hone-paper-50) 94%, transparent);
+}
+
+html[data-public-v7="1"] .public-workspace-page :is(
+  .agent-workspace-brand .hone-brand-mark,
+  .agent-workspace-new,
+  .agent-workspace-nav button,
+  .agent-workspace-nav a,
+  .agent-workspace-history-search,
+  .agent-workspace-history-search input,
+  .agent-workspace-search,
+  .agent-workspace-search input,
+  .agent-workspace-history button,
+  .agent-workspace-history-older,
+  .agent-workspace-user,
+  .agent-workspace-avatar,
+  .agent-workspace-logout,
+  .agent-workspace-topbar label,
+  .agent-workspace-topbar-actions > button,
+  .agent-workspace-topbar .hone-prefs-trigger,
+  .agent-workspace-icon-btn,
+  .agent-workspace-restore-notice,
+  .agent-workspace-restore-notice button,
+  .agent-workspace-loading-mark,
+  .agent-workspace-loading-skeleton i,
+  .agent-workspace-mobile-header .hone-brand-mark,
+  .agent-workspace-mobile-header button,
+  .agent-workspace-mobile-header .hone-prefs-trigger,
+  .agent-workspace-mobile-header .agent-workspace-mobile-history-trigger > span,
+  .agent-workspace-history-drawer > header .hone-brand-mark,
+  .agent-workspace-history-drawer > header button,
+  .agent-workspace-drawer-nav button,
+  .agent-workspace-history-drawer-list > button,
+  .agent-workspace-history-more,
+  .agent-workspace-mobile-nav button,
+  .agent-workspace-mobile-primary,
+  .agent-workspace-mobile-primary > svg,
+  .public-workspace-primary-action,
+  .public-workspace-tabs button,
+  .public-workspace-panel,
+  .public-workspace-state,
+  .public-workspace-state button,
+  .public-community-timeline,
+  .public-community-image-grid,
+  .public-community-image-grid.is-single .public-community-image,
+  .public-community-image,
+  .public-community-avatar,
+  .public-community-file,
+  .public-community-view-tabs button,
+  .public-community-refresh > button,
+  .public-community-more,
+  .public-community-state,
+  .public-community-state button,
+  .community-influencer,
+  .community-influencer__status,
+  .community-influencer__head button,
+  .public-tracking-month-controls button,
+  .public-tracking-day.is-today > strong,
+  .public-tracking-event,
+  .public-tracking-invest-link,
+  .public-tracking-invest-link button,
+  .public-invest-stats > div,
+  .public-invest-earnings > button,
+  .public-mainline-refresh,
+  .public-mainline-notice,
+  .public-mainline-style-card,
+  .public-mainline-card,
+  .public-mainline-empty,
+  .public-mainline-empty button,
+  .public-profile-view-btn,
+  .public-profile-row,
+  .public-profile-modal,
+  .public-vip-badge,
+  .public-vip-side,
+  .public-vip-qr,
+  .public-vip-qr-pop figure,
+  .public-vip-qr-pop figcaption button,
+  .public-vip-qr-pop img,
+  .public-billing-entitlement,
+  .public-billing-entitlement button,
+  .public-billing-entitlement a,
+  .public-account-actions button,
+  .public-account-note,
+  .public-account-links nav a,
+  .public-admin-limit,
+  .public-admin-create,
+  .public-admin-create input,
+  .public-admin-create button,
+  .public-admin-table-wrap,
+  .public-admin-row-action button,
+  .public-admin-refresh,
+  .public-admin-live-summary,
+  .public-admin-trend-chart,
+  .public-admin-trend-detail,
+  .public-admin-usage-toolbar select,
+  .public-admin-channel,
+  .public-holding-row,
+  .public-holding-bubble,
+  .public-holding-bubble button,
+  .public-holdings-empty,
+  .public-holdings-empty button,
+  .public-holding-modal,
+  .public-holding-modal > header button,
+  .public-holding-modal input,
+  .public-holding-modal footer button,
+  .public-settings-input,
+  .public-settings-actions button,
+  .public-settings-distilled
+) {
+  border-radius: 2px;
+}
+
+/* 统一工作台页面标题与正文字号层级 */
+html[data-public-v7="1"] .public-workspace-page-heading h1,
+html[data-public-v7="1"] .public-research-header h1 {
+  color: var(--hone-ink-950);
+  font-family: var(--hone-font-display);
+  font-size: clamp(26px, 2.8vw, 32px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+html[data-public-v7="1"] .public-workspace-page-heading p,
+html[data-public-v7="1"] .public-research-header p {
+  color: var(--hone-ink-600);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+html[data-public-v7="1"] .public-workspace-eyebrow,
+html[data-public-v7="1"] .public-workspace-page-heading time {
+  color: var(--hone-coral-600);
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+html[data-public-v7="1"] .public-workspace-primary-action {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+html[data-public-v7="1"] .public-workspace-primary-action:hover {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+}
+
+/* 个人页 VIP 会员卡去除旧橙红硬编码，统一为机构钴蓝顶线卡片 */
+html[data-public-v7="1"] .public-vip-card {
+  border-color: color-mix(in srgb, var(--hone-coral-500) 32%, var(--hone-line));
+  border-top: 2px solid var(--hone-coral-500);
+  background:
+    radial-gradient(420px 180px at 95% 0%, color-mix(in srgb, var(--hone-coral-500) 7%, transparent), transparent 70%),
+    var(--hone-surface-raised);
+}
+
+html[data-public-v7="1"] .public-vip-badge {
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+  font-family: var(--hone-font-label);
+  font-size: 12px;
+}
+
+html[data-public-v7="1"] .public-vip-list svg {
+  color: var(--hone-coral-600);
+}
+
+html[data-public-v7="1"] .public-billing-entitlement button,
+html[data-public-v7="1"] .public-billing-entitlement a {
+  border-color: var(--hone-line-strong);
+  background: var(--hone-control-surface);
+  color: var(--hone-link);
+}
+
+html[data-public-v7="1"] .public-account-actions button.is-primary,
+html[data-public-v7="1"] .public-settings-actions button.is-primary,
+html[data-public-v7="1"] .public-holding-modal footer button.is-primary {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
+}
+
+/* 洞察页（/community）三栏切换与时间流精致化 */
+html[data-public-v7="1"] .public-community-view-tabs {
+  gap: 12px;
+}
+
+html[data-public-v7="1"] .public-community-view-tabs button {
+  position: relative;
+  padding: 14px 16px;
+  border: 1px solid var(--hone-line);
+  background: var(--hone-surface-raised);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+html[data-public-v7="1"] .public-community-view-tabs button strong {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+html[data-public-v7="1"] .public-community-view-tabs button span {
+  font-size: 12px;
+  color: var(--hone-ink-500);
+}
+
+html[data-public-v7="1"] .public-community-view-tabs button:hover {
+  border-color: var(--hone-line-strong);
+}
+
+html[data-public-v7="1"] .public-community-view-tabs button.active {
+  border-color: var(--hone-coral-500);
+  border-top: 2px solid var(--hone-coral-500);
+  background: color-mix(in srgb, var(--hone-coral-500) 6%, var(--hone-surface-raised));
+}
+
+/* 社区讨论区（CommunityForum）与研究面板抽屉（ResearchPanel）方角统一 */
+html[data-public-v7="1"] :is(
+  .community-forum,
+  .community-forum button,
+  .community-forum input,
+  .community-forum textarea,
+  .community-forum select,
+  .community-forum article,
+  .research-panel,
+  .research-panel button,
+  .public-push-center,
+  .public-push-detail,
+  .public-push-list-item,
+  .public-push-list-index,
+  .public-push-load-more,
+  .public-community-lightbox > header button,
+  .public-community-zoom-controls button,
+  .public-community-download,
+  .public-community-document-preview,
+  .public-community-pdf-toolbar button,
+  .public-community-resource-dialog,
+  .public-community-resource-dialog button,
+  .public-community-resource-dialog a,
+  .public-community-resource-dialog input
+) {
+  border-radius: 2px;
+}
+
+/* ── 研究台下属专题页（/data-center、/research-library、/valuation-lab）统一 ── */
+
+html[data-public-v7="1"] .dc-title-dot {
+  color: var(--hone-coral-500);
+}
+
+html[data-public-v7="1"] .dc-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--hone-coral-600);
+}
+
+html[data-public-v7="1"] :is(
+  .dc-all-industries,
+  .dc-scene-wrap,
+  .dc-page button,
+  .dc-page dialog,
+  .research-library-hero,
+  .research-library-hero__stats,
+  .research-library-connectors article,
+  .research-library-upload,
+  .research-library-list,
+  .research-library-page button,
+  .research-library-page input,
+  .research-library-page select,
+  .research-library-page textarea,
+  .valuation-lab-hero,
+  .valuation-lab-hero dl div,
+  .valuation-lab-method > div,
+  .valuation-lab-method > p,
+  .valuation-lab-page button,
+  .valuation-lab-page input,
+  .valuation-lab-page select,
+  .valuation-lab-page article
+) {
+  border-radius: 2px;
+}
+
+html[data-public-v7="1"] :is(.research-library-hero, .valuation-lab-hero) {
+  border: 1px solid var(--hone-line);
+  border-top: 2px solid var(--hone-coral-500);
+  background: var(--hone-surface-raised);
+  box-shadow: none;
+}
+
+html[data-public-v7="1"] :is(.research-library-hero p, .valuation-lab-hero p) {
+  color: var(--hone-ink-600);
+  font-size: 14px;
+}
+
+html[data-public-v7="1"] :is(.research-library-hero__stats, .valuation-lab-hero dl div) {
+  border: 1px solid var(--hone-line-strong);
+  background: var(--hone-inverse-bg);
+  color: var(--hone-inverse-fg);
+}
+
+html[data-public-v7="1"] :is(.research-library-hero__stats span, .valuation-lab-hero dt) {
+  color: var(--hone-inverse-muted);
+}
+
+html[data-public-v7="1"] :is(
+  .research-library-connectors article,
+  .research-library-upload,
+  .research-library-list,
+  .valuation-lab-method > div
+) {
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
+}
+
+html[data-public-v7="1"] .valuation-lab-method > p {
+  border: 1px solid var(--hone-line);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-600);
+}
+
