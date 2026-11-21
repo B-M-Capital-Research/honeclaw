@@ -60,6 +60,30 @@ import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./pos
 const SAVE_KEY = "hone_adventure_save_v2";
 const GITHUB_API_URL = "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
 const GITHUB_STARS_CACHE_KEY = "hone.github.stars.v2";
+const BOOT_ASSET_VER = (() => {
+  try {
+    return new URL(import.meta.url).searchParams.get("v") || "";
+  } catch {
+    return "";
+  }
+})();
+let lastVerCheckAt = 0;
+
+function checkLiveBundleUpdate() {
+  if (!BOOT_ASSET_VER || typeof fetch !== "function" || G.mode !== "home") return;
+  const now = Date.now();
+  if (now - lastVerCheckAt < 20000) return;
+  lastVerCheckAt = now;
+  fetch(`./?__vc=${now}`, { cache: "no-store" })
+    .then((r) => (r.ok ? r.text() : ""))
+    .then((html) => {
+      const m = html && html.match(/\.\/app\.js\?v=([a-z0-9._-]+)/i);
+      if (m && m[1] && m[1] !== BOOT_ASSET_VER && G.mode === "home") {
+        window.location.reload();
+      }
+    })
+    .catch(() => {});
+}
 
 let ghStarsLabel = "742";
 try {
@@ -1742,6 +1766,7 @@ function goHome() {
   startHomeDemo();
   refreshHomeUI();
   homeEl.classList.remove("hide");
+  checkLiveBundleUpdate();
 }
 
 function stepWorldFixed(world, dt) {
@@ -2070,6 +2095,7 @@ async function boot() {
       else stopBgm(0.1);
     } else {
       G.last = performance.now();
+      if (G.mode === "home") checkLiveBundleUpdate();
     }
   });
   document.addEventListener("contextmenu", (e) => e.preventDefault());

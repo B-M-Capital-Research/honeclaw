@@ -12,6 +12,8 @@ import { createFxSystem } from "../../public/hone-adventure/fx.js";
 
 const chatSource = readFileSync(new URL("../pages/chat.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../public/hone-adventure/app.js", import.meta.url), "utf8");
+const headersSource = readFileSync(new URL("../../public/_headers", import.meta.url), "utf8");
+const viteSource = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
 
 describe("HONE Adventure chat entry & localization", () => {
   it("places HONE Adventure right beside 3D Data Center in /chat composer actions", () => {
@@ -42,6 +44,14 @@ describe("HONE Adventure chat entry & localization", () => {
     expect(appSource).toContain("回到首页");
     expect(appSource).toContain("HONECLAW_GITHUB_URL");
     expect(appSource).toContain("gh-star-card");
+  });
+
+  it("enforces zero-stale-cache updates via _headers, Vite build content-hash stamping, and idle lobby version check", () => {
+    expect(headersSource).toContain("/hone-adventure/*");
+    expect(headersSource).toContain("Cache-Control: public, max-age=0, must-revalidate");
+    expect(viteSource).toContain("closeBundle()");
+    expect(viteSource).toContain('createHash("sha256")');
+    expect(appSource).toContain("checkLiveBundleUpdate");
   });
 });
 

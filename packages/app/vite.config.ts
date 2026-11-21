@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto"
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { join, resolve } from "node:path"
 import { defineConfig } from "vite"
 import solid from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
@@ -34,6 +37,37 @@ export default defineConfig({
           }
           next();
         });
+      },
+      closeBundle() {
+        const gameDir = resolve(process.cwd(), outDir, "hone-adventure");
+        if (!existsSync(gameDir)) return;
+        const files = readdirSync(gameDir)
+          .filter((f) => statSync(join(gameDir, f)).isFile())
+          .sort();
+        const hasher = createHash("sha256");
+        for (const f of files) {
+          hasher.update(f + "\0");
+          if (/\.(?:html|js|css)$/i.test(f)) {
+            const norm = readFileSync(join(gameDir, f), "utf8").replace(
+              /(\.\/[a-z0-9_-]+\.(?:js|css|webp))(?:\?v=[^"'\s)]+)?/gi,
+              "$1",
+            );
+            hasher.update(norm);
+          } else {
+            hasher.update(readFileSync(join(gameDir, f)));
+          }
+        }
+        const digest = hasher.digest("hex").slice(0, 10);
+        for (const f of files) {
+          if (!/\.(?:html|js)$/i.test(f)) continue;
+          const p = join(gameDir, f);
+          const src = readFileSync(p, "utf8");
+          const stamped = src.replace(
+            /(\.\/[a-z0-9_-]+\.(?:js|css|webp))(?:\?v=[^"'\s)]+)?/gi,
+            `$1?v=${digest}`,
+          );
+          if (stamped !== src) writeFileSync(p, stamped);
+        }
       },
     },
   ],
