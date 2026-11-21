@@ -158,6 +158,6 @@ export function workspaceUserName(userId: string | null | undefined) {
   // generic name.
   const normalized = (userId ?? "").trim();
   if (!normalized || normalized.startsWith("web-user-")) return "HONE 用户";
-  if (/^1\d{10}$/.test(normalized)) return `用户 ${normalized.slice(-4)}`;
+  if (/^(?:\+?86)?1\d{10}$/.test(normalized)) return `用户 ${normalized.slice(-4)}`;
   return compactText(normalized, 12);
 }

@@ -19,6 +19,11 @@ import {
 import { displayGithubStars, fetchGithubStars } from "@/lib/github-stars";
 import { setLocale, useLocale } from "@/lib/i18n";
 import { CONTENT } from "@/lib/public-content";
+import {
+  publicTheme,
+  setPublicTheme,
+  type PublicTheme,
+} from "@/lib/public-prefs";
 import "../pages/public-foundation.css";
 import "../pages/public-site.css";
 import "../pages/public-polish.css";
@@ -113,6 +118,29 @@ export function PublicNav(
     setMenuOpen(false);
     setMoreOpen(false);
   };
+
+  const themeSwitch = () => (
+    <div class="pub-nav-lang pub-nav-theme" aria-label={CONTENT.chat_page.prefs.theme}>
+      <For
+        each={[
+          { value: "auto" as PublicTheme, labelKey: "theme_auto" as const },
+          { value: "light" as PublicTheme, labelKey: "theme_light" as const },
+          { value: "dark" as PublicTheme, labelKey: "theme_dark" as const },
+        ]}
+      >
+        {(option) => (
+          <button
+            type="button"
+            onClick={() => setPublicTheme(option.value)}
+            classList={{ "is-active": publicTheme() === option.value }}
+            aria-pressed={publicTheme() === option.value}
+          >
+            {CONTENT.chat_page.prefs[option.labelKey]}
+          </button>
+        )}
+      </For>
+    </div>
+  );
 
   const languageSwitch = () => (
     <div class="pub-nav-lang" aria-label="Language">
@@ -236,7 +264,10 @@ export function PublicNav(
                     </A>
                   </div>
                   {utilityLinks()}
-                  <footer>{languageSwitch()}</footer>
+                  <footer>
+                    {themeSwitch()}
+                    {languageSwitch()}
+                  </footer>
                 </section>
               </Show>
             </div>
@@ -294,9 +325,11 @@ export function PublicNav(
             <For
               each={[
                 { labelKey: "research" as const, path: "/research" },
+                { labelKey: "community" as const, path: "/community" },
+                { labelKey: "blog" as const, path: "/blog" },
                 { labelKey: "plan" as const, path: "/plan" },
                 { labelKey: "roadmap" as const, path: "/roadmap" },
-                { labelKey: "blog" as const, path: "/blog" },
+                { labelKey: "me" as const, path: "/me" },
               ]}
             >
               {(link) => (
@@ -322,11 +355,11 @@ export function PublicNav(
             }}
           >
             <span>{C.buy}</span>
-            <small aria-hidden="true">¥100↓</small>
+            <small aria-hidden="true">→</small>
           </button>
           {utilityLinks()}
           <div class="pub-mobile-menu-meta">
-            <span>{C.contact_title}</span>
+            {themeSwitch()}
             {languageSwitch()}
           </div>
         </section>

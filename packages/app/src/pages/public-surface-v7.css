@@ -128,11 +128,23 @@ html[data-public-v7="1"] .pub-nav.is-scrolled {
   box-shadow: 0 1px 0 var(--hone-line);
 }
 
-html[data-public-v7="1"] .hone-brand-mark {
+html[data-public-v7="1"] .hone-brand-mark,
+html[data-public-v7="1"] .pub-nav .hone-brand-mark {
   border-radius: 2px;
-  border: 1px solid var(--hone-line);
-  background: var(--hone-surface-raised);
+  border: 0;
+  background: transparent;
   box-shadow: none;
+  overflow: hidden;
+}
+
+html[data-public-v7="1"] .hone-brand-mark .hone-brand-img-legacy {
+  display: none;
+}
+
+html[data-public-v7="1"] .hone-brand-mark .hone-brand-svg-v7 {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 html[data-public-v7="1"] .hone-brand-word {
@@ -251,6 +263,13 @@ html[data-public-v7="1"] .pub-nav-more-panel {
   box-shadow: var(--hone-shadow-md);
 }
 
+html[data-public-v7="1"] .pub-nav-more-panel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 html[data-public-v7="1"] .pub-nav-more-links span,
 html[data-public-v7="1"] .pub-nav-utility-links span {
   font-size: 13px;
@@ -271,8 +290,30 @@ html[data-public-v7="1"] .pub-nav-utility-links small {
     border-radius: 0;
   }
 
+  html[data-public-v7="1"] .pub-mobile-menu-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--hone-line);
+  }
+
   html[data-public-v7="1"] .pub-mobile-menu-buy small {
     border-radius: 2px;
+  }
+
+  html[data-public-v7="1"] .pub-mobile-tabs {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    min-height: calc(56px + env(safe-area-inset-bottom));
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--hone-line);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--hone-surface-raised) 96%, transparent);
+    box-shadow: none;
   }
 }
 
@@ -345,10 +386,16 @@ html[data-public-v7="1"] .public-login-card input,
 html[data-public-v7="1"] .public-login-card button,
 html[data-public-v7="1"] .public-activate-card input,
 html[data-public-v7="1"] .public-activate-card button,
-html[data-public-v7="1"] .public-prefs-trigger,
-html[data-public-v7="1"] .public-prefs-popover,
-html[data-public-v7="1"] .public-prefs-seg,
-html[data-public-v7="1"] .public-prefs-seg button {
+html[data-public-v7="1"] .public-checkbox > span,
+html[data-public-v7="1"] .hone-prefs-trigger,
+html[data-public-v7="1"] .hone-prefs-panel,
+html[data-public-v7="1"] .hone-prefs-segmented,
+html[data-public-v7="1"] .hone-prefs-seg,
+html[data-public-v7="1"] .public-community-card header em,
+html[data-public-v7="1"] code,
+html[data-public-v7="1"] .legal-prose code,
+html[data-public-v7="1"] .legal-prose pre,
+html[data-public-v7="1"] .legal-prose table {
   border-radius: 2px;
 }
 

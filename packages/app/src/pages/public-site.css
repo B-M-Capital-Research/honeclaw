@@ -1909,7 +1909,7 @@ html {
 
   .hone-roadmap-v4 .roadmap-card {
     padding: 22px !important;
-    border-radius: 22px !important;
+    border-radius: 2px !important;
   }
 
   .hone-roadmap-v4 .phases-container,
@@ -1933,7 +1933,7 @@ html {
 
   .hone-roadmap-v4 .code-block {
     padding: 18px !important;
-    border-radius: 14px !important;
+    border-radius: 2px !important;
     overflow-x: auto !important;
   }
 
@@ -1951,7 +1951,7 @@ html {
   .hone-roadmap-v4 .bottom-cta {
     margin-top: 48px !important;
     padding: 32px 20px !important;
-    border-radius: 26px !important;
+    border-radius: 2px !important;
   }
 }
 
@@ -2227,7 +2227,7 @@ html {
 }
 
 .public-blog-back {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -2347,7 +2347,9 @@ html {
 }
 
 .public-blog-markdown pre,
-.public-blog-markdown blockquote {
+.public-blog-markdown blockquote,
+.public-blog-markdown table,
+.public-blog-markdown code {
   border-radius: 2px;
 }
 

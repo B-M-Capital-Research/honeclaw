@@ -82,10 +82,15 @@ export function AgentWorkspaceIcon(props: {
 
 /** One letter for the avatar: the generic user gets the brand initial. */
 function avatarInitial(userName: string) {
-  return userName === CONTENT.chat_page.workspace.default_user ||
+  if (
+    userName === CONTENT.chat_page.workspace.default_user ||
     userName.startsWith(CONTENT.chat_page.workspace.user_prefix)
-    ? "H"
-    : userName.slice(-1);
+  ) {
+    return "H";
+  }
+  const clean = userName.replace(/…+$/, "").trim();
+  if (!clean) return "H";
+  return /^[A-Za-z]/.test(clean) ? clean[0]!.toUpperCase() : clean.slice(-1).toUpperCase();
 }
 
 /**

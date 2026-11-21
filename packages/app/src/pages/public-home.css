@@ -128,9 +128,10 @@
 
 .hone-home .hone-brand-mark {
   border-radius: var(--hone-home-radius);
-  border-color: var(--hone-line);
-  background: var(--hone-surface-raised);
+  border: 0;
+  background: transparent;
   box-shadow: none;
+  overflow: hidden;
 }
 
 .hone-home .pub-nav-link,

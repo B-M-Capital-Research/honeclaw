@@ -48,6 +48,8 @@ describe("public Agent workspace helpers", () => {
   it("uses privacy-safe display names and time-aware greetings", () => {
     expect(workspaceUserName("web-user-e05f5e5f74a3")).toBe("HONE 用户");
     expect(workspaceUserName("13871396421")).toBe("用户 6421");
+    expect(workspaceUserName("8613871396421")).toBe("用户 6421");
+    expect(workspaceUserName("+8613871396421")).toBe("用户 6421");
     expect(workspaceGreeting(14, "老王")).toBe("下午好，老王");
   });
 

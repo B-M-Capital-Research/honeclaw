@@ -117,6 +117,7 @@ export function PublicPrefsButton() {
                 )}
               </For>
             </div>
+          </div>
           <div class="hone-prefs-row">
             <span class="hone-prefs-label">{CONTENT.chat_page.prefs.language}</span>
             <div class="hone-prefs-segmented">
@@ -134,7 +135,6 @@ export function PublicPrefsButton() {
                 )}
               </For>
             </div>
-          </div>
           </div>
         </div>
       </Show>

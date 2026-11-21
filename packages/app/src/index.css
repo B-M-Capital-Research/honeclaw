@@ -14,6 +14,10 @@ body {
   overscroll-behavior-x: none;
 }
 
+.hone-brand-svg-v7 {
+  display: none;
+}
+
 .public-chat-startup-page {
   --startup-ink: #142026;
   --startup-paper: #f7f4ed;

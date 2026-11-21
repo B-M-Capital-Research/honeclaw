@@ -51,7 +51,7 @@ export function PublicCheckbox(props: Props): JSX.Element {
         style={{
           width: "18px",
           height: "18px",
-          "border-radius": "5px",
+          "border-radius": "var(--hone-radius-xs, 5px)",
           border: props.checked
             ? "1.5px solid var(--hone-action-bg)"
             : "1.5px solid var(--hone-line-strong)",

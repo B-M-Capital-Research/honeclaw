@@ -220,7 +220,7 @@ function AccountView(props: {
             <h2>管理</h2>
             <p class="public-account-note">知识源与投稿核验、估值实验室、使用统计、白名单邀请已集中到研究台的「管理」分类。</p>
             <div class="public-account-actions">
-              <button type="button" onClick={() => navigate("/research?group=admin")}>打开管理</button>
+              <button type="button" onClick={() => navigate("/research?group=admin")}>打开管理 →</button>
             </div>
           </section>
         </Show>
