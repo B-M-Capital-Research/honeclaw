@@ -6,7 +6,7 @@
 - updated_at: 2026-11-21
 - owner: Antigravity
 - related_files: packages/app/public/hone-adventure/index.html, packages/app/public/hone-adventure/app.js, packages/app/public/hone-adventure/world.js, packages/app/public/hone-adventure/data.js, packages/app/public/hone-adventure/art.js, packages/app/public/hone-adventure/audio.js, packages/app/public/hone-adventure/fx.js, packages/app/public/hone-adventure/poster.js, packages/app/public/hone-adventure/styles.css, packages/app/public/hone-adventure/sprites.webp, packages/app/public/hone-adventure/floor.webp, packages/app/public/hone-adventure/atlas-coords.js, packages/app/src/pages/chat.tsx, packages/app/src/lib/public-content.ts, packages/app/src/lib/hone-adventure.test.ts, packages/app/public/_worker.js, packages/app/public/_worker.test.js, packages/app/e2e/public-data-center.spec.ts, packages/app/vite.config.ts
-- related_docs: docs/repo-map.md, docs/archive/plans/hone-adventure-game.md, docs/runbooks/backend-deployment.md
+- related_docs: docs/repo-map.md, docs/archive/plans/hone-adventure-game.md, docs/archive/plans/hone-adventure-v2-datacenter-overhaul.md, docs/runbooks/backend-deployment.md
 - related_prs: direct push to `main` (no `v*` release tag)
 
 ## Summary
@@ -44,3 +44,29 @@
 ## Next Entry Point
 
 任务已上线并归档。后续若扩展新特工、超武或全服排行榜接口，入口在 `packages/app/public/hone-adventure/data.js`、`world.js` 与 `app.js`，并同步更新 `packages/app/src/lib/hone-adventure.test.ts` 与 `packages/app/e2e/public-data-center.spec.ts`。
+
+## V2 阶段：浅色洁净室 AI 数据中心、六大算力产线关卡与弹道/晋升体系全面重构
+
+### V2 Summary
+
+根据用户体验反馈对《HONE 历险记》进行了 V2 彻底重构并重新发布上线：全面移除 V1 残留的深海暗色光影（焦散、气泡、阳光束、暗色隧道晕影、水波扭曲与海洋形态怪物），切换为浅色高对比度 **Cleanroom AI Data Center（洁净室 AI 数据中心）** 工程视觉（`#EFF4FA` 架空机房地板 + 低干扰母线网格，零大块遮挡、不损伤走位可读性）；新增支持大厅自由切换与局内 75 秒递进跃迁的 **6 大算力产线关卡**（`存储阵列`、`光模块`、`CPU 中枢`、`GPU 矩阵`、`先进封装`、`超算总机房`）；全面重做 **8 套硬件弹道与超武**、**9 类硬件故障怪与 5 大产线巨兽 Boss**、**10 阶带永久被动特权的算力架构师晋升路线**与 **4 维 12 节点算力基建矩阵**；左上角统一改为跳转 `/` 的「回到首页」按钮，并在结算页与战报图内置醒目的 `https://github.com/B-M-Capital-Research/honeclaw` GitHub Star 卡片。
+
+### V2 What Changed
+
+- **浅色洁净室 AI 数据中心视觉与美术重绘（`sprites.webp` / `floor.webp` / `art.js` / `fx.js`）**：
+  - 重新绘制并打包 `floor.webp`（浅银白架空防静电地板与低对比蓝灰母线纹）及 32 张深石板色（`#0F172A`）硬朗勾边的硬件异常怪（RJ45 丢包蛛、时钟抖动蜂、热失控铜管魔像、光纤串扰炮、浪涌变压器牛、PCB 内存泄漏魔方、爆浆短路电容、几何幻觉幽灵、坏扇区螨虫）、5 大产线 Boss（`闪存冷阵列·坏块巨像`、`硅光耦合主脑·色散棱镜`、`乱序超标量·死锁仲裁者`、`显存墙霸主·张量熔炉`、`极紫外晶圆母机·EUV 巨神`）与机柜/晶圆盒/光交换机/液冷舱道具。
+  - WebGL 与 Canvas 2D 双渲染管线统一移除浅底易泛白的 additive `lighter` 混色，改为饱和实心色核 + `#0F172A` 描边弹道与跳字，张量矩阵采用超低透明度（4.5%）线框对准框并绘制于敌群下层，确保密集战斗零遮挡。
+- **6 大可切换算力产线关卡与 8 套全新硬件弹道（`data.js` / `world.js`）**：
+  - 大厅底部控制台可直接切换 `storage` / `optics` / `cpu` / `gpu` / `packaging` / `hyperscale` 任一起手产线（各自携带产线全局 Buff、地板色温、敌群偏置与镇守 Boss），局内每 75 秒自动跃迁至下一产线。
+  - 8 套硬件弹道与超武：`HBM 带宽飞梭 → 3D 堆叠数据洪流`（多通道平行矩形总线帧）、`硅光分光束 → 1.6T 波分相干阵列`（命中折射三/五波长子光束）、`张量矩阵炮 → Rubin 脉动方阵`（3×3 方形线框脉动矩阵与四角子方阵）、`L3 缓存环刃 → CoWoS 晶圆护盾`（总线串联八角硅片环）、`PCB 母线电弧 → 吉瓦级超导馈线`（45°/90° 电路板折线路由与过孔焊盘）、`EUV 光刻扫描 → High-NA 全场曝光`（洁净室横向扫描梁）、`ASIC 推理蜂群 → 主权算力集群`（三角翼无人机曲率追击）、`浸没液冷喷射 → 超流态绝对零度`（双层六角冰晶冷却板）。
+- **10 阶晋升路线、四维基建矩阵、回到首页与 GitHub Star 闭环（`app.js` / `styles.css` / `poster.js`）**：
+  - 升级为 `L1 · 见习机房巡检员` 至 `L10 · HONE 首席算力官` 十阶晋升路线（每阶解锁永久全局属性加成与首达晶核奖励，配独立晋升路线弹窗）及「存算互联 / 光刻制程 / 液冷供电 / 智能调度」四维 12 节点基建矩阵（存档升级至 `hone_adventure_save_v2` 并保留旧晶核兼容迁移）。
+  - 大厅、战斗 HUD、暂停弹窗与结算页左上角均放置 `<a class="home-pill" href="/">回到首页</a>`；结算页与 `1080×1440` 浅色工程战报底部均展示 `https://github.com/B-M-Capital-Research/honeclaw` 地址与一键点 Star 入口（读取或拉取仓库实时 Star 数并附赠首次致敬晶核）。
+
+### V2 Verification
+
+- `bun run typecheck:web`：通过。
+- `bun run test:web`：通过（`hone-adventure.test.ts` 覆盖 V2 6 大产线关卡切换与跃迁、8 套硬件武器与超武、5 大产线 Boss、10 阶晋升属性聚合、4 维 12 节点基建矩阵与 `HONECLAW_GITHUB_URL`）。
+- `bun run build:web:public`：通过。
+- Playwright E2E `packages/app/e2e/public-data-center.spec.ts`（`-g "chat opens the online demo"`）：`390px` 与 `1440px` 全部通过，验证 `/chat` 打开游戏、`v2.0.0` 资源加载、关卡切换、结算页 `honeclaw` GitHub Star 卡片及左上角「回到首页」回跳 `/`。
+- 独立无头 Chromium 8 场景截图巡检（大厅关卡切换、十阶晋升路线、四维基建矩阵、密集弹道与张量线框防遮挡 Boss 战、升级锁卡、结算 GitHub Star 卡片、硬件图鉴、`390×844` 移动端适配）零报错通过，并完成线上 `https://hone-claw.com/hone-adventure/` 生产部署核验。

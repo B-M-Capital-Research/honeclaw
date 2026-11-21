@@ -1,4 +1,4 @@
-// HONE Adventure — Custom Sprite Atlas, Procedural Cyber-Vector Art, Icons & WebGL/2D Renderer
+// HONE Adventure V2 — Cleanroom AI Data Center Sprite Atlas, Hardware Projectiles, Icons & Dual Renderer
 
 import { SHEET_FRAMES } from "./atlas-coords.js";
 
@@ -7,17 +7,6 @@ const TAU = Math.PI * 2;
 export function rgbaHex(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
-}
-
-export function softGlow(ctx, x, y, r, hex, alpha) {
-  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-  g.addColorStop(0, rgbaHex(hex, alpha));
-  g.addColorStop(0.45, rgbaHex(hex, alpha * 0.4));
-  g.addColorStop(1, rgbaHex(hex, 0));
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
-  ctx.fill();
 }
 
 export function radGrad(ctx, x0, y0, r0, x1, y1, r1, stops) {
@@ -80,22 +69,21 @@ function defSpr(name, w, h, fn) {
   SPRITE_DEFS.push({ n: name, w, h, f: fn });
 }
 
-// Fallback procedural hero/enemy shapes (overridden automatically when sprites.webp loads)
+// Fallback procedural hero/enemy shapes (overridden when sprites.webp loads)
 const HERO_PAL = {
-  hone: ["#ffad36", "#f06449", "#17201f"],
-  gold: ["#ffe27a", "#ff9f1c", "#1a1408"],
-  rubin: ["#2ee59d", "#187a6c", "#102422"],
-  photon: ["#7fe8ff", "#38bdf8", "#0f2438"],
-  quant: ["#6fffe9", "#2dd4bf", "#0d2824"],
+  hone: ["#2563eb", "#1d4ed8", "#0f172a"],
+  gold: ["#f59e0b", "#d97706", "#0f172a"],
+  rubin: ["#059669", "#047857", "#0f172a"],
+  photon: ["#0891b2", "#0e7490", "#0f172a"],
+  quant: ["#4f46e5", "#4338ca", "#0f172a"],
 };
 
 Object.keys(HERO_PAL).forEach((id) => {
   const [c1, c2, dark] = HERO_PAL[id];
-  const draw = (ctx, sc) => {
-    softGlow(ctx, 0, 0, 32, c1, 0.38);
+  const draw = (ctx) => {
     ctx.fillStyle = linGrad(ctx, 0, -20, 0, 20, [0, c1, 1, c2]);
     ctx.strokeStyle = dark;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.4;
     poly(ctx, 0, 2, 6, 18, -Math.PI / 2);
     ctx.fill();
     ctx.stroke();
@@ -110,356 +98,460 @@ Object.keys(HERO_PAL).forEach((id) => {
 });
 
 const ENEMY_PAL = {
-  glitch: [34, "#c084fc"],
-  fomo: [40, "#f43f5e"],
-  spam: [52, "#6366f1"],
-  rumor: [42, "#fb923c"],
-  crash: [44, "#ef4444"],
-  bubble_mob: [46, "#d8b4fe"],
-  margin_bomb: [42, "#f97316"],
-  hallucination: [42, "#67e8f9"],
-  mini: [24, "#a855f7"],
-  boss1: [128, "#e879f9"],
-  boss2: [148, "#fb7185"],
-  boss3: [144, "#c084fc"],
-  boss4: [160, "#f43f5e"],
+  packet: [34, "#dc2626"],
+  jitter: [38, "#d97706"],
+  thermal: [50, "#ea580c"],
+  crosstalk: [42, "#7c3aed"],
+  surge: [44, "#2563eb"],
+  leak: [44, "#059669"],
+  short: [42, "#e11d48"],
+  halluc: [42, "#6d28d9"],
+  frag: [26, "#0d9488"],
+  boss1: [128, "#1d4ed8"],
+  boss2: [136, "#0891b2"],
+  boss3: [132, "#b45309"],
+  boss4: [142, "#047857"],
+  boss5: [144, "#6d28d9"],
 };
 
 Object.entries(ENEMY_PAL).forEach(([id, [sz, col]]) => {
   defSpr("e_" + id, sz, sz, (ctx) => {
     const r = sz * 0.32;
-    softGlow(ctx, 0, 0, r * 1.6, col, 0.35);
-    ctx.fillStyle = "#221638";
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 2;
+    ctx.fillStyle = col;
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.4;
     poly(ctx, 0, 0, id.startsWith("boss") ? 8 : 6, r, 0.2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = col;
-    circle(ctx, -r * 0.28, -r * 0.1, r * 0.16);
-    ctx.fill();
-    circle(ctx, r * 0.28, -r * 0.1, r * 0.16);
-    ctx.fill();
   });
 });
 
-// Projectiles, Shields, Zones & FX Sprites
-defSpr("blade", 36, 22, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 16, "#ffad36", 0.5);
-  ctx.save();
-  ctx.shadowColor = "#ffad36";
-  ctx.shadowBlur = 4 * sc;
+// ============================================================================
+// V2 High-Contrast Hardware Projectiles & Cleanroom Zones (Designed for Light Floor!)
+// ============================================================================
+
+// 1. HBM Data Bus Packet: Rectangular framed bus packet [||===▶]
+defSpr("p_hbm", 44, 18, (ctx) => {
+  roundRectPath(ctx, -18, -5.5, 30, 11, 2.5);
+  ctx.fillStyle = linGrad(ctx, -18, 0, 14, 0, [0, "#1e3a8a", 0.5, "#2563eb", 1, "#38bdf8"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+  // Leading arrowhead
   ctx.beginPath();
-  ctx.moveTo(15, 0);
-  ctx.lineTo(-4, -6.5);
-  ctx.lineTo(-12, 0);
-  ctx.lineTo(-4, 6.5);
+  ctx.moveTo(11, -6.5);
+  ctx.lineTo(20, 0);
+  ctx.lineTo(11, 6.5);
   ctx.closePath();
-  ctx.fillStyle = linGrad(ctx, -12, 0, 15, 0, [0, "#f15b08", 0.5, "#ffad36", 1, "#fff8dc"]);
+  ctx.fillStyle = "#f59e0b";
   ctx.fill();
-  ctx.strokeStyle = "#241608";
-  ctx.lineWidth = 1.2;
   ctx.stroke();
-  ctx.restore();
+  // Gold HBM clock pins inside packet
+  ctx.fillStyle = "#fde68a";
+  ctx.fillRect(-14, -3, 3, 6);
+  ctx.fillRect(-8, -3, 3, 6);
+  ctx.fillStyle = "#e0f2fe";
+  ctx.fillRect(-2, -2, 10, 4);
 });
 
-defSpr("wafer", 40, 40, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 20, "#5ce1e6", 0.48);
-  ctx.save();
-  ctx.shadowColor = "#5ce1e6";
-  ctx.shadowBlur = 5 * sc;
-  starPoly(ctx, 0, 0, 5, 15, 7, 0);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 1, 0, 0, 15, [0, "#ffffff", 0.45, "#5ce1e6", 1, "#0284c7"]);
+// 2. Silicon Photonics Coherent Lance + 3 WDM Wavelength Needles
+defSpr("p_prism", 46, 22, (ctx) => {
+  ctx.beginPath();
+  ctx.moveTo(21, 0);
+  ctx.lineTo(2, -7.5);
+  ctx.lineTo(-18, -3.5);
+  ctx.lineTo(-14, 0);
+  ctx.lineTo(-18, 3.5);
+  ctx.lineTo(2, 7.5);
+  ctx.closePath();
+  ctx.fillStyle = linGrad(ctx, -18, 0, 21, 0, [0, "#0e7490", 0.5, "#06b6d4", 1, "#ecfeff"]);
   ctx.fill();
-  ctx.strokeStyle = "#e0faff";
-  ctx.lineWidth = 1.1;
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.8;
   ctx.stroke();
-  ctx.restore();
-  ctx.fillStyle = "#ffad36";
-  circle(ctx, 0, 0, 3.2);
-  ctx.fill();
-});
-
-defSpr("moat", 30, 30, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 15, "#ffd97d", 0.58);
-  ctx.save();
-  ctx.shadowColor = "#ffad36";
-  ctx.shadowBlur = 4 * sc;
-  poly(ctx, 0, 0, 6, 8.8, -Math.PI / 2);
-  ctx.fillStyle = linGrad(ctx, 0, -9, 0, 9, [0, "#fffbeb", 0.45, "#ffd166", 1, "#d97706"]);
-  ctx.fill();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
-  ctx.restore();
-  poly(ctx, 0, 0, 6, 4.2, -Math.PI / 2);
-  ctx.strokeStyle = "rgba(120,53,15,.65)";
-  ctx.lineWidth = 0.9;
-  ctx.stroke();
-});
-
-defSpr("mine", 34, 34, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 17, "#ff6b6b", 0.48);
-  starPoly(ctx, 0, 0, 8, 13, 7.5, 0);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 1, 0, 0, 13, [0, "#ffd166", 0.45, "#ef4444", 1, "#7f1d1d"]);
-  ctx.fill();
-  ctx.strokeStyle = "#fecaca";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = "#fff";
-  circle(ctx, 0, 0, 2.6);
+  // Internal prism facet
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(0, -4);
+  ctx.lineTo(-8, 0);
+  ctx.lineTo(0, 4);
+  ctx.closePath();
+  ctx.fillStyle = "#f472b6";
   ctx.fill();
 });
 
-defSpr("swirl", 128, 128, (ctx) => {
-  softGlow(ctx, 0, 0, 62, "#a78bfa", 0.34);
-  for (let i = 0; i < 4; i++) {
-    ctx.beginPath();
-    for (let s = 0; s <= 44; s++) {
-      const k = s / 44;
-      const a = (i / 4) * TAU + k * 4.4;
-      const r = 4 + k * 54;
-      const px = Math.cos(a) * r;
-      const py = Math.sin(a) * r;
-      if (s === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+const makeWdmNeedle = (c1, c2) => (ctx) => {
+  ctx.beginPath();
+  ctx.moveTo(17, 0);
+  ctx.lineTo(-3, -4.5);
+  ctx.lineTo(-16, 0);
+  ctx.lineTo(-3, 4.5);
+  ctx.closePath();
+  ctx.fillStyle = linGrad(ctx, -16, 0, 17, 0, [0, c2, 0.65, c1, 1, "#ffffff"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+};
+defSpr("p_w0", 38, 14, makeWdmNeedle("#0284c7", "#1e3a8a")); // 850nm Cobalt
+defSpr("p_w1", 38, 14, makeWdmNeedle("#059669", "#064e3b")); // 1310nm Emerald
+defSpr("p_w2", 38, 14, makeWdmNeedle("#c026d3", "#581c87")); // 1550nm Magenta
+
+// 3. Systolic 3x3 Tensor Matrix Stamp (Ultra-Sheer Cleanroom Wireframe Reticle — Zero Occlusion!)
+defSpr("p_tensor", 128, 128, (ctx) => {
+  // Crisp outer square frame with ultra-sheer 4% tint so monsters stay 100% legible
+  roundRectPath(ctx, -54, -54, 108, 108, 8);
+  ctx.fillStyle = "rgba(16, 185, 129, 0.045)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(5, 150, 105, 0.72)";
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  // 3x3 internal MAC compute wireframe cells
+  const step = 31;
+  for (let gy = -1; gy <= 1; gy++) {
+    for (let gx = -1; gx <= 1; gx++) {
+      const cx = gx * step;
+      const cy = gy * step;
+      roundRectPath(ctx, cx - 11.5, cy - 11.5, 23, 23, 3);
+      if (gx === 0 && gy === 0) {
+        ctx.fillStyle = "rgba(245, 158, 11, 0.14)";
+        ctx.fill();
+      }
+      ctx.strokeStyle = gx === 0 && gy === 0 ? "rgba(217, 119, 6, 0.8)" : "rgba(16, 185, 129, 0.42)";
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
     }
-    ctx.strokeStyle = i % 2 ? "rgba(92,225,230,.58)" : "rgba(196,181,253,.85)";
-    ctx.lineWidth = i % 2 ? 4.8 : 2.5;
-    ctx.lineCap = "round";
+  }
+
+  // Crisp dark-slate corner alignment brackets
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2.8;
+  const B = 58, L = 14;
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    ctx.beginPath();
+    ctx.moveTo(sx * B, sy * (B - L));
+    ctx.lineTo(sx * B, sy * B);
+    ctx.lineTo(sx * (B - L), sy * B);
     ctx.stroke();
   }
-  softGlow(ctx, 0, 0, 18, "#090618", 0.95);
 });
 
-defSpr("beam", 64, 28, (ctx) => {
-  ctx.fillStyle = linGrad(ctx, 0, -14, 0, 14, [
-    0, "rgba(255,255,255,0)",
-    0.28, "rgba(255,255,255,.42)",
-    0.46, "rgba(255,255,255,.96)",
-    0.54, "rgba(255,255,255,.96)",
-    0.72, "rgba(255,255,255,.42)",
-    1, "rgba(255,255,255,0)",
-  ]);
-  ctx.fillRect(-32, -14, 64, 28);
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.fillStyle = linGrad(ctx, -32, 0, 32, 0, [
-    0, "rgba(0,0,0,.2)",
-    0.06, "rgba(0,0,0,1)",
-    0.82, "rgba(0,0,0,1)",
-    1, "rgba(0,0,0,0)",
-  ]);
-  ctx.fillRect(-32, -14, 64, 28);
-  ctx.globalCompositeOperation = "source-over";
-});
-
-defSpr("bolt", 64, 14, (ctx) => {
-  ctx.fillStyle = linGrad(ctx, 0, -7, 0, 7, [
-    0, "rgba(111,255,233,0)",
-    0.3, "rgba(111,255,233,.58)",
-    0.47, "#ffffff",
-    0.53, "#ffffff",
-    0.7, "rgba(111,255,233,.58)",
-    1, "rgba(111,255,233,0)",
-  ]);
-  ctx.fillRect(-32, -7, 64, 14);
-});
-
-defSpr("ebullet", 22, 22, (ctx) => {
-  softGlow(ctx, 0, 0, 11, "#f43f5e", 0.68);
-  circle(ctx, 0, 0, 6);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0.5, 0, 0, 6, [0, "#ffffff", 0.4, "#fecdd3", 0.75, "#f43f5e", 1, "#9f1239"]);
+// 4. L3 Cache Silicon Wafer Die
+defSpr("p_die", 36, 36, (ctx) => {
+  poly(ctx, 0, 0, 8, 13.5, Math.PI / 8);
+  ctx.fillStyle = linGrad(ctx, -12, -12, 12, 12, [0, "#6366f1", 0.5, "#4338ca", 1, "#1e1b4b"]);
   ctx.fill();
-  ctx.strokeStyle = "#3b0819";
-  ctx.lineWidth = 0.9;
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Gold silicon die core
+  roundRectPath(ctx, -6, -6, 12, 12, 2);
+  ctx.fillStyle = linGrad(ctx, -6, -6, 6, 6, [0, "#fde68a", 1, "#d97706"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 });
 
-defSpr("crown", 22, 16, (ctx, sc) => {
-  ctx.save();
-  ctx.shadowColor = "#ffd166";
-  ctx.shadowBlur = 4 * sc;
-  ctx.fillStyle = linGrad(ctx, 0, -6, 0, 5, [0, "#fffbeb", 1, "#f59e0b"]);
+// 5. PCB Bus Trace Segment & Solder Via Node
+defSpr("p_bus", 64, 12, (ctx) => {
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(-32, -4.2, 64, 8.4);
+  ctx.fillStyle = linGrad(ctx, 0, -2.6, 0, 2.6, [0, "#fbbf24", 0.5, "#fef08a", 1, "#d97706"]);
+  ctx.fillRect(-32, -2.6, 64, 5.2);
+});
+
+defSpr("p_bus_c", 64, 12, (ctx) => {
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(-32, -4.2, 64, 8.4);
+  ctx.fillStyle = linGrad(ctx, 0, -2.6, 0, 2.6, [0, "#38bdf8", 0.5, "#e0f2fe", 1, "#2563eb"]);
+  ctx.fillRect(-32, -2.6, 64, 5.2);
+});
+
+defSpr("via", 20, 20, (ctx) => {
+  circle(ctx, 0, 0, 6.5);
+  ctx.fillStyle = "#f59e0b";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  circle(ctx, 0, 0, 2.6);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+});
+
+// 6. EUV Lithography Cleanroom Scanner Beam
+defSpr("p_litho", 64, 30, (ctx) => {
+  ctx.fillStyle = linGrad(ctx, 0, -13, 0, 13, [
+    0, "rgba(124, 58, 237, 0)",
+    0.15, "rgba(109, 40, 217, 0.85)",
+    0.5, "rgba(192, 38, 211, 0.95)",
+    0.85, "rgba(109, 40, 217, 0.85)",
+    1, "rgba(124, 58, 237, 0)",
+  ]);
+  ctx.fillRect(-32, -13, 64, 26);
+  // Crisp dark-violet outer rail lines + white laser core
+  ctx.fillStyle = "#2e1065";
+  ctx.fillRect(-32, -11, 64, 2);
+  ctx.fillRect(-32, 9, 64, 2);
+  ctx.fillStyle = "#fdf4ff";
+  ctx.fillRect(-32, -2.2, 64, 4.4);
+});
+
+// 7. Autonomous ASIC Delta-Wing Drone
+defSpr("p_drone", 42, 36, (ctx) => {
   ctx.beginPath();
-  ctx.moveTo(-7, 5);
-  ctx.lineTo(-8.5, -4);
-  ctx.lineTo(-4, 0);
-  ctx.lineTo(0, -6);
-  ctx.lineTo(4, 0);
-  ctx.lineTo(8.5, -4);
-  ctx.lineTo(7, 5);
+  ctx.moveTo(17, 0);
+  ctx.lineTo(-13, -13);
+  ctx.lineTo(-7, 0);
+  ctx.lineTo(-13, 13);
+  ctx.closePath();
+  ctx.fillStyle = linGrad(ctx, -13, -10, 17, 10, [0, "#1e3a8a", 0.55, "#0284c7", 1, "#38bdf8"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Thruster & NPU core
+  ctx.fillStyle = "#f59e0b";
+  circle(ctx, -8, 0, 3.4);
+  ctx.fill();
+  ctx.fillStyle = "#e0f2fe";
+  ctx.beginPath();
+  ctx.moveTo(9, 0);
+  ctx.lineTo(-2, -4);
+  ctx.lineTo(-2, 4);
   ctx.closePath();
   ctx.fill();
-  ctx.restore();
 });
 
-defSpr("ring", 128, 128, (ctx, sc) => {
-  ctx.save();
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = 6 * sc;
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 3;
-  circle(ctx, 0, 0, 56);
+// 8. Immersion Cryo-Coolant Hexagonal Plate
+defSpr("p_cryo", 128, 128, (ctx) => {
+  poly(ctx, 0, 0, 6, 56, 0);
+  ctx.fillStyle = "rgba(13, 148, 136, 0.16)";
+  ctx.fill();
+  ctx.strokeStyle = "#0f766e";
+  ctx.lineWidth = 3.2;
   ctx.stroke();
-  ctx.restore();
+
+  poly(ctx, 0, 0, 6, 36, Math.PI / 6);
+  ctx.fillStyle = "rgba(6, 182, 212, 0.16)";
+  ctx.fill();
+  ctx.strokeStyle = "#0891b2";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Frost crystal spokes
+  ctx.strokeStyle = "#134e4a";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * 10, Math.sin(a) * 10);
+    ctx.lineTo(Math.cos(a) * 50, Math.sin(a) * 50);
+    ctx.stroke();
+  }
+  circle(ctx, 0, 0, 8);
+  ctx.fillStyle = "#06b6d4";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.stroke();
 });
 
-defSpr("ring2", 128, 128, (ctx) => {
-  ctx.strokeStyle = radGrad(ctx, 0, 0, 40, 0, 0, 62, [
-    0, "rgba(255,255,255,0)",
-    0.75, "rgba(255,255,255,.9)",
-    1, "rgba(255,255,255,0)",
-  ]);
-  ctx.lineWidth = 22;
-  circle(ctx, 0, 0, 51);
+// Enemy Hazard Projectiles & Cleanroom Warning Reticles
+defSpr("ebullet", 24, 24, (ctx) => {
+  circle(ctx, 0, 0, 7);
+  ctx.fillStyle = radGrad(ctx, -1, -1, 0.5, 0, 0, 7, [0, "#fff1f2", 0.45, "#f43f5e", 1, "#9f1239"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
   ctx.stroke();
 });
+
+defSpr("eb_sq", 24, 24, (ctx) => {
+  roundRectPath(ctx, -7, -7, 14, 14, 2.5);
+  ctx.fillStyle = linGrad(ctx, -7, -7, 7, 7, [0, "#fb7185", 0.5, "#e11d48", 1, "#881337"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#fef2f2";
+  ctx.fillRect(-2.5, -2.5, 5, 5);
+});
+
+defSpr("p_hazard", 128, 128, (ctx) => {
+  roundRectPath(ctx, -52, -52, 104, 104, 10);
+  ctx.fillStyle = "rgba(225, 29, 72, 0.13)";
+  ctx.fill();
+  ctx.strokeStyle = "#be123c";
+  ctx.lineWidth = 3.2;
+  ctx.setLineDash([10, 6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Crosshair center
+  ctx.strokeStyle = "#9f1239";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(-16, 0);
+  ctx.lineTo(16, 0);
+  ctx.moveTo(0, -16);
+  ctx.lineTo(0, 16);
+  ctx.stroke();
+});
+
+defSpr("ebeam", 64, 26, (ctx) => {
+  ctx.fillStyle = "rgba(225, 29, 72, 0.88)";
+  ctx.fillRect(-32, -8, 64, 16);
+  ctx.fillStyle = "#881337";
+  ctx.fillRect(-32, -9.5, 64, 2);
+  ctx.fillRect(-32, 7.5, 64, 2);
+  ctx.fillStyle = "#ffe4e6";
+  ctx.fillRect(-32, -2.5, 64, 5);
+});
+
+defSpr("crown", 24, 18, (ctx) => {
+  ctx.fillStyle = linGrad(ctx, 0, -6, 0, 5, [0, "#fde68a", 1, "#d97706"]);
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-8, 5);
+  ctx.lineTo(-9.5, -4);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(0, -6.5);
+  ctx.lineTo(4, 0);
+  ctx.lineTo(9.5, -4);
+  ctx.lineTo(8, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+});
+
+// Pre-tinted Crisp Hexagonal / Circular Shockwave Rings (Work identically in WebGL & 2D on Light Floor!)
+const makeCleanRing = (strokeHex, innerHex, hexShape = false) => (ctx) => {
+  ctx.strokeStyle = strokeHex;
+  ctx.lineWidth = 4.2;
+  if (hexShape) poly(ctx, 0, 0, 6, 54, 0);
+  else circle(ctx, 0, 0, 54);
+  ctx.stroke();
+  ctx.strokeStyle = innerHex;
+  ctx.lineWidth = 2;
+  if (hexShape) poly(ctx, 0, 0, 6, 48, 0);
+  else circle(ctx, 0, 0, 48);
+  ctx.stroke();
+};
+
+defSpr("ring", 128, 128, makeCleanRing("#2563eb", "#0f172a", false));
+defSpr("ring2", 128, 128, makeCleanRing("#059669", "#064e3b", true));
+defSpr("ring_warn", 128, 128, makeCleanRing("#e11d48", "#881337", false));
+defSpr("ring_gold", 128, 128, makeCleanRing("#d97706", "#78350f", true));
 
 defSpr("disc", 64, 64, (ctx) => {
   circle(ctx, 0, 0, 30);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 30, [
-    0, "rgba(255,255,255,.55)",
-    0.8, "rgba(255,255,255,.75)",
-    0.94, "rgba(255,255,255,1)",
-    1, "rgba(255,255,255,0)",
-  ]);
+  ctx.fillStyle = "rgba(37, 99, 235, 0.16)";
   ctx.fill();
 });
 
 defSpr("glow", 64, 64, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 32, [
-    0, "rgba(255,255,255,1)",
-    0.25, "rgba(255,255,255,.55)",
-    0.6, "rgba(255,255,255,.14)",
-    1, "rgba(255,255,255,0)",
+  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 30, [
+    0, "rgba(37, 99, 235, 0.22)",
+    0.55, "rgba(37, 99, 235, 0.08)",
+    1, "rgba(37, 99, 235, 0)",
   ]);
   ctx.fillRect(-32, -32, 64, 64);
 });
 
 defSpr("dotp", 16, 16, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 7.5, [0, "#fff", 0.6, "#fff", 1, "rgba(255,255,255,0)"]);
-  ctx.fillRect(-8, -8, 16, 16);
-});
-
-defSpr("shard", 16, 16, (ctx) => {
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.moveTo(0, -6.5);
-  ctx.lineTo(5.5, 0);
-  ctx.lineTo(0, 6.5);
-  ctx.lineTo(-5.5, 0);
-  ctx.closePath();
+  roundRectPath(ctx, -4.5, -4.5, 9, 9, 2);
+  ctx.fillStyle = "#2563eb";
   ctx.fill();
-});
-
-defSpr("spark", 28, 28, (ctx, sc) => {
-  ctx.save();
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = 3 * sc;
-  ctx.fillStyle = "#fff";
-  starPoly(ctx, 0, 0, 4, 12, 2.2, 0);
-  ctx.fill();
-  ctx.restore();
-});
-
-defSpr("bub", 20, 20, (ctx) => {
-  ctx.strokeStyle = "rgba(255,255,255,.88)";
-  ctx.lineWidth = 1.3;
-  poly(ctx, 0, 0, 6, 6.5, 0);
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.2;
   ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,.18)";
+});
+
+defSpr("shard", 18, 18, (ctx) => {
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(6, 0);
+  ctx.lineTo(0, 7);
+  ctx.lineTo(-6, 0);
+  ctx.closePath();
+  ctx.fillStyle = "#0891b2";
   ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+});
+
+defSpr("spark", 26, 26, (ctx) => {
+  starPoly(ctx, 0, 0, 4, 10.5, 3, 0);
+  ctx.fillStyle = "#f59e0b";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
 });
 
 defSpr("px", 8, 8, (ctx) => {
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(-3, -3, 6, 6);
 });
 
-defSpr("shaft", 64, 256, (ctx) => {
-  const g = ctx.createLinearGradient(-32, 0, 32, 0);
-  g.addColorStop(0, "rgba(255,255,255,0)");
-  g.addColorStop(0.5, "rgba(255,255,255,1)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(-32, -128, 64, 256);
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.fillStyle = linGrad(ctx, 0, -128, 0, 128, [
-    0, "rgba(0,0,0,.9)",
-    0.6, "rgba(0,0,0,.35)",
-    1, "rgba(0,0,0,0)",
-  ]);
-  ctx.fillRect(-32, -128, 64, 256);
-  ctx.globalCompositeOperation = "source-over";
-});
-
+// Subtle Cleanroom Edge Frame (NO dark deep-sea tunnel!)
 defSpr("vig", 128, 128, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 30, 0, 0, 90, [
-    0, "rgba(4,8,10,0)",
-    0.55, "rgba(4,8,10,.3)",
-    1, "rgba(4,8,10,.92)",
+  ctx.fillStyle = radGrad(ctx, 0, 0, 42, 0, 0, 92, [
+    0, "rgba(15, 23, 42, 0)",
+    0.75, "rgba(15, 23, 42, 0.03)",
+    1, "rgba(15, 23, 42, 0.12)",
   ]);
   ctx.fillRect(-64, -64, 128, 128);
 });
 
 defSpr("vigr", 128, 128, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 34, 0, 0, 90, [
-    0, "rgba(240,70,70,0)",
-    0.6, "rgba(240,70,70,.3)",
-    1, "rgba(220,38,38,.94)",
+  ctx.fillStyle = radGrad(ctx, 0, 0, 38, 0, 0, 90, [
+    0, "rgba(225, 29, 72, 0)",
+    0.65, "rgba(225, 29, 72, 0.16)",
+    1, "rgba(225, 29, 72, 0.55)",
   ]);
   ctx.fillRect(-64, -64, 128, 128);
 });
 
-const makeShard = (c1, c2, sz) => (ctx, sc) => {
-  softGlow(ctx, 0, 0, sz * 2.1, c1, 0.62);
-  ctx.save();
-  ctx.shadowColor = c1;
-  ctx.shadowBlur = 4 * sc;
+// High-Contrast Compute Data Tokens (XP Gems on Light Floor!)
+const makeChipGem = (c1, c2, sz) => (ctx) => {
   ctx.beginPath();
-  ctx.moveTo(0, -sz * 1.2);
-  ctx.lineTo(sz * 0.92, 0);
-  ctx.lineTo(0, sz * 1.2);
-  ctx.lineTo(-sz * 0.92, 0);
+  ctx.moveTo(0, -sz * 1.22);
+  ctx.lineTo(sz * 0.98, 0);
+  ctx.lineTo(0, sz * 1.22);
+  ctx.lineTo(-sz * 0.98, 0);
   ctx.closePath();
-  ctx.fillStyle = linGrad(ctx, -sz, -sz, sz, sz, [0, "#ffffff", 0.45, c1, 1, c2]);
+  ctx.fillStyle = linGrad(ctx, -sz, -sz, sz, sz, [0, c1, 1, c2]);
   ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = "rgba(255,255,255,.9)";
-  circle(ctx, -sz * 0.18, -sz * 0.28, sz * 0.2);
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.7;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.85)";
+  circle(ctx, -sz * 0.18, -sz * 0.25, sz * 0.22);
   ctx.fill();
 };
 
-defSpr("gem0", 20, 20, makeShard("#2ee59d", "#059669", 4.6));
-defSpr("gem1", 24, 24, makeShard("#5ce1e6", "#0284c7", 5.6));
-defSpr("gem2", 30, 30, makeShard("#ffad36", "#ea580c", 7.2));
+defSpr("gem0", 22, 22, makeChipGem("#10b981", "#047857", 5.2));
+defSpr("gem1", 26, 26, makeChipGem("#38bdf8", "#1d4ed8", 6.2));
+defSpr("gem2", 32, 32, makeChipGem("#fbbf24", "#d97706", 7.6));
 
-defSpr("heart", 34, 34, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 17, "#fb7185", 0.55);
-  circle(ctx, 0, 0, 12);
-  ctx.strokeStyle = "#ffd166";
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-  ctx.save();
-  ctx.shadowColor = "#fb7185";
-  ctx.shadowBlur = 5 * sc;
-  ctx.fillStyle = linGrad(ctx, 0, -6, 0, 8, [0, "#fda4af", 1, "#e11d48"]);
-  ctx.beginPath();
-  ctx.moveTo(0, 7);
-  ctx.bezierCurveTo(-11, -1, -6, -9, 0, -3.5);
-  ctx.bezierCurveTo(6, -9, 11, -1, 0, 7);
+defSpr("heart", 34, 34, (ctx) => {
+  roundRectPath(ctx, -9, -12, 18, 24, 5);
+  ctx.fillStyle = linGrad(ctx, 0, -12, 0, 12, [0, "#34d399", 1, "#059669"]);
   ctx.fill();
-  ctx.restore();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
 });
 
-defSpr("magnet", 36, 36, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 18, "#2ee59d", 0.55);
-  ctx.save();
-  ctx.shadowColor = "#2ee59d";
-  ctx.shadowBlur = 4 * sc;
-  ctx.lineWidth = 5;
+defSpr("magnet", 36, 36, (ctx) => {
+  ctx.lineWidth = 6;
   ctx.lineCap = "round";
-  ctx.strokeStyle = "#2ee59d";
+  ctx.strokeStyle = "#2563eb";
   ctx.beginPath();
   ctx.arc(0, 1, 9, 0, Math.PI);
   ctx.moveTo(-9, 1);
@@ -467,274 +559,162 @@ defSpr("magnet", 36, 36, (ctx, sc) => {
   ctx.moveTo(9, 1);
   ctx.lineTo(9, -8);
   ctx.stroke();
-  ctx.restore();
 });
 
-defSpr("orb", 40, 40, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 20, "#5ce1e6", 0.75);
-  poly(ctx, 0, 0, 8, 12, 0.2);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0.5, 0, 0, 12, [0, "#ffffff", 0.5, "#ffd166", 1, "#06b6d4"]);
+defSpr("orb", 40, 40, (ctx) => {
+  circle(ctx, 0, 0, 12);
+  ctx.fillStyle = radGrad(ctx, 0, 0, 1, 0, 0, 12, [0, "#ffffff", 0.5, "#a855f7", 1, "#4c1d95"]);
   ctx.fill();
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 1.3;
-  ctx.stroke();
-  ctx.save();
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = 4 * sc;
-  ctx.fillStyle = "#fff";
-  starPoly(ctx, 0, 0, 4, 7, 2, 0);
-  ctx.fill();
-  ctx.restore();
-});
-
-defSpr("core", 28, 28, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 14, "#ffad36", 0.58);
-  ctx.save();
-  ctx.shadowColor = "#ffad36";
-  ctx.shadowBlur = 4 * sc;
-  poly(ctx, 0, 0, 6, 9, -Math.PI / 2);
-  ctx.fillStyle = linGrad(ctx, 0, -9, 0, 9, [0, "#fff7ed", 0.45, "#ffad36", 1, "#ea580c"]);
-  ctx.fill();
-  ctx.strokeStyle = "#fde68a";
-  ctx.lineWidth = 1.1;
-  ctx.stroke();
-  ctx.restore();
-});
-
-defSpr("chest", 48, 44, (ctx, sc) => {
-  softGlow(ctx, 0, 0, 24, "#ffd166", 0.6);
-  ctx.save();
-  ctx.shadowColor = "#ffd166";
-  ctx.shadowBlur = 6 * sc;
-  roundRectPath(ctx, -14, -10, 28, 22, 4);
-  ctx.fillStyle = linGrad(ctx, 0, -10, 0, 12, [0, "#2ee59d", 1, "#0f766e"]);
-  ctx.fill();
-  ctx.strokeStyle = "#ffd166";
+  ctx.strokeStyle = "#0f172a";
   ctx.lineWidth = 2;
   ctx.stroke();
-  ctx.fillStyle = "#ffd166";
-  ctx.fillRect(-14, -2, 28, 3);
-  roundRectPath(ctx, -3.5, -5, 7, 8, 2);
+});
+
+defSpr("core", 30, 30, (ctx) => {
+  roundRectPath(ctx, -8.5, -8.5, 17, 17, 3);
+  ctx.fillStyle = linGrad(ctx, -8, -8, 8, 8, [0, "#fde68a", 0.5, "#f59e0b", 1, "#b45309"]);
   ctx.fill();
-  ctx.restore();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+});
+
+defSpr("chest", 48, 44, (ctx) => {
+  roundRectPath(ctx, -14, -10, 28, 22, 4);
+  ctx.fillStyle = linGrad(ctx, 0, -10, 0, 12, [0, "#3b82f6", 1, "#1d4ed8"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
 });
 
 defSpr("joy", 120, 120, (ctx) => {
-  poly(ctx, 0, 0, 8, 52, Math.PI / 8);
-  ctx.fillStyle = "rgba(255,173,54,.06)";
+  poly(ctx, 0, 0, 8, 50, Math.PI / 8);
+  ctx.fillStyle = "rgba(15, 23, 42, 0.06)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,209,102,.38)";
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = "rgba(37, 99, 235, 0.45)";
+  ctx.lineWidth = 2;
   ctx.stroke();
-  circle(ctx, 0, 0, 32);
-  ctx.strokeStyle = "rgba(92,225,230,.2)";
-  ctx.lineWidth = 1;
+  circle(ctx, 0, 0, 30);
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.18)";
+  ctx.lineWidth = 1.2;
   ctx.stroke();
 });
 
 defSpr("knob", 52, 52, (ctx) => {
-  softGlow(ctx, 0, 0, 26, "#ffad36", 0.45);
   poly(ctx, 0, 0, 6, 16, -Math.PI / 2);
-  ctx.fillStyle = radGrad(ctx, -3, -4, 1, 0, 0, 16, [0, "rgba(255,250,235,.95)", 1, "rgba(255,173,54,.65)"]);
+  ctx.fillStyle = linGrad(ctx, 0, -16, 0, 16, [0, "#3b82f6", 1, "#1d4ed8"]);
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,.88)";
-  ctx.lineWidth = 1.3;
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
   ctx.stroke();
 });
 
-// Arena Props
-defSpr("d_rack", 88, 96, (ctx) => {
-  roundRectPath(ctx, -26, -38, 52, 76, 6);
-  ctx.fillStyle = linGrad(ctx, 0, -38, 0, 38, [0, "#1e3438", 1, "#0d1a1d"]);
+// Cleanroom Floor Bay Pad & Props
+defSpr("bay_pad", 160, 110, (ctx) => {
+  roundRectPath(ctx, -72, -46, 144, 92, 8);
+  ctx.fillStyle = "rgba(203, 213, 225, 0.34)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(92,225,230,.25)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(100, 116, 139, 0.38)";
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([8, 5]);
   ctx.stroke();
-  ctx.fillStyle = "rgba(46,229,157,.55)";
-  for (let i = 0; i < 4; i++) ctx.fillRect(-16, -24 + i * 13, 32, 3);
+  ctx.setLineDash([]);
 });
 
-defSpr("d_monolith", 84, 92, (ctx) => {
-  poly(ctx, 0, 4, 6, 34, -Math.PI / 2);
-  ctx.fillStyle = linGrad(ctx, 0, -32, 0, 36, [0, "#243034", 1, "#0f171a"]);
+defSpr("d_rack", 72, 76, (ctx) => {
+  roundRectPath(ctx, -22, -30, 44, 60, 5);
+  ctx.fillStyle = linGrad(ctx, 0, -30, 0, 30, [0, "#e2e8f0", 1, "#94a3b8"]);
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,173,54,.35)";
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
   ctx.stroke();
 });
 
-defSpr("d_crystal", 76, 76, (ctx) => {
-  for (const [ox, oy, h, rot] of [[-10, 8, 26, -0.25], [10, 10, 22, 0.3], [0, 4, 34, 0]]) {
-    ctx.save();
-    ctx.translate(ox, oy);
-    ctx.rotate(rot);
-    ctx.beginPath();
-    ctx.moveTo(0, -h);
-    ctx.lineTo(8, 0);
-    ctx.lineTo(5, 12);
-    ctx.lineTo(-5, 12);
-    ctx.lineTo(-8, 0);
-    ctx.closePath();
-    ctx.fillStyle = linGrad(ctx, 0, -h, 0, 12, [0, "#6fffe9", 1, "#0f766e"]);
-    ctx.fill();
-    ctx.restore();
-  }
+defSpr("d_monolith", 68, 72, (ctx) => {
+  poly(ctx, 0, 2, 6, 28, -Math.PI / 2);
+  ctx.fillStyle = "#fde68a";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
 });
 
-defSpr("d_node", 64, 64, (ctx) => {
-  poly(ctx, 0, 0, 6, 22, 0);
-  ctx.fillStyle = "#13262a";
+defSpr("d_crystal", 64, 64, (ctx) => {
+  roundRectPath(ctx, -20, -14, 40, 28, 6);
+  ctx.fillStyle = "#67e8f9";
   ctx.fill();
-  ctx.strokeStyle = "rgba(92,225,230,.26)";
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+});
+
+defSpr("streak", 64, 14, (ctx) => {
+  ctx.fillStyle = linGrad(ctx, -30, 0, 30, 0, [
+    0, "rgba(37, 99, 235, 0)",
+    0.55, "rgba(37, 99, 235, 0.36)",
+    1, "rgba(56, 189, 248, 0.72)",
+  ]);
+  roundRectPath(ctx, -30, -3.5, 60, 7, 3.5);
+  ctx.fill();
+});
+
+defSpr("flare", 72, 72, (ctx) => {
+  starPoly(ctx, 0, 0, 4, 24, 5, 0);
+  ctx.fillStyle = "rgba(245, 158, 11, 0.85)";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
   ctx.lineWidth = 1.4;
   ctx.stroke();
-  circle(ctx, 0, 0, 6);
-  ctx.fillStyle = "rgba(255,173,54,.35)";
-  ctx.fill();
 });
 
-defSpr("streak", 64, 16, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 30, [
-    0, "rgba(255,255,255,1)",
-    0.4, "rgba(255,255,255,.6)",
-    1, "rgba(255,255,255,0)",
-  ]);
-  ctx.save();
-  ctx.scale(1, 0.2);
-  circle(ctx, 0, 0, 30);
-  ctx.fill();
-  ctx.restore();
-});
-
-defSpr("flare", 96, 96, (ctx) => {
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 22, [
-    0, "rgba(255,255,255,1)",
-    0.35, "rgba(255,255,255,.5)",
-    1, "rgba(255,255,255,0)",
-  ]);
-  circle(ctx, 0, 0, 22);
-  ctx.fill();
-  for (let i = 0; i < 4; i++) {
-    ctx.save();
-    ctx.rotate((i * Math.PI) / 2);
-    const g = ctx.createLinearGradient(0, 0, 46, 0);
-    g.addColorStop(0, "rgba(255,255,255,.95)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(0, -3.2);
-    ctx.lineTo(46, 0);
-    ctx.lineTo(0, 3.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-});
-
-defSpr("pillar", 64, 256, (ctx) => {
-  const g = ctx.createLinearGradient(-32, 0, 32, 0);
-  g.addColorStop(0, "rgba(255,255,255,0)");
-  g.addColorStop(0.3, "rgba(255,255,255,.35)");
-  g.addColorStop(0.5, "rgba(255,255,255,1)");
-  g.addColorStop(0.7, "rgba(255,255,255,.35)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(-32, -128, 64, 256);
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.fillStyle = linGrad(ctx, 0, -128, 0, 128, [
-    0, "rgba(0,0,0,0)",
-    0.35, "rgba(0,0,0,.55)",
-    0.9, "rgba(0,0,0,1)",
-    1, "rgba(0,0,0,.6)",
-  ]);
-  ctx.fillRect(-32, -128, 64, 256);
-  ctx.globalCompositeOperation = "source-over";
-});
-
-defSpr("ray", 32, 128, (ctx) => {
-  const g = ctx.createLinearGradient(0, 64, 0, -64);
-  g.addColorStop(0, "rgba(255,255,255,.9)");
-  g.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(-2, 64);
-  ctx.lineTo(-13, -64);
-  ctx.lineTo(13, -64);
-  ctx.lineTo(2, 64);
-  ctx.closePath();
-  ctx.fill();
-});
-
-defSpr("ink", 64, 64, (ctx) => {
-  for (const [ox, oy, r] of [[0, 0, 20], [-10, -7, 12], [11, -5, 13], [8, 10, 11], [-9, 9, 11]]) {
-    ctx.fillStyle = radGrad(ctx, ox, oy, 0, ox, oy, r, [
-      0, "rgba(255,255,255,.95)",
-      0.6, "rgba(255,255,255,.65)",
-      1, "rgba(255,255,255,0)",
-    ]);
-    poly(ctx, ox, oy, 6, r, 0.3);
-    ctx.fill();
-  }
-});
-
-defSpr("rune", 128, 128, (ctx, sc) => {
-  ctx.save();
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = 4 * sc;
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2.2;
-  poly(ctx, 0, 0, 6, 56, 0);
+defSpr("rune", 128, 128, (ctx) => {
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 2.6;
+  poly(ctx, 0, 0, 6, 54, 0);
   ctx.stroke();
-  ctx.lineWidth = 1.2;
-  circle(ctx, 0, 0, 44);
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 1.4;
+  circle(ctx, 0, 0, 42);
   ctx.stroke();
-  poly(ctx, 0, 0, 6, 28, Math.PI / 6);
-  ctx.stroke();
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * TAU;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a) * 45, Math.sin(a) * 45);
-    ctx.lineTo(Math.cos(a) * 52, Math.sin(a) * 52);
-    ctx.stroke();
-  }
-  ctx.restore();
 });
 
 defSpr("shadow", 64, 32, (ctx) => {
   ctx.save();
   ctx.scale(1, 0.5);
-  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 30, [
-    0, "rgba(2,8,10,.65)",
-    0.6, "rgba(2,8,10,.36)",
-    1, "rgba(2,8,10,0)",
+  ctx.fillStyle = radGrad(ctx, 0, 0, 0, 0, 0, 28, [
+    0, "rgba(15, 23, 42, 0.28)",
+    0.65, "rgba(15, 23, 42, 0.12)",
+    1, "rgba(15, 23, 42, 0)",
   ]);
-  circle(ctx, 0, 0, 30);
+  circle(ctx, 0, 0, 28);
   ctx.fill();
   ctx.restore();
 });
 
+// Crisp Dark-Slate & Crimson Outlined Damage Numerals for Light Cleanroom Floor
 const NUM_FONT = '900 italic 20px "Avenir Next", "Arial Black", "Helvetica Neue", "PingFang SC", sans-serif';
 for (let d = 0; d < 10; d++) {
-  defSpr("n" + d, 16, 24, (ctx) => {
+  defSpr("n" + d, 18, 24, (ctx) => {
     ctx.font = NUM_FONT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "#081214";
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = "#ffffff";
     ctx.strokeText(String(d), 0, 1);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = "#0f172a";
     ctx.fillText(String(d), 0, 1);
   });
-  defSpr("c" + d, 18, 26, (ctx) => {
-    ctx.font = NUM_FONT.replace("20px", "22px");
+  defSpr("c" + d, 20, 28, (ctx) => {
+    ctx.font = NUM_FONT.replace("20px", "23px");
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
-    ctx.lineWidth = 4.6;
-    ctx.strokeStyle = "#3d1206";
+    ctx.lineWidth = 4.8;
+    ctx.strokeStyle = "#0f172a";
     ctx.strokeText(String(d), 0, 1);
-    ctx.fillStyle = linGrad(ctx, 0, -9, 0, 10, [0, "#fffbeb", 0.52, "#ffad36", 1, "#f06449"]);
+    ctx.fillStyle = linGrad(ctx, 0, -9, 0, 10, [0, "#fde047", 0.5, "#f59e0b", 1, "#dc2626"]);
     ctx.fillText(String(d), 0, 1);
   });
 }
@@ -844,14 +824,15 @@ export function drawSprite2D(ctx, name, x, y, scale, rot = 0, flipX = false) {
   ctx.restore();
 }
 
+// Light Cleanroom Raised Server Floor Fallback
 export function makeFallbackFloor(size = 512) {
   const c = document.createElement("canvas");
   c.width = size;
   c.height = size;
   const ctx = c.getContext("2d");
-  ctx.fillStyle = "#0b1416";
+  ctx.fillStyle = "#eef3f9";
   ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = "rgba(92,225,230,.055)";
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.32)";
   ctx.lineWidth = 1;
   for (let i = 0; i <= size; i += 64) {
     ctx.beginPath();
@@ -861,47 +842,46 @@ export function makeFallbackFloor(size = 512) {
     ctx.lineTo(size, i);
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(255,173,54,.045)";
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < 12; i++) {
-    const x = ((i * 97) % 8) * 64 + 32;
-    const y = ((i * 53) % 8) * 64 + 32;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 48, y);
-    ctx.lineTo(x + 64, y + 16);
-    ctx.stroke();
+  ctx.fillStyle = "rgba(148, 163, 184, 0.35)";
+  for (let y = 0; y < size; y += 64) {
+    for (let x = 0; x < size; x += 64) {
+      ctx.fillRect(x + 5, y + 5, 2, 2);
+      ctx.fillRect(x + 57, y + 5, 2, 2);
+      ctx.fillRect(x + 5, y + 57, 2, 2);
+      ctx.fillRect(x + 57, y + 57, 2, 2);
+    }
   }
   return c;
 }
 
+// Crisp Orthogonal Cleanroom Bus-Rail Overlay (Zero Underwater Caustics!)
 export function makeQuantOverlay(size = 256) {
   const c = document.createElement("canvas");
   c.width = size;
   c.height = size;
   const ctx = c.getContext("2d");
-  const imgData = ctx.createImageData(size, size);
-  const d = imgData.data;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const fx = (x / size) * TAU;
-      const fy = (y / size) * TAU;
-      const w1 = Math.sin(fx * 2 + 1.1 * Math.sin(fy * 2 + 0.4));
-      const w2 = Math.sin(fy * 3 + 1.1 * Math.sin(fx * 2 + 1.5));
-      const grid = Math.max(Math.exp(-Math.abs(Math.sin(fx * 4)) * 18), Math.exp(-Math.abs(Math.sin(fy * 4)) * 18));
-      const v = Math.min(1, (Math.exp(-Math.abs(w1) * 10) * 0.55 + Math.exp(-Math.abs(w2) * 10) * 0.45 + grid * 0.35) * 0.58);
-      const idx = (y * size + x) * 4;
-      d[idx] = 85 + 140 * v;
-      d[idx + 1] = 215 + 35 * v;
-      d[idx + 2] = 210 + 40 * v;
-      d[idx + 3] = Math.round(255 * Math.min(1, v * v * 0.48));
-    }
+  ctx.strokeStyle = "rgba(59, 130, 246, 0.11)";
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 6; i++) {
+    const y = 24 + i * 42;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(96, y);
+    ctx.lineTo(116, y + 20);
+    ctx.lineTo(size, y + 20);
+    ctx.stroke();
   }
-  ctx.putImageData(imgData, 0, 0);
+  ctx.fillStyle = "rgba(37, 99, 235, 0.16)";
+  for (let i = 0; i < 6; i++) {
+    circle(ctx, 96, 24 + i * 42, 2.5);
+    ctx.fill();
+  }
   return c;
 }
 
-// Crisp Weapon, Passive & UI Icon Drawers (64x64 coordinate space)
+// ============================================================================
+// Crisp Weapon, Passive & UI Icon Drawers (64x64 coordinate space, High Contrast)
+// ============================================================================
 const drawSprFit = (ctx, sc, name, targetSz, ox = 0, oy = 0, rot = 0) => {
   const def = SPRITE_DEFS[SPR_IDX[name]];
   if (!def) return;
@@ -914,7 +894,7 @@ const drawSprFit = (ctx, sc, name, targetSz, ox = 0, oy = 0, rot = 0) => {
   ctx.restore();
 };
 
-const strokeStyle = (ctx, lw = 4.2, col = "#f3f7f6") => {
+const strokeStyle = (ctx, lw = 4.2, col = "#0f172a") => {
   ctx.strokeStyle = col;
   ctx.lineWidth = lw;
   ctx.lineCap = "round";
@@ -923,8 +903,7 @@ const strokeStyle = (ctx, lw = 4.2, col = "#f3f7f6") => {
 
 export const ICON_DRAWERS = {
   hone_logo: (ctx) => {
-    // Iconic HONE Whetstone + Blade mark
-    ctx.fillStyle = linGrad(ctx, -18, 8, 16, -22, [0, "#f15b08", 1, "#ffad36"]);
+    ctx.fillStyle = linGrad(ctx, -18, 8, 16, -22, [0, "#2563eb", 1, "#06b6d4"]);
     ctx.beginPath();
     ctx.moveTo(-16, 4);
     ctx.lineTo(4, -22);
@@ -932,7 +911,7 @@ export const ICON_DRAWERS = {
     ctx.lineTo(-2, 12);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = linGrad(ctx, -22, -8, 22, 18, [0, "#94a3b8", 0.5, "#334155", 1, "#0f172a"]);
+    ctx.fillStyle = "#0f172a";
     ctx.beginPath();
     ctx.moveTo(-22, -6);
     ctx.lineTo(20, 12);
@@ -940,7 +919,7 @@ export const ICON_DRAWERS = {
     ctx.lineTo(-22, 6);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#ffd166";
+    ctx.fillStyle = "#f59e0b";
     ctx.beginPath();
     ctx.moveTo(-18, -10);
     ctx.lineTo(22, 8);
@@ -949,99 +928,82 @@ export const ICON_DRAWERS = {
     ctx.closePath();
     ctx.fill();
   },
-  blade: (ctx, sc) => {
-    softGlow(ctx, 0, 0, 28, "#ffad36", 0.42);
-    drawSprFit(ctx, sc, "blade", 52, 0, 0, -0.65);
+  hbm: (ctx, sc) => {
+    drawSprFit(ctx, sc, "p_hbm", 46, -2, -10, -0.35);
+    drawSprFit(ctx, sc, "p_hbm", 46, 3, 2, -0.35);
+    drawSprFit(ctx, sc, "p_hbm", 46, -2, 14, -0.35);
   },
-  wafer: (ctx, sc) => {
-    softGlow(ctx, 0, 0, 28, "#5ce1e6", 0.42);
-    drawSprFit(ctx, sc, "wafer", 54, 0, 0, -0.2);
+  prism: (ctx, sc) => {
+    drawSprFit(ctx, sc, "p_w0", 34, 8, -12, -0.55);
+    drawSprFit(ctx, sc, "p_w1", 34, 11, 0, -0.15);
+    drawSprFit(ctx, sc, "p_w2", 34, 8, 12, 0.25);
+    drawSprFit(ctx, sc, "p_prism", 42, -8, 2, -0.15);
   },
-  moat: (ctx, sc) => {
-    ctx.strokeStyle = "rgba(255,217,125,.5)";
-    ctx.lineWidth = 1.8;
-    circle(ctx, 0, 0, 19);
+  tensor: (ctx, sc) => drawSprFit(ctx, sc, "p_tensor", 54),
+  cache: (ctx, sc) => {
+    ctx.strokeStyle = "#4f46e5";
+    ctx.lineWidth = 2.4;
+    poly(ctx, 0, 0, 6, 19, 0);
     ctx.stroke();
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * TAU - 0.5;
-      drawSprFit(ctx, sc, "moat", 22, Math.cos(a) * 19, Math.sin(a) * 19);
+      drawSprFit(ctx, sc, "p_die", 22, Math.cos(a) * 19, Math.sin(a) * 19);
     }
   },
-  arc: (ctx, sc) => {
-    softGlow(ctx, 0, 0, 28, "#6fffe9", 0.45);
-    ctx.save();
-    ctx.shadowColor = "#6fffe9";
-    ctx.shadowBlur = 6 * sc;
-    ctx.fillStyle = linGrad(ctx, 0, -24, 0, 24, [0, "#ffffff", 0.5, "#6fffe9", 1, "#06b6d4"]);
+  bus: (ctx) => {
+    strokeStyle(ctx, 5.5, "#0f172a");
     ctx.beginPath();
-    ctx.moveTo(6, -25);
-    ctx.lineTo(-14, 2);
-    ctx.lineTo(-2, 2);
-    ctx.lineTo(-8, 25);
-    ctx.lineTo(15, -5);
-    ctx.lineTo(2, -5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  },
-  pulse: (ctx) => {
-    softGlow(ctx, 0, 0, 28, "#2ee59d", 0.36);
-    ctx.strokeStyle = "#2ee59d";
-    for (let i = 0; i < 3; i++) {
-      ctx.globalAlpha = 1 - i * 0.28;
-      ctx.lineWidth = 3.4 - i * 0.6;
-      poly(ctx, 0, 0, 6, 8 + i * 8, 0);
+    ctx.moveTo(-20, 16);
+    ctx.lineTo(-4, 16);
+    ctx.lineTo(8, -14);
+    ctx.lineTo(22, -14);
+    ctx.stroke();
+    strokeStyle(ctx, 3, "#f59e0b");
+    ctx.stroke();
+    for (const [vx, vy] of [[-20, 16], [-4, 16], [8, -14], [22, -14]]) {
+      ctx.fillStyle = "#fef08a";
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 2;
+      circle(ctx, vx, vy, 4.5);
+      ctx.fill();
       ctx.stroke();
     }
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "#d1fae5";
-    circle(ctx, 0, 0, 3.8);
-    ctx.fill();
   },
-  mine: (ctx, sc) => drawSprFit(ctx, sc, "mine", 54),
-  laser: (ctx, sc) => {
-    softGlow(ctx, -6, 6, 26, "#ffd166", 0.55);
-    ctx.save();
-    ctx.rotate(-0.6);
-    ctx.fillStyle = linGrad(ctx, 0, -8, 0, 8, [0, "rgba(255,209,102,0)", 0.5, "#fffbeb", 1, "rgba(255,209,102,0)"]);
-    ctx.fillRect(-4, -8, 36, 16);
-    ctx.restore();
-    poly(ctx, -10, 9, 4, 9, 0);
-    ctx.fillStyle = linGrad(ctx, -18, 0, -2, 18, [0, "#6fffe9", 1, "#ffad36"]);
+  litho: (ctx) => {
+    roundRectPath(ctx, -22, -18, 44, 36, 5);
+    ctx.fillStyle = "rgba(124, 58, 237, 0.14)";
     ctx.fill();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 1.5;
+    strokeStyle(ctx, 2.5, "#6d28d9");
+    ctx.stroke();
+    ctx.fillStyle = "#c026d3";
+    ctx.fillRect(-24, -3, 48, 6);
+    strokeStyle(ctx, 2, "#0f172a");
+    ctx.strokeRect(-24, -3, 48, 6);
+  },
+  drone: (ctx, sc) => drawSprFit(ctx, sc, "p_drone", 54, 0, 0, -0.45),
+  cryo: (ctx, sc) => drawSprFit(ctx, sc, "p_cryo", 56),
+
+  clock: (ctx) => {
+    strokeStyle(ctx, 3.6, "#2563eb");
+    circle(ctx, 0, 0, 19);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -11);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(9, 6);
     ctx.stroke();
   },
-  vortex: (ctx, sc) => {
-    softGlow(ctx, 0, 0, 28, "#a78bfa", 0.42);
-    drawSprFit(ctx, sc, "swirl", 56);
-  },
-  haste: (ctx) => {
-    strokeStyle(ctx, 4.2, "#ffad36");
-    for (let i = 0; i < 3; i++) {
-      ctx.globalAlpha = 0.45 + i * 0.27;
-      ctx.beginPath();
-      ctx.moveTo(-18 + i * 11, -13);
-      ctx.lineTo(-6 + i * 11, 0);
-      ctx.lineTo(-18 + i * 11, 13);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  },
-  area: (ctx) => {
-    strokeStyle(ctx, 3.2, "#5ce1e6");
+  waveguide: (ctx) => {
+    strokeStyle(ctx, 3.2, "#0891b2");
     poly(ctx, 0, 0, 6, 21, 0);
     ctx.stroke();
-    ctx.globalAlpha = 0.55;
-    poly(ctx, 0, 0, 6, 12, 0);
+    poly(ctx, 0, 0, 6, 11, 0);
     ctx.stroke();
-    ctx.globalAlpha = 1;
   },
-  margin: (ctx) => {
-    ctx.fillStyle = linGrad(ctx, 0, -22, 0, 22, [0, "#fef3c7", 1, "#d97706"]);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
+  ecc: (ctx) => {
+    ctx.fillStyle = linGrad(ctx, 0, -22, 0, 22, [0, "#818cf8", 1, "#4338ca"]);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
     ctx.moveTo(0, -22);
     ctx.lineTo(18, -14);
@@ -1053,30 +1015,27 @@ export const ICON_DRAWERS = {
     ctx.fill();
     ctx.stroke();
   },
-  sharpe: (ctx) => {
-    strokeStyle(ctx, 3, "#6fffe9");
-    circle(ctx, 0, 0, 17);
+  fp8: (ctx) => {
+    strokeStyle(ctx, 3.2, "#059669");
+    circle(ctx, 0, 0, 16);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(-23, 0);
-    ctx.lineTo(-11, 0);
-    ctx.moveTo(11, 0);
-    ctx.lineTo(23, 0);
-    ctx.moveTo(0, -23);
-    ctx.lineTo(0, -11);
-    ctx.moveTo(0, 11);
-    ctx.lineTo(0, 23);
+    ctx.moveTo(-22, 0);
+    ctx.lineTo(-10, 0);
+    ctx.moveTo(10, 0);
+    ctx.lineTo(22, 0);
+    ctx.moveTo(0, -22);
+    ctx.lineTo(0, -10);
+    ctx.moveTo(0, 10);
+    ctx.lineTo(0, 22);
     ctx.stroke();
-    ctx.fillStyle = "#ffad36";
+    ctx.fillStyle = "#f59e0b";
     circle(ctx, 0, 0, 4.5);
     ctx.fill();
   },
-  siphon: (ctx, sc) => drawSprFit(ctx, sc, "magnet", 52),
-  leverage: (ctx, sc) => {
-    ctx.save();
-    ctx.shadowColor = "#ff6b6b";
-    ctx.shadowBlur = 5 * sc;
-    strokeStyle(ctx, 4.5, "#ff6b6b");
+  reticle: (ctx, sc) => drawSprFit(ctx, sc, "magnet", 52),
+  overvolt: (ctx) => {
+    strokeStyle(ctx, 4.5, "#d97706");
     ctx.beginPath();
     ctx.moveTo(-20, 14);
     ctx.lineTo(-6, 2);
@@ -1086,29 +1045,22 @@ export const ICON_DRAWERS = {
     ctx.lineTo(19, -14);
     ctx.lineTo(19, -4);
     ctx.stroke();
-    ctx.restore();
   },
-  compound: (ctx) => {
-    strokeStyle(ctx, 3.2, "#ffd166");
-    ctx.beginPath();
-    ctx.moveTo(-12, -20);
-    ctx.lineTo(12, -20);
-    ctx.lineTo(-12, 20);
-    ctx.lineTo(12, 20);
-    ctx.closePath();
+  manifold: (ctx) => {
+    strokeStyle(ctx, 3.6, "#0d9488");
+    roundRectPath(ctx, -16, -16, 32, 32, 6);
     ctx.stroke();
-    ctx.fillStyle = "#fde68a";
     ctx.beginPath();
-    ctx.moveTo(-6, 17);
-    ctx.lineTo(6, 17);
-    ctx.lineTo(0, 7);
-    ctx.fill();
+    ctx.moveTo(-8, -16);
+    ctx.lineTo(-8, 16);
+    ctx.moveTo(8, -16);
+    ctx.lineTo(8, 16);
+    ctx.stroke();
   },
-  momentum: (ctx, sc) => {
-    ctx.save();
-    ctx.shadowColor = "#a78bfa";
-    ctx.shadowBlur = 5 * sc;
-    ctx.fillStyle = linGrad(ctx, -18, 16, 18, -18, [0, "#7c3aed", 1, "#ddd6fe"]);
+  fabric: (ctx) => {
+    ctx.fillStyle = linGrad(ctx, -18, 16, 18, -18, [0, "#0284c7", 1, "#38bdf8"]);
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.moveTo(18, -18);
     ctx.lineTo(-18, -2);
@@ -1116,52 +1068,42 @@ export const ICON_DRAWERS = {
     ctx.lineTo(2, 18);
     ctx.closePath();
     ctx.fill();
-    ctx.restore();
+    ctx.stroke();
   },
-  dividend: (ctx, sc) => {
-    ctx.save();
-    ctx.shadowColor = "#fb7185";
-    ctx.shadowBlur = 5 * sc;
-    ctx.fillStyle = linGrad(ctx, 0, -14, 0, 18, [0, "#fda4af", 1, "#e11d48"]);
-    ctx.beginPath();
-    ctx.moveTo(0, 20);
-    ctx.bezierCurveTo(-30, -2, -15, -24, 0, -9);
-    ctx.bezierCurveTo(15, -24, 30, -2, 0, 20);
+  ups: (ctx) => {
+    roundRectPath(ctx, -16, -12, 30, 24, 4);
+    ctx.fillStyle = "#10b981";
     ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(-2, -6, 4, 14);
-    ctx.fillRect(-7, -1, 14, 4);
+    strokeStyle(ctx, 2.4, "#0f172a");
+    ctx.stroke();
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(14, -5, 4, 10);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-3, -7, 4, 14);
+    ctx.fillRect(-8, -2, 14, 4);
   },
-  b_might: (ctx, sc) => {
-    ICON_DRAWERS.leverage(ctx, sc);
-    ctx.fillStyle = "#ffd166";
-    starPoly(ctx, -12, -12, 4, 7, 2, 0);
-    ctx.fill();
-  },
-  b_heal: (ctx, sc) => ICON_DRAWERS.dividend(ctx, sc),
+  b_might: (ctx) => ICON_DRAWERS.overvolt(ctx),
+  b_heal: (ctx) => ICON_DRAWERS.ups(ctx),
   b_core: (ctx, sc) => drawSprFit(ctx, sc, "core", 52),
   core: (ctx, sc) => drawSprFit(ctx, sc, "core", 54),
   chest: (ctx, sc) => drawSprFit(ctx, sc, "chest", 58),
   nuke: (ctx, sc) => drawSprFit(ctx, sc, "orb", 54),
+
   ui_up: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4.2, "#1e293b");
     ctx.beginPath();
     ctx.moveTo(0, 20);
     ctx.lineTo(0, -16);
     ctx.moveTo(-14, -3);
     ctx.lineTo(0, -18);
     ctx.lineTo(14, -3);
-    ctx.stroke();
-    strokeStyle(ctx, 4.2, "rgba(243,247,246,.45)");
-    ctx.beginPath();
     ctx.moveTo(-18, 22);
     ctx.lineTo(18, 22);
     ctx.stroke();
   },
   ui_agent: (ctx, sc) => drawSprFit(ctx, sc, "h_hone", 58),
   ui_book: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#1e293b");
     ctx.beginPath();
     ctx.moveTo(0, -14);
     ctx.quadraticCurveTo(-11, -20, -22, -15);
@@ -1174,7 +1116,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_medal: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#1e293b");
     circle(ctx, 0, 6, 14);
     ctx.stroke();
     ctx.beginPath();
@@ -1183,12 +1125,12 @@ export const ICON_DRAWERS = {
     ctx.moveTo(9, -6);
     ctx.lineTo(14, -22);
     ctx.stroke();
-    ctx.fillStyle = "#ffd166";
+    ctx.fillStyle = "#f59e0b";
     starPoly(ctx, 0, 6, 5, 7.5, 3.2, -Math.PI / 2);
     ctx.fill();
   },
   ui_rank: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#1e293b");
     ctx.beginPath();
     ctx.moveTo(-22, 20);
     ctx.lineTo(-22, 2);
@@ -1201,8 +1143,16 @@ export const ICON_DRAWERS = {
     ctx.closePath();
     ctx.stroke();
   },
+  ui_star: (ctx) => {
+    ctx.fillStyle = "#f59e0b";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.4;
+    starPoly(ctx, 0, 0, 5, 22, 9.5, -Math.PI / 2);
+    ctx.fill();
+    ctx.stroke();
+  },
   ui_gear: (ctx) => {
-    strokeStyle(ctx, 4);
+    strokeStyle(ctx, 4, "#1e293b");
     circle(ctx, 0, 0, 8);
     ctx.stroke();
     for (let i = 0; i < 8; i++) {
@@ -1216,14 +1166,14 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_pause: (ctx) => {
-    ctx.fillStyle = "#f3f7f6";
+    ctx.fillStyle = "#0f172a";
     roundRectPath(ctx, -14, -17, 10, 34, 3);
     ctx.fill();
     roundRectPath(ctx, 4, -17, 10, 34, 3);
     ctx.fill();
   },
   ui_cal: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#2563eb");
     roundRectPath(ctx, -19, -15, 38, 36, 6);
     ctx.stroke();
     ctx.beginPath();
@@ -1234,12 +1184,12 @@ export const ICON_DRAWERS = {
     ctx.moveTo(9, -22);
     ctx.lineTo(9, -12);
     ctx.stroke();
-    ctx.fillStyle = "#ffad36";
+    ctx.fillStyle = "#f59e0b";
     starPoly(ctx, 0, 9, 5, 7.5, 3.2, -Math.PI / 2);
     ctx.fill();
   },
   ui_home: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4.2, "#0f172a");
     ctx.beginPath();
     ctx.moveTo(-21, -1);
     ctx.lineTo(0, -20);
@@ -1251,7 +1201,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_back: (ctx) => {
-    strokeStyle(ctx, 4.4);
+    strokeStyle(ctx, 4.4, "#0f172a");
     ctx.beginPath();
     ctx.moveTo(16, 0);
     ctx.lineTo(-14, 0);
@@ -1261,7 +1211,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_retry: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#2563eb");
     ctx.beginPath();
     ctx.arc(0, 1, 17, -0.4, TAU - 1.5);
     ctx.stroke();
@@ -1272,7 +1222,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_save: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#0f172a");
     ctx.beginPath();
     ctx.moveTo(0, -20);
     ctx.lineTo(0, 8);
@@ -1284,7 +1234,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_copy: (ctx) => {
-    strokeStyle(ctx, 4);
+    strokeStyle(ctx, 4, "#0f172a");
     roundRectPath(ctx, -8, -14, 24, 28, 4);
     ctx.stroke();
     ctx.beginPath();
@@ -1297,7 +1247,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_share: (ctx) => {
-    strokeStyle(ctx);
+    strokeStyle(ctx, 4, "#0f172a");
     ctx.beginPath();
     ctx.moveTo(-18, 2);
     ctx.lineTo(20, -18);
@@ -1309,7 +1259,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_pin: (ctx) => {
-    strokeStyle(ctx, 4, "#ffd166");
+    strokeStyle(ctx, 4, "#d97706");
     roundRectPath(ctx, -13, -3, 26, 20, 4);
     ctx.stroke();
     ctx.beginPath();
@@ -1317,7 +1267,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_x: (ctx) => {
-    strokeStyle(ctx, 5);
+    strokeStyle(ctx, 5, "#0f172a");
     ctx.beginPath();
     ctx.moveTo(-14, -14);
     ctx.lineTo(14, 14);
@@ -1326,7 +1276,7 @@ export const ICON_DRAWERS = {
     ctx.stroke();
   },
   ui_check: (ctx) => {
-    strokeStyle(ctx, 6, "#2ee59d");
+    strokeStyle(ctx, 6, "#059669");
     ctx.beginPath();
     ctx.moveTo(-16, 1);
     ctx.lineTo(-4, 13);
@@ -1353,7 +1303,7 @@ export function renderIconCanvas(id, size = 96) {
   return c;
 }
 
-// WebGL 4096-Quad Sprite Batcher + Canvas 2D Fallback
+// WebGL 4096-Quad Sprite Batcher + Canvas 2D Fallback (Light Cleanroom Calibrated)
 const VERT_SRC =
   "attribute vec2 aPos;attribute vec2 aUV;attribute vec4 aCol;attribute vec2 aFx;uniform vec4 uView;varying vec2 vUV;varying vec4 vCol;varying vec2 vFx;void main(){vUV=aUV;vCol=aCol;vFx=aFx;gl_Position=vec4(aPos*uView.xy+uView.zw,0.,1.);}";
 const FRAG_SRC =
@@ -1507,7 +1457,7 @@ function createWebGLRenderer(canvas, atlas, tiles) {
     begin() {
       count = 0;
       curTex = atlasTex;
-      gl.clearColor(0.043, 0.075, 0.082, 1);
+      gl.clearColor(0.941, 0.961, 0.980, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
     },
     world(cx, cy, sc) {
@@ -1536,7 +1486,7 @@ function createWebGLRenderer(canvas, atlas, tiles) {
       const v1 = (y1 + oy) / tileSz;
       pushQuad(tileTexs[idx], x0, y0, x1, y0, x1, y1, x0, y1, u0, v0, u1, v1, col, alpha, add, 0);
     },
-    spr(id, x, y, sx, sy, rot, alpha, col, add, flash) {
+    spr(id, x, y, sx, sy, rot, alpha, col = 0xffffff, add = 0, flash = 0) {
       if (alpha <= 0.004) return;
       const f = frames[id];
       if (!f) return;
@@ -1566,34 +1516,6 @@ function createWebGLRenderer(canvas, atlas, tiles) {
         );
       }
     },
-    wave(id, x, y, sx, sy, rot, alpha, col, add, flash, phase, amp) {
-      const f = frames[id];
-      if (!f || alpha <= 0.004) return;
-      const SLICES = 5;
-      const hw = f.lw * 0.5 * sx;
-      const hh = f.lh * 0.5 * sy;
-      const c = Math.cos(rot);
-      const s = Math.sin(rot);
-      for (let i = 0; i < SLICES; i++) {
-        const t0 = i / SLICES;
-        const t1 = (i + 1) / SLICES;
-        const lx0 = -hw + (t0 * 2 * hw);
-        const lx1 = -hw + (t1 * 2 * hw);
-        const w0 = Math.sin(phase + t0 * 4.2) * amp * (1 - t0 * 0.7);
-        const w1 = Math.sin(phase + t1 * 4.2) * amp * (1 - t1 * 0.7);
-        const u0 = f.u0 + (f.u1 - f.u0) * t0;
-        const u1 = f.u0 + (f.u1 - f.u0) * t1;
-        const p0x = x + lx0 * c - (-hh + w0) * s;
-        const p0y = y + lx0 * s + (-hh + w0) * c;
-        const p1x = x + lx1 * c - (-hh + w1) * s;
-        const p1y = y + lx1 * s + (-hh + w1) * c;
-        const p2x = x + lx1 * c - (hh + w1) * s;
-        const p2y = y + lx1 * s + (hh + w1) * c;
-        const p3x = x + lx0 * c - (hh + w0) * s;
-        const p3y = y + lx0 * s + (hh + w0) * c;
-        pushQuad(atlasTex, p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y, u0, f.v0, u1, f.v1, col, alpha, add, flash);
-      }
-    },
     end() {
       flush();
     },
@@ -1604,6 +1526,7 @@ function createCanvas2DRenderer(canvas, atlas, tiles) {
   const ctx = canvas.getContext("2d");
   const frames = atlas.frames;
   const img = atlas.canvas;
+  const pxId = SPR_IDX.px;
   let cw = 390, ch = 844, dpr = 1, viewCX = 0, viewCY = 0, viewSc = 1;
   const patterns = tiles.map((t) => ctx.createPattern(t, "repeat"));
 
@@ -1620,7 +1543,7 @@ function createCanvas2DRenderer(canvas, atlas, tiles) {
     },
     begin() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#0b1315";
+      ctx.fillStyle = "#eff4fa";
       ctx.fillRect(0, 0, cw, ch);
     },
     world(cx, cy, sc) {
@@ -1632,12 +1555,11 @@ function createCanvas2DRenderer(canvas, atlas, tiles) {
     screen() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     },
-    tile(idx, ox, oy, tileSz, alpha, add) {
+    tile(idx, ox, oy, tileSz, alpha) {
       const pat = patterns[idx];
       if (!pat) return;
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.globalCompositeOperation = add ? "lighter" : "source-over";
       const hw = cw / 2 / viewSc + 60;
       const hh = ch / 2 / viewSc + 60;
       const s = tileSz / tiles[idx].width;
@@ -1647,21 +1569,22 @@ function createCanvas2DRenderer(canvas, atlas, tiles) {
       ctx.fillRect((viewCX - hw + ox) / s, (viewCY - hh + oy) / s, (hw * 2) / s, (hh * 2) / s);
       ctx.restore();
     },
-    spr(id, x, y, sx, sy, rot, alpha, _col, add) {
+    spr(id, x, y, sx, sy, rot, alpha, col = 0xffffff) {
       if (alpha <= 0.01) return;
       const f = frames[id];
       if (!f) return;
       ctx.save();
       ctx.globalAlpha = alpha;
-      if (add) ctx.globalCompositeOperation = "lighter";
       ctx.translate(x, y);
       if (rot) ctx.rotate(rot);
-      ctx.scale(sx, sy);
-      ctx.drawImage(img, f.x, f.y, f.w, f.h, -f.lw / 2, -f.lh / 2, f.lw, f.lh);
+      if (id === pxId) {
+        ctx.fillStyle = "#" + (col & 0xffffff).toString(16).padStart(6, "0");
+        ctx.fillRect(-3 * sx, -3 * sy, 6 * sx, 6 * sy);
+      } else {
+        ctx.scale(sx, sy);
+        ctx.drawImage(img, f.x, f.y, f.w, f.h, -f.lw / 2, -f.lh / 2, f.lw, f.lh);
+      }
       ctx.restore();
-    },
-    wave(id, x, y, sx, sy, rot, alpha, col, add, flash) {
-      this.spr(id, x, y, sx, sy, rot, alpha, col, add, flash);
     },
     end() {},
   };

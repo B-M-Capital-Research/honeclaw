@@ -1,4 +1,4 @@
-// HONE Adventure — Application Shell, Modals, Save System, Controls & Main Loop
+// HONE Adventure V2 — Cleanroom AI Data Center Shell, 6-Stage Switcher, Promotion Roadmap & GitHub Star CTA
 
 import {
   ACHIEVEMENTS,
@@ -10,11 +10,16 @@ import {
   ENEMY_IDX,
   HEROES,
   HERO_IDX,
+  HONECLAW_GITHUB_URL,
+  HONECLAW_REPO_LABEL,
   PASSIVES,
   PASSIVE_IDX,
   RULES,
+  STAGES,
+  STAGE_IDX,
   TALENTS,
   TALENT_BRANCHES,
+  TITLES,
   VERSION,
   WEAPONS,
   WEAPON_IDX,
@@ -52,16 +57,48 @@ import {
 import { ZONES, cloneZone, createFxSystem, lerpZone, pickZoneKey, renderWorld } from "./fx.js";
 import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./poster.js";
 
-const SAVE_KEY = "hone_adventure_save_v1";
+const SAVE_KEY = "hone_adventure_save_v2";
+const GITHUB_API_URL = "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
+const GITHUB_STARS_CACHE_KEY = "hone.github.stars.v2";
+
+let ghStarsLabel = "742";
+try {
+  const cached = JSON.parse(localStorage.getItem(GITHUB_STARS_CACHE_KEY) || "null");
+  if (cached && typeof cached.value === "string" && cached.value) ghStarsLabel = cached.value;
+} catch {
+  // ignore
+}
+
+function refreshGithubStars() {
+  fetch(GITHUB_API_URL, { headers: { Accept: "application/vnd.github+json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data && typeof data.stargazers_count === "number") {
+        const n = data.stargazers_count;
+        ghStarsLabel = n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
+        try {
+          localStorage.setItem(GITHUB_STARS_CACHE_KEY, JSON.stringify({ value: ghStarsLabel, cachedAt: Date.now() }));
+        } catch {
+          // ignore
+        }
+        const badge = document.querySelector(".gh-stars-cnt");
+        if (badge) badge.textContent = ghStarsLabel;
+      }
+    })
+    .catch(() => {});
+}
 
 function defaultSave() {
   return {
-    v: 1,
+    v: 2,
     t: 0,
     cores: 0,
     talents: {},
     chars: { hone: 1 },
     sel: "hone",
+    stage: "storage",
+    stageClear: {},
+    promoClaimed: 1,
     skins: {},
     skin: "",
     ach: {},
@@ -73,6 +110,7 @@ function defaultSave() {
     hof: [],
     set: { sfx: 1, music: 1, vib: 1 },
     gift: 0,
+    starred: 0,
   };
 }
 
@@ -84,21 +122,27 @@ function loadSave() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return base;
     const out = Object.assign(base, parsed);
-    ["talents", "chars", "skins", "ach", "best", "stats", "streak", "set", "daily"].forEach((k) => {
+    ["talents", "chars", "skins", "ach", "best", "stats", "streak", "set", "daily", "stageClear"].forEach((k) => {
       out[k] = Object.assign(defaultSave()[k], parsed[k] && typeof parsed[k] === "object" ? parsed[k] : {});
     });
-    out.codex = {
-      w: Object.assign({}, parsed.codex && parsed.codex.w),
-      evo: Object.assign({}, parsed.codex && parsed.codex.evo),
-      e: Object.assign({}, parsed.codex && parsed.codex.e),
-    };
+    const cleanW = {}, cleanEvo = {}, cleanE = {};
+    if (parsed.codex && parsed.codex.w) {
+      for (const k of Object.keys(parsed.codex.w)) if (WEAPON_IDX[k] != null) cleanW[k] = 1;
+    }
+    if (parsed.codex && parsed.codex.evo) {
+      for (const k of Object.keys(parsed.codex.evo)) if (WEAPON_IDX[k] != null) cleanEvo[k] = 1;
+    }
+    if (parsed.codex && parsed.codex.e) {
+      for (const k of Object.keys(parsed.codex.e)) if (ENEMY_IDX[k] != null) cleanE[k] = parsed.codex.e[k];
+    }
+    out.codex = { w: cleanW, evo: cleanEvo, e: cleanE };
     out.hof = Array.isArray(parsed.hof) ? parsed.hof.slice(0, 10) : [];
     out.chars.hone = 1;
     if (!out.chars[out.sel]) out.sel = "hone";
+    if (STAGE_IDX[out.stage] == null) out.stage = "storage";
     if (out.skin && !out.skins[out.skin]) out.skin = "";
     out.cores = Math.max(0, Math.floor(+out.cores || 0));
-    const dKeys = Object.keys(out.daily).sort();
-    while (dKeys.length > 10) delete out.daily[dKeys.shift()];
+    out.promoClaimed = Math.max(1, Math.floor(+out.promoClaimed || 1));
     return out;
   } catch {
     return base;
@@ -110,7 +154,7 @@ function persistSave(save) {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(save));
   } catch {
-    // Ignore storage quota errors
+    // ignore storage quota errors
   }
 }
 
@@ -155,7 +199,7 @@ function heroUrl(id, sz = 160, locked = false, suffix = "", portrait = false) {
     if (locked) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = "source-atop";
-      ctx.fillStyle = "rgba(8,18,21,.88)";
+      ctx.fillStyle = "rgba(100,116,139,.82)";
       ctx.fillRect(0, 0, sz, sz);
     }
     iconCache[cacheKey] = c.toDataURL("image/png");
@@ -171,12 +215,12 @@ function spriteUrl(sprName, sz = 112, locked = false) {
     c.width = sz;
     c.height = sz;
     const ctx = c.getContext("2d");
-    const sc = (sz * 0.92) / Math.max(def.lw || def.w, def.lh || def.h);
+    const sc = (sz * 0.9) / Math.max(def.lw || def.w, def.lh || def.h);
     ctx.imageSmoothingQuality = "high";
     drawSprite2D(ctx, sprName, sz / 2, sz / 2, sc, 0, false);
     if (locked) {
       ctx.globalCompositeOperation = "source-atop";
-      ctx.fillStyle = "rgba(8,18,21,.92)";
+      ctx.fillStyle = "rgba(100,116,139,.85)";
       ctx.fillRect(0, 0, sz, sz);
     }
     iconCache[cacheKey] = c.toDataURL("image/png");
@@ -235,6 +279,20 @@ function makeBtn(cls, html, fn, opts) {
   return bindTap(b, fn, opts);
 }
 
+function makeHomepageLink() {
+  const a = el("a", "home-pill");
+  a.href = "/";
+  a.title = "回到 HONE 首页";
+  a.appendChild(iconImg("ui_home", "", 48));
+  a.appendChild(el("span", "", "回到首页"));
+  a.addEventListener("click", (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    window.location.href = "/";
+  });
+  return a;
+}
+
 const openModals = [];
 function createModal(opts = {}) {
   const mask = el("div", "modal " + (opts.cls || ""));
@@ -247,7 +305,7 @@ function createModal(opts = {}) {
     mask.classList.remove("on");
     const idx = openModals.indexOf(api);
     if (idx >= 0) openModals.splice(idx, 1);
-    setTimeout(() => mask.parentNode && mask.parentNode.removeChild(mask), 220);
+    setTimeout(() => mask.parentNode && mask.parentNode.removeChild(mask), 200);
     opts.onClose && opts.onClose();
   };
   if (opts.title) {
@@ -306,45 +364,24 @@ function talentNextCost(save, tal) {
 }
 
 function nextGoalInfo(save) {
-  const list = [];
+  const nt = getNextTitle(save.best.time);
+  if (nt) {
+    return {
+      text: `晋升「${nt.name}」(${nt.perk})`,
+      cur: Math.floor(save.best.time),
+      n: nt.t,
+      ratio: Math.min(1, save.best.time / nt.t),
+      go: "promo",
+    };
+  }
   for (const tal of TALENTS) {
     const cost = talentNextCost(save, tal);
     if (cost > 0 && save.cores >= cost) {
-      list.push({ text: `晶核充足，去升级「${tal.name}」`, cur: 1, n: 1, ratio: 2, go: "talent" });
-      break;
+      return { text: `晶核充足，升级「${tal.name}」`, cur: 1, n: 1, ratio: 1, go: "talent" };
     }
   }
-  for (const h of HEROES) {
-    if (save.chars[h.id] || !h.unlock) continue;
-    const [cur, need] = heroProgress(save, h);
-    list.push({
-      text: `解锁${h.kind}「${h.name}」：${h.unlock.text}`,
-      cur, n: need, ratio: cur / need, go: "char", time: h.unlock.stat === "bestTime",
-    });
-  }
-  for (const a of ACHIEVEMENTS) {
-    if (save.ach[a.id]) continue;
-    const [cur, need] = achProgress(save, a);
-    if (need > 1 || a.stat) {
-      list.push({
-        text: `勋章「${a.name}」：${a.text}`,
-        cur, n: need, ratio: (cur / need) * 0.98, go: "ach", time: a.run === "time",
-      });
-    }
-  }
-  const nt = getNextTitle(save.best.time);
-  if (nt) {
-    list.push({
-      text: `晋升段位「${nt.name}」：坚守 ${fmtTime(nt.t)}`,
-      cur: Math.floor(save.best.time), n: nt.t, ratio: (save.best.time / nt.t) * 0.97, go: "", time: true,
-    });
-  }
-  if (!list.length) return { text: "全目标达成！冲击荣耀殿堂新纪录", cur: 1, n: 1, ratio: 1, go: "rank" };
-  list.sort((a, b) => b.ratio - a.ratio);
-  return list[0];
+  return { text: "已达首席算力官！冲击荣耀殿堂新纪录", cur: 1, n: 1, ratio: 1, go: "rank" };
 }
-
-const fmtGoalProgress = (g) => (g.ratio >= 1 ? "" : g.time ? `${fmtTime(g.cur)} / ${fmtTime(g.n)}` : `${g.cur} / ${g.n}`);
 
 function settleRun(save, sum) {
   const res = {
@@ -357,13 +394,17 @@ function settleRun(save, sum) {
     bestKills: false,
     titleUp: null,
   };
-  const prevTitle = getTitle(save.best.time).name;
+  const prevTitle = getTitle(save.best.time);
 
   save.stats.runs++;
   save.stats.kills += sum.kills;
   save.stats.time += sum.time;
   save.stats.bosses += sum.bosses;
   save.stats.evos += sum.evos.length;
+
+  if (sum.time >= 60 && sum.stage) {
+    save.stageClear[sum.stage] = Math.max(save.stageClear[sum.stage] || 0, Math.floor(sum.time));
+  }
 
   if (sum.time > save.best.time) {
     res.bestTime = save.best.time > 0;
@@ -378,18 +419,22 @@ function settleRun(save, sum) {
   save.stats.bestTime = save.best.time;
 
   sum.weapons.forEach((w) => {
-    save.codex.w[w.id] = 1;
-    if (w.evo) save.codex.evo[w.id] = 1;
+    if (WEAPON_IDX[w.id] != null) {
+      save.codex.w[w.id] = 1;
+      if (w.evo) save.codex.evo[w.id] = 1;
+    }
   });
-  sum.evos.forEach((id) => { save.codex.evo[id] = 1; });
+  sum.evos.forEach((id) => {
+    if (WEAPON_IDX[id] != null) save.codex.evo[id] = 1;
+  });
   sum.killsBy.forEach((cnt, idx) => {
-    if (cnt > 0 && !ENEMIES[idx].hide) {
+    if (cnt > 0 && ENEMIES[idx] && !ENEMIES[idx].hide) {
       const id = ENEMIES[idx].id;
       save.codex.e[id] = (save.codex.e[id] || 0) + cnt;
     }
   });
 
-  if (sum.bosses > 0) res.bonus.push({ label: `击破巨兽 ×${sum.bosses}`, n: 35 * sum.bosses });
+  if (sum.bosses > 0) res.bonus.push({ label: `击破产线巨兽 ×${sum.bosses}`, n: 40 * sum.bosses });
 
   if (sum.daily) {
     const dk = dateKey();
@@ -402,13 +447,24 @@ function settleRun(save, sum) {
       const yest = dateKey(new Date(Date.now() - 86400000));
       save.streak.n = save.streak.last === yest ? save.streak.n + 1 : 1;
       save.streak.last = dk;
-      res.bonus.push({ label: "每日行情达标", n: 120 });
-      if (save.streak.n > 1) res.bonus.push({ label: `连续复盘 ${save.streak.n} 天`, n: Math.min(120, save.streak.n * 15) });
+      res.bonus.push({ label: "每日集群达标", n: 120 });
+      if (save.streak.n > 1) res.bonus.push({ label: `连续值班 ${save.streak.n} 天`, n: Math.min(120, save.streak.n * 15) });
     }
   }
 
-  const nextTitle = getTitle(save.best.time).name;
-  if (nextTitle !== prevTitle) res.titleUp = nextTitle;
+  // Promotion Rank Milestone Rewards
+  const nextTitle = getTitle(save.best.time);
+  if (nextTitle.rank > prevTitle.rank) {
+    res.titleUp = nextTitle.name;
+    let promoCores = 0;
+    for (const item of TITLES) {
+      if (item.rank > (save.promoClaimed || 1) && item.rank <= nextTitle.rank && item.reward) {
+        promoCores += item.reward;
+      }
+    }
+    save.promoClaimed = Math.max(save.promoClaimed || 1, nextTitle.rank);
+    if (promoCores > 0) res.bonus.push({ label: `职级晋升奖励`, n: promoCores });
+  }
 
   for (const a of ACHIEVEMENTS) {
     if (save.ach[a.id]) continue;
@@ -428,14 +484,17 @@ function settleRun(save, sum) {
     }
   }
 
-  // Update Local Top-10 Hall of Fame
   const topWeapon = sum.weapons.slice().sort((a, b) => b.dmg - a.dmg)[0];
+  const stg = STAGES[STAGE_IDX[sum.stage || "storage"]] || STAGES[0];
   save.hof.push({
     time: Math.floor(sum.time),
     kills: sum.kills,
     level: sum.level,
     char: sum.char,
-    top: topWeapon ? (topWeapon.evo ? WEAPONS[WEAPON_IDX[topWeapon.id]].evoName : WEAPONS[WEAPON_IDX[topWeapon.id]].name) : "研报飞刃",
+    stage: stg.short,
+    top: topWeapon && WEAPONS[WEAPON_IDX[topWeapon.id]]
+      ? (topWeapon.evo ? WEAPONS[WEAPON_IDX[topWeapon.id]].evoName : WEAPONS[WEAPON_IDX[topWeapon.id]].name)
+      : "HBM 带宽飞梭",
     daily: sum.daily,
     date: dateKey(),
   });
@@ -457,7 +516,6 @@ const G = {
   atlas: null,
   floorImg: null,
   bot: null,
-  top: 14,
   cw: 390,
   ch: 844,
   sc: 1,
@@ -482,9 +540,8 @@ const G = {
   hurtT: 0,
   joyT: 0,
   joyK: 0,
-  trailT: 0,
-  zone: cloneZone("sandbox"),
-  zoneId: "",
+  zone: cloneZone("storage"),
+  zoneId: "storage",
   hero: "hone",
   run: null,
   perf: { ms: 0, fps: 60, n: 0, acc: 0, accMs: 0, low: 0, high: 0 },
@@ -494,19 +551,6 @@ function activeHeroSkin(charId) {
   return charId === "hone" && G.S.skin === "gold" && G.S.skins.gold ? "gold" : charId;
 }
 
-function goBackToHone() {
-  try {
-    if (window.opener && !window.opener.closed) {
-      window.close();
-      return;
-    }
-  } catch {
-    // ignore cross-window check
-  }
-  window.location.href = "/chat";
-}
-
-// UI Elements
 let homeEl, resultEl, hudEl, stageEl;
 let homeRefs = {};
 let hudRefs = {};
@@ -514,46 +558,68 @@ let levelModal = null;
 let chestModal = null;
 let pauseModal = null;
 
+function selectStage(stageId) {
+  if (STAGE_IDX[stageId] == null) return false;
+  G.S.stage = stageId;
+  persistSave(G.S);
+  if (G.world && G.mode === "home") {
+    G.world.startStageIdx = STAGE_IDX[stageId];
+    G.world.setStage(stageId);
+  }
+  refreshHomeUI();
+  return true;
+}
+
 function buildHomeUI() {
   homeEl = el("div", "home hide");
   homeEl.innerHTML = `
     <div class="h-top">
-      <div class="back-pill" title="返回 HONE"><img alt=""><span>返回 HONE</span></div>
-      <div class="chip cores"><img alt=""><b>0</b></div>
-      <div class="hb gear" title="设置"></div>
+      <div class="h-top-left"></div>
+      <div class="h-top-right">
+        <div class="gift"></div>
+        <div class="chip cores"><img alt=""><b>0</b></div>
+        <div class="hb gear" title="系统设置"></div>
+      </div>
     </div>
-    <div class="gift"></div>
     <div class="logo">
-      <div class="lg-badge">HONE ARCADE · 算力肉鸽</div>
+      <div class="lg-badge">HONE CLEANROOM · AI DATA CENTER</div>
       <div class="lg1">HONE <i>历险记</i></div>
-      <div class="lg2">磨砺锋芒 · 一口气横扫市场噪音</div>
+      <div class="lg2">穿梭算力产线 · 横扫硬件瓶颈</div>
     </div>
     <div class="h-bot">
-      <div class="goal"><div class="g-t"></div><div class="g-row"><div class="g-bar"><i></i></div><span class="g-n"></span></div></div>
-      <div class="best"></div>
-      <div class="cta"><img class="cta-h" alt=""><div class="cta-t"><b>开始历险</b><small></small></div></div>
-      <div class="daily"></div>
+      <div class="sec-head"><b>算力产线关卡切换</b><span class="st-sub"></span></div>
+      <div class="stage-strip"></div>
+      <div class="promo-bar">
+        <div class="pb-l">
+          <div class="pb-top"><span class="pb-rk"></span><span class="pb-goal"></span></div>
+          <div class="g-bar"><i></i></div>
+        </div>
+        <div class="pb-go">晋升路线 →</div>
+      </div>
+      <div class="launch-row">
+        <div class="cta"><img class="cta-h" alt=""><div class="cta-t"><b>进入产线巡检</b><small></small></div></div>
+        <div class="daily"></div>
+      </div>
       <div class="nav"></div>
     </div>
   `;
   document.body.appendChild(homeEl);
 
+  $(".h-top-left", homeEl).appendChild(makeHomepageLink());
+
   homeRefs = {
     cores: $(".cores b", homeEl),
-    goal: $(".goal", homeEl),
-    gt: $(".g-t", homeEl),
-    gb: $(".g-bar i", homeEl),
-    gn: $(".g-n", homeEl),
-    best: $(".best", homeEl),
+    gift: $(".gift", homeEl),
+    stSub: $(".st-sub", homeEl),
+    stStrip: $(".stage-strip", homeEl),
+    pbRk: $(".pb-rk", homeEl),
+    pbGoal: $(".pb-goal", homeEl),
+    pbBar: $(".promo-bar .g-bar i", homeEl),
     ctaS: $(".cta small", homeEl),
     ctaH: $(".cta-h", homeEl),
     daily: $(".daily", homeEl),
     nav: $(".nav", homeEl),
-    gift: $(".gift", homeEl),
   };
-
-  $(".back-pill img", homeEl).src = iconUrl("ui_back", 48);
-  bindTap($(".back-pill", homeEl), goBackToHone);
 
   $(".cores img", homeEl).src = iconUrl("core", 64);
   bindTap($(".cores", homeEl), openTalents);
@@ -562,27 +628,32 @@ function buildHomeUI() {
   gear.appendChild(iconImg("ui_gear", "", 48));
   bindTap(gear, openSettings);
 
+  STAGES.forEach((st) => {
+    const pill = el("div", "st-pill", `<small>${st.code.replace("SECTOR-", "S")}</small><b>${st.short}</b>`);
+    pill.dataset.stage = st.id;
+    bindTap(pill, () => {
+      selectStage(st.id);
+      showToast(`已切换产线：${st.name}（${st.sub}）`, 1800);
+    });
+    homeRefs.stStrip.appendChild(pill);
+  });
+
+  bindTap($(".promo-bar", homeEl), openPromotionModal);
+
   bindTap($(".cta", homeEl), () => {
     playSfx("select");
     startRun({});
   }, { quiet: true });
 
   bindTap(homeRefs.daily, openDailyModal);
-  bindTap(homeRefs.goal, () => {
-    const g = nextGoalInfo(G.S);
-    if (g.go === "talent") openTalents();
-    else if (g.go === "char") openHeroes();
-    else if (g.go === "ach") openAchievements();
-    else if (g.go === "rank") openHallOfFame();
-    else showToast("立刻开一局，坚持住就能晋升段位！");
-  });
 
   [
-    ["天赋", "ui_up", openTalents, "n-up"],
+    ["基建", "ui_up", openTalents, "n-up"],
     ["特工", "ui_agent", openHeroes, "n-ch"],
+    ["晋升", "ui_rank", openPromotionModal, "n-pm"],
     ["图鉴", "ui_book", openCodex, "n-cx"],
     ["勋章", "ui_medal", openAchievements, "n-ac"],
-    ["战绩", "ui_rank", openHallOfFame, "n-rk"],
+    ["殿堂", "ui_medal", openHallOfFame, "n-rk"],
   ].forEach(([label, ic, fn, cls]) => {
     const nb = el("div", "nb " + cls);
     nb.appendChild(iconImg(ic, "", 64));
@@ -600,7 +671,7 @@ function buildHomeUI() {
       G.S.sel = "hone";
       persistSave(G.S);
       playSfx("evo");
-      showToast("已解锁并换装限定传说皮肤「曜金小砺」！", 2600);
+      showToast("已领取限定传说涂装「曜金小砺」！", 2400);
       G.hero = activeHeroSkin(G.S.sel);
       refreshHomeUI();
     } else {
@@ -609,7 +680,7 @@ function buildHomeUI() {
       persistSave(G.S);
       playSfx("select");
       G.hero = activeHeroSkin(G.S.sel);
-      showToast(G.S.skin === "gold" ? "已穿戴「曜金小砺」" : "已切换为经典「小砺」");
+      showToast(G.S.skin === "gold" ? "已穿戴「曜金小砺」" : "已切换为标准「小砺」");
       refreshHomeUI();
     }
   }, { quiet: true });
@@ -622,33 +693,35 @@ function refreshHomeUI() {
   const S = G.S;
   const g = nextGoalInfo(S);
   const hero = HEROES[HERO_IDX[S.sel]];
+  const curStage = STAGES[STAGE_IDX[S.stage]] || STAGES[0];
+  const curTitle = getTitle(S.best.time);
 
   homeRefs.cores.textContent = S.cores;
-  homeRefs.gt.textContent = (g.ratio >= 2 ? "" : "下一目标 · ") + g.text;
-  homeRefs.gb.style.transform = `scaleX(${Math.max(0.03, Math.min(1, g.ratio))})`;
-  homeRefs.gn.textContent = fmtGoalProgress(g);
-  homeRefs.goal.classList.toggle("ready", g.ratio >= 2);
+  homeRefs.stSub.textContent = `${curStage.name} · ${curStage.sub.split(" · ")[1] || curStage.sub}`;
 
-  homeRefs.best.innerHTML = S.stats.runs
-    ? `<span>最佳 <b>${fmtTime(S.best.time)}</b></span><span>净除 <b>${S.best.kills}</b></span><span class="ttl">${getTitle(S.best.time).name}</span>`
-    : `<span>单指拖动 / WASD 走位 · 自动索敌 · 凑齐搭档超武进化</span>`;
+  homeRefs.stStrip.querySelectorAll(".st-pill").forEach((node) => {
+    node.classList.toggle("on", node.dataset.stage === curStage.id);
+  });
 
-  homeRefs.ctaS.textContent = `${hero.name} · 起手「${WEAPONS[WEAPON_IDX[hero.weapon]].name}」`;
-  homeRefs.ctaH.src = heroUrl(activeHeroSkin(S.sel), 200);
+  homeRefs.pbRk.textContent = curTitle.name;
+  homeRefs.pbGoal.textContent = g.text;
+  homeRefs.pbBar.style.transform = `scaleX(${Math.max(0.04, Math.min(1, g.ratio))})`;
+
+  homeRefs.ctaS.textContent = `${curStage.short} · ${hero.name}（${WEAPONS[WEAPON_IDX[hero.weapon]].name}）`;
+  homeRefs.ctaH.src = heroUrl(activeHeroSkin(S.sel), 160);
 
   homeRefs.gift.classList.toggle("claimed", !!S.skins.gold);
-  homeRefs.gift.innerHTML = `<img class="gf-i" alt="" src="${heroUrl("gold", 96)}"><div class="gf-t"><b>${S.skins.gold ? (S.skin === "gold" ? "曜金出战中" : "切换曜金皮") : "点亮 HONE 星标"}</b><small>${S.skins.gold ? "点击一键换装" : "免费领「曜金小砺」"}</small></div>`;
+  homeRefs.gift.innerHTML = `<img class="gf-i" alt="" src="${heroUrl("gold", 96)}"><div class="gf-t"><b>${
+    S.skins.gold ? (S.skin === "gold" ? "曜金出战" : "换曜金皮") : "领曜金皮"
+  }</b><small>${S.skins.gold ? "点击切换" : "免费解锁"}</small></div>`;
 
   const d = getDailyChallenge(dateKey());
   const dRec = S.daily[d.key];
   const rule = RULES.find((r) => r.id === d.rule);
-  homeRefs.daily.innerHTML = `<img alt="" src="${iconUrl("ui_cal", 64)}"><div class="d-t"><b>每日行情「${rule.name}」</b><small>${
-    dRec && dRec.rewarded
-      ? `今日已达标 · 最佳 ${fmtTime(dRec.time)}`
-      : dRec
-      ? `今日最佳 ${fmtTime(dRec.time)} · 坚守 2 分钟领 120 晶核`
-      : `全服同种子挑战 · 坚守 2 分钟领 120 晶核`
-  }</small></div><em>${dRec && dRec.rewarded ? "再战" : "出击"}</em>`;
+  const dStg = STAGES[STAGE_IDX[d.stage]] || STAGES[0];
+  homeRefs.daily.innerHTML = `<img alt="" src="${iconUrl("ui_cal", 64)}"><div class="d-t"><b>每日「${rule.name}」</b><small>${
+    dRec && dRec.rewarded ? `今日已达标 · ${fmtTime(dRec.time)}` : `${dStg.short} · 满 2 分钟 +120 晶核`
+  }</small></div>`;
   homeRefs.daily.classList.toggle("done", !!(dRec && dRec.rewarded));
 
   let canUp = false;
@@ -663,11 +736,11 @@ function refreshHomeUI() {
   $(".n-ch", homeEl).classList.toggle("has", canHero);
 }
 
-// 3-Branch Talent Matrix Modal
+// 4-Pillar × 3-Node = 12-Node AI Infrastructure Upgrade Matrix Modal
 function openTalents() {
   const S = G.S;
-  let activeBranch = "offense";
-  const m = createModal({ cls: "panel talents", title: "三分支算力天赋矩阵", dismiss: true, onClose: refreshHomeUI });
+  let activeBranch = "interconnect";
+  const m = createModal({ cls: "panel talents", title: "四维算力基建升级矩阵", dismiss: true, onClose: refreshHomeUI });
   const top = el("div", "p-cores");
   const tabs = el("div", "btabs");
   const syn = el("div", "b-syn");
@@ -675,7 +748,7 @@ function openTalents() {
   m.body.append(top, tabs, syn, list);
 
   const render = () => {
-    top.innerHTML = `<img alt="" src="${iconUrl("core", 64)}"><b>${S.cores}</b><span>阿尔法晶核 · 每局净除噪音均可收获</span>`;
+    top.innerHTML = `<img alt="" src="${iconUrl("core", 64)}"><b>${S.cores}</b><span>算力晶核 · 清除产线异常均可收获</span>`;
     tabs.innerHTML = "";
     TALENT_BRANCHES.forEach((b) => {
       const pts = branchPoints(S.talents, b.id);
@@ -708,7 +781,7 @@ function openTalents() {
         if (cost < 0) return;
         if (!afford) {
           playSfx("err");
-          showToast(`还差 ${cost - S.cores} 枚阿尔法晶核`);
+          showToast(`还差 ${cost - S.cores} 枚算力晶核`);
           return;
         }
         S.cores -= cost;
@@ -724,11 +797,41 @@ function openTalents() {
   render();
 }
 
+// 10-Tier AI Compute Architect Promotion Roadmap Modal
+function openPromotionModal() {
+  const S = G.S;
+  const cur = getTitle(S.best.time);
+  const m = createModal({ cls: "panel promo", title: "十阶算力架构师晋升路线", dismiss: true });
+
+  const heroBox = el("div", "rk-hero");
+  heroBox.innerHTML = `
+    <div><span>当前最高职级</span><b style="font-size:20px">${cur.name}</b></div>
+    <div style="text-align:right"><span>单局最长稳定运行</span><b>${S.best.time ? fmtTime(S.best.time) : "00:00"}</b></div>
+  `;
+  m.body.appendChild(heroBox);
+  m.body.appendChild(el("div", "sec", "职级晋升阶梯（达成时长永久激活全局被动特权 + 晋升晶核）"));
+
+  TITLES.forEach((item) => {
+    const unlocked = S.best.time >= item.t;
+    const isCur = item.rank === cur.rank;
+    const row = el("div", "pm-row" + (unlocked ? " on" : "") + (isCur ? " cur" : ""));
+    row.innerHTML = `
+      <div class="pm-rk">L${item.rank}</div>
+      <div class="pm-tx">
+        <b>${item.name.replace(/^L\d+\s*·\s*/, "")}${isCur ? " · 当前职级" : ""}</b>
+        <small>${item.perk}${item.reward ? ` · 首达奖励 +${item.reward} 晶核` : ""}</small>
+      </div>
+      <div class="pm-req">${unlocked ? "✓ 已达成" : `需坚守 ${fmtTime(item.t)}`}</div>
+    `;
+    m.body.appendChild(row);
+  });
+}
+
 function openHeroes() {
   const S = G.S;
   const m = createModal({
     cls: "panel chars",
-    title: "HONE 特工档案",
+    title: "HONE 算力特工编队",
     dismiss: true,
     onClose: () => {
       G.hero = activeHeroSkin(S.sel);
@@ -754,12 +857,12 @@ function openHeroes() {
       const tx = el(
         "div",
         "c-tx",
-        `<b>${h.name}<small>${h.kind}</small></b><span>${h.trait}</span><span class="wp"><img alt="" src="${iconUrl(h.weapon, 48)}">起手武器：${WEAPONS[WEAPON_IDX[h.weapon]].name}</span>`,
+        `<b>${h.name}<small>${h.kind}</small></b><span>${h.trait}</span><span class="wp"><img alt="" src="${iconUrl(h.weapon, 48)}">起手硬件：${WEAPONS[WEAPON_IDX[h.weapon]].name}</span>`,
       );
       card.appendChild(tx);
 
       if (owned) {
-        card.appendChild(el("div", "c-st", sel ? "出战中" : "派遣"));
+        card.appendChild(el("div", "c-st", sel ? "执勤中" : "派遣"));
         bindTap(card, (e) => {
           if (e && e.target && e.target.closest && e.target.closest(".skins")) return;
           if (S.sel !== h.id) {
@@ -792,7 +895,7 @@ function openHeroes() {
           el(
             "div",
             "c-lock",
-            `<div class="g-bar"><i style="transform:scaleX(${Math.max(0.03, Math.min(1, cur / need))})"></i></div><small>${h.unlock.text}（${h.unlock.stat === "bestTime" ? `${fmtTime(cur)} / ${fmtTime(need)}` : `${cur} / ${need}`}）</small>`,
+            `<div class="g-bar" style="margin-top:5px"><i style="transform:scaleX(${Math.max(0.03, Math.min(1, cur / need))})"></i></div><small style="font-size:10.5px;color:#64748b">${h.unlock.text}（${h.unlock.stat === "bestTime" ? `${fmtTime(cur)} / ${fmtTime(need)}` : `${cur} / ${need}`}）</small>`,
           ),
         );
         card.appendChild(
@@ -825,9 +928,9 @@ function openCodex() {
   const gotE = Object.keys(S.codex.evo).length;
   const gotM = Object.keys(S.codex.e).filter((k) => S.codex.e[k] > 0).length;
   const total = WEAPONS.length * 2 + CODEX_ENEMY_IDS.length + BOSS_IDS.length;
-  const m = createModal({ cls: "panel codex", title: `投研图鉴 ${gotW + gotE + gotM} / ${total}`, dismiss: true });
+  const m = createModal({ cls: "panel codex", title: `硬件与异常图鉴 ${gotW + gotE + gotM} / ${total}`, dismiss: true });
 
-  m.body.appendChild(el("div", "sec", "武器与超维进化配对"));
+  m.body.appendChild(el("div", "sec", "硬件武装与超维流片进化"));
   const wlist = el("div", "wlist");
   WEAPONS.forEach((w) => {
     const seenW = !!S.codex.w[w.id];
@@ -836,22 +939,22 @@ function openCodex() {
     const row = el("div", "wrow" + (seenW ? "" : " un"));
     row.innerHTML = `
       <div class="w-a"><img alt="" src="${iconUrl(w.id, 96)}"></div>
-      <div class="w-t"><b>${seenW ? w.name : "？？？"}</b><small>${seenW ? w.desc : "尚未装备过"}</small></div>
+      <div class="w-t"><b>${seenW ? w.name : "？？？"}</b><small>${seenW ? w.desc : "尚未装配过"}</small></div>
       <div class="w-p"><img alt="" src="${iconUrl(w.partner, 64)}"><small>+${partner.name}</small></div>
       <div class="w-a evo${seenEvo ? "" : " un"}"><img alt="" src="${iconUrl(w.id, 96)}"></div>
-      <div class="w-t"><b>${seenEvo ? w.evoName : "？？？"}</b><small>${seenEvo ? w.evoDesc : "Lv.5 + 搭档被动进化"}</small></div>
+      <div class="w-t"><b>${seenEvo ? w.evoName : "？？？"}</b><small>${seenEvo ? w.evoDesc : "Lv.5 + 搭档模块流片"}</small></div>
     `;
     wlist.appendChild(row);
   });
   m.body.appendChild(wlist);
 
-  m.body.appendChild(el("div", "sec", "市场噪音与深渊巨兽"));
+  m.body.appendChild(el("div", "sec", "机房故障体与五大产线巨兽 Boss"));
   const egrid = el("div", "egrid");
   CODEX_ENEMY_IDS.concat(BOSS_IDS).forEach((id) => {
     const cnt = S.codex.e[id] || 0;
     const def = ENEMIES[ENEMY_IDX[id]];
     const cell = el("div", "ecell" + (cnt ? "" : " un") + (def.boss ? " boss" : ""));
-    cell.innerHTML = `<img alt="" src="${spriteUrl("e_" + id, def.boss ? 160 : 112, !cnt)}"><b>${cnt ? def.name : "？？？"}</b><small>${cnt ? `净除 ${cnt}` : def.boss ? "深渊巨兽" : "尚未遭遇"}</small>`;
+    cell.innerHTML = `<img alt="" src="${spriteUrl("e_" + id, def.boss ? 160 : 112, !cnt)}"><b>${cnt ? def.name : "？？？"}</b><small>${cnt ? `清除 ${cnt}` : def.boss ? "产线巨兽" : "尚未遭遇"}</small>`;
     egrid.appendChild(cell);
   });
   m.body.appendChild(egrid);
@@ -860,7 +963,7 @@ function openCodex() {
 function openAchievements() {
   const S = G.S;
   const doneCnt = ACHIEVEMENTS.filter((a) => S.ach[a.id]).length;
-  const m = createModal({ cls: "panel achs", title: `荣誉勋章 ${doneCnt} / ${ACHIEVEMENTS.length}`, dismiss: true });
+  const m = createModal({ cls: "panel achs", title: `工程勋章 ${doneCnt} / ${ACHIEVEMENTS.length}`, dismiss: true });
   const list = el("div", "alist");
   ACHIEVEMENTS.slice()
     .sort((a, b) => (S.ach[a.id] ? 1 : 0) - (S.ach[b.id] ? 1 : 0))
@@ -882,21 +985,21 @@ function openAchievements() {
 function openHallOfFame() {
   const S = G.S;
   const dk = dateKey();
-  const m = createModal({ cls: "panel rank", title: "战绩殿堂", dismiss: true });
+  const m = createModal({ cls: "panel rank", title: "荣耀殿堂", dismiss: true });
 
   const heroBox = el("div", "rk-hero");
   heroBox.innerHTML = `
-    <div><span>最长坚守纪录</span><b>${S.best.time ? fmtTime(S.best.time) : "00:00"}</b></div>
-    <div style="text-align:right"><span>当前投研段位</span><b style="font-size:19px;color:#5ce1e6">${getTitle(S.best.time).name}</b></div>
+    <div><span>最长稳定运行</span><b>${S.best.time ? fmtTime(S.best.time) : "00:00"}</b></div>
+    <div style="text-align:right"><span>当前架构职级</span><b style="font-size:17px">${getTitle(S.best.time).name}</b></div>
   `;
   m.body.appendChild(heroBox);
 
   const grid = el("div", "rk-grid");
   [
-    [String(S.best.kills), "单局最高净除"],
+    [String(S.best.kills), "单局最高清除"],
     ["×" + S.best.combo, "最高连击纪录"],
-    [S.daily[dk] ? fmtTime(S.daily[dk].time) : "未出击", "今日挑战最佳"],
-    [String(S.stats.kills), `生涯累计净除（${S.stats.runs} 局）`],
+    [S.daily[dk] ? fmtTime(S.daily[dk].time) : "未出勤", "今日集群最佳"],
+    [String(S.stats.kills), `生涯累计清除（${S.stats.runs} 局）`],
   ].forEach(([v, lbl]) => {
     grid.appendChild(el("div", "rk-cell", `<b>${v}</b><span>${lbl}</span>`));
   });
@@ -904,15 +1007,15 @@ function openHallOfFame() {
 
   m.body.appendChild(el("div", "sec", "本机荣耀殿堂 Top 10"));
   if (!S.hof.length) {
-    m.body.appendChild(el("div", "note", "完成首局历险后，你的最佳战局与主力超武构筑将自动铭刻于此。"));
+    m.body.appendChild(el("div", "note", "完成首次产线巡检后，你的最佳战局与硬件构筑将自动记录于此。"));
   } else {
     S.hof.forEach((r, idx) => {
       const row = el("div", "hof-row" + (idx === 0 ? " top1" : ""));
       row.innerHTML = `
         <div class="hof-rk">#${idx + 1}</div>
         <img class="hof-av" alt="" src="${heroUrl(r.char || "hone", 96)}">
-        <div class="hof-tx"><b>主力「${r.top}」· Lv.${r.level}</b><small>${r.date}${r.daily ? " · 每日行情" : " · 常规历险"}</small></div>
-        <div class="hof-sc"><b>${fmtTime(r.time)}</b><small>净除 ${r.kills}</small></div>
+        <div class="hof-tx"><b>主力「${r.top}」· Lv.${r.level}</b><small>${r.date} · ${r.stage || "存储阵列"}${r.daily ? " · 每日挑战" : ""}</small></div>
+        <div class="hof-sc"><b>${fmtTime(r.time)}</b><small>清除 ${r.kills}</small></div>
       `;
       m.body.appendChild(row);
     });
@@ -924,8 +1027,9 @@ function openDailyModal() {
   const d = getDailyChallenge(dateKey());
   const rule = RULES.find((r) => r.id === d.rule);
   const hero = HEROES[HERO_IDX[d.char]];
+  const stg = STAGES[STAGE_IDX[d.stage]] || STAGES[0];
   const rec = S.daily[d.key];
-  const m = createModal({ cls: "panel dailyp", title: "每日行情挑战", dismiss: true });
+  const m = createModal({ cls: "panel dailyp", title: "每日同种子集群挑战", dismiss: true });
 
   const top = el("div", "dp-top");
   const av = el("img", "dp-av");
@@ -933,15 +1037,15 @@ function openDailyModal() {
   av.src = heroUrl(d.char, 192);
   top.appendChild(av);
   top.appendChild(
-    el("div", "dp-tx", `<small>${d.key} · 全网固定种子</small><b>今日词条「${rule.name}」</b><span>${rule.desc}</span>`),
+    el("div", "dp-tx", `<small>${d.key} · ${stg.name}</small><b>今日工况「${rule.name}」</b><span>${rule.desc}</span>`),
   );
   m.body.appendChild(top);
 
   const info = el("div", "dp-info");
   info.innerHTML = `
     <div><img alt="" src="${heroUrl(d.char, 96)}"><span>指定特工</span><b>${hero.name}${S.chars[d.char] ? "" : "（限免）"}</b></div>
-    <div><img alt="" src="${iconUrl(d.weapon, 96)}"><span>起手武器</span><b>${WEAPONS[WEAPON_IDX[d.weapon]].name}</b></div>
-    <div><img alt="" src="${iconUrl("core", 96)}"><span>坚守 2 分钟</span><b>${rec && rec.rewarded ? "已领取" : "+120 晶核"}</b></div>
+    <div><img alt="" src="${iconUrl(d.weapon, 96)}"><span>起手硬件</span><b>${WEAPONS[WEAPON_IDX[d.weapon]].name}</b></div>
+    <div><img alt="" src="${iconUrl("core", 96)}"><span>运行 2 分钟</span><b>${rec && rec.rewarded ? "已领取" : "+120 晶核"}</b></div>
   `;
   m.body.appendChild(info);
 
@@ -949,12 +1053,12 @@ function openDailyModal() {
     el(
       "div",
       "dp-rec",
-      (rec ? `今日最佳 <b>${fmtTime(rec.time)}</b> · 净除 <b>${rec.kills}</b>` : "今日尚未出击") +
-        (S.streak.n > 0 ? ` · 已连续复盘 <b>${S.streak.n}</b> 天` : ""),
+      (rec ? `今日最佳 <b>${fmtTime(rec.time)}</b> · 清除 <b>${rec.kills}</b>` : "今日尚未出勤") +
+        (S.streak.n > 0 ? ` · 已连续值班 <b>${S.streak.n}</b> 天` : ""),
     ),
   );
   m.body.appendChild(
-    makeBtn("primary", rec ? "再次挑战" : "立即出击", () => {
+    makeBtn("primary", rec ? "再次挑战" : "立即进入集群", () => {
       m.close();
       startRun({ daily: true });
     }, { quiet: true }),
@@ -965,9 +1069,9 @@ function settingRowsEl() {
   const S = G.S;
   const wrap = el("div", "sets");
   [
-    ["sfx", "战斗音效"],
-    ["music", "动态合成配乐"],
-    ["vib", "触感振动"],
+    ["sfx", "硬件战斗音效"],
+    ["music", "动态电子合成配乐"],
+    ["vib", "触感振动反馈"],
   ].forEach(([k, label]) => {
     const row = el("div", "tg" + (S.set[k] ? " on" : ""), `<span>${label}</span><i><b></b></i>`);
     bindTap(row, () => {
@@ -983,10 +1087,14 @@ function settingRowsEl() {
 }
 
 function openSettings() {
-  const m = createModal({ cls: "panel settings", title: "系统设置", dismiss: true });
+  const m = createModal({ cls: "panel settings", title: "洁净室控制台设置", dismiss: true });
   m.body.appendChild(settingRowsEl());
   m.body.appendChild(
-    el("div", "note", `进度自动保存在当前浏览器本地存储中。<br>HONE 历险记 v${VERSION} · HONE Research Arcade`),
+    el(
+      "div",
+      "note",
+      `进度自动保存在浏览器本地存储中。<br>开源项目：<a href="${HONECLAW_GITHUB_URL}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;font-weight:800">${HONECLAW_REPO_LABEL}</a><br>HONE 历险记 v${VERSION}`,
+    ),
   );
 }
 
@@ -996,8 +1104,13 @@ function buildHudUI() {
   hudEl.innerHTML = `
     <div class="xp"><i></i><b class="lv">Lv.1</b></div>
     <div class="hrow">
-      <div class="hb pause" title="暂停"></div>
-      <div class="timer">00:00</div>
+      <div class="hrow-left">
+        <div class="hb pause" title="暂停"></div>
+      </div>
+      <div class="hrow-center">
+        <div class="timer">00:00</div>
+        <div class="stage-tag">SECTOR-01 · 存储阵列</div>
+      </div>
       <div class="kills"><img class="ki" alt=""><span class="kn">0</span></div>
     </div>
     <div class="slots"></div>
@@ -1005,14 +1118,17 @@ function buildHudUI() {
     <div class="combo hide"><b>0</b><small>连击</small></div>
     <div class="wavetag"></div>
     <div class="banner"></div>
-    <div class="hint hide"><i></i>按住屏幕拖动或按 WASD 走位，武器自动攻击</div>
+    <div class="hint hide">按住屏幕拖动或按 WASD 走位 · 硬件武器自动索敌发射</div>
   `;
   document.body.appendChild(hudEl);
+  $(".hrow-left", hudEl).appendChild(makeHomepageLink());
+
   hudRefs = {
     xp: $(".xp i", hudEl),
     xpBox: $(".xp", hudEl),
     lv: $(".lv", hudEl),
     timer: $(".timer", hudEl),
+    stageTag: $(".stage-tag", hudEl),
     kn: $(".kn", hudEl),
     slots: $(".slots", hudEl),
     boss: $(".bossbar", hudEl),
@@ -1024,15 +1140,15 @@ function buildHudUI() {
     banner: $(".banner", hudEl),
     hint: $(".hint", hudEl),
   };
-  $(".ki", hudEl).src = spriteUrl("e_glitch", 48);
+  $(".ki", hudEl).src = spriteUrl("e_packet", 48);
   const pauseBtn = $(".pause", hudEl);
   pauseBtn.appendChild(iconImg("ui_pause", "", 48));
   bindTap(pauseBtn, pauseGame);
 }
 
-const hudCache = { sec: -1, kills: -1, lv: -1, slots: "", boss: -2, combo: -1, xp: -1 };
+const hudCache = { sec: -1, kills: -1, lv: -1, slots: "", boss: -2, combo: -1, xp: -1, stage: -1 };
 function resetHudCache() {
-  hudCache.sec = hudCache.kills = hudCache.lv = hudCache.combo = hudCache.xp = -1;
+  hudCache.sec = hudCache.kills = hudCache.lv = hudCache.combo = hudCache.xp = hudCache.stage = -1;
   hudCache.boss = -2;
   hudCache.slots = "";
   hudRefs.boss.classList.add("hide");
@@ -1049,6 +1165,11 @@ function updateHud() {
   if (sec !== hudCache.sec) {
     hudCache.sec = sec;
     hudRefs.timer.textContent = fmtTime(sec);
+  }
+  if (w.stageIdx !== hudCache.stage) {
+    hudCache.stage = w.stageIdx;
+    const stg = STAGES[w.stageIdx] || STAGES[0];
+    hudRefs.stageTag.textContent = `${stg.code} · ${stg.short}`;
   }
   if (w.kills !== hudCache.kills) {
     hudCache.kills = w.kills;
@@ -1079,7 +1200,6 @@ function updateHud() {
       s.appendChild(el("em", "", wp.evo ? "★" : String(wp.lv)));
       hudRefs.slots.appendChild(s);
     });
-    if (p.passives.length) hudRefs.slots.appendChild(el("i", "sep"));
     p.passives.forEach((ps) => {
       const s = el("div", "slot ps");
       s.appendChild(iconImg(ps.id, "", 64));
@@ -1089,14 +1209,15 @@ function updateHud() {
   }
 
   const boss = w.boss && !w.boss.dead ? w.boss : null;
-  const bossPct = boss ? Math.max(0, Math.round((boss.hp / boss.maxHp) * 100)) : -1;
+  const bossPct = boss ? Math.max(0, Math.round((boss.hp / boss.maxHp) * 200)) : -1;
   if (bossPct !== hudCache.boss) {
-    if (boss && hudCache.boss < 0) {
+    if (boss) {
       hudRefs.boss.classList.remove("hide");
       hudRefs.bossN.textContent = ENEMIES[boss.type].name;
+      hudRefs.bossI.style.transform = `scaleX(${(bossPct / 200).toFixed(3)})`;
+    } else {
+      hudRefs.boss.classList.add("hide");
     }
-    if (boss) hudRefs.bossI.style.transform = `scaleX(${bossPct / 100})`;
-    else hudRefs.boss.classList.add("hide");
     hudCache.boss = bossPct;
   }
 
@@ -1105,9 +1226,6 @@ function updateHud() {
     if (w.combo >= 5) {
       hudRefs.combo.classList.remove("hide");
       hudRefs.comboB.textContent = w.combo;
-      hudRefs.combo.classList.remove("pop");
-      void hudRefs.combo.offsetWidth;
-      hudRefs.combo.classList.add("pop");
     } else {
       hudRefs.combo.classList.add("hide");
     }
@@ -1125,11 +1243,14 @@ function announce(text, kind, extra) {
     return;
   }
   if (kind === "combo") text = `${text}  ${COMBO_CALLOUTS[Math.min(COMBO_CALLOUTS.length - 1, extra || 0)]}`;
-  if (kind === "warn") text = `⚠ ${ENEMIES[9 + (extra || 0)].name} 来袭`;
+  if (kind === "warn") {
+    const bDef = ENEMIES[9 + (extra || 0)] || ENEMIES[9];
+    text = `⚠ 产线巨兽「${bDef.name}」即将切入`;
+  }
   const item = el("div", "bn-i k-" + kind, text);
   while (hudRefs.banner.children.length > 1) hudRefs.banner.removeChild(hudRefs.banner.firstChild);
   hudRefs.banner.appendChild(item);
-  setTimeout(() => item.parentNode && item.parentNode.removeChild(item), kind === "warn" ? 2600 : 1700);
+  setTimeout(() => item.parentNode && item.parentNode.removeChild(item), kind === "warn" ? 2600 : 1800);
 }
 
 function describeChoice(world, c) {
@@ -1139,10 +1260,10 @@ function describeChoice(world, c) {
     return {
       icon: c.id,
       name: w.name,
-      tag: c.isNew ? "新武器" : "Lv." + c.lv,
+      tag: c.isNew ? "新硬件" : "Lv." + c.lv,
       cls: "w",
       desc: c.isNew ? w.desc : w.up[c.lv - 1],
-      hint: world.plv(w.partner) > 0 ? `已持「${p.name}」，满级即可超武进化` : `进化搭档：「${p.name}」`,
+      hint: world.plv(w.partner) > 0 ? `已装「${p.name}」，满级即可超维流片` : `流片搭档：「${p.name}」`,
     };
   }
   if (c.kind === "p") {
@@ -1150,16 +1271,16 @@ function describeChoice(world, c) {
     let hint = "";
     for (let i = 0; i < world.p.weapons.length; i++) {
       const ow = world.p.weapons[i];
-      if (WEAPONS[ow.k].partner === c.id && !ow.evo) hint = `★「${WEAPONS[ow.k].name}」的超武进化搭档`;
+      if (WEAPONS[ow.k].partner === c.id && !ow.evo) hint = `★「${WEAPONS[ow.k].name}」的超维流片搭档`;
     }
-    return { icon: c.id, name: p.name, tag: c.isNew ? "新被动" : "Lv." + c.lv, cls: "p", desc: p.desc, hint };
+    return { icon: c.id, name: p.name, tag: c.isNew ? "新模块" : "Lv." + c.lv, cls: "p", desc: p.desc, hint };
   }
   if (c.kind === "evo") {
     const w = WEAPONS[WEAPON_IDX[c.id]];
-    return { icon: c.id, name: w.evoName, tag: "超维进化", cls: "evo", desc: w.evoDesc, hint: `${w.name} → ${w.evoName}` };
+    return { icon: c.id, name: w.evoName, tag: "超维流片", cls: "evo", desc: w.evoDesc, hint: `${w.name} → ${w.evoName}` };
   }
   const b = BOOSTS.find((x) => x.id === c.id);
-  return { icon: c.id, name: b.name, tag: "增益", cls: "b", desc: b.desc, hint: "" };
+  return { icon: c.id, name: b.name, tag: "应急补给", cls: "b", desc: b.desc, hint: "" };
 }
 
 function renderChoiceCard(world, c, allowPin = false, onPin = null) {
@@ -1169,13 +1290,19 @@ function renderChoiceCard(world, c, allowPin = false, onPin = null) {
   ic.appendChild(iconImg(info.icon, "", 128));
   card.appendChild(ic);
   const tx = el("div", "c-tx");
-  tx.appendChild(el("div", "c-n", `<b>${info.name}</b><em>${info.tag}</em>${c.locked ? '<em style="background:#ffad36;color:#241004">已锁</em>' : ""}`));
+  tx.appendChild(
+    el(
+      "div",
+      "c-n",
+      `<b>${info.name}</b><em>${info.tag}</em>${c.locked ? '<em style="background:#fef3c7;color:#b45309">已锁定</em>' : ""}`,
+    ),
+  );
   tx.appendChild(el("div", "c-d", info.desc));
   if (info.hint) tx.appendChild(el("div", "c-h", info.hint));
   card.appendChild(tx);
   if (allowPin) {
     const pin = el("div", "c-pin");
-    pin.title = "锁定此卡（重抽或下次升级保留）";
+    pin.title = "锁定此模块（重筛或下次升级保留）";
     pin.appendChild(iconImg("ui_pin", "", 48));
     bindTap(pin, (e) => {
       e.stopPropagation();
@@ -1198,15 +1325,15 @@ function openLevelModal() {
   av.alt = "";
   av.src = heroUrl(G.hero, 220, false, "_joy");
   head.appendChild(av);
-  head.appendChild(el("div", "lu-t", `<small>算力突破</small><b>Lv.${world.pending.lvl}</b>`));
+  head.appendChild(el("div", "lu-t", `<small>集群算力扩容</small><b>Lv.${world.pending.lvl}</b>`));
   m.body.appendChild(head);
-  m.body.appendChild(el("div", "lu-s", "选择一项装配（点右侧锁扣可保留心仪卡）"));
+  m.body.appendChild(el("div", "lu-s", "选择一项硬件模块装配（点右侧锁扣可保留心仪卡）"));
 
   const cardsWrap = el("div", "cards");
   m.body.appendChild(cardsWrap);
 
   const pickIdx = (idx) => {
-    if (Date.now() - openedAt < 260 || !levelModal) return;
+    if (Date.now() - openedAt < 240 || !levelModal) return;
     const picked = world.pending.choices[idx];
     playSfx(picked && picked.kind === "evo" ? "evo" : "select", 0, picked && picked.kind === "evo" ? 1.1 : 1);
     if (G.S.set.vib) vibrate("light");
@@ -1217,8 +1344,8 @@ function openLevelModal() {
       G.fx.levelFx(world.p.x, world.p.y);
       openLevelModal();
     } else {
-      G.resumeT = 0.35;
-      G.fx.ring(world.p.x, world.p.y, 14, 150, 0.34, 0xffffff);
+      G.resumeT = 0.32;
+      G.fx.ring(world.p.x, world.p.y, 14, 150, 0.34);
     }
   };
 
@@ -1229,7 +1356,6 @@ function openLevelModal() {
         world.toggleLockChoice(idx);
         renderCards();
       });
-      card.style.animationDelay = idx * 55 + "ms";
       bindTap(card, (e) => {
         if (e && e.target && e.target.closest && e.target.closest(".c-pin")) return;
         pickIdx(idx);
@@ -1240,7 +1366,7 @@ function openLevelModal() {
   renderCards();
 
   const rerollBtn = makeBtn("ghost reroll", "", () => {
-    if (Date.now() - openedAt < 260) return;
+    if (Date.now() - openedAt < 240) return;
     if (world.reroll()) {
       playSfx("select", 0, 0.85);
       renderCards();
@@ -1251,7 +1377,7 @@ function openLevelModal() {
   }, { quiet: true });
 
   const syncReroll = () => {
-    rerollBtn.innerHTML = `因子重抽<small>剩 ${world.rerolls} 次</small>`;
+    rerollBtn.innerHTML = `晶圆良率重筛<small>剩 ${world.rerolls} 次</small>`;
     rerollBtn.classList.toggle("off", world.rerolls <= 0);
   };
   syncReroll();
@@ -1269,23 +1395,22 @@ function openChestModal() {
 
   const top = el("div", "ch-top");
   top.appendChild(iconImg("chest", "ch-ic", 192));
-  top.appendChild(el("div", "ch-t", items.length > 1 ? `机密大金库！连获 ${items.length} 项强化` : "机密金库！免费强化 1 项"));
+  top.appendChild(el("div", "ch-t", items.length > 1 ? `量子超算金库！连获 ${items.length} 项模块` : "量子金库！免费升级 1 项模块"));
   m.body.appendChild(top);
 
   const cards = el("div", "cards");
   items.forEach((it, idx) => {
     const c = renderChoiceCard(world, it, false);
-    c.style.animationDelay = 180 + idx * 240 + "ms";
     cards.appendChild(c);
     setTimeout(() => {
       if (chestModal === m) playSfx(it.kind === "evo" ? "evo" : "select", 0, 1 + idx * 0.12);
-    }, 180 + idx * 240);
+    }, 150 + idx * 200);
   });
   m.body.appendChild(cards);
 
   m.body.appendChild(
-    makeBtn("primary", "收下装备，继续清场", () => {
-      if (Date.now() - openedAt < 300) return;
+    makeBtn("primary", "装载完毕，继续巡检", () => {
+      if (Date.now() - openedAt < 260) return;
       m.close();
       chestModal = null;
       world.closeChest();
@@ -1293,7 +1418,7 @@ function openChestModal() {
         G.fx.levelFx(world.p.x, world.p.y);
         openLevelModal();
       } else {
-        G.resumeT = 0.35;
+        G.resumeT = 0.32;
       }
     }),
   );
@@ -1304,40 +1429,43 @@ function pauseGame() {
   G.paused = true;
   stopBgm(0.15);
   const w = G.world;
-  const m = (pauseModal = createModal({ cls: "pause", title: "战局已暂停", noClose: true }));
-  m.body.appendChild(el("div", "p-info", `<span>${fmtTime(w.t)}</span><span>净除 ${w.kills}</span><span>Lv.${w.p.lvl}</span>`));
+  const stg = STAGES[w.stageIdx] || STAGES[0];
+  const m = (pauseModal = createModal({ cls: "pause", title: "产线巡检已暂停", noClose: true }));
+  m.body.appendChild(
+    el("div", "p-info", `<span>${stg.short}</span><span>${fmtTime(w.t)}</span><span>清除 ${w.kills}</span><span>Lv.${w.p.lvl}</span>`),
+  );
 
   const build = el("div", "p-build");
   w.p.weapons.forEach((wp) => {
     const s = el("div", "slot big" + (wp.evo ? " evo" : ""));
     s.appendChild(iconImg(wp.id, "", 96));
-    s.appendChild(el("em", "", wp.evo ? "★" : String(wp.lv)));
-    s.appendChild(el("span", "", wp.evo ? WEAPONS[wp.k].evoName : WEAPONS[wp.k].name));
+    s.appendChild(el("span", "", wp.evo ? WEAPONS[wp.k].evoName : `${WEAPONS[wp.k].name} Lv.${wp.lv}`));
     build.appendChild(s);
   });
   w.p.passives.forEach((ps) => {
     const s = el("div", "slot big ps");
     s.appendChild(iconImg(ps.id, "", 96));
-    s.appendChild(el("em", "", String(ps.lv)));
-    s.appendChild(el("span", "", PASSIVES[PASSIVE_IDX[ps.id]].name));
+    s.appendChild(el("span", "", `${PASSIVES[PASSIVE_IDX[ps.id]].name} Lv.${ps.lv}`));
     build.appendChild(s);
   });
   m.body.appendChild(build);
 
-  if (w.daily && w.rule.name) {
-    m.body.appendChild(el("div", "p-rule", `今日行情「${w.rule.name}」：${w.rule.desc}`));
-  }
-  m.body.appendChild(makeBtn("primary", "继续战斗", resumeGame));
+  m.body.appendChild(makeBtn("primary", "继续巡检", resumeGame));
   const row = el("div", "row2");
-  row.appendChild(makeBtn("ghost", "重新开局", () => {
+  row.appendChild(makeBtn("ghost", "重新部署", () => {
     closePause();
     startRun({ daily: w.daily });
   }));
-  row.appendChild(makeBtn("ghost", "返回主页", () => {
+  row.appendChild(makeBtn("ghost", "切换产线大厅", () => {
     closePause();
     goHome();
   }));
   m.body.appendChild(row);
+  const rowHome = el("div", "row2");
+  rowHome.appendChild(makeBtn("ghost", "← 回到 HONE 首页", () => {
+    window.location.href = "/";
+  }));
+  m.body.appendChild(rowHome);
   m.body.appendChild(settingRowsEl());
 }
 
@@ -1356,7 +1484,7 @@ function resumeGame() {
   if (G.mode === "play") startBgm();
 }
 
-// Result Screen & Poster Sharing
+// Result Screen — Cleanroom Battle Report + honeclaw GitHub Star CTA!
 function showResultScreen(sum, res) {
   const S = G.S;
   resultEl.innerHTML = "";
@@ -1364,20 +1492,31 @@ function showResultScreen(sum, res) {
   let posterJpg = null;
   const getPosterDataUrl = () => posterJpg || (posterJpg = posterCanvas.toDataURL("image/jpeg", 0.92));
 
+  // Top bar with "回到首页" on top-left
+  const topbar = el("div", "r-topbar");
+  topbar.appendChild(makeHomepageLink());
+  const coresBadge = el("div", "chip cores", `<img alt="" src="${iconUrl("core", 48)}"><b>${S.cores}</b>`);
+  bindTap(coresBadge, openTalents);
+  topbar.appendChild(coresBadge);
+  resultEl.appendChild(topbar);
+
   const wrap = el("div", "r-wrap");
+  const card = el("div", "r-card");
+  wrap.appendChild(card);
   resultEl.appendChild(wrap);
 
   const visHero = activeHeroSkin(sum.char);
+  const stg = STAGES[STAGE_IDX[sum.endStage || sum.stage || "storage"]] || STAGES[0];
   const head = el("div", "r-head");
   head.innerHTML = `
     <img class="r-hero" alt="" src="${heroUrl(visHero, 220, false, "_hurt")}">
     <div class="r-ht">
-      <small>${sum.daily ? "每日行情挑战" : "本局战报"}${res.bestTime ? "<em>新纪录</em>" : ""}</small>
+      <small>${sum.daily ? "每日集群挑战" : stg.name}${res.bestTime ? "<em>新纪录</em>" : ""}</small>
       <b>${fmtTime(sum.time)}</b>
-      <span>${getTitle(sum.time).name}${sum.cause ? ` · 遭遇「${sum.cause}」阻截` : ""}</span>
+      <span>${getTitle(S.best.time).name}${sum.cause ? ` · 遭遇「${sum.cause}」阻断` : ""}</span>
     </div>
   `;
-  wrap.appendChild(head);
+  card.appendChild(head);
 
   const mid = el("div", "r-mid");
   const posterImg = el("img", "r-poster");
@@ -1387,8 +1526,8 @@ function showResultScreen(sum, res) {
 
   const stats = el("div", "r-stats");
   stats.innerHTML = `
-    <div><b>${sum.kills}</b><small>净除噪音${res.bestKills ? "<em>新</em>" : ""}</small></div>
-    <div><b>Lv.${sum.level}</b><small>算力等级</small></div>
+    <div><b>${sum.kills}</b><small>清除异常</small></div>
+    <div><b>Lv.${sum.level}</b><small>集群等级</small></div>
     <div><b>×${sum.maxCombo}</b><small>最高连击</small></div>
   `;
   const buildRow = el("div", "r-build");
@@ -1400,38 +1539,56 @@ function showResultScreen(sum, res) {
   });
   stats.appendChild(buildRow);
   mid.appendChild(stats);
-  wrap.appendChild(mid);
+  card.appendChild(mid);
 
   const rew = el("div", "r-rew");
-  rew.innerHTML = `<div class="rw-main"><img alt="" src="${iconUrl("core", 64)}"><b>+${res.total}</b><span>阿尔法晶核</span></div>`;
+  rew.innerHTML = `<div class="rw-main"><img alt="" src="${iconUrl("core", 64)}"><b>+${res.total}</b><span>算力晶核</span></div>`;
   const chips = el("div", "rw-chips");
   res.bonus.slice(0, 3).forEach((b) => chips.appendChild(el("span", "chip2", `${b.label} +${b.n}`)));
-  res.unlocked.forEach((h) => chips.appendChild(el("span", "chip2 gold", `新特工「${h.name}」已解锁`)));
-  if (res.titleUp) chips.appendChild(el("span", "chip2 gold", `晋升段位「${res.titleUp}」`));
+  res.unlocked.forEach((h) => chips.appendChild(el("span", "chip2", `新特工「${h.name}」已解锁`)));
+  if (res.titleUp) chips.appendChild(el("span", "chip2", `晋升「${res.titleUp}」`));
   if (chips.children.length) rew.appendChild(chips);
-  wrap.appendChild(rew);
+  card.appendChild(rew);
 
-  const goal = nextGoalInfo(S);
-  const goalBar = el("div", "goal" + (goal.ratio >= 2 ? " ready" : ""));
-  goalBar.innerHTML = `
-    <div class="g-t">${goal.ratio >= 2 ? "" : "下一目标 · "}${goal.text}</div>
-    <div class="g-row"><div class="g-bar"><i style="transform:scaleX(${Math.max(0.03, Math.min(1, goal.ratio))})"></i></div><span class="g-n">${fmtGoalProgress(goal)}</span></div>
+  // Prominent honeclaw GitHub Star CTA Card!
+  const ghCard = el("a", "gh-star-card");
+  ghCard.href = HONECLAW_GITHUB_URL;
+  ghCard.target = "_blank";
+  ghCard.rel = "noopener noreferrer";
+  ghCard.innerHTML = `
+    <div class="gh-l">
+      <div class="gh-title">★ 喜欢 HONE 历险记？去 GitHub 给 honeclaw 点个 Star！</div>
+      <span class="gh-url">${HONECLAW_GITHUB_URL}</span>
+    </div>
+    <div class="gh-btn"><img alt="" src="${iconUrl("ui_star", 48)}"><span>Star · <b class="gh-stars-cnt">${ghStarsLabel}</b></span></div>
   `;
-  bindTap(goalBar, () => { if (goal.go === "talent") openTalents(); });
-  wrap.appendChild(goalBar);
+  ghCard.addEventListener("click", () => {
+    if (!S.starred) {
+      S.starred = 1;
+      S.cores += 88;
+      S.skins.gold = 1;
+      persistSave(S);
+      const badgeB = $("b", coresBadge);
+      if (badgeB) badgeB.textContent = S.cores;
+      showToast("感谢支持开源 honeclaw！已赠送 +88 算力晶核与曜金涂装！", 2800);
+    }
+  });
+  card.appendChild(ghCard);
+  refreshGithubStars();
 
-  wrap.appendChild(
-    makeBtn("primary again", "<b>再来一局</b>", () => startRun({ daily: sum.daily }), { quiet: true }),
+  card.appendChild(
+    makeBtn("primary again", "<b>再次进入产线巡检</b>", () => startRun({ daily: sum.daily }), { quiet: true }),
   );
 
-  // Share & Export Row
   const soc = el("div", "r-soc");
   const topW = sum.weapons.slice().sort((a, b) => b.dmg - a.dmg)[0];
-  const topWName = topW ? (topW.evo ? WEAPONS[WEAPON_IDX[topW.id]].evoName : WEAPONS[WEAPON_IDX[topW.id]].name) : "研报飞刃";
-  const shareText = `我在《HONE 历险记》坚守 ${fmtTime(sum.time)}，净除 ${sum.kills} 个市场噪音，主力构筑「${topWName}」，获封「${getTitle(sum.time).name}」！`;
+  const topWName = topW && WEAPONS[WEAPON_IDX[topW.id]]
+    ? (topW.evo ? WEAPONS[WEAPON_IDX[topW.id]].evoName : WEAPONS[WEAPON_IDX[topW.id]].name)
+    : "HBM 带宽飞梭";
+  const shareText = `我在《HONE 历险记》${stg.name}坚守 ${fmtTime(sum.time)}，清除 ${sum.kills} 个硬件异常，主力构筑「${topWName}」，晋升「${getTitle(S.best.time).name}」！开源仓库：${HONECLAW_GITHUB_URL}`;
 
-  const dlBtn = el("div", "sbtn gold");
-  dlBtn.append(iconImg("ui_save", "sb-i", 48), el("span", "sb-l", "保存战报图"));
+  const dlBtn = el("div", "sbtn");
+  dlBtn.append(iconImg("ui_save", "", 48), el("span", "", "下载战报图"));
   bindTap(dlBtn, () => {
     const ok = downloadPoster(posterCanvas, `hone-adventure-${fmtTime(sum.time).replace(":", "m")}s.png`);
     showToast(ok ? "高清战报海报已开始下载" : "保存失败，请长按左侧海报保存");
@@ -1439,49 +1596,31 @@ function showResultScreen(sum, res) {
   soc.appendChild(dlBtn);
 
   const cpBtn = el("div", "sbtn");
-  cpBtn.append(iconImg("ui_copy", "sb-i", 48), el("span", "sb-l", "复制战报"));
+  cpBtn.append(iconImg("ui_copy", "", 48), el("span", "", "复制战报与仓库链接"));
   bindTap(cpBtn, async () => {
     const mode = await copyPosterToClipboard(posterCanvas, shareText);
-    showToast(mode === "image" ? "战报图片已复制到剪贴板，可直接粘贴分享！" : mode === "text" ? "战绩文案已复制到剪贴板！" : "复制受限，请点击保存战报图");
+    showToast(mode === "image" ? "战报图片已复制到剪贴板！" : mode === "text" ? "战绩与 honeclaw 仓库链接已复制！" : "请点击下载战报图");
   });
   soc.appendChild(cpBtn);
-
-  if (navigator.share) {
-    const shBtn = el("div", "sbtn");
-    shBtn.append(iconImg("ui_share", "sb-i", 48), el("span", "sb-l", "系统分享"));
-    bindTap(shBtn, async () => {
-      try {
-        const blob = await new Promise((r) => posterCanvas.toBlob(r, "image/png"));
-        const file = blob ? new File([blob], "hone-adventure.png", { type: "image/png" }) : null;
-        if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ title: "HONE 历险记", text: shareText, files: [file] });
-        } else {
-          await navigator.share({ title: "HONE 历险记", text: shareText, url: window.location.href });
-        }
-      } catch {
-        // User cancelled share sheet
-      }
-    });
-    soc.appendChild(shBtn);
-  }
-  wrap.appendChild(soc);
+  card.appendChild(soc);
 
   const links = el("div", "r-links");
-  const lkRank = el("div", "lk", "战绩殿堂");
-  bindTap(lkRank, openHallOfFame);
-  const lkUp = el("div", "lk", "升级天赋");
-  bindTap(lkUp, openTalents);
-  const lkHome = el("div", "lk", "回主菜单");
-  bindTap(lkHome, goHome);
-  const lkHone = el("div", "lk", "返回 HONE");
-  bindTap(lkHone, goBackToHone);
-  links.append(lkRank, lkUp, lkHome, lkHone);
-  wrap.appendChild(links);
+  [
+    ["升级基建", openTalents],
+    ["晋升路线", openPromotionModal],
+    ["切换关卡", goHome],
+    ["荣耀殿堂", openHallOfFame],
+  ].forEach(([lbl, fn]) => {
+    const lk = el("div", "lk", lbl);
+    bindTap(lk, fn);
+    links.appendChild(lk);
+  });
+  card.appendChild(links);
 
   resultEl.classList.remove("hide");
 }
 
-// Run Lifecycle & Live AI Home Demo
+// Run Lifecycle & Live Cleanroom AI Demo
 function viewWorldDims() {
   return [G.cw / G.sc, G.ch / G.sc];
 }
@@ -1494,16 +1633,18 @@ function startHomeDemo() {
   G.world = new GameWorld({
     seed: (Math.random() * 1e9) | 0,
     char: G.S.sel,
-    talents: { might: 3, hp: 5, speed: 2, pickup: 3 },
+    stage: G.S.stage || "storage",
+    talents: { might: 3, hp: 4, speed: 2, pickup: 3 },
+    bestTime: G.S.best.time || 0,
     vw,
     vh,
     fx: G.fx.on,
   });
-  G.world.t = 38;
+  G.world.t = 32;
   G.world.wave = 1;
   G.world.nextElite = 75;
   G.bot = createAutoBot(1);
-  for (let i = 0; i < 210 && !G.world.over; i++) {
+  for (let i = 0; i < 180 && !G.world.over; i++) {
     if (G.world.pending) {
       if (G.world.pending.type === "level") G.world.choose(G.bot.pick(G.world, G.world.pending.choices));
       else G.world.closeChest();
@@ -1512,9 +1653,11 @@ function startHomeDemo() {
     G.bot.move(G.world, 1 / 30);
     G.world.update(1 / 30);
   }
+  // keep selected stage active on home demo
+  G.world.setStage(G.S.stage || "storage");
   G.fx.clear();
   G.camX = G.world.p.x;
-  G.camY = G.world.p.y + 46;
+  G.camY = G.world.p.y + 24;
 }
 
 function startRun(opts = {}) {
@@ -1528,6 +1671,7 @@ function startRun(opts = {}) {
 
   const dailyCfg = opts.daily ? getDailyChallenge(dateKey()) : null;
   const charId = dailyCfg ? dailyCfg.char : S.sel;
+  const stageId = dailyCfg ? dailyCfg.stage : opts.stage || S.stage || "storage";
   G.hero = activeHeroSkin(charId);
   G.fx.clear();
   G.fx.quiet = false;
@@ -1535,7 +1679,9 @@ function startRun(opts = {}) {
   G.world = new GameWorld({
     seed: dailyCfg ? dailyCfg.seed : (Math.random() * 1e9) | 0,
     char: charId,
+    stage: stageId,
     talents: S.talents,
+    bestTime: S.best.time || 0,
     rule: dailyCfg ? dailyCfg.rule : null,
     weapon: dailyCfg ? dailyCfg.weapon : null,
     daily: !!dailyCfg,
@@ -1565,7 +1711,8 @@ function startRun(opts = {}) {
   resetHudCache();
   hudEl.classList.remove("hide");
   hudRefs.hint.classList.toggle("hide", S.stats.runs >= 2);
-  if (dailyCfg) announce(`今日词条「${G.world.rule.name}」`, "big");
+  const stg = STAGES[STAGE_IDX[stageId]] || STAGES[0];
+  announce(dailyCfg ? `今日工况「${G.world.rule.name}」` : `进入${stg.name}`, "big");
   startBgm();
   G.last = performance.now();
 }
@@ -1697,7 +1844,7 @@ function frameLoop(now) {
       simDt = 0;
     } else if (w.over) {
       if (G.deadT <= 0) {
-        G.deadT = 1.25;
+        G.deadT = 1.15;
         if (levelModal) { levelModal.close(); levelModal = null; }
       }
       G.deadT -= dt;
@@ -1723,18 +1870,18 @@ function frameLoop(now) {
       }
       if (G.resumeT > 0) {
         G.resumeT -= dt;
-        scale = Math.min(scale, 1 - (G.resumeT / 0.35) * 0.7);
+        scale = Math.min(scale, 1 - (G.resumeT / 0.32) * 0.7);
       }
       if (w.pendLv > 0) {
         if (!G.lvArmed) {
           G.lvArmed = true;
           G.joyT = 0.9;
-          G.lvRamp = 0.3;
+          G.lvRamp = 0.28;
           fx.levelFx(w.p.x, w.p.y);
           playSfx("level");
           if (G.S.set.vib) vibrate("light");
           w.p.inv = Math.max(w.p.inv, 0.9);
-          G.zoom = 0.07;
+          G.zoom = 0.06;
         }
         G.lvRamp -= dt;
         scale = Math.min(scale, 0.16);
@@ -1770,14 +1917,16 @@ function frameLoop(now) {
       if (w.pending.type === "level") w.choose(G.bot.pick(w, w.pending.choices));
       else w.closeChest();
     }
-    if (w.over || w.t > 200) {
+    if (w.over || w.t > 180) {
       startHomeDemo();
     } else {
+      const curStage = G.S.stage || "storage";
       G.bot.move(w, dt);
       const [vw, vh] = viewWorldDims();
       w.vw = vw;
       w.vh = vh;
       stepWorldFixed(w, dt);
+      if (STAGES[w.stageIdx].id !== curStage) w.setStage(curStage);
     }
   } else {
     simDt = dt * 0.3;
@@ -1787,29 +1936,17 @@ function frameLoop(now) {
   fx.update(simDt, dt);
   const zKey = pickZoneKey(curW);
   if (zKey !== G.zoneId) {
-    if (G.mode === "play" && G.zoneId && ZONES[zKey].name && curW.t > 5) {
-      announce("切入" + ZONES[zKey].name, "big");
-      playSfx("wave", 0, 0.7);
-    }
     G.zoneId = zKey;
   }
-  lerpZone(G.zone, zKey, 1 - Math.exp(-dt * 1.5));
+  lerpZone(G.zone, zKey, 1 - Math.exp(-dt * 2.2));
   if (G.hurtT > 0) G.hurtT -= dt;
 
   const isJoy = G.mode === "play" && (G.lvArmed || (curW.pending && !curW.over) || G.joyT > 0);
   if (G.joyT > 0 && !curW.pending) G.joyT -= dt;
   G.joyK += ((isJoy ? 1 : 0) - G.joyK) * Math.min(1, dt * 10);
 
-  if (curW.p.moving && !curW.over && simDt > 0 && fx.q >= 0.6) {
-    G.trailT -= simDt;
-    if (G.trailT <= 0) {
-      G.trailT = 0.11;
-      fx.bubbles(curW.p.x - curW.p.face * 20, curW.p.y + 4, 1, 6);
-    }
-  }
-
   const follow = 1 - Math.exp(-dt * 9);
-  const yOff = G.mode === "home" ? 46 : -14;
+  const yOff = G.mode === "home" ? 28 : -10;
   G.camX += (curW.p.x - G.camX) * follow;
   G.camY += (curW.p.y + yOff - G.camY) * follow;
   if (G.zoom > 0) G.zoom = Math.max(0, G.zoom - dt * 0.22);
@@ -1817,7 +1954,7 @@ function frameLoop(now) {
   viewFrame.t = G.time;
   viewFrame.cw = G.cw;
   viewFrame.ch = G.ch;
-  viewFrame.sc = G.sc * (1 + G.zoom) * (G.mode === "home" ? 1.22 : 1);
+  viewFrame.sc = G.sc * (1 + G.zoom) * (G.mode === "home" ? 1.15 : 1);
   viewFrame.camX = G.camX + fx.shX;
   viewFrame.camY = G.camY + fx.shY;
   viewFrame.hero = G.hero;
@@ -1825,7 +1962,7 @@ function frameLoop(now) {
   viewFrame.joy = G.joyK;
   viewFrame.hurt = G.hurtT > 0 ? Math.min(1, G.hurtT / 0.3) : 0;
   viewFrame.joyst = G.mode === "play" && !G.paused ? G.joy : null;
-  viewFrame.dim = G.mode === "home" ? 0.18 : G.mode === "result" ? 0.52 : 0;
+  viewFrame.dim = G.mode === "home" ? 0.04 : G.mode === "result" ? 0.35 : 0;
   viewFrame.lite = G.R.kind !== "webgl" || fx.q < 0.5;
   viewFrame.zone = G.zone;
   viewFrame.uz = 1;
@@ -1897,7 +2034,7 @@ async function boot() {
     viewW: () => G.cw / G.sc,
     viewH: () => G.ch / G.sc,
     announce,
-    hurt: () => { G.hurtT = 0.45; },
+    hurt: () => { G.hurtT = 0.42; },
   });
   if (G.R.kind !== "webgl") G.fx.q = 0.6;
 
@@ -1936,6 +2073,8 @@ async function boot() {
   document.addEventListener("contextmenu", (e) => e.preventDefault());
 
   G.S = loadSave();
+  G.zone = cloneZone(G.S.stage || "storage");
+  G.zoneId = G.S.stage || "storage";
   setAudioPrefs(G.S.set.sfx, G.S.set.music);
   buildHudUI();
   buildHomeUI();
@@ -1943,11 +2082,12 @@ async function boot() {
   startHomeDemo();
   refreshHomeUI();
   homeEl.classList.remove("hide");
+  refreshGithubStars();
 
   const bootMask = $("#boot");
   if (bootMask) {
     bootMask.classList.add("out");
-    setTimeout(() => bootMask.parentNode && bootMask.parentNode.removeChild(bootMask), 380);
+    setTimeout(() => bootMask.parentNode && bootMask.parentNode.removeChild(bootMask), 340);
   }
 
   G.last = performance.now();
@@ -1962,10 +2102,13 @@ async function boot() {
 window.__honeAdventure = {
   G,
   version: VERSION,
+  githubUrl: HONECLAW_GITHUB_URL,
   art: ART_STATE,
   startRun,
   goHome,
+  selectStage,
   openTalents,
+  openPromotionModal,
   openHeroes,
   openCodex,
   openHallOfFame,
@@ -1974,6 +2117,7 @@ window.__honeAdventure = {
     return {
       mode: G.mode,
       paused: G.paused,
+      stage: w ? STAGES[w.stageIdx].id : G.S ? G.S.stage : "storage",
       t: w ? w.t : 0,
       kills: w ? w.kills : 0,
       lvl: w ? w.p.lvl : 0,

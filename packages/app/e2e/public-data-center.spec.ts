@@ -197,6 +197,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     );
     expect(await gamePage.evaluate(() => window.opener === null)).toBe(true);
     expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { state: () => { mode: string } } }).__honeAdventure.state().mode)).toBe("home");
+    await expect(gamePage.locator('.home a.home-pill[href="/"]')).toBeVisible();
+    await gamePage.locator('.st-pill[data-stage="gpu"]').click();
+    expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { state: () => { stage: string } } }).__honeAdventure.state().stage)).toBe("gpu");
     expect(gameErrors).toEqual([]);
     await expect(page).toHaveURL(/\/chat$/);
     await expect(draft).toHaveValue("保留这条尚未发送的问题");

@@ -1,4 +1,4 @@
-// HONE Adventure — Zero-GC Simulation World, Spatial Hash Grid, Boss AI & Auto-Play Bot
+// HONE Adventure V2 — Cleanroom AI Data Center Simulation, 6 Sector Stages, 8 Hardware Weapons & 5 Boss AIs
 
 import {
   AI_TYPE,
@@ -17,11 +17,15 @@ import {
   PASSIVES,
   PASSIVE_IDX,
   RULES,
+  STAGES,
+  STAGE_IDX,
+  STAGE_SEC,
   TALENT_BRANCHES,
   WAVE_SEC,
   WEAPONS,
   WEAPON_IDX,
   branchPoints,
+  getPromotionBonuses,
   mulberry32,
 } from "./data.js";
 
@@ -54,17 +58,32 @@ export const FX_EVT = {
   HEAL: 26,
   NOVA: 27,
   COMBOEND: 28,
+  STAGE: 29,
+  MATRIX: 30,
 };
 
-export const BULLET_KIND = { BLADE: 0, WAFER: 1 };
-export const ZONE_KIND = { MINE: 0, VORTEX: 1, PULSE: 2, BLAST: 3, EBEAM: 4 };
+export const BULLET_KIND = {
+  HBM: 0,
+  PRISM_MAIN: 1,
+  PRISM_SUB: 2,
+  DRONE: 3,
+};
+
+export const ZONE_KIND = {
+  TENSOR: 0,
+  CRYO: 1,
+  PULSE: 2,
+  BLAST: 3,
+  EBEAM: 4,
+};
+
 export const PICK_KIND = { HEART: 0, MAGNET: 1, NUKE: 2, CORE: 3, CHEST: 4 };
 
 const MAX_ENEMIES = 440;
-const MAX_BULLETS = 320;
-const MAX_EBULLETS = 240;
+const MAX_BULLETS = 360;
+const MAX_EBULLETS = 260;
 const MAX_GEMS = 420;
-const MAX_ZONES = 96;
+const MAX_ZONES = 112;
 const MAX_PICKS = 40;
 const CELL_SIZE = 40;
 const GRID_W = 72;
@@ -85,6 +104,7 @@ export class GameWorld {
     this.vh = opts.vh || 900;
     this.char = HEROES[HERO_IDX[opts.char || "hone"]] || HEROES[0];
     this.talents = opts.talents || {};
+    this.promo = getPromotionBonuses(opts.bestTime || 0);
     this.rule = (opts.rule && RULES.find((r) => r.id === opts.rule)) || {};
     this.daily = !!opts.daily;
     this.autoLevel = !opts.manualLevel;
@@ -94,6 +114,11 @@ export class GameWorld {
     this.pending = null;
     this.lockedChoice = null;
     this.uid = 0;
+
+    this.startStageIdx = STAGE_IDX[opts.stage || "storage"] ?? 0;
+    this.stageIdx = this.startStageIdx;
+    this.stageStep = 0;
+    this.stagesVisited = [STAGES[this.stageIdx].id];
 
     this.en = makePool(MAX_ENEMIES, () => ({
       x: 0, y: 0, kx: 0, ky: 0, hp: 0, maxHp: 0, type: 0, ai: 0, r: 10, sp: 0, dmg: 0,
@@ -105,12 +130,12 @@ export class GameWorld {
 
     this.bl = makePool(MAX_BULLETS, () => ({
       x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 0, kind: 0, k: 0, life: 0,
-      pierce: 0, st: 0, rot: 0, size: 1, pop: 0, t: 0, hits: [],
+      pierce: 0, st: 0, rot: 0, size: 1, pop: 0, split: 0, wl: 0, lane: 0, t: 0, hits: [],
     }));
     this.nB = 0;
 
     this.eb = makePool(MAX_EBULLETS, () => ({
-      x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 0, life: 0, src: 0,
+      x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 0, life: 0, src: 0, sq: 0,
     }));
     this.nEB = 0;
 
@@ -156,10 +181,11 @@ export class GameWorld {
     this.bossList = [];
     this.wave = 0;
     this.spawnAcc = 0;
-    this.nextElite = 60;
+    this.nextElite = 52;
     this.nextBoss = BOSS_SEC;
     this.bossIdx = 0;
     this.bossWarned = false;
+    this.bossWarnType = 0;
     this.boss = null;
     this.pendLv = 0;
     this.pulseId = 0;
@@ -169,7 +195,7 @@ export class GameWorld {
     this.lastNuke = -30;
     this.overXp = 0;
     this.revives = this.talents.revive ? 1 : 0;
-    this.rerolls = 1 + (this.talents.reroll || 0);
+    this.rerolls = 1 + (this.talents.reroll || 0) + (this.promo.reroll || 0);
     this.wipeEB = false;
     this.lastSrc = -1;
     this.hurts = 0;
@@ -188,20 +214,33 @@ export class GameWorld {
     p.hp = p.maxHp;
     this.addWeapon(opts.weapon || this.char.weapon);
 
-    // Economy branch milestone (>=6 pts): instant early level-up headstart!
-    if (branchPoints(this.talents, "economy") >= TALENT_BRANCHES[2].milestone && !this.daily) {
-      p.xp = p.need;
-      p.xp -= p.need;
+    // Cluster Orchestration milestone (>=6 pts): instant early level-up headstart
+    if (branchPoints(this.talents, "cluster") >= TALENT_BRANCHES[3].milestone && !this.daily) {
       p.lvl++;
       p.need = CURVES.xpNeed(p.lvl);
       this.pendLv++;
     }
 
+    const initType = STAGES[this.stageIdx].bias[0] ?? ENEMY_IDX.packet;
     for (let i = 0; i < 7; i++) {
       const ang = ((i + this.rnd() * 0.6) / 7) * TAU;
       const dist = 150 + this.rnd() * 80;
-      this.spawnEnemy(ENEMY_IDX.glitch, Math.cos(ang) * dist, Math.sin(ang) * dist, 0);
+      this.spawnEnemy(i % 2 === 0 ? ENEMY_IDX.packet : initType, Math.cos(ang) * dist, Math.sin(ang) * dist, 0);
     }
+  }
+
+  stage() {
+    return STAGES[this.stageIdx];
+  }
+
+  setStage(stageIdOrIdx) {
+    const idx = typeof stageIdOrIdx === "number" ? stageIdOrIdx : STAGE_IDX[stageIdOrIdx];
+    if (idx == null || idx < 0 || idx >= STAGES.length) return false;
+    this.stageIdx = idx;
+    const id = STAGES[idx].id;
+    if (this.stagesVisited.indexOf(id) < 0) this.stagesVisited.push(id);
+    this.recalc();
+    return true;
   }
 
   plv(id) {
@@ -216,33 +255,59 @@ export class GameWorld {
     const st = p.st;
     const mod = this.char.mod;
     const tal = this.talents;
+    const prm = this.promo;
     const rule = this.rule;
+    const smod = STAGES[this.stageIdx].mod || {};
 
-    const offenseMilestone = branchPoints(tal, "offense") >= TALENT_BRANCHES[0].milestone ? 1.08 : 1;
-    const defenseMilestone = branchPoints(tal, "defense") >= TALENT_BRANCHES[1].milestone ? 2 : 0;
+    const interconnectSyn = branchPoints(tal, "interconnect") >= TALENT_BRANCHES[0].milestone ? 1.09 : 1;
+    const lithoSyn = branchPoints(tal, "litho") >= TALENT_BRANCHES[1].milestone ? 0.06 : 0;
+    const thermalSyn = branchPoints(tal, "thermal") >= TALENT_BRANCHES[2].milestone ? 2 : 0;
 
     st.might =
-      (1 + 0.07 * (tal.might || 0) + 0.13 * this.plv("leverage") + 0.07 * p.boosts) *
-      offenseMilestone *
+      (1 +
+        0.07 * (tal.might || 0) +
+        0.14 * this.plv("overvolt") +
+        0.08 * p.boosts +
+        (prm.might || 0) +
+        (smod.might || 0)) *
+      interconnectSyn *
       (rule.might || 1);
+
     st.maxHp = Math.round(
-      (100 + 15 * (tal.hp || 0) + 28 * this.plv("margin") + (mod.maxHp || 0)) * (rule.hpMul || 1),
+      (100 + 16 * (tal.hp || 0) + 30 * this.plv("ecc") + (mod.maxHp || 0) + (prm.maxHp || 0)) * (rule.hpMul || 1),
     );
-    st.armor = this.plv("margin") + defenseMilestone;
+    st.armor = this.plv("ecc") + thermalSyn + (prm.armor || 0);
     st.speed =
-      152 * (1 + 0.035 * (tal.speed || 0) + 0.09 * this.plv("momentum") + (mod.speed || 0)) * (rule.speedAll || 1);
+      154 * (1 + 0.038 * (tal.speed || 0) + 0.1 * this.plv("fabric") + (mod.speed || 0)) * (rule.speedAll || 1);
     st.pickup =
-      64 * (1 + 0.14 * (tal.pickup || 0) + 0.4 * this.plv("siphon") + (mod.pickup || 0)) * (rule.pickupMul || 1);
+      66 *
+      (1 + 0.15 * (tal.pickup || 0) + 0.42 * this.plv("reticle") + (mod.pickup || 0) + (prm.pickup || 0)) *
+      (rule.pickupMul || 1);
     st.xpMul =
-      (1 + 0.05 * (tal.pickup || 0) + 0.06 * this.plv("siphon") + (mod.xpMul || 0)) * (rule.xpMul || 1);
-    st.cd = Math.max(0.38, 1 - 0.03 * (tal.haste || 0) - 0.1 * this.plv("haste") + (mod.cd || 0));
-    st.area = 1 + 0.15 * this.plv("area");
-    st.crit = 0.05 + 0.03 * (tal.crit || 0) + 0.1 * this.plv("sharpe") + (mod.crit || 0);
-    st.critMul = 2.0 + 0.06 * (tal.crit || 0) + 0.18 * this.plv("sharpe");
-    st.dur = 1 + 0.16 * this.plv("compound");
-    st.pspd = 1 + 0.12 * this.plv("compound");
-    st.regen = 0.7 * this.plv("dividend");
-    st.coreMul = 1 + 0.12 * (tal.core || 0);
+      (1 +
+        0.05 * (tal.pickup || 0) +
+        0.07 * this.plv("reticle") +
+        (mod.xpMul || 0) +
+        (prm.xpMul || 0) +
+        (smod.xpMul || 0)) *
+      (rule.xpMul || 1);
+    st.cd = Math.max(
+      0.36,
+      1 -
+        0.035 * (tal.haste || 0) -
+        0.1 * this.plv("clock") +
+        (mod.cd || 0) +
+        (prm.cd || 0) +
+        (smod.cdMul || 0),
+    );
+    st.area = 1 + 0.06 * (tal.area || 0) + 0.15 * this.plv("waveguide");
+    st.crit = 0.05 + 0.03 * (tal.crit || 0) + 0.1 * this.plv("fp8") + lithoSyn + (mod.crit || 0) + (prm.crit || 0);
+    st.critMul =
+      2.0 + 0.07 * (tal.crit || 0) + 0.2 * this.plv("fp8") + (prm.critDmg || 0) + (smod.critDmg || 0);
+    st.dur = 1 + 0.07 * (tal.proj || 0) + 0.18 * this.plv("manifold");
+    st.pspd = 1 + 0.07 * (tal.proj || 0) + 0.14 * this.plv("manifold") + (smod.projSpeed || 0);
+    st.regen = 0.35 * (tal.regen || 0) + 0.8 * this.plv("ups");
+    st.coreMul = 1 + 0.13 * (tal.core || 0) + (smod.coreBonus || 0);
     st.thorns = mod.thorns || 0;
 
     if (st.maxHp > p.maxHp && p.maxHp > 0) p.hp += st.maxHp - p.maxHp;
@@ -258,9 +323,10 @@ export class GameWorld {
   }
 
   addWeapon(id) {
-    const k = WEAPON_IDX[id];
+    const k = WEAPON_IDX[id] ?? 0;
+    const realId = WEAPONS[k].id;
     const w = {
-      id, k, lv: 1, evo: false, t: 0.28, ang: this.rnd() * TAU, ph: 0, on: 0, onT: 0,
+      id: realId, k, lv: 1, evo: false, t: 0.25, ang: this.rnd() * TAU, ph: 0, on: 0, onT: 0,
       vis: 0, bt: 0, tick: 0, extra: 0, extraT: 0, waveT: 2, pos: new Float32Array(32), np: 0,
     };
     this.p.weapons.push(w);
@@ -428,10 +494,10 @@ export class GameWorld {
       p.boosts++;
       this.recalc();
     } else if (c.id === "b_heal") {
-      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.38);
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4);
       this.fx && this.fx(FX_EVT.HEAL, p.x, p.y);
     } else if (c.id === "b_core") {
-      this.coresPicked += 15;
+      this.coresPicked += 18;
     }
   }
 
@@ -508,7 +574,7 @@ export class GameWorld {
     e.ky = 0;
     e.type = type;
     e.ai = def.ai;
-    const scale = def.boss ? Math.pow(1.8, Math.floor(this.bossIdx / 4)) : this.hpMulNow;
+    const scale = def.boss ? Math.pow(1.65, Math.floor(this.bossIdx / 5)) : this.hpMulNow;
     e.maxHp = e.hp = Math.round(def.hp * scale * (elite ? 12 : 1));
     e.r = def.r * (elite ? 1.6 : 1);
     e.sp = def.sp * (def.boss ? 1 : this.spMulNow) * (this.rule.speedAll || 1);
@@ -564,26 +630,39 @@ export class GameWorld {
   }
 
   typeW(def, t) {
-    const ramp = Math.min(1, (t - def.from) / 20 + 0.15);
-    return def.k === 0 ? Math.max(3.5, 10 - t / 50) : def.w * ramp;
+    let w = def.id === "packet" && t > 180 ? Math.max(2, 10 - (t - 180) * 0.025) : def.w;
+    const bias = STAGES[this.stageIdx].bias;
+    if (bias && bias.indexOf(def.k) >= 0) w *= 1.85;
+    return w;
   }
 
   pickType() {
     const t = this.t;
-    let total = 0;
+    const bias = STAGES[this.stageIdx].bias;
+    let sum = 0;
     for (let i = 0; i < 7; i++) {
       const def = ENEMIES[i];
-      if (t >= def.from) total += this.typeW(def, t);
+      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 12);
+      if (unlocked) sum += this.typeW(def, t);
     }
-    let roll = this.rnd() * total;
+    let roll = this.rnd() * sum;
     for (let i = 0; i < 7; i++) {
       const def = ENEMIES[i];
-      if (t >= def.from) {
+      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 12);
+      if (unlocked) {
         roll -= this.typeW(def, t);
         if (roll <= 0) return i;
       }
     }
     return 0;
+  }
+
+  nextBossTypeIndex() {
+    const stage = STAGES[this.stageIdx];
+    if (stage.id === "hyperscale") {
+      return ENEMY_IDX[BOSS_IDS[this.bossIdx % BOSS_IDS.length]];
+    }
+    return ENEMY_IDX[stage.bossId];
   }
 
   addGem(x, y, val) {
@@ -634,7 +713,7 @@ export class GameWorld {
     return z;
   }
 
-  shootE(x, y, dx, dy, sp, r, dmg, src) {
+  shootE(x, y, dx, dy, sp, r, dmg, src, sq = 0) {
     if (this.nEB >= MAX_EBULLETS) return;
     const b = this.eb[this.nEB++];
     b.x = x;
@@ -645,6 +724,7 @@ export class GameWorld {
     b.dmg = dmg;
     b.life = 6;
     b.src = src;
+    b.sq = sq;
   }
 
   addBullet(kind, k, x, y, vx, vy, r, dmg, pierce, life) {
@@ -664,6 +744,9 @@ export class GameWorld {
     b.rot = 0;
     b.size = 1;
     b.pop = 0;
+    b.split = 0;
+    b.wl = 0;
+    b.lane = 0;
     b.t = 0;
     b.hits.length = 0;
     return b;
@@ -689,68 +772,68 @@ export class GameWorld {
       gCell[i] = cell;
       gStart[cell + 1]++;
     }
-    for (let i = 0; i < GRID_W * GRID_H; i++) gStart[i + 1] += gStart[i];
-    const gCur = this.gCur;
-    for (let i = 0; i < GRID_W * GRID_H; i++) gCur[i] = gStart[i];
-    for (let i = 0; i < nE; i++) this.gItems[gCur[gCell[i]]++] = i;
+    for (let i = 1; i <= GRID_W * GRID_H; i++) gStart[i] += gStart[i - 1];
+    this.gCur.set(gStart.subarray(0, GRID_W * GRID_H));
+    for (let i = 0; i < nE; i++) {
+      this.gItems[this.gCur[gCell[i]]++] = i;
+    }
   }
 
   query(x, y, rad) {
-    let x0 = ((x - rad - 20 - this.gox) / CELL_SIZE) | 0;
-    let x1 = ((x + rad + 20 - this.gox) / CELL_SIZE) | 0;
-    let y0 = ((y - rad - 20 - this.goy) / CELL_SIZE) | 0;
-    let y1 = ((y + rad + 20 - this.goy) / CELL_SIZE) | 0;
+    const pad = rad + 52;
+    let x0 = ((x - pad - this.gox) / CELL_SIZE) | 0;
+    let x1 = ((x + pad - this.gox) / CELL_SIZE) | 0;
+    let y0 = ((y - pad - this.goy) / CELL_SIZE) | 0;
+    let y1 = ((y + pad - this.goy) / CELL_SIZE) | 0;
     if (x0 < 0) x0 = 0;
     if (y0 < 0) y0 = 0;
     if (x1 >= GRID_W) x1 = GRID_W - 1;
     if (y1 >= GRID_H) y1 = GRID_H - 1;
+
+    const en = this.en;
     const gStart = this.gStart;
     const gItems = this.gItems;
-    const en = this.en;
     const q = this.q;
     let count = 0;
+
     for (let cy = y0; cy <= y1; cy++) {
       const row = cy * GRID_W;
       for (let cx = x0; cx <= x1; cx++) {
-        const cell = row + cx;
-        for (let idx = gStart[cell], end = gStart[cell + 1]; idx < end; idx++) {
-          const ei = gItems[idx];
-          const e = en[ei];
-          if (e.dead) continue;
-          const dx = e.x - x;
-          const dy = e.y - y;
-          const rr = rad + e.r;
-          if (dx * dx + dy * dy <= rr * rr) q[count++] = ei;
+        const s = gStart[row + cx];
+        const eIdx = gStart[row + cx + 1];
+        for (let k = s; k < eIdx; k++) {
+          const idx = gItems[k];
+          const m = en[idx];
+          if (m.dead) continue;
+          const dx = m.x - x;
+          const dy = m.y - y;
+          const rr = rad + m.r;
+          if (dx * dx + dy * dy <= rr * rr) q[count++] = idx;
         }
       }
     }
     return count;
   }
 
-  hit(e, baseDmg, weaponK, kb, kx, ky) {
+  hit(e, baseDmg, weaponK, kb, dirX, dirY) {
     if (e.dead) return 0;
     const st = this.p.st;
-    let dmg = baseDmg * st.might;
-    let crit = 0;
-    if (this.rnd() < st.crit) {
-      dmg *= st.critMul;
-      crit = 1;
-    }
-    dmg = Math.max(1, Math.round(dmg * (0.9 + 0.2 * this.rnd())));
+    const crit = this.rnd() < st.crit ? 1 : 0;
+    const dmg = Math.max(1, Math.round(baseDmg * st.might * (crit ? st.critMul : 1)));
     e.hp -= dmg;
-    e.flash = 0.1;
-    this.dmgBy[weaponK] += dmg;
-    if (kb) {
+    e.flash = 0.11;
+    if (kb > 0) {
       const f = kb / e.wt;
-      e.kx += kx * f;
-      e.ky += ky * f;
+      e.kx += dirX * f;
+      e.ky += dirY * f;
     }
+    if (weaponK >= 0) this.dmgBy[weaponK] += dmg;
     this.fx && this.fx(FX_EVT.HIT, e.x, e.y, dmg, crit, weaponK);
     if (e.hp <= 0) this.kill(e, crit);
     return dmg;
   }
 
-  explode(x, y, rad, dmg, weaponK, kb) {
+  explode(x, y, rad, dmg, weaponK, kb, matrix = 0) {
     const n = this.query(x, y, rad);
     for (let i = 0; i < n; i++) {
       const e = this.en[this.q[i]];
@@ -759,7 +842,7 @@ export class GameWorld {
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
       this.hit(e, dmg, weaponK, kb, dx / d, dy / d);
     }
-    this.fx && this.fx(FX_EVT.BOOM, x, y, rad, weaponK);
+    this.fx && this.fx(matrix ? FX_EVT.MATRIX : FX_EVT.BOOM, x, y, rad, weaponK);
   }
 
   nova(rad, kb, dmg) {
@@ -797,16 +880,16 @@ export class GameWorld {
       this.elites++;
       this.addPickup(PICK_KIND.CHEST, e.x, e.y, 1);
     }
-    if (e.type === ENEMY_IDX.bubble_mob) {
+    if (e.type === ENEMY_IDX.leak) {
       for (let i = 0; i < 3; i++) {
         const a = this.rnd() * TAU;
-        const sub = this.spawnEnemy(ENEMY_IDX.mini, e.x + Math.cos(a) * 10, e.y + Math.sin(a) * 10, 0);
+        const sub = this.spawnEnemy(ENEMY_IDX.frag, e.x + Math.cos(a) * 10, e.y + Math.sin(a) * 10, 0);
         if (sub) {
           sub.kx = Math.cos(a) * 165;
           sub.ky = Math.sin(a) * 165;
         }
       }
-    } else if (e.type === ENEMY_IDX.margin_bomb) {
+    } else if (e.type === ENEMY_IDX.short) {
       const z = this.addZone();
       if (z) {
         z.kind = ZONE_KIND.BLAST;
@@ -821,12 +904,12 @@ export class GameWorld {
     const roll = this.rnd();
     if (roll < 0.013) {
       if (p.hp < p.maxHp * 0.92) this.addPickup(PICK_KIND.HEART, e.x, e.y, 1);
-    } else if (roll < 0.044) {
+    } else if (roll < 0.046) {
       this.addPickup(PICK_KIND.CORE, e.x, e.y, 1 + ((this.rnd() * 3) | 0));
-    } else if (roll < 0.049 && this.t - this.lastMagnet > 35) {
+    } else if (roll < 0.051 && this.t - this.lastMagnet > 35) {
       this.lastMagnet = this.t;
       this.addPickup(PICK_KIND.MAGNET, e.x, e.y, 1);
-    } else if (roll < 0.052 && this.t - this.lastNuke > 45) {
+    } else if (roll < 0.054 && this.t - this.lastNuke > 45) {
       this.lastNuke = this.t;
       this.addPickup(PICK_KIND.NUKE, e.x, e.y, 1);
     }
@@ -871,13 +954,13 @@ export class GameWorld {
     this.comboIdx = 0;
     this.comboT = 0;
     this.fx && this.fx(FX_EVT.HURT, dmg, p.x, p.y);
-    if (p.st.thorns) this.nova(100, 390, 14);
+    if (p.st.thorns) this.nova(105, 390, 16);
     if (p.hp <= 0) {
       if (this.revives > 0) {
         this.revives--;
         p.hp = Math.round(p.maxHp * 0.5);
         p.inv = 2.5;
-        this.nova(225, 620, 65);
+        this.nova(225, 620, 68);
         this.wipeEB = true;
         this.fx && this.fx(FX_EVT.REVIVE, p.x, p.y);
       } else {
@@ -942,6 +1025,17 @@ export class GameWorld {
     this.dmgMulNow = CURVES.dmgMul(t);
     this.spMulNow = CURVES.spMul(t);
 
+    // Progressive Sector Pipeline Transition every STAGE_SEC (75s)
+    const stepNow = Math.floor(t / STAGE_SEC);
+    if (stepNow !== this.stageStep) {
+      this.stageStep = stepNow;
+      const nextIdx = (this.startStageIdx + stepNow) % STAGES.length;
+      if (nextIdx !== this.stageIdx) {
+        this.setStage(nextIdx);
+        this.fx && this.fx(FX_EVT.STAGE, nextIdx);
+      }
+    }
+
     const sp = p.st.speed;
     p.x += p.mx * sp * dt;
     p.y += p.my * sp * dt;
@@ -997,7 +1091,7 @@ export class GameWorld {
   findNear() {
     const p = this.p;
     let best = null;
-    let bestD2 = 385 * 385;
+    let bestD2 = 395 * 395;
     for (let i = 0; i < this.nE; i++) {
       const e = this.en[i];
       const dx = e.x - p.x;
@@ -1043,7 +1137,7 @@ export class GameWorld {
       this.onWave(wv);
     }
     let target = CURVES.target(t) * countMul;
-    if (this.boss) target *= 0.6;
+    if (this.boss) target *= 0.62;
     this.spawnAcc = Math.min(8, this.spawnAcc + CURVES.rate(t) * countMul * dt);
     let loops = 0;
     while (this.spawnAcc >= 1 && loops++ < 10) {
@@ -1058,35 +1152,37 @@ export class GameWorld {
       for (let i = 0; i < 36; i++) {
         const a = (i / 36) * TAU;
         const r = 175 + (i % 3) * 22;
-        this.spawnEnemy(ENEMY_IDX.glitch, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 1.25, 0);
+        this.spawnEnemy(ENEMY_IDX.packet, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 1.25, 0);
       }
       this.addPickup(PICK_KIND.NUKE, p.x + p.face * 34, p.y - 4, 1);
       this.lastNuke = t;
     }
     if (t >= this.nextElite) {
       const eliteMul = this.rule.eliteMul || 1;
-      this.nextElite += (t < 300 ? 120 : 40) / eliteMul;
-      const pool = [ENEMY_IDX.spam];
-      if (t >= 180) pool.push(ENEMY_IDX.crash);
-      if (t >= 140) pool.push(ENEMY_IDX.rumor);
-      if (t >= 220) pool.push(ENEMY_IDX.bubble_mob);
+      this.nextElite += (t < 240 ? 95 : 38) / eliteMul;
+      const pool = [ENEMY_IDX.thermal];
+      if (t >= 90) pool.push(ENEMY_IDX.crosstalk);
+      if (t >= 130) pool.push(ENEMY_IDX.surge);
+      if (t >= 165) pool.push(ENEMY_IDX.leak);
       this.spawnPos();
       const el = this.spawnEnemy(pool[(this.rnd() * pool.length) | 0], this.sx, this.sy, 1);
       if (el && this.fx) this.fx(FX_EVT.ELITE, el.x, el.y);
     }
     if (!this.bossWarned && t >= this.nextBoss - 3) {
       this.bossWarned = true;
-      this.fx && this.fx(FX_EVT.BOSSWARN, this.bossIdx % 4);
+      this.bossWarnType = this.nextBossTypeIndex();
+      this.fx && this.fx(FX_EVT.BOSSWARN, this.bossWarnType - 9);
     }
     if (t >= this.nextBoss) {
       this.nextBoss += BOSS_SEC;
       this.bossWarned = false;
-      const b = this.spawnEnemy(ENEMY_IDX[BOSS_IDS[this.bossIdx % 4]], p.x, p.y - this.vh / 2 - 50, 0);
+      const bType = this.bossWarnType || this.nextBossTypeIndex();
+      const b = this.spawnEnemy(bType, p.x, p.y - this.vh / 2 - 50, 0);
       this.bossIdx++;
       if (b) {
         this.boss = b;
-        b.stT = 2;
-        b.a1 = 5;
+        b.stT = 1.8;
+        b.a1 = 4.5;
         this.fx && this.fx(FX_EVT.BOSS, b.x, b.y, b.boss);
       }
     }
@@ -1099,7 +1195,7 @@ export class GameWorld {
     const mode = w % 3;
     if (mode === 1) {
       const cnt = Math.min(44, 12 + w * 2);
-      const tp = this.t > 200 && this.rnd() < 0.5 ? ENEMY_IDX.fomo : ENEMY_IDX.glitch;
+      const tp = this.t > 140 && this.rnd() < 0.5 ? ENEMY_IDX.jitter : ENEMY_IDX.packet;
       for (let i = 0; i < cnt; i++) {
         const a = (i / cnt) * TAU;
         this.spawnEnemy(tp, p.x + Math.cos(a) * (this.vw / 2 + 50), p.y + Math.sin(a) * (this.vw / 2 + 50) * 1.5, 0);
@@ -1110,7 +1206,7 @@ export class GameWorld {
       const span = this.vh * 0.36;
       for (let i = 0; i < cnt; i++) {
         const g = this.spawnEnemy(
-          ENEMY_IDX.hallucination,
+          ENEMY_IDX.halluc,
           p.x - dir * (this.vw / 2 + 40 + (i % 4) * 26),
           p.y - span + ((i + 0.5) / cnt) * span * 2,
           0,
@@ -1130,7 +1226,7 @@ export class GameWorld {
         const rr = 70 * Math.sqrt(this.rnd());
         const ra = this.rnd() * TAU;
         this.spawnEnemy(
-          ENEMY_IDX.fomo,
+          ENEMY_IDX.jitter,
           p.x + Math.cos(ang) * dist * 0.7 + Math.cos(ra) * rr,
           p.y + Math.sin(ang) * dist + Math.sin(ra) * rr,
           0,
@@ -1163,7 +1259,7 @@ export class GameWorld {
       }
       const nx = dx / dist;
       const ny = dy / dist;
-      let sp = e.sp * (e.slow > 0 ? 0.5 : 1);
+      let sp = e.sp * (e.slow > 0 ? 0.52 : 1);
       let vx = nx;
       let vy = ny;
       switch (e.ai) {
@@ -1182,16 +1278,16 @@ export class GameWorld {
             vy = nx * 0.35;
           }
           e.stT -= dt;
-          if (e.stT <= 0 && dist < 300) {
-            e.stT = e.elite ? 1.5 : 2.8;
+          if (e.stT <= 0 && dist < 305) {
+            e.stT = e.elite ? 1.5 : 2.75;
             e.swell = 0.25;
-            this.shootE(e.x, e.y, nx, ny, 114, 6, 10, e.type);
+            this.shootE(e.x, e.y, nx, ny, 118, 6, 10, e.type, 1);
             this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 0);
           }
           break;
         case AI_TYPE.DASH:
           if (e.st === 0) {
-            if (dist < 150) {
+            if (dist < 155) {
               e.st = 1;
               e.stT = 0.65;
               e.ax = nx;
@@ -1253,235 +1349,228 @@ export class GameWorld {
     }
   }
 
+  // 5 Distinct Sector Boss AIs
   bossAI(e, dt, dist, nx, ny) {
-    const baseSp = e.sp * (e.slow > 0 ? 0.7 : 1);
+    const baseSp = e.sp * (e.slow > 0 ? 0.72 : 1);
     e.mvx = nx;
     e.mvy = ny;
     const catchup = dist > 520 ? 2.2 : 1;
-    const rage = e.hp < e.maxHp * 0.4;
+    const rage = e.hp < e.maxHp * 0.42;
 
+    // Boss 1: Storage Colossus — Bad-Block Sector Wall Volleys + Leak Minions
     if (e.boss === 1) {
       e.stT -= dt;
       e.a1 -= dt;
       if (e.stT < 0.45) e.swell = 0.3;
       if (e.stT <= 0) {
-        const cnt = rage ? 16 : 12;
-        const off = this.rnd() * TAU;
-        for (let i = 0; i < cnt; i++) {
-          const a = off + (i / cnt) * TAU;
-          this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 106, 7, 12, e.type);
+        const baseA = Math.atan2(ny, nx);
+        const px = -Math.sin(baseA);
+        const py = Math.cos(baseA);
+        const gap = 2 + ((this.rnd() * 3) | 0);
+        for (let i = 0; i < 7; i++) {
+          if (i === gap) continue;
+          const off = (i - 3) * 28;
+          this.shootE(e.x + px * off, e.y + py * off, Math.cos(baseA), Math.sin(baseA), rage ? 132 : 112, 7, 13, e.type, 1);
         }
-        e.stT = rage ? 2.3 : 3.6;
+        e.stT = rage ? 2.0 : 3.1;
         this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 1);
       }
       if (e.a1 <= 0) {
-        e.a1 = 9;
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * TAU;
-          this.spawnEnemy(ENEMY_IDX.glitch, e.x + Math.cos(a) * 64, e.y + Math.sin(a) * 64, 0);
+        e.a1 = 8.5;
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * TAU;
+          this.spawnEnemy(ENEMY_IDX.packet, e.x + Math.cos(a) * 64, e.y + Math.sin(a) * 64, 0);
         }
       }
-      return baseSp * (rage ? 1.35 : 1) * catchup;
+      return baseSp * (rage ? 1.32 : 1) * catchup;
     }
 
+    // Boss 2: Optical Prism — Rotating Multi-Beam Refraction + High-Speed Dash
     if (e.boss === 2) {
       e.stT -= dt;
       if (e.st === 0) {
         if (e.stT <= 0) {
+          const arms = rage ? 4 : 3;
+          const base = Math.atan2(ny, nx);
+          for (let i = 0; i < arms; i++) {
+            const z = this.addZone();
+            if (!z) break;
+            z.kind = ZONE_KIND.EBEAM;
+            z.own = e;
+            z.x = e.x;
+            z.y = e.y;
+            z.a = base + (i / arms) * TAU;
+            z.av = rage ? 0.85 : 0.65;
+            z.len = 520;
+            z.r = 10;
+            z.life = 2.6;
+            z.arm = 0.85;
+            z.dmg = 21;
+            z.src = e.type;
+          }
           e.st = 1;
-          e.stT = 0.7;
-          e.ax = nx;
-          e.ay = ny;
-          e.tele = 330;
-          e.a1 = 0;
+          e.stT = 2.7;
         }
         return baseSp * catchup;
       }
       if (e.st === 1) {
         if (e.stT <= 0) {
           e.st = 2;
-          e.stT = 0.55;
+          e.stT = 0.6;
+          e.ax = nx;
+          e.ay = ny;
+          e.tele = 320;
+        }
+        return baseSp * 0.25;
+      }
+      if (e.st === 2) {
+        if (e.stT <= 0) {
+          e.st = 3;
+          e.stT = 0.52;
           e.tele = 0;
           this.fx && this.fx(FX_EVT.DASH, e.x, e.y);
         }
         return 0;
       }
-      if (e.st === 2) {
-        e.mvx = e.ax;
-        e.mvy = e.ay;
-        if (e.stT <= 0) {
-          e.a1++;
-          if (e.a1 < 3) {
-            e.st = 1;
-            e.stT = rage ? 0.4 : 0.55;
-            e.ax = nx;
-            e.ay = ny;
-            e.tele = 330;
-          } else {
-            e.st = 3;
-            e.stT = 0.5;
-            e.a2 = 0;
-          }
-        }
-        return 435;
-      }
+      e.mvx = e.ax;
+      e.mvy = e.ay;
       if (e.stT <= 0) {
-        if (e.a2 < 2) {
-          const baseA = Math.atan2(ny, nx);
-          const cnt = rage ? 11 : 9;
-          for (let i = 0; i < cnt; i++) {
-            const a = baseA + (i - (cnt - 1) / 2) * 0.2;
-            this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 136, 7, 13, e.type);
-          }
-          e.a2++;
-          e.stT = 0.55;
-          e.swell = 0.3;
-          this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 1);
-        } else {
-          e.st = 0;
-          e.stT = 1.5;
-        }
+        e.st = 0;
+        e.stT = 1.6;
       }
-      return baseSp * 0.3;
+      return 430;
     }
 
+    // Boss 3: CPU Arbiter — Orthogonal Instruction-Pipeline Lock Gates + Clock Spiral
     if (e.boss === 3) {
       e.stT -= dt;
       if (e.st === 0) {
         e.a2 -= dt;
         if (e.a2 <= 0) {
-          e.a2 = rage ? 0.11 : 0.15;
-          e.a1 += 0.42;
-          for (let i = 0; i < 2; i++) {
-            const a = e.a1 + i * Math.PI;
-            this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 102, 6, 12, e.type);
+          e.a2 = rage ? 0.13 : 0.18;
+          e.a1 += Math.PI * 0.25;
+          for (let i = 0; i < 4; i++) {
+            const a = e.a1 + i * (Math.PI / 2);
+            this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 108, 6, 13, e.type, 1);
           }
         }
         if (e.stT <= 0) {
           e.st = 1;
           e.stT = 0.4;
-          e.a2 = 0;
+          const rot0 = (this.bossIdx % 2) * (Math.PI / 4);
+          for (let i = 0; i < 4; i++) {
+            const z = this.addZone();
+            if (!z) break;
+            z.kind = ZONE_KIND.EBEAM;
+            z.own = e;
+            z.x = e.x;
+            z.y = e.y;
+            z.a = rot0 + i * (Math.PI / 2);
+            z.av = 0.35;
+            z.len = 540;
+            z.r = 10;
+            z.life = 2.2;
+            z.arm = 0.8;
+            z.dmg = 23;
+            z.src = e.type;
+          }
+          e.stT = 2.3;
         }
-        return baseSp * 0.5 * catchup;
+        return baseSp * 0.55 * catchup;
       }
-      if (e.st === 1) {
+      if (e.stT <= 0) {
+        e.st = 0;
+        e.stT = 3.0;
+      }
+      return baseSp * 0.2;
+    }
+
+    // Boss 4: Tensor GPU Furnace — 2×2 Thermal Matrix Tiles + Radial Barrages
+    if (e.boss === 4) {
+      e.stT -= dt;
+      if (e.st === 0) {
         if (e.stT <= 0) {
-          if (e.a2 < 2) {
-            const p = this.p;
-            for (let i = 0; i < 3; i++) {
+          const p = this.p;
+          const step = 108;
+          for (let gx = -0.5; gx <= 0.5; gx += 1) {
+            for (let gy = -0.5; gy <= 0.5; gy += 1) {
               const z = this.addZone();
               if (!z) break;
               z.kind = ZONE_KIND.BLAST;
-              z.x = p.x + (i ? (this.rnd() - 0.5) * 190 : 0);
-              z.y = p.y + (i ? (this.rnd() - 0.5) * 190 : 0);
-              z.r = 58;
-              z.life = 0.95;
-              z.dmg = 22;
+              z.x = p.x + gx * step + (this.rnd() - 0.5) * 24;
+              z.y = p.y + gy * step + (this.rnd() - 0.5) * 24;
+              z.r = 50;
+              z.life = 1.05;
+              z.dmg = 24;
               z.src = e.type;
             }
-            e.a2++;
-            e.stT = 1.15;
-            e.swell = 0.3;
-          } else {
-            e.st = 2;
-            e.stT = 1.2;
-            for (let i = 0; i < 6; i++) {
-              const a = (i / 6) * TAU;
-              this.spawnEnemy(ENEMY_IDX.fomo, e.x + Math.cos(a) * 60, e.y + Math.sin(a) * 60, 0);
-            }
           }
+          e.st = 1;
+          e.stT = 1.25;
+          e.swell = 0.3;
         }
         return baseSp * catchup;
       }
       if (e.stT <= 0) {
+        const cnt = rage ? 16 : 12;
+        const off = this.rnd() * TAU;
+        for (let i = 0; i < cnt; i++) {
+          const a = off + (i / cnt) * TAU;
+          this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 124, 7, 14, e.type, 1);
+        }
+        this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 1);
         e.st = 0;
-        e.stT = 3.2;
-        e.a2 = 0;
+        e.stT = rage ? 2.1 : 2.9;
       }
-      return baseSp * catchup;
+      return baseSp * 0.65 * catchup;
     }
 
-    // Boss 4: Black Swan Leviathan
+    // Boss 5: EUV Lithography Colossus — Reticle Crosshair Lock + Exposure Beam + Mites
     e.stT -= dt;
     if (e.st === 0) {
       if (e.stT <= 0) {
-        const z = this.addZone();
-        if (z) {
-          const dir = this.rnd() < 0.5 ? 1 : -1;
-          z.kind = ZONE_KIND.EBEAM;
-          z.own = e;
-          z.x = e.x;
-          z.y = e.y;
-          z.a = Math.atan2(ny, nx) - dir * 1.0;
-          z.av = dir * (rage ? 1.02 : 0.84);
-          z.len = 560;
-          z.r = 11;
-          z.life = 3.3;
-          z.arm = 1.0;
-          z.dmg = 24;
+        const p = this.p;
+        for (let i = 0; i < 3; i++) {
+          const z = this.addZone();
+          if (!z) break;
+          z.kind = ZONE_KIND.BLAST;
+          z.x = p.x + (i ? (this.rnd() - 0.5) * 200 : 0);
+          z.y = p.y + (i ? (this.rnd() - 0.5) * 200 : 0);
+          z.r = 56;
+          z.life = 0.95;
+          z.dmg = 26;
           z.src = e.type;
         }
+        const zb = this.addZone();
+        if (zb) {
+          const dir = this.rnd() < 0.5 ? 1 : -1;
+          zb.kind = ZONE_KIND.EBEAM;
+          zb.own = e;
+          zb.x = e.x;
+          zb.y = e.y;
+          zb.a = Math.atan2(ny, nx) - dir * 0.9;
+          zb.av = dir * 0.92;
+          zb.len = 580;
+          zb.r = 12;
+          zb.life = 2.8;
+          zb.arm = 0.9;
+          zb.dmg = 26;
+          zb.src = e.type;
+        }
         e.st = 1;
-        e.stT = 3.4;
+        e.stT = 2.9;
       }
       return baseSp * catchup;
     }
-    if (e.st === 1) {
-      if (e.stT <= 0) {
-        e.st = 2;
-        e.stT = 0.5;
-        e.a2 = 0;
-      }
-      return 0;
-    }
-    if (e.st === 2) {
-      if (e.stT <= 0) {
-        if (e.a2 < 3) {
-          const off = e.a2 * 0.22;
-          for (let i = 0; i < 14; i++) {
-            const a = off + (i / 14) * TAU;
-            this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 124, 7, 14, e.type);
-          }
-          e.a2++;
-          e.stT = 0.7;
-          e.swell = 0.3;
-          this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 1);
-        } else {
-          e.st = 3;
-          e.stT = 0.65;
-          e.ax = nx;
-          e.ay = ny;
-          e.tele = 345;
-          e.a1 = 0;
-        }
-      }
-      return baseSp * 0.6 * catchup;
-    }
-    if (e.st === 3) {
-      if (e.stT <= 0) {
-        e.st = 4;
-        e.stT = 0.5;
-        e.tele = 0;
-        this.fx && this.fx(FX_EVT.DASH, e.x, e.y);
-      }
-      return 0;
-    }
-    e.mvx = e.ax;
-    e.mvy = e.ay;
     if (e.stT <= 0) {
-      e.a1++;
-      if (e.a1 < 2) {
-        e.st = 3;
-        e.stT = 0.55;
-        e.ax = nx;
-        e.ay = ny;
-        e.tele = 345;
-      } else {
-        e.st = 0;
-        e.stT = 1.4;
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU;
+        this.spawnEnemy(ENEMY_IDX.frag, e.x + Math.cos(a) * 62, e.y + Math.sin(a) * 62, 0);
       }
+      e.st = 0;
+      e.stT = rage ? 1.8 : 2.6;
     }
-    return 445;
+    return baseSp * 0.45 * catchup;
   }
 
   separate() {
@@ -1535,6 +1624,7 @@ export class GameWorld {
     b.y += ny * pen * wb * 2;
   }
 
+  // 8 Hardware Weapons Simulation
   updWeapons(dt) {
     const p = this.p;
     const st = p.st;
@@ -1549,86 +1639,102 @@ export class GameWorld {
       w.t -= dt;
 
       switch (def.id) {
-        case "blade":
+        // 1. HBM Parallel Bus Packets (parallel lateral lanes, not fan cones!)
+        case "hbm":
           if (w.t <= 0) {
             if (!this.near) {
               w.t = 0.1;
               break;
             }
             w.t = cfg.cd * st.cd;
-            const aim = Math.atan2(p.aimY, p.aimX);
-            const sp = 350 * st.pspd;
+            const aim = Math.atan2(p.aimY, p.aimX) + (w.evo ? (this.rnd() - 0.5) * 0.16 : 0);
+            const vx = Math.cos(aim);
+            const vy = Math.sin(aim);
+            const px = -vy;
+            const py = vx;
+            const sp = 375 * st.pspd;
+            const laneGap = w.evo ? 10.5 : 12;
             for (let n = 0; n < cfg.n; n++) {
-              const a = aim + (w.evo ? (this.rnd() - 0.5) * 0.46 : (n - (cfg.n - 1) / 2) * 0.17);
-              const vx = Math.cos(a);
-              const vy = Math.sin(a);
+              const off = (n - (cfg.n - 1) / 2) * laneGap;
               const b = this.addBullet(
-                BULLET_KIND.BLADE, k, p.x + vx * 12, p.y + vy * 12,
-                vx * sp, vy * sp, w.evo ? 8.5 : 7, cfg.dmg, cfg.pierce, 1.15 * st.dur,
+                BULLET_KIND.HBM, k,
+                p.x + vx * 14 + px * off,
+                p.y + vy * 14 + py * off,
+                vx * sp, vy * sp,
+                w.evo ? 9 : 7.5, cfg.dmg, cfg.pierce, 1.15 * st.dur,
               );
-              if (b && w.evo) {
-                b.pop = cfg.pop * st.area;
-                b.size = 1.28;
+              if (b) {
+                b.lane = n;
+                if (w.evo) {
+                  b.pop = cfg.pop * st.area;
+                  b.size = 1.24;
+                }
               }
             }
             this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
           }
           break;
 
-        case "wafer":
-          if (w.evo) {
-            w.ang += 2.7 * dt;
-            w.ph += 1.15 * dt;
-            w.np = cfg.n;
-            const hr = 13 * cfg.size * Math.sqrt(st.area);
+        // 2. Silicon Photonics WDM Prism Lance (splits into 3-5 RGB/WDM sub-beams on hit!)
+        case "prism":
+          if (w.t <= 0) {
+            if (!this.near) {
+              w.t = 0.12;
+              break;
+            }
+            w.t = cfg.cd * st.cd;
+            const sp = 430 * st.pspd;
             for (let n = 0; n < cfg.n; n++) {
-              const a = w.ang + (n / cfg.n) * TAU;
-              const rad = (cfg.rMin + (cfg.rMax - cfg.rMin) * (0.5 + 0.5 * Math.sin(w.ph + n * 1.26))) * st.area;
-              const wx = p.x + Math.cos(a) * rad;
-              const wy = p.y + Math.sin(a) * rad;
-              w.pos[n * 2] = wx;
-              w.pos[n * 2 + 1] = wy;
-              const cnt = this.query(wx, wy, hr);
-              for (let j = 0; j < cnt; j++) {
-                const e = en[this.q[j]];
-                if (this.t - e.cd[k] >= 0.3) {
-                  e.cd[k] = this.t;
-                  this.hit(e, cfg.dmg, k, 150, -Math.sin(a), Math.cos(a));
-                }
+              const tgt = n === 0 ? this.near : this.randNear(310) || this.near;
+              const a = Math.atan2(tgt.y - p.y, tgt.x - p.x) + (n > 0 ? (this.rnd() - 0.5) * 0.24 : 0);
+              const vx = Math.cos(a);
+              const vy = Math.sin(a);
+              const b = this.addBullet(
+                BULLET_KIND.PRISM_MAIN, k,
+                p.x + vx * 14, p.y + vy * 14,
+                vx * sp, vy * sp,
+                9, cfg.dmg, 0, 1.05 * st.dur,
+              );
+              if (b) {
+                b.split = cfg.split;
+                b.size = w.evo ? 1.3 : 1.05;
               }
             }
-          } else if (w.t <= 0) {
-            if (!this.near) {
-              w.t = 0.15;
+            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
+          }
+          break;
+
+        // 3. Tensor 3x3 Matrix Stamp (locks onto monster cluster, snaps square grid!)
+        case "tensor":
+          if (w.t <= 0) {
+            if (this.nearD > 350) {
+              w.t = 0.18;
               break;
             }
             w.t = cfg.cd * st.cd;
             for (let n = 0; n < cfg.n; n++) {
-              const tgt = n === 0 ? this.near : this.randNear(260) || this.near;
-              let dx = tgt.x - p.x;
-              let dy = tgt.y - p.y;
-              const d = Math.sqrt(dx * dx + dy * dy) || 1;
-              dx /= d;
-              dy /= d;
-              if (n > 0) {
-                const a = Math.atan2(dy, dx) + (this.rnd() - 0.5) * 0.5;
-                dx = Math.cos(a);
-                dy = Math.sin(a);
-              }
-              const b = this.addBullet(
-                BULLET_KIND.WAFER, k, p.x, p.y, dx * 320, dy * 320,
-                11 * cfg.size * Math.sqrt(st.area), cfg.dmg, 999, 6,
-              );
-              if (b) {
-                b.t = (cfg.range * st.area) / 320;
-                b.size = cfg.size * Math.sqrt(st.area);
-              }
+              const tgt = n === 0 ? this.near : this.randNear(290) || this.near;
+              const z = this.addZone();
+              if (!z) break;
+              z.kind = ZONE_KIND.TENSOR;
+              z.k = k;
+              z.ox = p.x;
+              z.oy = p.y;
+              z.x = tgt ? tgt.x : p.x + p.aimX * 90;
+              z.y = tgt ? tgt.y : p.y + p.aimY * 90;
+              z.arm = 0.42;
+              z.life = 0.55;
+              z.r = cfg.rad * st.area;
+              z.dmg = cfg.dmg;
+              z.evo = w.evo ? cfg.mini : 0;
+              z.rMax = w.evo ? cfg.miniR * st.area : 0;
             }
-            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, 0);
+            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
           }
           break;
 
-        case "moat": {
+        // 4. L3 Cache Silicon Die Ring
+        case "cache": {
           let active = true;
           if (!w.evo && cfg.off > 0) {
             w.onT -= dt;
@@ -1642,23 +1748,23 @@ export class GameWorld {
             w.on = 1;
           }
           w.vis += ((active ? 1 : 0) - w.vis) * Math.min(1, dt * 10);
-          w.ang += 3.35 * dt;
+          w.ang += 3.45 * dt;
           const n1 = cfg.n;
           const n2 = w.evo ? cfg.n2 : 0;
           w.np = n1 + n2;
           for (let n = 0; n < n1 + n2; n++) {
             const inner = n < n1;
-            const a = inner ? w.ang + (n / n1) * TAU : -w.ang * 0.72 + ((n - n1) / n2) * TAU;
+            const a = inner ? w.ang + (n / n1) * TAU : -w.ang * 0.75 + ((n - n1) / n2) * TAU;
             const rad = (inner ? cfg.rad : cfg.rad2) * st.area * (0.5 + 0.5 * w.vis);
             const sx = p.x + Math.cos(a) * rad;
             const sy = p.y + Math.sin(a) * rad;
             w.pos[n * 2] = sx;
             w.pos[n * 2 + 1] = sy;
             if (!active) continue;
-            const cnt = this.query(sx, sy, 9.5);
+            const cnt = this.query(sx, sy, 10);
             for (let j = 0; j < cnt; j++) {
               const e = en[this.q[j]];
-              if (this.t - e.cd[k] < 0.4) continue;
+              if (this.t - e.cd[k] < 0.38) continue;
               e.cd[k] = this.t;
               const dx = e.x - p.x;
               const dy = e.y - p.y;
@@ -1676,12 +1782,13 @@ export class GameWorld {
           break;
         }
 
-        case "arc":
+        // 5. PCB 45°/90° High-Voltage Bus Arc
+        case "bus":
           if (w.t <= 0) {
             let fired = 0;
             for (let n = 0; n < cfg.n; n++) {
-              let cur = n === 0 && !w.evo ? this.near : this.randNear(w.evo ? 335 : 285);
-              if (!cur || (n === 0 && this.nearD > 305 && !w.evo)) break;
+              let cur = n === 0 && !w.evo ? this.near : this.randNear(w.evo ? 345 : 295);
+              if (!cur || (n === 0 && this.nearD > 315 && !w.evo)) break;
               fired++;
               const mark = ++this.stamp;
               let sx = p.x;
@@ -1691,14 +1798,14 @@ export class GameWorld {
                 const dx = cur.x - sx;
                 const dy = cur.y - sy;
                 const d = Math.sqrt(dx * dx + dy * dy) || 1;
-                this.fx && this.fx(FX_EVT.BOLT, sx, sy, cur.x, cur.y, c);
+                this.fx && this.fx(FX_EVT.BOLT, sx, sy, cur.x, cur.y, w.evo ? 1 : 0);
                 const tx = cur.x;
                 const ty = cur.y;
-                this.hit(cur, cfg.dmg, k, 70, dx / d, dy / d);
-                if (w.evo && c === 0) this.explode(tx, ty, cfg.boom * st.area, cfg.dmg * 0.5, k, 120);
+                this.hit(cur, cfg.dmg, k, 75, dx / d, dy / d);
+                if (w.evo && c === 0) this.explode(tx, ty, cfg.boom * st.area, cfg.dmg * 0.55, k, 125, 0);
                 sx = tx;
                 sy = ty;
-                const cnt = this.query(tx, ty, 120 * st.area);
+                const cnt = this.query(tx, ty, 130 * st.area);
                 let next = null;
                 let bestD2 = 1e9;
                 for (let j = 0; j < cnt; j++) {
@@ -1724,69 +1831,8 @@ export class GameWorld {
           }
           break;
 
-        case "pulse":
-          if (w.extra > 0) {
-            w.extraT -= dt;
-            if (w.extraT <= 0) {
-              w.extra--;
-              w.extraT = 0.28;
-              this.pulse(k, cfg.dmg, cfg.rad * st.area, 0, 320);
-            }
-          }
-          if (w.t <= 0) {
-            if (!w.evo && this.nearD > cfg.rad * st.area * 1.25) {
-              w.t = 0.15;
-              break;
-            }
-            w.t = cfg.cd * st.cd;
-            this.pulse(k, cfg.dmg, cfg.rad * st.area, w.evo ? cfg.slow : 0, w.evo ? 385 : 320);
-            if (cfg.n > 1) {
-              w.extra = cfg.n - 1;
-              w.extraT = 0.28;
-            }
-            if (w.evo) {
-              const pullR = cfg.rad * st.area * 1.55;
-              for (let g = 0; g < this.nG; g++) {
-                const gm = this.gm[g];
-                const dx = gm.x - p.x;
-                const dy = gm.y - p.y;
-                if (dx * dx + dy * dy < pullR * pullR) gm.st = 1;
-              }
-            }
-            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
-          }
-          break;
-
-        case "mine":
-          if (w.t <= 0) {
-            if (this.nearD > 335) {
-              w.t = 0.2;
-              break;
-            }
-            w.t = cfg.cd * st.cd;
-            for (let n = 0; n < cfg.n; n++) {
-              const z = this.addZone();
-              if (!z) break;
-              const a = this.rnd() * TAU;
-              const dist = n === 0 ? 0 : 55 + this.rnd() * 45;
-              z.kind = ZONE_KIND.MINE;
-              z.k = k;
-              z.ox = p.x;
-              z.oy = p.y;
-              z.x = p.x + Math.cos(a) * dist;
-              z.y = p.y + Math.sin(a) * dist;
-              z.arm = 0.35;
-              z.life = 2.6 * st.dur;
-              z.r = cfg.rad * st.area;
-              z.dmg = cfg.dmg;
-              z.evo = w.evo ? cfg.mini : 0;
-              z.rMax = w.evo ? cfg.miniR * st.area : 0;
-            }
-            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, 0);
-          }
-          break;
-
-        case "laser":
+        // 6. EUV Lithography Scanner Bar
+        case "litho":
           if (w.evo) {
             w.ang += cfg.spin * dt;
             w.bt = 1;
@@ -1796,7 +1842,7 @@ export class GameWorld {
             let diff = Math.atan2(p.aimY, p.aimX) - w.ang;
             while (diff > Math.PI) diff -= TAU;
             while (diff < -Math.PI) diff += TAU;
-            w.ang += Math.max(-1.35 * dt, Math.min(1.35 * dt, diff));
+            w.ang += Math.max(-1.4 * dt, Math.min(1.4 * dt, diff));
           } else if (w.t <= 0) {
             if (!this.near) {
               w.t = 0.15;
@@ -1836,18 +1882,75 @@ export class GameWorld {
           }
           break;
 
-        case "vortex":
+        // 7. Autonomous ASIC Pursuit Drones
+        case "drone":
+          if (w.evo) {
+            w.ang += 2.85 * dt;
+            w.ph += 1.25 * dt;
+            w.np = cfg.n;
+            const hr = 13 * cfg.size * Math.sqrt(st.area);
+            for (let n = 0; n < cfg.n; n++) {
+              const a = w.ang + (n / cfg.n) * TAU;
+              const rad = (cfg.rMin + (cfg.rMax - cfg.rMin) * (0.5 + 0.5 * Math.sin(w.ph + n * 1.26))) * st.area;
+              const wx = p.x + Math.cos(a) * rad;
+              const wy = p.y + Math.sin(a) * rad;
+              w.pos[n * 2] = wx;
+              w.pos[n * 2 + 1] = wy;
+              const cnt = this.query(wx, wy, hr);
+              for (let j = 0; j < cnt; j++) {
+                const e = en[this.q[j]];
+                if (this.t - e.cd[k] >= 0.28) {
+                  e.cd[k] = this.t;
+                  this.hit(e, cfg.dmg, k, 155, -Math.sin(a), Math.cos(a));
+                }
+              }
+            }
+          } else if (w.t <= 0) {
+            if (!this.near) {
+              w.t = 0.15;
+              break;
+            }
+            w.t = cfg.cd * st.cd;
+            for (let n = 0; n < cfg.n; n++) {
+              const tgt = n === 0 ? this.near : this.randNear(275) || this.near;
+              let dx = tgt.x - p.x;
+              let dy = tgt.y - p.y;
+              const d = Math.sqrt(dx * dx + dy * dy) || 1;
+              dx /= d;
+              dy /= d;
+              if (n > 0) {
+                const a = Math.atan2(dy, dx) + (this.rnd() - 0.5) * 0.55;
+                dx = Math.cos(a);
+                dy = Math.sin(a);
+              }
+              const sp = 340 * st.pspd;
+              const b = this.addBullet(
+                BULLET_KIND.DRONE, k, p.x, p.y, dx * sp, dy * sp,
+                11 * cfg.size * Math.sqrt(st.area), cfg.dmg, 999, 6,
+              );
+              if (b) {
+                b.t = (cfg.range * st.area) / sp;
+                b.size = cfg.size * Math.sqrt(st.area);
+                b.lane = n % 2 ? 1 : -1;
+              }
+            }
+            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, 0);
+          }
+          break;
+
+        // 8. Immersion Cryo-Coolant Hexagonal Plates
+        case "cryo":
           if (w.t <= 0) {
             let spawned = 0;
             for (let n = 0; n < cfg.n; n++) {
-              let tgt = this.randNear(255);
+              let tgt = this.randNear(265);
               if (!tgt) break;
               if (w.evo) {
                 let bestDensity = -1;
                 for (let s = 0; s < 6; s++) {
-                  const cand = this.randNear(275);
+                  const cand = this.randNear(285);
                   if (!cand) break;
-                  const dens = this.query(cand.x, cand.y, 82);
+                  const dens = this.query(cand.x, cand.y, 85);
                   if (dens > bestDensity) {
                     bestDensity = dens;
                     tgt = cand;
@@ -1856,7 +1959,7 @@ export class GameWorld {
               }
               const z = this.addZone();
               if (!z) break;
-              z.kind = ZONE_KIND.VORTEX;
+              z.kind = ZONE_KIND.CRYO;
               z.k = k;
               z.x = tgt.x;
               z.y = tgt.y;
@@ -1908,7 +2011,8 @@ export class GameWorld {
       const b = bl[i];
       let dead = false;
       b.life -= dt;
-      if (b.kind === BULLET_KIND.BLADE) {
+
+      if (b.kind === BULLET_KIND.HBM || b.kind === BULLET_KIND.PRISM_SUB) {
         b.x += b.vx * dt;
         b.y += b.vy * dt;
         const cnt = this.query(b.x, b.y, b.r);
@@ -1917,42 +2021,84 @@ export class GameWorld {
           if (b.hits.indexOf(e.uid) >= 0) continue;
           b.hits.push(e.uid);
           const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
-          this.hit(e, b.dmg, b.k, 115, b.vx / sp, b.vy / sp);
+          this.hit(e, b.dmg, b.k, 110, b.vx / sp, b.vy / sp);
           if (b.hits.length > b.pierce) dead = true;
         }
         if (b.life <= 0) dead = true;
         if (dead) {
-          if (b.pop > 0) this.explode(b.x, b.y, b.pop, b.dmg * 0.65, b.k, 95);
+          if (b.pop > 0) this.explode(b.x, b.y, b.pop, b.dmg * 0.65, b.k, 95, 0);
           else this.fx && this.fx(FX_EVT.POP, b.x, b.y, b.k);
         }
+      } else if (b.kind === BULLET_KIND.PRISM_MAIN) {
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        const cnt = this.query(b.x, b.y, b.r);
+        for (let j = 0; j < cnt && !dead; j++) {
+          const e = en[this.q[j]];
+          if (b.hits.indexOf(e.uid) >= 0) continue;
+          b.hits.push(e.uid);
+          const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
+          const baseAng = Math.atan2(b.vy, b.vx);
+          this.hit(e, b.dmg, b.k, 115, b.vx / sp, b.vy / sp);
+          // Refract into WDM wavelength sub-beams!
+          const splits = b.split || 3;
+          for (let s = 0; s < splits; s++) {
+            const sa = baseAng + (s - (splits - 1) / 2) * 0.28;
+            const svx = Math.cos(sa);
+            const svy = Math.sin(sa);
+            const sub = this.addBullet(
+              BULLET_KIND.PRISM_SUB, b.k,
+              e.x + svx * 10, e.y + svy * 10,
+              svx * sp * 0.96, svy * sp * 0.96,
+              6.5, b.dmg * 0.68, 2, 0.72 * p.st.dur,
+            );
+            if (sub) {
+              sub.hits.push(e.uid);
+              sub.wl = s % 3;
+              sub.size = b.size * 0.9;
+            }
+          }
+          dead = true;
+        }
+        if (b.life <= 0) dead = true;
       } else {
-        b.rot += 14 * dt;
+        // BULLET_KIND.DRONE — banking curved pursuit & homing return
         if (b.st === 0) {
           b.t -= dt;
           if (b.t <= 0) b.st = 1;
-          const ease = Math.max(0.25, Math.min(1, b.t * 4));
+          const ease = Math.max(0.3, Math.min(1, b.t * 3.8));
+          const curve = b.lane * 0.95 * dt;
+          const cvx = b.vx * Math.cos(curve) - b.vy * Math.sin(curve);
+          const cvy = b.vx * Math.sin(curve) + b.vy * Math.cos(curve);
+          b.vx = cvx;
+          b.vy = cvy;
           b.x += b.vx * ease * dt;
           b.y += b.vy * ease * dt;
+          b.rot = Math.atan2(b.vy, b.vx);
         } else {
           const dx = p.x - b.x;
           const dy = p.y - b.y;
           const d = Math.sqrt(dx * dx + dy * dy) || 1;
           b.t += dt;
-          const sp = Math.min(540, 210 + b.t * 720);
-          b.x += (dx / d) * sp * dt;
-          b.y += (dy / d) * sp * dt;
+          const sp = Math.min(560, 230 + b.t * 720);
+          b.vx = (dx / d) * sp;
+          b.vy = (dy / d) * sp;
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.rot = Math.atan2(b.vy, b.vx);
           if (d < 18) dead = true;
         }
         const cnt = this.query(b.x, b.y, b.r);
         for (let j = 0; j < cnt; j++) {
           const e = en[this.q[j]];
-          if (this.t - e.cd[b.k] < 0.32) continue;
+          if (this.t - e.cd[b.k] < 0.3) continue;
           e.cd[b.k] = this.t;
           const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
           this.hit(e, b.dmg, b.k, 130, b.vx / sp, b.vy / sp);
         }
         if (b.life <= 0) dead = true;
       }
+
       if (dead) {
         const last = --this.nB;
         bl[i] = bl[last];
@@ -1995,28 +2141,24 @@ export class GameWorld {
           }
           break;
         }
-        case ZONE_KIND.MINE: {
-          if (z.t < z.arm) break;
-          let trig = z.t >= z.life;
-          if (!trig) trig = this.query(z.x, z.y, z.mini ? 4 : 10) > 0;
-          if (trig) {
-            this.explode(z.x, z.y, z.r, z.dmg, z.k, 300);
+        case ZONE_KIND.TENSOR: {
+          if (z.t >= z.life) {
+            this.explode(z.x, z.y, z.r, z.dmg, z.k, 280, 1);
             if (z.evo > 0 && !z.mini) {
-              const off = this.rnd() * TAU;
               for (let m = 0; m < z.evo; m++) {
                 const sub = this.addZone();
                 if (!sub) break;
-                const a = off + (m / z.evo) * TAU;
-                sub.kind = ZONE_KIND.MINE;
+                const a = Math.PI / 4 + (m / z.evo) * TAU;
+                sub.kind = ZONE_KIND.TENSOR;
                 sub.k = z.k;
                 sub.ox = z.x;
                 sub.oy = z.y;
-                sub.x = z.x + Math.cos(a) * 62;
-                sub.y = z.y + Math.sin(a) * 62;
-                sub.arm = 0.3;
+                sub.x = z.x + Math.cos(a) * 68;
+                sub.y = z.y + Math.sin(a) * 68;
+                sub.arm = 0.24;
                 sub.life = 0.32;
                 sub.r = z.rMax;
-                sub.dmg = z.dmg * 0.52;
+                sub.dmg = z.dmg * 0.54;
                 sub.mini = 1;
                 sub.evo = 0;
               }
@@ -2025,25 +2167,26 @@ export class GameWorld {
           }
           break;
         }
-        case ZONE_KIND.VORTEX: {
-          z.a += dt * 5;
+        case ZONE_KIND.CRYO: {
+          z.a += dt * 1.8;
           z.tickT -= dt;
           if (z.tickT <= 0) {
             z.tickT = 0.25;
             const cnt = this.query(z.x, z.y, z.r);
-            const pull = z.evo ? 175 : 105;
+            const pull = z.evo ? 160 : 75;
             for (let j = 0; j < cnt; j++) {
               const e = en[this.q[j]];
+              e.slow = Math.max(e.slow, 0.55);
               const dx = z.x - e.x;
               const dy = z.y - e.y;
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
-              e.kx += ((dx / d) * pull - (dy / d) * 40) / e.wt;
-              e.ky += ((dy / d) * pull + (dx / d) * 40) / e.wt;
+              e.kx += ((dx / d) * pull) / e.wt;
+              e.ky += ((dy / d) * pull) / e.wt;
               this.hit(e, z.dmg, z.k, 0, 0, 0);
             }
           }
           if (z.t >= z.life) {
-            if (z.burst) this.explode(z.x, z.y, z.r * 1.1, z.burst, z.k, 385);
+            if (z.burst) this.explode(z.x, z.y, z.r * 1.08, z.burst, z.k, 360, 0);
             dead = true;
           }
           break;
@@ -2188,7 +2331,7 @@ export class GameWorld {
         pk[i] = pk[last];
         pk[last] = item;
         this.fx && this.fx(FX_EVT.PICK, kind, ix, iy, n);
-        if (kind === PICK_KIND.HEART) p.hp = Math.min(p.maxHp, p.hp + 28);
+        if (kind === PICK_KIND.HEART) p.hp = Math.min(p.maxHp, p.hp + 30);
         else if (kind === PICK_KIND.MAGNET) {
           this.magnetT = 0.85;
           this.fx && this.fx(FX_EVT.MAGNET, p.x, p.y);
@@ -2203,7 +2346,7 @@ export class GameWorld {
   }
 
   cores() {
-    return Math.floor((this.t * 0.28 + this.kills * 0.065 + this.elites * 6 + this.coresPicked) * this.p.st.coreMul);
+    return Math.floor((this.t * 0.3 + this.kills * 0.07 + this.elites * 6 + this.coresPicked) * this.p.st.coreMul);
   }
 
   summary() {
@@ -2233,6 +2376,9 @@ export class GameWorld {
       cause: this.lastSrc >= 0 ? ENEMIES[this.lastSrc].name : "",
       causeId: this.lastSrc >= 0 ? ENEMIES[this.lastSrc].id : "",
       char: this.char.id,
+      stage: STAGES[this.startStageIdx].id,
+      endStage: STAGES[this.stageIdx].id,
+      stagesVisited: this.stagesVisited.slice(),
       daily: this.daily,
       rule: this.rule.id || "",
       wave: this.wave + 1,
@@ -2354,56 +2500,40 @@ export function createAutoBot(smart = 1, rnd = Math.random) {
     return [bx, by];
   }
 
-  function move(world, dt) {
-    state.think -= dt;
-    if (state.think <= 0) {
-      if (!smart && rnd() < 0.07) {
-        state.mx = 0;
-        state.my = 0;
-        state.think = 0.4 + rnd() * 0.5;
-      } else {
-        const v = dir(world);
-        state.mx = v[0];
-        state.my = v[1];
-        state.think = smart ? 0.08 : 0.3 + rnd() * 0.3;
+  return {
+    move(world, dt) {
+      state.think -= dt;
+      if (state.think <= 0) {
+        state.think = smart ? 0.05 : 0.12;
+        const [tx, ty] = dir(world);
+        state.mx += (tx - state.mx) * 0.55;
+        state.my += (ty - state.my) * 0.55;
       }
-    }
-    world.input(state.mx, state.my);
-  }
-
-  function scoreChoice(world, c) {
-    const p = world.p;
-    if (c.kind === "evo") return 100;
-    if (c.kind === "w") {
-      const def = WEAPONS[WEAPON_IDX[c.id]];
-      const hasP = world.plv(def.partner) > 0;
-      return c.isNew ? 6 + (hasP ? 2 : 0) + (p.weapons.length < 2 ? 3 : 0) : 7 + c.lv * 0.5 + (hasP ? 1.5 : 0);
-    }
-    if (c.kind === "p") {
-      let partner = false;
-      for (let i = 0; i < p.weapons.length; i++) {
-        if (WEAPONS[p.weapons[i].k].partner === c.id && !p.weapons[i].evo) partner = true;
+      world.input(state.mx, state.my);
+    },
+    pick(world, choices) {
+      let best = 0;
+      let bestVal = -9;
+      for (let i = 0; i < choices.length; i++) {
+        const c = choices[i];
+        let v = 0;
+        if (c.kind === "evo") v = 10;
+        else if (c.kind === "w" && !c.isNew) v = 5 + c.lv * 0.5;
+        else if (c.kind === "w") v = 4.2;
+        else if (c.kind === "p") {
+          v = 2.5;
+          for (let j = 0; j < world.p.weapons.length; j++) {
+            if (WEAPONS[world.p.weapons[j].k].partner === c.id) v = 6;
+          }
+        } else {
+          v = 1;
+        }
+        if (v > bestVal) {
+          bestVal = v;
+          best = i;
+        }
       }
-      return c.isNew
-        ? partner ? 9.5 : c.id === "leverage" || c.id === "haste" ? 5.5 : 4.5
-        : c.id === "leverage" || c.id === "haste" || c.id === "area" ? 6 : 5;
-    }
-    return c.id === "b_heal" ? (p.hp < p.maxHp * 0.5 ? 8 : 1) : c.id === "b_might" ? 3 : 2;
-  }
-
-  function pick(world, choices) {
-    if (!smart) return (rnd() * choices.length) | 0;
-    let best = 0;
-    let bestVal = -1;
-    for (let i = 0; i < choices.length; i++) {
-      const v = scoreChoice(world, choices[i]);
-      if (v > bestVal) {
-        bestVal = v;
-        best = i;
-      }
-    }
-    return best;
-  }
-
-  return { dir, move, pick };
+      return best;
+    },
+  };
 }
