@@ -35,7 +35,7 @@ export function createFxSystem(hooks) {
     nP: 0, nN: 0, nR: 0, nBo: 0,
     trauma: 0, flash: 0, flashCol: 0xffffff, tone: 0, toneCol: 0x2563eb,
     hurtV: 0, q: 1, hitN: 0, killN: 0, numN: 0, gemN: 0, boomN: 0,
-    stopCd: 0, shX: 0, shY: 0, quiet: false, t: 0, gemGlow: 0, hitI: 0,
+    stopCd: 0, shX: 0, shY: 0, quiet: false, shakeOn: true, t: 0, gemGlow: 0, hitI: 0,
   };
 
   const panAt = (wx) => {
@@ -95,7 +95,12 @@ export function createFxSystem(hooks) {
 
   fx.ring = (x, y, r0, r1, life) => addRing(x, y, r0, r1, life, S.ring, 0.8);
   fx.bubbles = () => {}; // Cleanroom: zero deep-sea bubbles!
-  fx.shake = (v) => { fx.trauma = Math.min(1, fx.trauma + v); };
+  // Peak-envelope non-stacking impulse shake: never accumulates across rapid late-game hits/explosions
+  fx.shake = (v, cap = 0.65) => {
+    if (!fx.shakeOn || fx.quiet) return;
+    const lim = Math.min(cap, v);
+    if (lim > fx.trauma) fx.trauma = lim;
+  };
   fx.setTone = (v, col) => {
     if (v > fx.tone) {
       fx.tone = v;
@@ -143,21 +148,17 @@ export function createFxSystem(hooks) {
         if (!fx.quiet) playKillPop(panAt(a), big, hooks.combo());
         if (d === 1) {
           sfx("shatter", a);
-          hooks.hitstop(0.07);
-          fx.shake(0.32);
+          hooks.hitstop(0.045);
+          fx.shake(0.26, 0.32);
           hooks.vibrate("medium");
-        } else if (d !== 2 && e && fx.stopCd <= 0) {
-          hooks.hitstop(0.03);
-          fx.stopCd = 0.22;
         }
-        fx.shake(0.02);
         break;
       }
 
       case FX_EVT.HURT:
-        fx.shake(0.5);
+        fx.shake(0.42, 0.48);
         fx.hurtV = 1;
-        hooks.hitstop(0.06);
+        hooks.hitstop(0.05);
         sfx("hurt", b);
         hooks.vibrate("medium");
         hooks.hurt();
@@ -212,7 +213,7 @@ export function createFxSystem(hooks) {
         addRing(a, b, c * 0.32, c * 1.04, 0.24, S.ring2, full ? 0.78 : 0.48, Math.PI / 6);
         if (full) burstChips(a, b, 5, c * 2.8, 0.78, 0.22);
         sfx("boom", a, 1.08 + Math.random() * 0.18, 0.76);
-        fx.shake(0.08);
+        // Zero camera shake on routine weapon matrix blasts so late-game mowing stays rock-steady!
         break;
       }
 
@@ -222,7 +223,8 @@ export function createFxSystem(hooks) {
         addRing(a, b, c * 0.25, c * 1.05, 0.28, isEnemy ? S.ring_warn : S.ring_gold, full ? 0.88 : 0.5);
         if (full) burstChips(a, b, 6, c * 3.5, 0.8, 0.24);
         sfx("boom", a, isEnemy ? 0.8 : 0.95 + Math.random() * 0.25, c > 80 ? 1.1 : 0.8);
-        fx.shake(c > 80 ? 0.2 : 0.1);
+        // Only enemy hazard blasts give a subtle non-stacking nudge; player weapon AoEs stay steady
+        if (isEnemy) fx.shake(0.18, 0.22);
         break;
       }
 
@@ -233,8 +235,8 @@ export function createFxSystem(hooks) {
       case FX_EVT.NUKE:
         fx.flash = Math.max(fx.flash, 0.18);
         fx.flashCol = 0xdbeafe;
-        fx.shake(0.85);
-        hooks.hitstop(0.12);
+        fx.shake(0.55, 0.6);
+        hooks.hitstop(0.08);
         hooks.slowmo(0.35, 0.48);
         hooks.vibrate("heavy");
         sfx("nuke", null);
@@ -246,7 +248,6 @@ export function createFxSystem(hooks) {
       case FX_EVT.COMBO:
         hooks.announce("连击 ×" + a, "combo", b);
         sfx("combo", null, 1 + b * 0.06);
-        fx.shake(0.12);
         break;
 
       case FX_EVT.WAVE:
@@ -268,7 +269,7 @@ export function createFxSystem(hooks) {
         break;
 
       case FX_EVT.BOSS:
-        fx.shake(0.55);
+        fx.shake(0.38, 0.45);
         sfx("elite", a, 0.7, 1.3);
         addRing(a, b, 30, 220, 0.6, S.ring_warn, 0.92);
         addRing(a, b, 30, 310, 0.78, S.ring_gold, 0.8);
@@ -277,9 +278,9 @@ export function createFxSystem(hooks) {
       case FX_EVT.BOSSDEAD:
         fx.flash = Math.max(fx.flash, 0.22);
         fx.flashCol = 0xfef3c7;
-        fx.shake(0.95);
-        hooks.hitstop(0.26);
-        hooks.slowmo(0.25, 1.2);
+        fx.shake(0.62, 0.65);
+        hooks.hitstop(0.16);
+        hooks.slowmo(0.25, 1.0);
         hooks.vibrate("heavy");
         sfx("bossdead", null);
         addRing(a, b, 30, 660, 0.88, S.ring_gold, 0.95);
@@ -291,7 +292,6 @@ export function createFxSystem(hooks) {
             const ry = b + (Math.random() - 0.5) * 90;
             addRing(rx, ry, 10, 88, 0.28, S.ring_gold, 0.9);
             burstChips(rx, ry, 8, 280, 0.9, 0.28);
-            fx.shake(0.24);
             sfx("boom", rx, 0.85 + Math.random() * 0.35);
           });
         }
@@ -306,7 +306,7 @@ export function createFxSystem(hooks) {
       case FX_EVT.DEAD:
         fx.flash = Math.max(fx.flash, 0.25);
         fx.flashCol = 0xfecdd3;
-        fx.shake(0.9);
+        fx.shake(0.55, 0.6);
         hooks.vibrate("heavy");
         sfx("dead", null);
         addRing(a, b, 10, 240, 0.8, S.ring_warn, 0.95);
@@ -316,7 +316,7 @@ export function createFxSystem(hooks) {
       case FX_EVT.REVIVE:
         fx.flash = Math.max(fx.flash, 0.24);
         fx.flashCol = 0xd1fae5;
-        fx.shake(0.75);
+        fx.shake(0.48, 0.52);
         sfx("revive", null);
         addRing(a, b, 20, 400, 0.7, S.ring2, 0.95);
         hooks.announce("UPS 灾备电源切入 · 恢复半血反击！", "big");
@@ -326,7 +326,7 @@ export function createFxSystem(hooks) {
       case FX_EVT.EVO:
         fx.flash = Math.max(fx.flash, 0.22);
         fx.flashCol = 0xfef3c7;
-        fx.shake(0.65);
+        fx.shake(0.42, 0.48);
         sfx("evo", null);
         hooks.vibrate("heavy");
         hooks.slowmo(0.3, 0.65);
@@ -368,10 +368,17 @@ export function createFxSystem(hooks) {
     fx.t += rawDt;
     fx.hitN = fx.killN = fx.numN = fx.gemN = fx.boomN = 0;
     if (fx.stopCd > 0) fx.stopCd -= rawDt;
-    fx.trauma = Math.max(0, fx.trauma - rawDt * 2.2);
-    const sh = fx.trauma * fx.trauma * 8.5;
-    fx.shX = (Math.sin(fx.t * 61.3) + Math.sin(fx.t * 97.1) * 0.6) * sh * 0.6;
-    fx.shY = (Math.cos(fx.t * 71.7) + Math.sin(fx.t * 113.3) * 0.6) * sh * 0.6;
+    if (!fx.shakeOn) fx.trauma = 0;
+    else fx.trauma = Math.max(0, fx.trauma - rawDt * 4.2);
+    // Gentle, fast-damped micro-impulse (max ~2px even on Boss kill / Nuke)
+    if (fx.trauma > 0) {
+      const sh = fx.trauma * fx.trauma * 3.2;
+      fx.shX = (Math.sin(fx.t * 34.7) + Math.sin(fx.t * 53.1) * 0.45) * sh * 0.55;
+      fx.shY = (Math.cos(fx.t * 41.3) + Math.sin(fx.t * 61.9) * 0.45) * sh * 0.55;
+    } else {
+      fx.shX = 0;
+      fx.shY = 0;
+    }
     if (fx.flash > 0) fx.flash = Math.max(0, fx.flash - rawDt * 3.0);
     if (fx.tone > 0) fx.tone = Math.max(0, fx.tone - rawDt * 2.0);
     if (fx.hurtV > 0) fx.hurtV = Math.max(0, fx.hurtV - rawDt * 2.2);

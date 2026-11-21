@@ -1,6 +1,6 @@
 // HONE Adventure V2 — Cleanroom AI Data Center Stages, Hardware Weapons, Bosses & Promotion System
 
-export const VERSION = "2.0.0";
+export const VERSION = "2.0.1";
 export const HONECLAW_GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw";
 export const HONECLAW_REPO_LABEL = "github.com/B-M-Capital-Research/honeclaw";
 

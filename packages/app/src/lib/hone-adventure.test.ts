@@ -6,7 +6,9 @@ import { CONTENT } from "@/lib/public-content";
 // @ts-expect-error standalone public ES module without .d.ts
 import { ENEMIES, ENEMY_IDX, HEROES, HONECLAW_GITHUB_URL, PASSIVES, RULES, STAGES, STAGE_SEC, TALENTS, TALENT_BRANCHES, TITLES, WEAPONS, branchPoints, getDailyChallenge, getPromotionBonuses, getTitle } from "../../public/hone-adventure/data.js";
 // @ts-expect-error standalone public ES module without .d.ts
-import { BULLET_KIND, GameWorld, PICK_KIND, ZONE_KIND } from "../../public/hone-adventure/world.js";
+import { BULLET_KIND, FX_EVT, GameWorld, PICK_KIND, ZONE_KIND } from "../../public/hone-adventure/world.js";
+// @ts-expect-error standalone public ES module without .d.ts
+import { createFxSystem } from "../../public/hone-adventure/fx.js";
 
 const chatSource = readFileSync(new URL("../pages/chat.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../public/hone-adventure/app.js", import.meta.url), "utf8");
@@ -198,5 +200,44 @@ describe("HONE Adventure V2 AI Data Center stages, weapons, bosses & promotion",
     expect(d1).toEqual(d2);
     expect(STAGES.some((s: { id: string }) => s.id === d1.stage)).toBe(true);
     expect(d1.seed).not.toBe(d3.seed);
+  });
+
+  it("eliminates late-game continuous screen shake on mass kills/AoEs and respects shake toggle", () => {
+    const fx = createFxSystem({
+      camX: () => 0,
+      camY: () => 0,
+      viewW: () => 1280,
+      viewH: () => 720,
+      combo: () => 50,
+      hitstop: () => {},
+      slowmo: () => {},
+      vibrate: () => {},
+      announce: () => {},
+      hurt: () => {},
+    });
+    fx.quiet = false;
+    // Simulate late-game storm: 120 mob kills + 60 weapon matrix/boom AoEs + combo callouts
+    for (let i = 0; i < 120; i++) fx.on(FX_EVT.KILL, 10, 10, ENEMY_IDX.packet, 0, 1);
+    for (let i = 0; i < 30; i++) fx.on(FX_EVT.MATRIX, 20, 20, 96, 2);
+    for (let i = 0; i < 30; i++) fx.on(FX_EVT.BOOM, 20, 20, 90, 0);
+    fx.on(FX_EVT.COMBO, 100, 4);
+    fx.update(1 / 60, 1 / 60);
+    expect(fx.trauma).toBe(0);
+    expect(fx.shX).toBe(0);
+    expect(fx.shY).toBe(0);
+
+    // Even multiple simultaneous milestone impulses never stack above peak cap (<= 2.5px)
+    for (let i = 0; i < 5; i++) fx.on(FX_EVT.BOSSDEAD, 0, 0, 1);
+    fx.update(1 / 60, 1 / 60);
+    expect(fx.trauma).toBeLessThanOrEqual(0.65);
+    expect(Math.hypot(fx.shX, fx.shY)).toBeLessThan(2.5);
+
+    // Turning off shake setting completely zeroes camera shake
+    fx.shakeOn = false;
+    fx.on(FX_EVT.NUKE, 0, 0);
+    fx.update(1 / 60, 1 / 60);
+    expect(fx.trauma).toBe(0);
+    expect(fx.shX).toBe(0);
+    expect(fx.shY).toBe(0);
   });
 });

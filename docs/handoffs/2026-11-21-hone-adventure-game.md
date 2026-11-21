@@ -70,3 +70,10 @@
 - `bun run build:web:public`：通过。
 - Playwright E2E `packages/app/e2e/public-data-center.spec.ts`（`-g "chat opens the online demo"`）：`390px` 与 `1440px` 全部通过，验证 `/chat` 打开游戏、`v2.0.0` 资源加载、关卡切换、结算页 `honeclaw` GitHub Star 卡片及左上角「回到首页」回跳 `/`。
 - 独立无头 Chromium 8 场景截图巡检（大厅关卡切换、十阶晋升路线、四维基建矩阵、密集弹道与张量线框防遮挡 Boss 战、升级锁卡、结算 GitHub Star 卡片、硬件图鉴、`390×844` 移动端适配）零报错通过，并完成线上 `https://hone-claw.com/hone-adventure/` 生产部署核验。
+
+## V2.0.1 阶段：后期密集战斗屏幕抖动收敛与开关
+
+- **问题根因**：后期超武成型（如 `3D 堆叠数据洪流`、`Rubin 脉动方阵`、`吉瓦级超导馈线`）每秒触发数十次普通击杀（`FX_EVT.KILL`）与范围爆炸（`FX_EVT.MATRIX` / `FX_EVT.BOOM`），原 `fx.shake` 采用累加模型（`trauma += v`）且每次暴击击杀附带 `0.03s` 顿帧，导致后期 `trauma` 长期顶满 `1.0`（`±8.2px` 高频连续震屏）。
+- **修复方案**（`fx.js` / `app.js` / `hone-adventure.test.ts`）：
+  - 移除普通小怪击杀、暴击击杀微顿帧、常规武器矩阵/范围爆破与连击播报的所有镜头抖动，高频割草全程保持镜头零抖动。
+  - 将 `fx.shake` 从累加模型改为**非叠加峰值包络**（`Math.max(fx.trauma, Math.min(cap, v))`），仅保留玩家受击、精英/Boss 击破、超频清屏与流片进化等低频关键事件的瞬时轻反馈，加快衰减速率（`4.2/s`）并将最大像素振幅收敛至 `< 2.5px`；同时在设置与暂停面板新增「关键事件轻微震屏」开关（关闭后全局 100% 零震屏）。

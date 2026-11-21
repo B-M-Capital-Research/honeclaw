@@ -108,7 +108,7 @@ function defaultSave() {
     daily: {},
     streak: { n: 0, last: "" },
     hof: [],
-    set: { sfx: 1, music: 1, vib: 1 },
+    set: { sfx: 1, music: 1, vib: 1, shake: 1 },
     gift: 0,
     starred: 0,
   };
@@ -1071,6 +1071,7 @@ function settingRowsEl() {
   [
     ["sfx", "硬件战斗音效"],
     ["music", "动态电子合成配乐"],
+    ["shake", "关键事件轻微震屏"],
     ["vib", "触感振动反馈"],
   ].forEach(([k, label]) => {
     const row = el("div", "tg" + (S.set[k] ? " on" : ""), `<span>${label}</span><i><b></b></i>`);
@@ -1078,6 +1079,7 @@ function settingRowsEl() {
       S.set[k] = S.set[k] ? 0 : 1;
       row.classList.toggle("on", !!S.set[k]);
       setAudioPrefs(S.set.sfx, S.set.music);
+      if (G.fx) G.fx.shakeOn = !!S.set.shake;
       persistSave(S);
       if (k === "vib" && S.set.vib) vibrate("light");
     });
@@ -1955,8 +1957,8 @@ function frameLoop(now) {
   viewFrame.cw = G.cw;
   viewFrame.ch = G.ch;
   viewFrame.sc = G.sc * (1 + G.zoom) * (G.mode === "home" ? 1.15 : 1);
-  viewFrame.camX = G.camX + fx.shX;
-  viewFrame.camY = G.camY + fx.shY;
+  viewFrame.camX = G.camX + (G.mode === "play" ? fx.shX : 0);
+  viewFrame.camY = G.camY + (G.mode === "play" ? fx.shY : 0);
   viewFrame.hero = G.hero;
   viewFrame.state = G.hurtT > 0 ? "_hurt" : G.joyK > 0.3 ? "_joy" : "";
   viewFrame.joy = G.joyK;
@@ -2076,6 +2078,7 @@ async function boot() {
   G.zone = cloneZone(G.S.stage || "storage");
   G.zoneId = G.S.stage || "storage";
   setAudioPrefs(G.S.set.sfx, G.S.set.music);
+  G.fx.shakeOn = !!G.S.set.shake;
   buildHudUI();
   buildHomeUI();
   G.mode = "home";
