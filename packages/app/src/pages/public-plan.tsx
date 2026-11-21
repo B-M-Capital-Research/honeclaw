@@ -8,11 +8,12 @@ import { CONTENT } from "@/lib/public-content"
 import { getPublicBillingConfig } from "@/lib/api"
 import { useLocale } from "@/lib/i18n"
 import type { PublicBillingConfig } from "@/lib/types"
+import { PUBLIC_BILIBILI_URL, PUBLIC_YOUTUBE_URL } from "@/components/public-contact-menu"
 import { PublicFooter, PublicNav } from "@/components/public-nav"
 import "./public-site.css"
 
-const YOUTUBE_URL = "https://www.youtube.com/@Hari%E8%80%81%E7%8E%8B/videos"
-const BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/"
+const YOUTUBE_URL = PUBLIC_YOUTUBE_URL
+const BILIBILI_URL = PUBLIC_BILIBILI_URL
 const GITHUB_URL = "https://github.com/B-M-Capital-Research/honeclaw"
 
 /* 频道近期视频（手工挑选置顶三条；缩略图走 YouTube 官方 CDN）。 */

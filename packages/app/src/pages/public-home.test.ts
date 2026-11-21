@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
+import { PUBLIC_BILIBILI_URL, PUBLIC_YOUTUBE_URL } from "@/components/public-contact-menu";
 import { setLocale, type Locale } from "@/lib/i18n";
 import { CONTENT } from "@/lib/public-content";
 
@@ -52,8 +53,30 @@ describe("public home page", () => {
     expect(page).toContain("{L.disclaimer}");
   });
 
-  it("styles with tokens so the dark theme follows", () => {
+  it("styles with tokens, square architectural corners and unified type scale", () => {
     expect(css).toContain("var(--hone-surface-raised)");
+    expect(css).toContain("--hone-home-radius: 2px;");
+    expect(css).not.toContain("--hone-radius-pill");
+    expect(css).not.toContain("--hone-radius-lg");
+    expect(css).not.toContain("border-radius: 50%");
     expect(css).not.toContain("!important");
+  });
+
+  it("links all public video entries to @BamangTech and the official Bilibili space", () => {
+    expect(PUBLIC_YOUTUBE_URL).toBe("https://www.youtube.com/@BamangTech");
+    expect(PUBLIC_BILIBILI_URL).toBe("https://space.bilibili.com/224670487?spm_id_from=333.337.0.0");
+
+    for (const locale of ["zh", "en"] as const) {
+      const landing = landingFor(locale);
+      const hrefs = landing.community.channels.map((channel) => channel.href);
+      expect(hrefs).toContain("https://www.youtube.com/@BamangTech");
+      expect(hrefs).toContain("https://space.bilibili.com/224670487?spm_id_from=333.337.0.0");
+
+      setLocale(locale);
+      const footerHrefs = CONTENT.footer.columns.community.items.map((item) => item.href);
+      expect(footerHrefs).toContain("https://www.youtube.com/@BamangTech");
+      expect(footerHrefs).toContain("https://space.bilibili.com/224670487?spm_id_from=333.337.0.0");
+    }
+    setLocale("zh");
   });
 });

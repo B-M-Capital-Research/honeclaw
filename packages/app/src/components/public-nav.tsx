@@ -143,7 +143,7 @@ export function PublicNav(
       </a>
       <a href={PUBLIC_BILIBILI_URL} target="_blank" rel="noopener noreferrer">
         <span>{C.bilibili_label}</span>
-        <small>Bilibili</small>
+        <small>{C.bilibili_channel_name}</small>
       </a>
       <a href={PUBLIC_YOUTUBE_URL} target="_blank" rel="noopener noreferrer">
         <span>YouTube</span>

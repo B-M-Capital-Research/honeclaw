@@ -1,7 +1,7 @@
 import { CONTENT } from "@/lib/public-content";
 
-export const PUBLIC_YOUTUBE_URL = "https://www.youtube.com/@巴芒投研美股频道";
-export const PUBLIC_BILIBILI_URL = "https://www.bilibili.com/video/BV1ByXNBGET5/";
+export const PUBLIC_YOUTUBE_URL = "https://www.youtube.com/@BamangTech";
+export const PUBLIC_BILIBILI_URL = "https://space.bilibili.com/224670487?spm_id_from=333.337.0.0";
 
 function contactMenuTitle() {
   return CONTENT.nav.contact_title;
@@ -16,7 +16,7 @@ export function PublicContactCards() {
         <span class="pub-contact-card-icon">B</span>
         <span>
           <strong>{C.bilibili_label}</strong>
-          <small>Bilibili</small>
+          <small>{C.bilibili_channel_name}</small>
         </span>
       </a>
       <a class="pub-contact-card pub-contact-card--youtube" href={PUBLIC_YOUTUBE_URL} target="_blank" rel="noopener noreferrer">

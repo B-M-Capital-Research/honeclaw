@@ -121,7 +121,7 @@ Honeclaw 是 Hone 的开源项目，采用 **Rust + SolidJS / TypeScript**，提
 
 线上产品接入的专业金融数据库、专有本体研究与部分研究资产，不随公开代码一并提供。自部署需要自行配置模型与数据服务；克隆仓库不等于获得线上服务的全部数据和权限。
 
-欢迎通过 [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues)、Pull Request 或 [Discord](https://discord.gg/TyDNfYXDGF) 反馈问题、分享使用体验和参与贡献。更多内容见 [Bilibili：巴芒投资](https://space.bilibili.com/224670487) 与 [YouTube：巴芒投研美股频道](https://www.youtube.com/@%E5%B7%B4%E8%8A%92%E6%8A%95%E7%A0%94%E7%BE%8E%E8%82%A1%E9%A2%91%E9%81%93)。
+欢迎通过 [Issues](https://github.com/B-M-Capital-Research/honeclaw/issues)、Pull Request 或 [Discord](https://discord.gg/TyDNfYXDGF) 反馈问题、分享使用体验和参与贡献。更多内容见 [Bilibili：巴芒科技](https://space.bilibili.com/224670487?spm_id_from=333.337.0.0) 与 [YouTube：@BamangTech](https://www.youtube.com/@BamangTech)。
 
 Hone 意为打磨。我们希望它帮助你在持续研究、比较与复盘中，磨砺自己的判断力。
 

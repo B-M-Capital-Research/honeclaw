@@ -1,8 +1,55 @@
-/* public-home.css — HONE 官网首页（v6）
-   Token-driven: every colour comes from public-foundation.css, so the dark
-   theme follows without a parallel override block. */
+/* public-home.css — HONE 官网首页（v7 · 机构级方角网格与严格排版标尺）
+   独立定义首页冷峻石白/深海曜石主题令牌，浅色与深色模式均通过语义令牌自动派生。 */
 
 .hone-home {
+  /* Palette: Architectural Cool Alabaster + Deep Obsidian + Precision Cobalt */
+  --hone-font-display: "Plus Jakarta Sans", "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-body: "Plus Jakarta Sans", "Avenir Next", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --hone-font-label: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+
+  --hone-ink-950: #0b1220;
+  --hone-ink-800: #1e293b;
+  --hone-ink-600: #475569;
+  --hone-ink-500: #526075;
+  --hone-ink-400: #64748b;
+
+  --hone-paper-50: #f4f6f9;
+  --hone-paper-100: #ebeef4;
+  --hone-paper-200: #dce2ec;
+  --hone-surface-raised: #ffffff;
+  --hone-control-surface: #ffffff;
+
+  --hone-coral-500: #1d4ed8;
+  --hone-coral-600: #1e40af;
+  --hone-action-bg: #1d4ed8;
+  --hone-action-fg: #ffffff;
+  --hone-link: #1e40af;
+
+  --hone-inverse-bg: #0b1220;
+  --hone-inverse-fg: #f8fafc;
+  --hone-inverse-muted: #94a3b8;
+
+  --hone-line: rgba(15, 23, 42, 0.12);
+  --hone-line-strong: rgba(15, 23, 42, 0.24);
+  --hone-shadow-sm: 0 1px 2px rgba(11, 18, 32, 0.04);
+  --hone-shadow-md: 0 16px 40px rgba(11, 18, 32, 0.08);
+  --hone-focus-ring: #1d4ed8;
+
+  --hone-signal-green: #059669;
+  --hone-signal-green-soft: #e6f6f0;
+  --hone-signal-green-ink: #047857;
+  --hone-signal-red-ink: #b91c1c;
+
+  /* Strict 6-step homepage type scale */
+  --hone-home-size-hero: clamp(34px, 4.4vw, 50px);
+  --hone-home-size-h2: clamp(24px, 2.7vw, 30px);
+  --hone-home-size-stat: 26px;
+  --hone-home-size-lead: 16px;
+  --hone-home-size-h3: 16px;
+  --hone-home-size-body: 14px;
+  --hone-home-size-meta: 12px;
+  --hone-home-radius: 2px;
+
   position: relative;
   min-height: 100vh;
   display: flex;
@@ -11,65 +58,191 @@
   background: var(--hone-paper-50);
   color: var(--hone-ink-800);
   font-family: var(--hone-font-body);
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
 }
 
+[data-theme="dark"] .hone-home {
+  --hone-ink-950: #f1f5f9;
+  --hone-ink-800: #cbd5e1;
+  --hone-ink-600: #94a3b8;
+  --hone-ink-500: #94a3b8;
+  --hone-ink-400: #8596ad;
+
+  --hone-paper-50: #090d14;
+  --hone-paper-100: #111826;
+  --hone-paper-200: #1a2436;
+  --hone-surface-raised: #0e1522;
+  --hone-control-surface: #0b101b;
+
+  --hone-coral-500: #3b82f6;
+  --hone-coral-600: #60a5fa;
+  --hone-action-bg: #60a5fa;
+  --hone-action-fg: #090d14;
+  --hone-link: #60a5fa;
+
+  --hone-inverse-bg: #111a2b;
+  --hone-inverse-fg: #f8fafc;
+  --hone-inverse-muted: #94a3b8;
+
+  --hone-line: rgba(226, 232, 240, 0.12);
+  --hone-line-strong: rgba(226, 232, 240, 0.25);
+  --hone-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --hone-shadow-md: 0 20px 48px rgba(0, 0, 0, 0.42);
+  --hone-focus-ring: #60a5fa;
+
+  --hone-signal-green: #34d399;
+  --hone-signal-green-soft: rgba(52, 211, 153, 0.15);
+  --hone-signal-green-ink: #34d399;
+  --hone-signal-red-ink: #f87171;
+}
+
+/* Architectural coordinate grid + subtle top atmospheric wash */
 .hone-home-bg {
   position: absolute;
   inset: 0 0 auto;
-  height: 980px;
-  background:
-    radial-gradient(820px 460px at 80% -120px, color-mix(in srgb, var(--hone-coral-500) 11%, transparent), transparent 70%),
-    radial-gradient(700px 420px at 8% 80px, color-mix(in srgb, var(--hone-sage-100) 75%, transparent), transparent 72%);
+  height: 860px;
+  background-image:
+    radial-gradient(960px 420px at 78% 0%, color-mix(in srgb, var(--hone-coral-500) 9%, transparent), transparent 72%),
+    linear-gradient(to right, color-mix(in srgb, var(--hone-line) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--hone-line) 55%, transparent) 1px, transparent 1px);
+  background-size: 100% 100%, 64px 64px, 64px 64px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.35) 62%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.35) 62%, transparent 100%);
   pointer-events: none;
 }
 
-/* --hone-sage-100 is a light-only tint; the dark theme keeps just the warm glow. */
 [data-theme="dark"] .hone-home-bg {
-  background: radial-gradient(820px 460px at 80% -120px, color-mix(in srgb, var(--hone-coral-500) 12%, transparent), transparent 70%);
+  background-image:
+    radial-gradient(960px 420px at 78% 0%, color-mix(in srgb, var(--hone-coral-500) 14%, transparent), transparent 72%),
+    linear-gradient(to right, color-mix(in srgb, var(--hone-line) 50%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--hone-line) 50%, transparent) 1px, transparent 1px);
 }
 
-[data-theme="dark"] .hone-home-asks {
-  background: var(--hone-surface-raised);
+/* ── Harmonize PublicNav & PublicFooter on the homepage ────────────────── */
+
+.hone-home .pub-nav {
+  padding: 0 max(20px, calc((100vw - 1160px) / 2));
+  background: color-mix(in srgb, var(--hone-paper-50) 92%, transparent);
 }
+
+.hone-home .hone-brand-mark {
+  border-radius: var(--hone-home-radius);
+  border-color: var(--hone-line);
+  background: var(--hone-surface-raised);
+  box-shadow: none;
+}
+
+.hone-home .pub-nav-link,
+.hone-home .pub-nav-more-trigger,
+.hone-home .pub-nav-buy,
+.hone-home .pub-nav-cta,
+.hone-home .pub-nav-lang,
+.hone-home .pub-nav-lang button,
+.hone-home .pub-nav-hamburger,
+.hone-home .pub-nav-more-panel,
+.hone-home .pub-nav-more-links a,
+.hone-home .pub-nav-utility-links a,
+.hone-home .pub-mobile-menu,
+.hone-home .pub-mobile-menu-links a,
+.hone-home .pub-mobile-menu-buy,
+.hone-home .pub-mobile-tabs,
+.hone-home .pub-mobile-tab {
+  border-radius: var(--hone-home-radius);
+}
+
+.hone-home .pub-nav-link,
+.hone-home .pub-nav-more-trigger,
+.hone-home .pub-nav-buy,
+.hone-home .pub-nav-cta {
+  font-size: var(--hone-home-size-body);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.hone-home .pub-nav-link.is-active::after {
+  border-radius: 0;
+}
+
+.hone-home .pub-footer {
+  border-top: 1px solid rgba(226, 232, 240, 0.12);
+  background: #090d14;
+  color: #94a3b8;
+}
+
+.hone-home .pub-footer-inner {
+  max-width: 1160px;
+}
+
+@media (min-width: 961px) {
+  .hone-home .pub-footer-grid {
+    grid-template-columns: 1.35fr repeat(4, minmax(0, 1fr));
+  }
+}
+
+.hone-home .pub-footer-column h4 {
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  letter-spacing: 0.12em;
+  color: #64748b;
+}
+
+.hone-home .pub-footer-column a,
+.hone-home .pub-footer-column button,
+.hone-home .pub-footer-brand p {
+  font-size: var(--hone-home-size-body);
+  color: #cbd5e1;
+}
+
+.hone-home .pub-footer-column a:hover,
+.hone-home .pub-footer-column button:hover {
+  color: #60a5fa;
+}
+
+.hone-home .pub-footer-bottom,
+.hone-home .pub-footer-bottom strong {
+  font-size: var(--hone-home-size-meta);
+}
+
+/* ── Main container & shared typography ────────────────────────────────── */
 
 .hone-home-main {
   position: relative;
   z-index: 1;
   flex: 1;
-  width: min(1120px, calc(100% - 40px));
+  width: min(1160px, calc(100% - 40px));
   margin: 0 auto;
 }
-
-/* ── Shared type ───────────────────────────────────────────────────────── */
 
 .hone-home-eyebrow {
   color: var(--hone-coral-600);
   font-family: var(--hone-font-label);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .hone-home h2 {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   color: var(--hone-ink-950);
   font-family: var(--hone-font-display);
-  font-size: clamp(26px, 3.2vw, 36px);
-  font-weight: 800;
-  line-height: 1.18;
-  letter-spacing: -0.03em;
+  font-size: var(--hone-home-size-h2);
+  font-weight: 700;
+  line-height: 1.24;
+  letter-spacing: -0.022em;
 }
 
 .hone-home-feature__copy > p,
 .hone-home-head > p {
   margin: 14px 0 0;
   color: var(--hone-ink-600);
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
 }
 
-/* ── Buttons & links ───────────────────────────────────────────────────── */
+/* ── Square buttons & inline links ─────────────────────────────────────── */
 
 .hone-home-actions {
   display: flex;
@@ -77,7 +250,7 @@
   justify-content: center;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 24px;
 }
 
 .hone-home-actions.is-left {
@@ -87,121 +260,175 @@
 .hone-home-cta {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  min-height: 46px;
-  padding: 0 22px;
+  min-height: 44px;
+  padding: 0 20px;
   border: 1px solid var(--hone-ink-950);
-  border-radius: var(--hone-radius-pill);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-ink-950);
   color: var(--hone-action-fg);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-body);
+  font-weight: 600;
+  line-height: 1;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(23, 32, 31, 0.14);
-  transition: transform 0.18s var(--hone-ease), box-shadow 0.18s var(--hone-ease), background 0.18s ease, border-color 0.18s ease;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.hone-home-cta svg {
+  transition: transform 0.16s var(--hone-ease);
 }
 
 .hone-home-cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 32px rgba(23, 32, 31, 0.18);
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+}
+
+.hone-home-cta:hover svg {
+  transform: translateX(2px);
 }
 
 .hone-home-cta.is-secondary {
   border-color: var(--hone-action-bg);
   background: var(--hone-action-bg);
   color: var(--hone-action-fg);
-  box-shadow: 0 10px 26px color-mix(in srgb, var(--hone-coral-500) 28%, transparent);
+}
+
+.hone-home-cta.is-secondary:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
 }
 
 .hone-home-cta.is-ghost {
   border-color: var(--hone-line-strong);
-  background: color-mix(in srgb, var(--hone-control-surface) 88%, transparent);
+  background: var(--hone-control-surface);
   color: var(--hone-ink-950);
-  box-shadow: none;
 }
 
 .hone-home-cta.is-ghost:hover {
   border-color: var(--hone-ink-950);
-  background: var(--hone-surface-raised);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-950);
 }
 
 .hone-home-cta small {
-  padding: 2px 8px;
-  border-radius: var(--hone-radius-pill);
-  background: color-mix(in srgb, var(--hone-coral-500) 12%, transparent);
+  padding: 3px 7px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
   color: var(--hone-coral-600);
-  font-size: 11px;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .hone-home-link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 22px;
+  gap: 8px;
+  margin-top: 24px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hone-coral-600);
   color: var(--hone-link);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-body);
+  font-weight: 600;
+  line-height: 1.4;
   text-decoration: none;
-}
-
-.hone-home-link:hover svg {
-  transform: translateX(2px);
+  transition: color 0.16s ease, border-color 0.16s ease;
 }
 
 .hone-home-link svg {
-  transition: transform 0.18s var(--hone-ease);
+  transition: transform 0.16s var(--hone-ease);
+}
+
+.hone-home-link:hover svg {
+  transform: translateX(3px);
 }
 
 /* ── Hero ──────────────────────────────────────────────────────────────── */
 
 .hone-home-hero {
+  padding: 112px 0 0;
+}
+
+.hone-home-topbar {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 150px 0 0;
-  text-align: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .hone-home-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 22px;
-  padding: 5px 12px 5px 5px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-pill);
-  background: color-mix(in srgb, var(--hone-surface-raised) 80%, transparent);
-  color: var(--hone-ink-800);
-  font-size: 12px;
+  gap: 10px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  font-size: var(--hone-home-size-meta);
   font-weight: 600;
+  line-height: 1.4;
   text-decoration: none;
-  backdrop-filter: blur(8px);
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .hone-home-chip b {
-  padding: 2px 8px;
-  border-radius: var(--hone-radius-pill);
+  padding: 2px 7px;
+  border-radius: var(--hone-home-radius);
   background: var(--hone-action-bg);
   color: var(--hone-action-fg);
   font-family: var(--hone-font-label);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.hone-home-chip svg {
+  transition: transform 0.16s var(--hone-ease);
 }
 
 .hone-home-chip:hover {
-  border-color: var(--hone-line-strong);
+  border-color: var(--hone-coral-500);
+  background: var(--hone-paper-100);
+}
+
+.hone-home-chip:hover svg {
+  transform: translateX(3px);
+}
+
+.hone-home-topbar__meta {
+  color: var(--hone-ink-400);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hone-home-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: end;
+  gap: 48px;
+  padding: 36px 0 32px;
 }
 
 .hone-home-hero h1 {
-  margin: 16px 0 0;
+  margin: 12px 0 0;
   color: var(--hone-ink-950);
   font-family: var(--hone-font-display);
-  font-size: clamp(36px, 6vw, 64px);
-  font-weight: 800;
-  line-height: 1.08;
-  letter-spacing: -0.045em;
+  font-size: var(--hone-home-size-hero);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
 .hone-home-hero h1 span,
@@ -211,61 +438,228 @@
 }
 
 .hone-home-hero h1 em {
+  margin-top: 4px;
   color: var(--hone-coral-600);
 }
 
 .hone-home-lead {
-  max-width: 620px;
-  margin: 22px 0 0;
+  margin: 0;
   color: var(--hone-ink-600);
-  font-size: 16px;
-  line-height: 1.8;
+  font-size: var(--hone-home-size-lead);
+  line-height: 1.75;
 }
 
 .hone-home-coverage {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 26px;
+  gap: 12px;
+  padding: 14px 18px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
 }
 
 .hone-home-coverage > span {
-  margin-right: 4px;
   color: var(--hone-ink-400);
   font-family: var(--hone-font-label);
-  font-size: 11px;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hone-home-coverage__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .hone-home-coverage b {
-  padding: 4px 11px;
+  padding: 4px 10px;
   border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-pill);
-  background: var(--hone-surface-raised);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
   color: var(--hone-ink-800);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
   font-weight: 600;
+  line-height: 1.4;
 }
 
-/* ── Screenshots ───────────────────────────────────────────────────────── */
+/* ── Interactive Workspace Terminal & Screenshots ──────────────────────── */
 
 .hone-home-shot {
   margin: 0;
 }
 
-.hone-home-shot > button,
-.hone-home-composite > button {
+.hone-home-shot.is-hero {
+  margin-top: 24px;
+}
+
+.hone-home-terminal {
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
+  box-shadow: var(--hone-shadow-md);
+}
+
+.hone-home-terminal__chrome {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-paper-100);
+}
+
+.hone-home-terminal__tabs {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.hone-home-terminal__tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid var(--hone-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-home-size-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.hone-home-terminal__tabs button small {
+  color: var(--hone-ink-400);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+}
+
+.hone-home-terminal__tabs button:hover {
+  background: color-mix(in srgb, var(--hone-surface-raised) 65%, transparent);
+  color: var(--hone-ink-950);
+}
+
+.hone-home-terminal__tabs button.is-active {
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+}
+
+.hone-home-terminal__tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--hone-coral-500);
+}
+
+.hone-home-terminal__tabs button.is-active small {
+  color: var(--hone-coral-600);
+}
+
+.hone-home-terminal__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-left: auto;
+}
+
+.hone-home-terminal__tools > code {
+  padding: 4px 10px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-terminal__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
+  color: var(--hone-ink-950);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.hone-home-terminal__tool:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-paper-200);
+}
+
+.hone-home-terminal__tool.is-accent {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+}
+
+.hone-home-terminal__tool.is-accent:hover {
+  border-color: var(--hone-ink-950);
+  background: var(--hone-ink-950);
+}
+
+.hone-home-shot__trigger,
+.hone-home-composite__grid > button {
   display: block;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
   background: var(--hone-surface-raised);
   cursor: zoom-in;
-  box-shadow: var(--hone-shadow-md);
+  text-align: left;
+}
+
+.hone-home-quant__shot .hone-home-shot__trigger,
+.hone-home-composite__grid > button {
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  box-shadow: var(--hone-shadow-sm);
+  transition: border-color 0.16s ease;
+}
+
+.hone-home-quant__shot .hone-home-shot__trigger:hover,
+.hone-home-composite__grid > button:hover {
+  border-color: var(--hone-coral-500);
+}
+
+.hone-home-composite__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 .hone-home-shot img,
@@ -275,26 +669,31 @@
   height: auto;
 }
 
-.hone-home-shot.is-hero {
-  margin-top: 56px;
+.hone-home-terminal > figcaption {
+  padding: 10px 16px;
+  border-top: 1px solid var(--hone-line);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.5;
+  text-align: left;
 }
 
-.hone-home-shot figcaption,
 .hone-home-composite figcaption {
   margin-top: 12px;
   color: var(--hone-ink-400);
-  font-size: 12px;
-  text-align: center;
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.5;
 }
 
-/* ── Proof strip ───────────────────────────────────────────────────────── */
+/* ── Proof Ledger ──────────────────────────────────────────────────────── */
 
 .hone-home-proof {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 48px 0 0;
+  margin: 20px 0 0;
   border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
 }
 
@@ -310,113 +709,175 @@
 .hone-home-proof dt {
   color: var(--hone-ink-950);
   font-family: var(--hone-font-label);
-  font-size: 22px;
+  font-size: var(--hone-home-size-stat);
   font-weight: 700;
+  line-height: 1.15;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .hone-home-proof dd {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--hone-ink-500);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
   line-height: 1.5;
 }
 
 /* ── Section scaffolding ───────────────────────────────────────────────── */
 
-.hone-home-section {
-  margin-top: 120px;
+.hone-home-section,
+.hone-home-feature,
+.hone-home-quant,
+.hone-home-community {
+  margin-top: 96px;
+  padding-top: 48px;
+  border-top: 1px solid var(--hone-line);
 }
 
 .hone-home-head {
-  max-width: 640px;
+  max-width: 680px;
 }
 
-/* ── Products ──────────────────────────────────────────────────────────── */
+/* ── 01 · Products Ledger ──────────────────────────────────────────────── */
 
 .hone-home-products {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 36px;
+  gap: 16px;
+  margin-top: 32px;
 }
 
 .hone-home-product {
+  position: relative;
   display: flex;
   flex-direction: column;
-  padding: 22px;
+  padding: 24px;
   border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
   color: inherit;
   text-decoration: none;
-  transition: transform 0.2s var(--hone-ease), box-shadow 0.2s var(--hone-ease), border-color 0.2s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.hone-home-product::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  left: -1px;
+  height: 2px;
+  background: var(--hone-coral-500);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.22s var(--hone-ease);
 }
 
 .hone-home-product:hover {
-  transform: translateY(-3px);
   border-color: var(--hone-line-strong);
-  box-shadow: var(--hone-shadow-md);
+  box-shadow: var(--hone-shadow-sm);
+}
+
+.hone-home-product:hover::before {
+  transform: scaleX(1);
+}
+
+.hone-home-product__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .hone-home-product__icon {
   display: inline-grid;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   place-items: center;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--hone-coral-500) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--hone-coral-500) 24%, var(--hone-line));
+  border-radius: var(--hone-home-radius);
+  background: color-mix(in srgb, var(--hone-coral-500) 8%, var(--hone-surface-raised));
   color: var(--hone-coral-600);
 }
 
 .hone-home-product__icon svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+}
+
+.hone-home-product__index {
+  color: var(--hone-ink-400);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
 }
 
 .hone-home-product h3 {
-  margin: 18px 0 0;
+  margin: 20px 0 0;
   color: var(--hone-ink-950);
-  font-size: 17px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
 }
 
 .hone-home-product p {
   flex: 1;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--hone-ink-600);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
+}
+
+.hone-home-product__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hone-line);
+}
+
+.hone-home-product__foot code {
+  color: var(--hone-ink-400);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
 }
 
 .hone-home-product__cta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 18px;
   color: var(--hone-link);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-body);
+  font-weight: 600;
 }
 
-/* ── Feature rows ──────────────────────────────────────────────────────── */
+.hone-home-product__cta svg {
+  transition: transform 0.16s var(--hone-ease);
+}
+
+.hone-home-product:hover .hone-home-product__cta svg {
+  transform: translateX(3px);
+}
+
+/* ── 02 & 03 · Feature Rows ────────────────────────────────────────────── */
 
 .hone-home-feature {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-  align-items: center;
-  gap: 56px;
-  margin-top: 120px;
+  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+  align-items: start;
+  gap: 48px;
 }
 
 .hone-home-feature.is-media {
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 }
 
 .hone-home-points {
   display: grid;
   gap: 12px;
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -424,71 +885,153 @@
 .hone-home-points li {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  color: var(--hone-ink-800);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.hone-home-points svg {
-  margin-top: 3px;
-  color: var(--hone-signal-green);
-}
-
-.hone-home-asks {
-  display: grid;
-  gap: 12px;
-  padding: 26px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-lg);
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--hone-sage-100) 55%, var(--hone-surface-raised)), var(--hone-surface-raised) 60%);
-}
-
-.hone-home-asks > span {
-  color: var(--hone-ink-500);
-  font-family: var(--hone-font-label);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.hone-home-asks a {
-  display: flex;
+  align-items: start;
   gap: 10px;
+  color: var(--hone-ink-800);
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
+}
+
+.hone-home-points__mark {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--hone-signal-green) 35%, var(--hone-line));
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-signal-green-soft);
+  color: var(--hone-signal-green-ink);
+}
+
+/* Interactive Query Terminal */
+.hone-home-asks {
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
+}
+
+.hone-home-asks__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--hone-line);
+  background: var(--hone-paper-100);
+}
+
+.hone-home-asks__head > span {
+  color: var(--hone-ink-800);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.hone-home-asks__head > small {
+  color: var(--hone-ink-400);
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-asks__list {
+  display: grid;
+}
+
+.hone-home-asks__list a {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
   padding: 16px 18px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border-bottom: 1px solid var(--hone-line);
   background: var(--hone-surface-raised);
   color: var(--hone-ink-950);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.55;
   text-decoration: none;
-  box-shadow: var(--hone-shadow-sm);
-  transition: transform 0.18s var(--hone-ease), border-color 0.18s ease;
+  transition: background 0.15s ease;
 }
 
-.hone-home-asks a:nth-child(3) {
-  margin-left: 28px;
+.hone-home-asks__list a:last-child {
+  border-bottom: 0;
 }
 
-.hone-home-asks a:nth-child(4) {
-  margin-left: 12px;
+.hone-home-asks__list a::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--hone-coral-500);
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
-.hone-home-asks a:hover {
-  transform: translateX(4px);
-  border-color: var(--hone-line-strong);
+.hone-home-asks__list a:hover {
+  background: var(--hone-paper-100);
 }
 
-.hone-home-asks a b {
+.hone-home-asks__list a:hover::before {
+  opacity: 1;
+}
+
+.hone-home-asks__meta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hone-home-asks__meta code {
   color: var(--hone-coral-600);
-  font-family: var(--hone-font-display);
-  font-size: 22px;
-  line-height: 1;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
 }
 
+.hone-home-asks__meta em {
+  padding: 1px 6px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-500);
+  font-style: normal;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+}
+
+.hone-home-asks__list p {
+  margin: 0;
+  color: var(--hone-ink-950);
+  font-size: var(--hone-home-size-body);
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.hone-home-asks__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-control-surface);
+  color: var(--hone-link);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.hone-home-asks__list a:hover .hone-home-asks__go {
+  border-color: var(--hone-action-bg);
+  background: var(--hone-action-bg);
+  color: var(--hone-action-fg);
+}
+
+/* Research Desk Facts & Dual Viewport */
 .hone-home-facts {
   display: grid;
   gap: 16px;
@@ -496,172 +1039,230 @@
 }
 
 .hone-home-facts > div {
-  padding-left: 14px;
-  border-left: 2px solid color-mix(in srgb, var(--hone-coral-500) 55%, transparent);
+  padding: 14px 16px;
+  border: 1px solid var(--hone-line);
+  border-left: 3px solid var(--hone-coral-500);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-surface-raised);
 }
 
 .hone-home-facts dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--hone-ink-950);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.hone-home-facts dt code {
+  padding: 1px 6px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
+  color: var(--hone-coral-600);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-facts dt small {
+  margin-left: auto;
+  color: var(--hone-ink-400);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 500;
 }
 
 .hone-home-facts dd {
-  margin: 4px 0 0;
+  margin: 8px 0 0;
   color: var(--hone-ink-600);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
 }
 
-/* Desk capture with the phone capture overlapping its lower right corner. */
 .hone-home-composite {
-  position: relative;
-  margin: 0;
-  padding: 0 0 40px;
-}
-
-.hone-home-composite__desk {
-  width: 88%;
-}
-
-.hone-home-composite > .hone-home-composite__phone {
-  position: absolute;
-  right: 0;
-  bottom: 30px;
-  width: 30%;
-  max-width: 220px;
-  border: 6px solid var(--hone-ink-950);
-  border-radius: 28px;
-  box-shadow: 0 24px 60px rgba(23, 32, 31, 0.28);
-}
-
-.hone-home-composite figcaption {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
   margin: 0;
 }
 
-/* ── hone-quant ────────────────────────────────────────────────────────── */
+.hone-home-composite__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 0.78fr);
+  align-items: start;
+  gap: 14px;
+}
+
+/* ── 04 · hone-quant ───────────────────────────────────────────────────── */
 
 .hone-home-quant {
-  margin-top: 120px;
-  padding: 40px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-lg);
+  padding: 36px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
-  scroll-margin-top: 90px;
+  scroll-margin-top: 84px;
 }
 
 .hone-home-quant__intro {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 44px;
+  align-items: start;
+  gap: 40px;
 }
 
 .hone-home-kicker {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .hone-home-badge {
-  padding: 2px 9px;
-  border-radius: var(--hone-radius-pill);
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--hone-signal-green) 35%, var(--hone-line));
+  border-radius: var(--hone-home-radius);
   background: var(--hone-signal-green-soft);
   color: var(--hone-signal-green-ink);
-  font-size: 11px;
-  font-weight: 700;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
 }
 
 .hone-home-steps {
   display: grid;
-  gap: 12px;
+  gap: 0;
   margin: 22px 0 0;
   padding: 0;
+  border-top: 1px solid var(--hone-line);
   list-style: none;
 }
 
 .hone-home-steps li {
   display: grid;
-  grid-template-columns: 116px minmax(0, 1fr);
+  grid-template-columns: 128px minmax(0, 1fr);
   grid-template-rows: auto auto;
-  column-gap: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--hone-line);
+  column-gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hone-line);
 }
 
 .hone-home-steps small {
   grid-row: 1 / 3;
   color: var(--hone-coral-600);
   font-family: var(--hone-font-label);
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 .hone-home-steps strong {
   color: var(--hone-ink-950);
-  font-size: 14px;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .hone-home-steps span {
-  margin-top: 2px;
+  margin-top: 4px;
   color: var(--hone-ink-600);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
 }
 
 .hone-home-backtest {
   margin-top: 32px;
-  padding-top: 24px;
+  padding-top: 28px;
   border-top: 1px solid var(--hone-line);
 }
 
 .hone-home-backtest header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: 12px 20px;
 }
 
-.hone-home-backtest header strong {
+.hone-home-backtest__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.hone-home-backtest__title strong {
   color: var(--hone-ink-950);
-  font-size: 15px;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
 }
 
-.hone-home-backtest header span {
+.hone-home-backtest__title span {
   color: var(--hone-ink-500);
   font-family: var(--hone-font-label);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-backtest__tabs {
+  display: inline-flex;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
+}
+
+.hone-home-backtest__tabs button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-right: 1px solid var(--hone-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.hone-home-backtest__tabs button:last-child {
+  border-right: 0;
+}
+
+.hone-home-backtest__tabs button.is-active {
+  background: var(--hone-ink-950);
+  color: var(--hone-action-fg);
 }
 
 .hone-home-backtest dl {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin: 16px 0 0;
+  margin: 18px 0 0;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
 }
 
 .hone-home-backtest dl > div {
-  padding: 14px 16px;
-  border-radius: var(--hone-radius-sm);
-  background: var(--hone-paper-100);
+  padding: 18px;
+  border-left: 1px solid var(--hone-line);
+}
+
+.hone-home-backtest dl > div:first-child {
+  border-left: 0;
 }
 
 .hone-home-backtest dt {
   color: var(--hone-ink-500);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .hone-home-backtest dd {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   color: var(--hone-ink-950);
   font-family: var(--hone-font-label);
-  font-size: 20px;
+  font-size: var(--hone-home-size-stat);
   font-weight: 700;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
@@ -679,20 +1280,26 @@
   gap: 6px 12px;
   margin: 14px 0 0;
   color: var(--hone-ink-600);
-  font-size: 13px;
+  font-size: var(--hone-home-size-body);
 }
 
 .hone-home-backtest__secondary strong {
   color: var(--hone-ink-950);
+  font-weight: 600;
 }
 
 .hone-home-backtest__note {
   display: flex;
+  align-items: flex-start;
   gap: 8px;
   margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
   color: var(--hone-ink-500);
-  font-size: 12px;
-  line-height: 1.65;
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.6;
 }
 
 .hone-home-backtest__note svg {
@@ -700,200 +1307,328 @@
   margin-top: 2px;
 }
 
-/* ── Community ─────────────────────────────────────────────────────────── */
+/* ── 05 · BamangTech Community & Video Channels ────────────────────────── */
 
 .hone-home-community {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 56px;
-  margin-top: 120px;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  align-items: start;
+  gap: 48px;
 }
 
 .hone-home-host {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   margin-top: 24px;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
 }
 
 .hone-home-host img {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   flex: 0 0 auto;
-  border-radius: 50%;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
   object-fit: cover;
 }
 
 .hone-home-host div {
   display: grid;
-  gap: 2px;
+  gap: 3px;
 }
 
 .hone-home-host strong {
   color: var(--hone-ink-950);
-  font-size: 15px;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .hone-home-host span {
-  color: var(--hone-ink-800);
-  font-size: 12px;
+  color: var(--hone-coral-600);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
 }
 
 .hone-home-host small {
-  color: var(--hone-ink-500);
-  font-size: 12px;
+  color: var(--hone-ink-600);
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.5;
 }
 
 .hone-home-community__panel {
   padding: 28px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-lg);
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
 }
 
 .hone-home-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
   margin: 0;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
 }
 
 .hone-home-stats > div {
-  padding: 18px;
-  border-radius: var(--hone-radius-md);
-  background: var(--hone-paper-100);
+  padding: 18px 20px;
+}
+
+.hone-home-stats > div:nth-child(2n) {
+  border-left: 1px solid var(--hone-line);
+}
+
+.hone-home-stats > div:nth-child(n + 3) {
+  border-top: 1px solid var(--hone-line);
 }
 
 .hone-home-stats dt {
   color: var(--hone-ink-950);
-  font-family: var(--hone-font-display);
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-stat);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .hone-home-stats dd {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--hone-ink-600);
-  font-size: 13px;
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.5;
 }
 
 .hone-home-channels {
+  margin-top: 24px;
+}
+
+.hone-home-channels__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+}
+
+.hone-home-channels__head strong {
+  color: var(--hone-ink-950);
+  font-size: var(--hone-home-size-body);
+  font-weight: 650;
+}
+
+.hone-home-channels__head small {
+  color: var(--hone-ink-400);
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-channels__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hone-home-channel {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-control-surface);
+  color: var(--hone-ink-950);
+  text-decoration: none;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.hone-home-channel:hover {
+  border-color: var(--hone-coral-500);
+  background: var(--hone-paper-100);
+}
+
+.hone-home-channel__icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
+  color: var(--hone-ink-950);
+}
+
+.hone-home-channel.is-youtube .hone-home-channel__icon {
+  color: #dc2626;
+}
+
+.hone-home-channel.is-bilibili .hone-home-channel__icon {
+  color: #0284c7;
+}
+
+.hone-home-channel.is-zsxq .hone-home-channel__icon {
+  color: var(--hone-signal-green-ink);
+}
+
+.hone-home-channel.is-discord .hone-home-channel__icon {
+  color: var(--hone-coral-600);
+}
+
+.hone-home-channel__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.hone-home-channel__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hone-home-channel__body strong {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 20px;
-}
-
-.hone-home-channels > span {
-  margin-right: 4px;
-  color: var(--hone-ink-500);
-  font-size: 12px;
-}
-
-.hone-home-channels a {
-  padding: 6px 13px;
-  border: 1px solid var(--hone-line-strong);
-  border-radius: var(--hone-radius-pill);
-  color: var(--hone-ink-800);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.hone-home-channels a:hover {
-  border-color: var(--hone-ink-950);
+  gap: 6px;
   color: var(--hone-ink-950);
+  font-size: var(--hone-home-size-body);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.hone-home-channel__body code {
+  color: var(--hone-coral-600);
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+}
+
+.hone-home-channel__body small {
+  color: var(--hone-ink-500);
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.45;
+}
+
+.hone-home-channel__arrow {
+  color: var(--hone-ink-400);
+  transition: transform 0.16s var(--hone-ease), color 0.16s ease;
+}
+
+.hone-home-channel:hover .hone-home-channel__arrow {
+  transform: translate(2px, -2px);
+  color: var(--hone-coral-600);
 }
 
 .hone-home-community__note {
   margin: 16px 0 0;
   color: var(--hone-ink-400);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.55;
 }
 
-/* ── Principles + more ─────────────────────────────────────────────────── */
+/* ── 06 · Principles & Engineering Links ───────────────────────────────── */
 
 .hone-home-principles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
   margin-top: 32px;
 }
 
 .hone-home-principles article {
   padding: 24px;
   border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-md);
+  border-radius: var(--hone-home-radius);
   background: var(--hone-surface-raised);
 }
 
 .hone-home-principles article span {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-paper-100);
   color: var(--hone-coral-600);
   font-family: var(--hone-font-label);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
 }
 
 .hone-home-principles h3 {
-  margin: 12px 0 0;
+  margin: 16px 0 0;
   color: var(--hone-ink-950);
-  font-size: 17px;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .hone-home-principles p {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--hone-ink-600);
-  font-size: 13px;
-  line-height: 1.75;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
 }
 
 .hone-home-more {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .hone-home-more a {
   display: grid;
-  gap: 4px;
-  padding: 18px 20px;
-  border: 1px dashed var(--hone-line-strong);
-  border-radius: var(--hone-radius-md);
+  gap: 8px;
+  padding: 20px 24px;
+  border: 1px solid var(--hone-line);
+  border-radius: var(--hone-home-radius);
+  background: var(--hone-control-surface);
   color: inherit;
   text-decoration: none;
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .hone-home-more a:hover {
-  border-style: solid;
+  border-color: var(--hone-coral-500);
   background: var(--hone-surface-raised);
+}
+
+.hone-home-more__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--hone-coral-600);
 }
 
 .hone-home-more small {
   color: var(--hone-coral-600);
   font-family: var(--hone-font-label);
-  font-size: 11px;
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
   letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .hone-home-more strong {
   color: var(--hone-ink-950);
-  font-size: 14px;
+  font-size: var(--hone-home-size-h3);
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .hone-home-more span {
   overflow: hidden;
   color: var(--hone-ink-500);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.65;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -902,125 +1637,213 @@
 /* ── Final CTA ─────────────────────────────────────────────────────────── */
 
 .hone-home-final {
-  margin-top: 120px;
-  padding: 56px 32px;
-  border: 1px solid var(--hone-line);
-  border-radius: var(--hone-radius-lg);
-  background:
-    radial-gradient(600px 260px at 50% 0, color-mix(in srgb, var(--hone-coral-500) 22%, transparent), transparent 70%),
-    var(--hone-inverse-bg);
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  align-items: center;
+  gap: 40px;
+  margin-top: 96px;
+  padding: 48px;
+  border: 1px solid var(--hone-line-strong);
+  border-radius: var(--hone-home-radius);
+  background-color: var(--hone-inverse-bg);
+  background-image:
+    radial-gradient(560px 260px at 90% 0%, rgba(59, 130, 246, 0.2), transparent 70%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
   color: var(--hone-inverse-fg);
-  text-align: center;
+}
+
+.hone-home-final__eyebrow {
+  color: #60a5fa;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .hone-home .hone-home-final h2 {
-  margin: 0;
+  margin: 10px 0 0;
   color: var(--hone-inverse-fg);
 }
 
 .hone-home-final p {
   margin: 12px 0 0;
   color: var(--hone-inverse-muted);
-  font-size: 15px;
+  font-size: var(--hone-home-size-body);
+  line-height: 1.72;
+}
+
+.hone-home-final__side .hone-home-actions {
+  margin-top: 0;
 }
 
 .hone-home-final small {
   display: block;
-  margin-top: 22px;
+  margin-top: 16px;
   color: var(--hone-inverse-muted);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
 }
 
 .hone-home-final small a {
   color: var(--hone-inverse-fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .hone-home-cta.is-inverse {
   border-color: var(--hone-inverse-fg);
   background: var(--hone-inverse-fg);
-  color: var(--hone-inverse-bg);
-  box-shadow: none;
+  color: #090d14;
+}
+
+.hone-home-cta.is-inverse:hover {
+  border-color: #60a5fa;
+  background: #60a5fa;
+  color: #090d14;
 }
 
 .hone-home-cta.is-inverse-ghost {
-  border-color: color-mix(in srgb, var(--hone-inverse-fg) 35%, transparent);
+  border-color: rgba(248, 250, 252, 0.32);
   background: transparent;
   color: var(--hone-inverse-fg);
-  box-shadow: none;
+}
+
+.hone-home-cta.is-inverse-ghost:hover {
+  border-color: var(--hone-inverse-fg);
+  background: rgba(248, 250, 252, 0.08);
+  color: var(--hone-inverse-fg);
 }
 
 .hone-home-disclaimer {
   margin: 28px 0 56px;
   color: var(--hone-ink-400);
-  font-size: 12px;
+  font-size: var(--hone-home-size-meta);
+  line-height: 1.6;
   text-align: center;
 }
 
-/* ── Lightbox ──────────────────────────────────────────────────────────── */
+/* ── Square Architectural Lightbox ─────────────────────────────────────── */
 
 .hone-home-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 220;
   display: grid;
   place-items: center;
-  padding: 32px;
-  background: rgba(10, 12, 11, 0.82);
+  padding: 24px;
+  background: rgba(6, 10, 18, 0.86);
   cursor: zoom-out;
 }
 
-.hone-home-lightbox img {
-  max-width: min(1400px, 100%);
-  max-height: 100%;
-  border-radius: var(--hone-radius-sm);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+.hone-home-lightbox__frame {
+  max-width: min(1360px, 100%);
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(226, 232, 240, 0.24);
+  border-radius: var(--hone-home-radius);
+  background: #090d14;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  cursor: default;
 }
 
-.hone-home-lightbox button {
-  position: absolute;
-  top: 18px;
-  right: 22px;
-  width: 40px;
-  height: 40px;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  font-size: 24px;
+.hone-home-lightbox__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.16);
+  color: #cbd5e1;
+  font-size: var(--hone-home-size-meta);
+}
+
+.hone-home-lightbox__bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hone-home-lightbox__bar button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(226, 232, 240, 0.28);
+  border-radius: var(--hone-home-radius);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+  font-family: var(--hone-font-label);
+  font-size: var(--hone-home-size-meta);
+  font-weight: 600;
   cursor: pointer;
+}
+
+.hone-home-lightbox__bar button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hone-home-lightbox img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 104px);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
 }
 
 /* ── Responsive ────────────────────────────────────────────────────────── */
 
-@media (max-width: 1000px) {
-  .hone-home-products {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+@media (max-width: 1040px) {
+  .hone-home-hero__grid,
   .hone-home-feature,
   .hone-home-feature.is-media,
   .hone-home-community,
-  .hone-home-quant__intro {
+  .hone-home-quant__intro,
+  .hone-home-final {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  .hone-home-products {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hone-home-backtest dl {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .hone-home-backtest dl > div:nth-child(4) {
+    border-left: 0;
+  }
+
+  .hone-home-backtest dl > div:nth-child(n + 4) {
+    border-top: 1px solid var(--hone-line);
+  }
 }
 
 @media (max-width: 760px) {
+  .hone-home {
+    --hone-home-size-stat: 22px;
+  }
+
   .hone-home-main {
-    width: calc(100% - 32px);
+    width: calc(100% - 28px);
   }
 
   .hone-home-hero {
-    padding-top: 112px;
+    padding-top: 84px;
   }
 
-  .hone-home-lead {
-    font-size: 15px;
+  .hone-home-topbar__meta {
+    display: none;
+  }
+
+  .hone-home-hero__grid {
+    gap: 20px;
+    padding: 24px 0;
   }
 
   .hone-home-actions {
@@ -1029,11 +1852,38 @@
 
   .hone-home-hero .hone-home-actions .hone-home-cta {
     flex: 1 1 auto;
-    justify-content: center;
   }
 
-  .hone-home-shot.is-hero {
-    margin-top: 40px;
+  .hone-home-terminal__tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hone-home-terminal__tabs button {
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 6px;
+    border-bottom: 1px solid var(--hone-line);
+    font-size: var(--hone-home-size-meta);
+    white-space: nowrap;
+  }
+
+  .hone-home-terminal__tabs button small {
+    display: none;
+  }
+
+  .hone-home-terminal__tabs button:last-child {
+    border-right: 0;
+  }
+
+  .hone-home-terminal__tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .hone-home-terminal__tools > code {
+    display: none;
   }
 
   .hone-home-proof {
@@ -1048,39 +1898,43 @@
     border-top: 1px solid var(--hone-line);
   }
 
-  .hone-home-proof dt {
-    font-size: 18px;
-  }
-
   .hone-home-section,
   .hone-home-feature,
   .hone-home-quant,
   .hone-home-community,
   .hone-home-final {
-    margin-top: 80px;
+    margin-top: 64px;
+  }
+
+  .hone-home-section,
+  .hone-home-feature,
+  .hone-home-community {
+    padding-top: 36px;
   }
 
   .hone-home-products,
   .hone-home-principles,
-  .hone-home-more {
+  .hone-home-more,
+  .hone-home-channels__grid,
+  .hone-home-composite__grid {
     grid-template-columns: 1fr;
   }
 
-  .hone-home-asks {
-    padding: 18px;
+  .hone-home-asks__list a {
+    grid-template-columns: 1fr;
   }
 
-  .hone-home-asks a:nth-child(3),
-  .hone-home-asks a:nth-child(4) {
-    margin-left: 0;
+  .hone-home-asks__go {
+    justify-self: start;
   }
 
   .hone-home-quant {
-    padding: 22px;
+    padding: 20px;
   }
 
   .hone-home-steps li {
     grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .hone-home-steps small {
@@ -1091,29 +1945,38 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .hone-home-backtest dl > div:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .hone-home-backtest dl > div:nth-child(even) {
+    border-left: 1px solid var(--hone-line);
+  }
+
+  .hone-home-backtest dl > div:nth-child(n + 3) {
+    border-top: 1px solid var(--hone-line);
+  }
+
   .hone-home-community__panel {
-    padding: 18px;
+    padding: 20px;
   }
 
   .hone-home-final {
-    padding: 40px 20px;
-  }
-
-  .hone-home-composite {
-    padding-bottom: 36px;
-  }
-
-  .hone-home-composite > .hone-home-composite__phone {
-    width: 34%;
-    border-width: 4px;
-    border-radius: 18px;
+    padding: 32px 20px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .hone-home-cta,
+  .hone-home-cta svg,
+  .hone-home-chip,
+  .hone-home-chip svg,
   .hone-home-product,
-  .hone-home-asks a,
+  .hone-home-product::before,
+  .hone-home-product__cta svg,
+  .hone-home-asks__list a,
+  .hone-home-channel,
+  .hone-home-channel__arrow,
   .hone-home-link svg {
     transition: none;
   }
