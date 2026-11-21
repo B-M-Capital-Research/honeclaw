@@ -77,3 +77,4 @@
 - **修复方案**（`fx.js` / `app.js` / `hone-adventure.test.ts`）：
   - 移除普通小怪击杀、暴击击杀微顿帧、常规武器矩阵/范围爆破与连击播报的所有镜头抖动，高频割草全程保持镜头零抖动。
   - 将 `fx.shake` 从累加模型改为**非叠加峰值包络**（`Math.max(fx.trauma, Math.min(cap, v))`），仅保留玩家受击、精英/Boss 击破、超频清屏与流片进化等低频关键事件的瞬时轻反馈，加快衰减速率（`4.2/s`）并将最大像素振幅收敛至 `< 2.5px`；同时在设置与暂停面板新增「关键事件轻微震屏」开关（关闭后全局 100% 零震屏）。
+  - 为 `/hone-adventure/` 全套未哈希 ES Module/CSS/WebP 引用加上 `?v=2.0.2` 版本参数，并在 `packages/app/public/_worker.js` 对 `/hone-adventure/*` 强制覆盖 `Cache-Control: public, max-age=0, must-revalidate`，消除浏览器默认 4 小时缓存导致的普通刷新滞后。

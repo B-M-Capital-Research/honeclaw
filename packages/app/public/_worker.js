@@ -151,7 +151,9 @@ export default {
           }));
         }
       }
-      return withSecurityHeaders(response);
+      const out = withSecurityHeaders(response, url.pathname);
+      out.headers.set('cache-control', 'public, max-age=0, must-revalidate');
+      return out;
     }
 
     if (isStaticResourceRequest(url.pathname)) {

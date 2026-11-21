@@ -27,7 +27,7 @@ import {
   branchPoints,
   getPromotionBonuses,
   mulberry32,
-} from "./data.js";
+} from "./data.js?v=2.0.2";
 
 export const FX_EVT = {
   HIT: 1,

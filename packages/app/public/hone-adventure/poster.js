@@ -1,7 +1,7 @@
 // HONE Adventure V2 — 1080x1440 (3:4) Light Cleanroom AI Data Center Battle Report Poster
 
-import { HONECLAW_REPO_LABEL, RULES, STAGES, STAGE_IDX, WEAPONS, WEAPON_IDX, fmtTime, getTitle } from "./data.js";
-import { ICON_DRAWERS, drawSprite2D, makeFallbackFloor, makeQuantOverlay, roundRectPath } from "./art.js";
+import { HONECLAW_REPO_LABEL, RULES, STAGES, STAGE_IDX, WEAPONS, WEAPON_IDX, fmtTime, getTitle } from "./data.js?v=2.0.2";
+import { ICON_DRAWERS, drawSprite2D, makeFallbackFloor, makeQuantOverlay, roundRectPath } from "./art.js?v=2.0.2";
 
 const FONT = '"Avenir Next", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif';
 let bgFloor = null;

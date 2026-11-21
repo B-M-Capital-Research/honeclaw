@@ -1,6 +1,6 @@
 // HONE Adventure V2 — Cleanroom AI Data Center Sprite Atlas, Hardware Projectiles, Icons & Dual Renderer
 
-import { SHEET_FRAMES } from "./atlas-coords.js";
+import { SHEET_FRAMES } from "./atlas-coords.js?v=2.0.2";
 
 const TAU = Math.PI * 2;
 

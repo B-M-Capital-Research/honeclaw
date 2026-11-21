@@ -1,9 +1,9 @@
 // HONE Adventure V2 — Cleanroom AI Data Center Renderer, PCB Trace FX & High-Contrast Projectiles
 
-import { AI_TYPE, ENEMIES, STAGES, WEAPONS } from "./data.js";
-import { BULLET_KIND, FX_EVT, PICK_KIND, ZONE_KIND } from "./world.js";
-import { SPR_IDX } from "./art.js";
-import { playGemChime, playKillPop, playSfx } from "./audio.js";
+import { AI_TYPE, ENEMIES, STAGES, WEAPONS } from "./data.js?v=2.0.2";
+import { BULLET_KIND, FX_EVT, PICK_KIND, ZONE_KIND } from "./world.js?v=2.0.2";
+import { SPR_IDX } from "./art.js?v=2.0.2";
+import { playGemChime, playKillPop, playSfx } from "./audio.js?v=2.0.2";
 
 const MAX_PARTS = 950;
 const MAX_NUMS = 120;

@@ -113,5 +113,11 @@ describe("hone adventure standalone game guard", () => {
     expect(found.headers.get("x-frame-options")).toBe("DENY");
     expect(found.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
     expect(found.headers.get("strict-transport-security")).toBe("max-age=31536000");
+    expect(found.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
+
+    const jsEnv = {ASSETS: {fetch: async () => new Response("export const ok = 1;", {headers: {"content-type": "application/javascript", "cache-control": "public, max-age=14400"}})}};
+    const foundJs = await worker.fetch(new Request("https://hone-claw.com/hone-adventure/fx.js?v=2.0.2"), jsEnv);
+    expect(foundJs.status).toBe(200);
+    expect(foundJs.headers.get("cache-control")).toBe("public, max-age=0, must-revalidate");
   });
 });

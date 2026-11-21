@@ -29,8 +29,8 @@ import {
   getDailyChallenge,
   getNextTitle,
   getTitle,
-} from "./data.js";
-import { GameWorld, createAutoBot } from "./world.js";
+} from "./data.js?v=2.0.2";
+import { GameWorld, createAutoBot } from "./world.js?v=2.0.2";
 import {
   ART_STATE,
   SPRITE_DEFS,
@@ -43,7 +43,7 @@ import {
   makeFallbackFloor,
   makeQuantOverlay,
   renderIconCanvas,
-} from "./art.js";
+} from "./art.js?v=2.0.2";
 import {
   playSfx,
   setAudioPrefs,
@@ -53,9 +53,9 @@ import {
   tickBgm,
   vibrate,
   warmAudioStep,
-} from "./audio.js";
-import { ZONES, cloneZone, createFxSystem, lerpZone, pickZoneKey, renderWorld } from "./fx.js";
-import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./poster.js";
+} from "./audio.js?v=2.0.2";
+import { ZONES, cloneZone, createFxSystem, lerpZone, pickZoneKey, renderWorld } from "./fx.js?v=2.0.2";
+import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./poster.js?v=2.0.2";
 
 const SAVE_KEY = "hone_adventure_save_v2";
 const GITHUB_API_URL = "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
@@ -2013,8 +2013,8 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   const noArt = params.get("noart") === "1";
   const [sprImg, flrImg] = await Promise.all([
-    noArt ? null : loadImage("./sprites.webp", 7000),
-    noArt ? null : loadImage("./floor.webp", 7000),
+    noArt ? null : loadImage("./sprites.webp?v=2.0.2", 7000),
+    noArt ? null : loadImage("./floor.webp?v=2.0.2", 7000),
   ]);
 
   if (sprImg) bindSpriteSheet(sprImg);
