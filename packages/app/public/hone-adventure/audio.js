@@ -175,12 +175,17 @@ const RECIPES = [
   ["wave", () => { const b = alloc(0.38); tone(b, 0, 0.34, 110, 65, 1, 0.12); chime(b, 0.05, 659.25, 0.32, 0.1, 0.3); commit("wave", b, 0.6); }],
   ["elite", () => { const b = alloc(0.56); tone(b, 0, 0.5, 92, 123, 0.9, 0.2, 0, 0.006, 2); bell(b, 0.2, 659.25, 0.4, 0.12, -0.3); commit("elite", b, 0.65); }],
   ["revive", () => { const b = alloc(0.96); [440, 554.37, 659.25, 880, 1108.73, 1318.5].forEach((f, i) => chime(b, i * 0.075, f, 0.8, 0.18, i % 2 ? 0.5 : -0.5)); commit("revive", b, 0.8); }],
-  // Cyber-Synthwave BGM Instruments (D minor / A minor pentatonic pulse)
-  ["m_kick", () => { const b = alloc(0.2); tone(b, 0, 0.19, 130, 42, 1, 0.07); noise(b, 0, 0.012, 0.32, 0.003, 2100); commit("m_kick", b, 0.82); }],
-  ["m_hat", () => { const b = alloc(0.085); noise(b, 0, 0.075, 1, 0.013, 8600, 0, 1.2, 2); commit("m_hat", b, 0.4); }],
-  ["m_bass", () => { const b = alloc(0.3); tone(b, 0, 0.28, 110, 0, 1, 0.11, 0, 0.003, 2); tone(b, 0, 0.28, 55, 0, 0.82, 0.14); commit("m_bass", b, 0.8); }],
-  ["m_arp", () => { const b = alloc(0.28); tone(b, 0, 0.26, 440, 0, 0.88, 0.068, 0, 0.004, 2); tone(b, 0, 0.18, 880, 0, 0.3, 0.04, 0.3, 0.004); commit("m_arp", b, 0.58); }],
-  ["m_pad", () => { const b = alloc(1.85); [220, 261.63, 329.63].forEach((f, i) => tone(b, 0, 1.85, f, 0, 0.38, 2.8, i - 1, 0.004, 2)); commit("m_pad", b, 0.48); }],
+  ["skill", () => { const b = alloc(0.55); noise(b, 0, 0.22, 0.65, 0.09, 900, 4600, 1.8); [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => chime(b, 0.04 + i * 0.045, f, 0.78, 0.13, i % 2 ? 0.45 : -0.45)); tone(b, 0, 0.28, 160, 72, 0.85, 0.09); commit("skill", b, 0.82); }],
+  ["node", () => { const b = alloc(0.62); [587.33, 880, 1174.66, 1760].forEach((f, i) => bell(b, i * 0.06, f, 0.68, 0.12, i % 2 ? 0.35 : -0.35)); commit("node", b, 0.75); }],
+  ["shield", () => { const b = alloc(0.36); bell(b, 0, 1318.5, 0.72, 0.09, -0.2); bell(b, 0.05, 1975.5, 0.65, 0.1, 0.2); commit("shield", b, 0.66); }],
+  // V3 138-BPM 8-Bar Cleanroom IDM / Electro-Synth Instruments
+  ["m_kick", () => { const b = alloc(0.19); tone(b, 0, 0.18, 142, 44, 1, 0.065); noise(b, 0, 0.01, 0.35, 0.003, 2600); commit("m_kick", b, 0.82); }],
+  ["m_snare", () => { const b = alloc(0.16); noise(b, 0, 0.14, 0.9, 0.038, 2400, 1200, 0.9, 2); tone(b, 0, 0.08, 220, 135, 0.55, 0.025); commit("m_snare", b, 0.52); }],
+  ["m_hat", () => { const b = alloc(0.075); noise(b, 0, 0.065, 1, 0.011, 9200, 0, 1.3, 2); commit("m_hat", b, 0.38); }],
+  ["m_bass", () => { const b = alloc(0.26); tone(b, 0, 0.24, 123.47, 0, 1, 0.095, 0, 0.003, 1); tone(b, 0, 0.24, 61.74, 0, 0.85, 0.12); commit("m_bass", b, 0.78); }],
+  ["m_arp", () => { const b = alloc(0.24); tone(b, 0, 0.22, 493.88, 0, 0.82, 0.058, 0, 0.004, 2); bell(b, 0, 987.77, 0.24, 0.04, 0.25); commit("m_arp", b, 0.55); }],
+  ["m_lead", () => { const b = alloc(0.38); tone(b, 0, 0.35, 739.99, 0, 0.72, 0.14, 0, 0.005, 1); tone(b, 0, 0.25, 1479.98, 0, 0.25, 0.08, -0.2, 0.003); commit("m_lead", b, 0.5); }],
+  ["m_pad", () => { const b = alloc(1.75); [246.94, 293.66, 369.99].forEach((f, i) => tone(b, 0, 1.75, f, 0, 0.36, 2.6, i - 1, 0.004, 2)); commit("m_pad", b, 0.45); }],
 ];
 
 let recipeCursor = 0;
@@ -262,6 +267,7 @@ const GAINS = {
   chest: 0.75, hurt: 0.8, dead: 0.85, warn: 0.75, bossdead: 1, nuke: 1,
   magnet: 0.6, heart: 0.6, core: 0.44, tap: 0.48, buy: 0.7, err: 0.5,
   combo: 0.62, eshot: 0.25, dash: 0.4, wave: 0.5, elite: 0.6, revive: 0.8, shatter: 0.7,
+  skill: 0.82, node: 0.72, shield: 0.64,
 };
 
 function spawnSource(buf, when, gainVal, pan, rate, dest) {
@@ -330,14 +336,28 @@ export function setAudioPrefs(sfx, music) {
   }
 }
 
-const BPM = 130;
+// 138-BPM 8-Bar Stage-Adaptive Cleanroom Electro-Synth Sequencer (B Dorian / Cyber-Hardware Progression)
+const BPM = 138;
 const STEP_DUR = 60 / BPM / 4;
-const ROOTS = [0, -4, 3, -2];
-const CHORDS = [[0, 3, 7, 12], [-4, 0, 3, 8], [3, 7, 10, 15], [-2, 2, 5, 10]];
+const ROOTS = [0, 3, -2, 5, 0, 7, 3, 2];
+const CHORDS = [
+  [0, 3, 7, 10],
+  [3, 7, 10, 14],
+  [-2, 2, 5, 9],
+  [5, 9, 12, 16],
+  [0, 3, 7, 14],
+  [7, 10, 14, 19],
+  [3, 7, 12, 15],
+  [2, 5, 9, 14],
+];
+const LEAD_MOTIF = [7, -1, 10, 7, 12, -1, 10, 5, 7, -1, 14, 12, 10, -1, 7, 3];
+const STAGE_SHIFTS = [0, 2, -2, 3, 5, 7];
+
 let bgmPlaying = false;
 let nextStepT = 0;
 let stepIdx = 0;
 let bgmIntensity = 0;
+let bgmStageShift = 0;
 
 export function startBgm() {
   if (!ctx || !musicOn || bgmPlaying) return;
@@ -346,7 +366,7 @@ export function startBgm() {
   nextStepT = ctx.currentTime + 0.08;
   bgmGain.gain.cancelScheduledValues(ctx.currentTime);
   bgmGain.gain.setValueAtTime(bgmGain.gain.value, ctx.currentTime);
-  bgmGain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.6);
+  bgmGain.gain.linearRampToValueAtTime(0.38, ctx.currentTime + 0.55);
 }
 
 export function stopBgm(fade = 0.25) {
@@ -362,36 +382,55 @@ export function setBgmIntensity(lv) {
   bgmIntensity = lv;
 }
 
+export function setBgmStage(stageIdx = 0) {
+  bgmStageShift = STAGE_SHIFTS[stageIdx % STAGE_SHIFTS.length] || 0;
+}
+
 export function tickBgm() {
   if (!ctx || !bgmPlaying || ctx.state !== "running") return;
   const now = ctx.currentTime;
   if (nextStepT < now - 0.3) nextStepT = now + 0.05;
   while (nextStepT < now + 0.22) {
     const s = stepIdx % 16;
-    const bar = Math.floor(stepIdx / 16) % 4;
-    const root = ROOTS[bar];
+    const bar = Math.floor(stepIdx / 16) % 8;
+    const shift = bgmStageShift;
+    const root = ROOTS[bar] + shift;
     const chord = CHORDS[bar];
     const lv = bgmIntensity;
     const semi = (n) => Math.pow(2, n / 12);
 
-    if ((s === 0 || s === 8 || (lv >= 1 && (s === 4 || s === 12))) && audioBuffers.m_kick) {
-      spawnSource(audioBuffers.m_kick, nextStepT, s % 8 === 0 ? 0.75 : 0.55, 0, 1, bgmGain);
+    // Driving 4-on-the-floor + syncopated cleanroom kick
+    if ((s === 0 || s === 8 || (lv >= 1 && (s === 4 || s === 12)) || (lv >= 3 && s === 14)) && audioBuffers.m_kick) {
+      spawnSource(audioBuffers.m_kick, nextStepT, s % 4 === 0 ? 0.72 : 0.48, 0, 1, bgmGain);
     }
-    if ((s === 0 || s === 6 || s === 10 || (lv >= 2 && (s === 2 || s === 14))) && audioBuffers.m_bass) {
-      spawnSource(audioBuffers.m_bass, nextStepT, 0.62, 0, semi(root + (s === 10 ? 12 : 0)), bgmGain);
+    // Crisp electronic backbeat snare on 4 & 12
+    if (lv >= 1 && (s === 4 || s === 12) && audioBuffers.m_snare) {
+      spawnSource(audioBuffers.m_snare, nextStepT, lv >= 3 ? 0.42 : 0.32, 0, 1, bgmGain);
     }
+    // Rolling octave synth-bass
+    if ((s === 0 || s === 3 || s === 6 || s === 10 || (lv >= 2 && (s === 8 || s === 14))) && audioBuffers.m_bass) {
+      const oct = s === 3 || s === 10 || s === 14 ? 12 : 0;
+      spawnSource(audioBuffers.m_bass, nextStepT, 0.58, 0, semi(root + oct), bgmGain);
+    }
+    // Stereo hi-hats
     if (lv >= 1 && s % 4 === 2 && audioBuffers.m_hat) {
-      spawnSource(audioBuffers.m_hat, nextStepT, 0.26, s % 8 === 2 ? 0.3 : -0.3, 1, bgmGain);
+      spawnSource(audioBuffers.m_hat, nextStepT, 0.24, s % 8 === 2 ? 0.32 : -0.32, 1, bgmGain);
     }
     if (lv >= 2 && s % 2 === 1 && audioBuffers.m_hat) {
-      spawnSource(audioBuffers.m_hat, nextStepT, 0.11, s % 4 === 1 ? -0.4 : 0.4, 1.22, bgmGain);
+      spawnSource(audioBuffers.m_hat, nextStepT, 0.1, s % 4 === 1 ? -0.38 : 0.38, 1.25, bgmGain);
     }
+    // Warm cleanroom chord pad
     if (lv >= 1 && s === 0 && audioBuffers.m_pad) {
-      spawnSource(audioBuffers.m_pad, nextStepT, 0.48, 0, semi(root), bgmGain);
+      spawnSource(audioBuffers.m_pad, nextStepT, 0.42, 0, semi(root), bgmGain);
     }
+    // Crystalline arpeggiator
     if (lv >= 2 && (s % 2 === 0 || lv >= 3) && audioBuffers.m_arp) {
-      const note = chord[(s * 3 + bar) % 4] + (lv >= 3 && s % 4 === 3 ? 12 : 0);
-      spawnSource(audioBuffers.m_arp, nextStepT, lv >= 3 ? 0.3 : 0.22, (s % 4 - 1.5) * 0.3, semi(note), bgmGain);
+      const note = chord[(s * 5 + bar) % 4] + shift + (lv >= 3 && s % 4 === 2 ? 12 : 0);
+      spawnSource(audioBuffers.m_arp, nextStepT, lv >= 3 ? 0.26 : 0.19, (s % 4 - 1.5) * 0.28, semi(note), bgmGain);
+    }
+    // Late-game / Boss overdrive melodic lead
+    if (lv >= 3 && bar % 2 === 1 && LEAD_MOTIF[s] >= 0 && audioBuffers.m_lead) {
+      spawnSource(audioBuffers.m_lead, nextStepT, 0.22, Math.sin(s) * 0.35, semi(LEAD_MOTIF[s] + shift - 12), bgmGain);
     }
     nextStepT += STEP_DUR;
     stepIdx++;

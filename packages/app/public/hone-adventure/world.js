@@ -1,4 +1,4 @@
-// HONE Adventure V2 — Cleanroom AI Data Center Simulation, 6 Sector Stages, 8 Hardware Weapons & 5 Boss AIs
+// HONE Adventure V3 — Cleanroom Simulation, 10 Weapons, Active Skills, Interactive Sector Nodes, Synergies & Relics
 
 import {
   AI_TYPE,
@@ -9,25 +9,32 @@ import {
   CURVES,
   DEFAULT_P_SLOTS,
   DEFAULT_W_SLOTS,
+  DIFFICULTIES,
+  DIFF_IDX,
+  ELITE_AFFIXES,
   ENEMIES,
   ENEMY_IDX,
   HEROES,
   HERO_IDX,
+  MAX_OVERCLOCK_LV,
   MAX_WEAPON_LV,
   PASSIVES,
   PASSIVE_IDX,
+  RELICS,
   RULES,
   STAGES,
   STAGE_IDX,
   STAGE_SEC,
+  SYNERGIES,
   TALENT_BRANCHES,
   WAVE_SEC,
   WEAPONS,
   WEAPON_IDX,
   branchPoints,
+  getHeroMasteryBonuses,
   getPromotionBonuses,
   mulberry32,
-} from "./data.js?v=2.0.2";
+} from "./data.js?v=3.0.0";
 
 export const FX_EVT = {
   HIT: 1,
@@ -60,6 +67,9 @@ export const FX_EVT = {
   COMBOEND: 28,
   STAGE: 29,
   MATRIX: 30,
+  SKILL: 31,
+  NODE: 32,
+  SHIELD: 33,
 };
 
 export const BULLET_KIND = {
@@ -67,6 +77,7 @@ export const BULLET_KIND = {
   PRISM_MAIN: 1,
   PRISM_SUB: 2,
   DRONE: 3,
+  N2_CANISTER: 4,
 };
 
 export const ZONE_KIND = {
@@ -75,16 +86,20 @@ export const ZONE_KIND = {
   PULSE: 2,
   BLAST: 3,
   EBEAM: 4,
+  NVLINK: 5,
+  FROST_RAIL: 6,
+  NODE: 7,
+  SKYBEAM: 8,
 };
 
 export const PICK_KIND = { HEART: 0, MAGNET: 1, NUKE: 2, CORE: 3, CHEST: 4 };
 
-const MAX_ENEMIES = 440;
-const MAX_BULLETS = 360;
+const MAX_ENEMIES = 460;
+const MAX_BULLETS = 420;
 const MAX_EBULLETS = 260;
-const MAX_GEMS = 420;
-const MAX_ZONES = 112;
-const MAX_PICKS = 40;
+const MAX_GEMS = 440;
+const MAX_ZONES = 148;
+const MAX_PICKS = 44;
 const CELL_SIZE = 40;
 const GRID_W = 72;
 const GRID_H = 72;
@@ -103,12 +118,15 @@ export class GameWorld {
     this.vw = opts.vw || 420;
     this.vh = opts.vh || 900;
     this.char = HEROES[HERO_IDX[opts.char || "hone"]] || HEROES[0];
+    this.masteryLv = Math.max(1, Math.min(5, opts.masteryLv || 1));
+    this.mastery = getHeroMasteryBonuses(this.masteryLv);
+    this.diff = DIFFICULTIES[DIFF_IDX[opts.diff || "std"]] || DIFFICULTIES[0];
+    this.routeMode = opts.routeMode === "lock" ? "lock" : "auto";
     this.talents = opts.talents || {};
     this.promo = getPromotionBonuses(opts.bestTime || 0);
     this.rule = (opts.rule && RULES.find((r) => r.id === opts.rule)) || {};
     this.daily = !!opts.daily;
     this.autoLevel = !opts.manualLevel;
-    this.intro = !!opts.intro;
     this.t = 0;
     this.over = false;
     this.pending = null;
@@ -118,19 +136,23 @@ export class GameWorld {
     this.startStageIdx = STAGE_IDX[opts.stage || "storage"] ?? 0;
     this.stageIdx = this.startStageIdx;
     this.stageStep = 0;
+    this.jumpReady = false;
+    this.jumpCd = STAGE_SEC;
+    this.jumpBuffT = 0;
     this.stagesVisited = [STAGES[this.stageIdx].id];
 
     this.en = makePool(MAX_ENEMIES, () => ({
       x: 0, y: 0, kx: 0, ky: 0, hp: 0, maxHp: 0, type: 0, ai: 0, r: 10, sp: 0, dmg: 0,
-      xpv: 1, wt: 1, flash: 0, slow: 0, elite: 0, boss: 0, uid: 0, st: 0, stT: 0,
+      xpv: 1, wt: 1, flash: 0, slow: 0, vuln: 0, affix: -1, elite: 0, boss: 0, uid: 0, st: 0, stT: 0,
       a1: 0, a2: 0, ax: 0, ay: 0, ph: 0, pulse: 0, mark: 0, dead: false, gone: false,
-      tele: 0, born: 0, swell: 0, face: 1, mvx: 0, mvy: 0, cd: new Float32Array(8),
+      tele: 0, born: 0, swell: 0, face: 1, mvx: 0, mvy: 0, cd: new Float32Array(12),
     }));
     this.nE = 0;
 
     this.bl = makePool(MAX_BULLETS, () => ({
       x: 0, y: 0, vx: 0, vy: 0, r: 6, dmg: 0, kind: 0, k: 0, life: 0,
-      pierce: 0, st: 0, rot: 0, size: 1, pop: 0, split: 0, wl: 0, lane: 0, t: 0, hits: [],
+      pierce: 0, st: 0, rot: 0, size: 1, pop: 0, split: 0, wl: 0, lane: 0, t: 0,
+      tx: 0, ty: 0, rays: 4, rayLen: 100, hits: [],
     }));
     this.nB = 0;
 
@@ -147,7 +169,8 @@ export class GameWorld {
     this.zn = makePool(MAX_ZONES, () => ({
       kind: 0, x: 0, y: 0, ox: 0, oy: 0, r: 0, rMax: 0, t: 0, life: 0, arm: 0,
       dmg: 0, tickT: 0, evo: 0, mini: 0, id: 0, a: 0, av: 0, len: 0, st: 0,
-      own: null, src: 0, slow: 0, burst: 0, k: 0,
+      own: null, src: 0, slow: 0, burst: 0, k: 0, prog: 0, stageIdx: 0,
+      pts: new Float32Array(20), nPts: 0,
     }));
     this.nZ = 0;
 
@@ -164,25 +187,43 @@ export class GameWorld {
 
     const p = (this.p = {
       x: 0, y: 0, r: 13, hp: 100, maxHp: 0, face: 1, aimX: 1, aimY: 0, mx: 0, my: 0,
-      inv: 0, lvl: 1, xp: 0, need: CURVES.xpNeed(1), weapons: [], passives: [], boosts: 0,
-      st: {}, moving: false, hurtT: 0,
+      inv: 0, shields: 0, shieldCd: 15, lvl: 1, xp: 0, need: CURVES.xpNeed(1),
+      weapons: [], passives: [], boosts: 0, corePickBoost: 0,
+      st: {}, moving: false, hurtT: 0, strideAcc: 0, hbmCounter: 0,
     });
 
+    this.synergies = {};
+    this.synergyList = [];
+    this.relics = {};
+    this.relicList = [];
+
+    this.skillCd = 0;
+    this.skillMaxCd = this.char.skillCd || 14;
+    this.skillBuffT = 0;
+    this.skillPostT = 0;
+    this.skyTickT = 0;
+
+    this.nodeTimer = 15;
+    this.nodesCaptured = 0;
+    this.nodeHasteT = 0;
+    this.nodeCdT = 0;
+
     this.kills = 0;
+    this.siphonKills = 0;
     this.killsBy = new Int32Array(ENEMIES.length);
     this.dmgBy = new Float64Array(WEAPONS.length);
     this.combo = 0;
     this.comboT = 0;
     this.maxCombo = 0;
     this.comboIdx = 0;
-    this.coresPicked = 0;
+    this.coresPicked = this.mastery.startCores || 0;
     this.elites = 0;
     this.bosses = 0;
     this.bossList = [];
     this.wave = 0;
     this.spawnAcc = 0;
-    this.nextElite = 52;
-    this.nextBoss = BOSS_SEC;
+    this.nextElite = 46;
+    this.nextBoss = BOSS_SEC * (this.rule.bossFast || 1);
     this.bossIdx = 0;
     this.bossWarned = false;
     this.bossWarnType = 0;
@@ -195,14 +236,19 @@ export class GameWorld {
     this.lastNuke = -30;
     this.overXp = 0;
     this.revives = this.talents.revive ? 1 : 0;
-    this.rerolls = 1 + (this.talents.reroll || 0) + (this.promo.reroll || 0);
+    this.rerolls =
+      1 +
+      (this.talents.reroll || 0) +
+      (this.promo.reroll || 0) +
+      (this.char.mod.bonusReroll || 0) +
+      (this.mastery.reroll || 0);
     this.wipeEB = false;
     this.lastSrc = -1;
     this.hurts = 0;
     this.evos = [];
+    this.maxOverclock = 0;
     this.near = null;
     this.nearD = 1e9;
-    this.tutDone = false;
     this.sx = 0;
     this.sy = 0;
     this.hpMulNow = 1;
@@ -212,10 +258,22 @@ export class GameWorld {
 
     this.recalc();
     p.hp = p.maxHp;
-    this.addWeapon(opts.weapon || this.char.weapon);
 
-    // Cluster Orchestration milestone (>=6 pts): instant early level-up headstart
-    if (branchPoints(this.talents, "cluster") >= TALENT_BRANCHES[3].milestone && !this.daily) {
+    // Initial Energy Shields (Thermal 10pt Apex / Promotion L12 / Glass Rule)
+    const thermalApex = branchPoints(this.talents, "thermal") >= TALENT_BRANCHES[2].apexMilestone ? 1 : 0;
+    p.shields = Math.min(3, thermalApex + (this.promo.startShield || 0) + (this.rule.startShield || 0));
+
+    // Starter Weapon (Supports Custom Loadout when Agent Mastery >= Lv.2!)
+    const startW = opts.weapon || this.char.weapon;
+    this.addWeapon(startW);
+    if (this.rule.dualStart) {
+      const altIdx = (WEAPON_IDX[startW] + 1 + ((this.rnd() * (WEAPONS.length - 1)) | 0)) % WEAPONS.length;
+      this.addWeapon(WEAPONS[altIdx].id);
+    }
+
+    // Cluster Orchestration milestone (>=6 pts) OR Astra in Home Sector: instant Lv.2 headstart
+    const homeAstra = this.char.id === "astra" && this.isHomeStage();
+    if ((branchPoints(this.talents, "cluster") >= TALENT_BRANCHES[3].milestone || homeAstra) && !this.daily) {
       p.lvl++;
       p.need = CURVES.xpNeed(p.lvl);
       this.pendLv++;
@@ -224,13 +282,18 @@ export class GameWorld {
     const initType = STAGES[this.stageIdx].bias[0] ?? ENEMY_IDX.packet;
     for (let i = 0; i < 7; i++) {
       const ang = ((i + this.rnd() * 0.6) / 7) * TAU;
-      const dist = 150 + this.rnd() * 80;
+      const dist = 155 + this.rnd() * 80;
       this.spawnEnemy(i % 2 === 0 ? ENEMY_IDX.packet : initType, Math.cos(ang) * dist, Math.sin(ang) * dist, 0);
     }
   }
 
   stage() {
     return STAGES[this.stageIdx];
+  }
+
+  isHomeStage(idx = this.stageIdx) {
+    const stId = STAGES[idx]?.id;
+    return !!(this.char.homeStages && this.char.homeStages.indexOf(stId) >= 0);
   }
 
   setStage(stageIdOrIdx) {
@@ -243,6 +306,20 @@ export class GameWorld {
     return true;
   }
 
+  // Player-Controlled Tactical Sector Jump!
+  jumpStage(stageIdOrIdx) {
+    const idx = typeof stageIdOrIdx === "number" ? stageIdOrIdx : STAGE_IDX[stageIdOrIdx];
+    if (idx == null || idx < 0 || idx >= STAGES.length) return false;
+    this.setStage(idx);
+    this.jumpReady = false;
+    this.jumpCd = STAGE_SEC;
+    this.jumpBuffT = 10;
+    this.magnetT = Math.max(this.magnetT, 0.75);
+    this.recalc();
+    this.fx && this.fx(FX_EVT.STAGE, idx);
+    return true;
+  }
+
   plv(id) {
     for (let i = 0; i < this.p.passives.length; i++) {
       if (this.p.passives[i].id === id) return this.p.passives[i].lv;
@@ -250,69 +327,363 @@ export class GameWorld {
     return 0;
   }
 
+  hasSynergy(id) {
+    return !!this.synergies[id];
+  }
+
+  hasRelic(id) {
+    return !!this.relics[id];
+  }
+
   recalc() {
     const p = this.p;
     const st = p.st;
-    const mod = this.char.mod;
+    const mod = this.char.mod || {};
+    const mas = this.mastery;
     const tal = this.talents;
     const prm = this.promo;
     const rule = this.rule;
     const smod = STAGES[this.stageIdx].mod || {};
+    const stageAmp = mod.stageBoost ? 2.0 : 1.0;
+    const inHome = this.isHomeStage();
 
-    const interconnectSyn = branchPoints(tal, "interconnect") >= TALENT_BRANCHES[0].milestone ? 1.09 : 1;
-    const lithoSyn = branchPoints(tal, "litho") >= TALENT_BRANCHES[1].milestone ? 0.06 : 0;
+    const interconnectSyn = branchPoints(tal, "interconnect") >= TALENT_BRANCHES[0].milestone ? 1.1 : 1;
+    const interconnectApex = branchPoints(tal, "interconnect") >= TALENT_BRANCHES[0].apexMilestone ? 1 : 0;
+    const lithoSyn = branchPoints(tal, "litho") >= TALENT_BRANCHES[1].milestone ? 0.07 : 0;
+    const lithoApex = branchPoints(tal, "litho") >= TALENT_BRANCHES[1].apexMilestone ? 1.25 : 1;
     const thermalSyn = branchPoints(tal, "thermal") >= TALENT_BRANCHES[2].milestone ? 2 : 0;
+
+    st.maxHp = Math.round(
+      (100 +
+        18 * (tal.hp || 0) +
+        32 * this.plv("ecc") +
+        (mod.maxHp || 0) +
+        (mas.maxHp || 0) +
+        (prm.maxHp || 0)) *
+        (rule.hpMul || 1),
+    );
+    if (st.maxHp > p.maxHp && p.maxHp > 0) p.hp += st.maxHp - p.maxHp;
+    p.maxHp = st.maxHp;
+    if (p.hp > p.maxHp) p.hp = p.maxHp;
+
+    const hpScaleMight = mod.hpToMight ? Math.max(0, (st.maxHp - 100) / 40) * 0.04 : 0;
+    const evoScaleMight = mod.evoMight ? this.evos.length * mod.evoMight : 0;
+    const compoundBonus = this.hasRelic("r_compound") ? p.lvl * 0.022 : 0;
+    const jumpBonus = this.jumpBuffT > 0 ? 0.22 : 0;
+    const postSkillBonus = this.skillPostT > 0 ? 0.28 : 0;
 
     st.might =
       (1 +
         0.07 * (tal.might || 0) +
         0.14 * this.plv("overvolt") +
-        0.08 * p.boosts +
+        0.1 * p.boosts +
         (prm.might || 0) +
-        (smod.might || 0)) *
+        (mas.might || 0) +
+        (smod.might || 0) * stageAmp +
+        hpScaleMight +
+        evoScaleMight +
+        compoundBonus +
+        jumpBonus +
+        postSkillBonus) *
       interconnectSyn *
       (rule.might || 1);
 
-    st.maxHp = Math.round(
-      (100 + 16 * (tal.hp || 0) + 30 * this.plv("ecc") + (mod.maxHp || 0) + (prm.maxHp || 0)) * (rule.hpMul || 1),
-    );
-    st.armor = this.plv("ecc") + thermalSyn + (prm.armor || 0);
+    st.bossDmgMul = 1 + 0.1 * (tal.boss_dmg || 0) + 0.12 * this.plv("power_rail");
+    st.armor = this.plv("ecc") + thermalSyn + (mod.armor || 0) + (prm.armor || 0);
     st.speed =
-      154 * (1 + 0.038 * (tal.speed || 0) + 0.1 * this.plv("fabric") + (mod.speed || 0)) * (rule.speedAll || 1);
+      158 *
+      (1 +
+        0.04 * (tal.speed || 0) +
+        0.11 * this.plv("fabric") +
+        (mod.speed || 0) +
+        (this.jumpBuffT > 0 ? 0.18 : 0) +
+        (this.char.id === "quant" && this.skillBuffT > 0 ? 0.32 : 0)) *
+      (rule.speedAll || 1);
     st.pickup =
-      66 *
-      (1 + 0.15 * (tal.pickup || 0) + 0.42 * this.plv("reticle") + (mod.pickup || 0) + (prm.pickup || 0)) *
+      68 *
+      (1 +
+        0.16 * (tal.pickup || 0) +
+        0.42 * this.plv("reticle") +
+        (mod.pickup || 0) +
+        (mas.pickup || 0) +
+        (prm.pickup || 0) +
+        0.1 * p.corePickBoost) *
       (rule.pickupMul || 1);
     st.xpMul =
       (1 +
         0.05 * (tal.pickup || 0) +
-        0.07 * this.plv("reticle") +
+        0.08 * this.plv("reticle") +
         (mod.xpMul || 0) +
         (prm.xpMul || 0) +
-        (smod.xpMul || 0)) *
+        (smod.xpMul || 0) * stageAmp) *
+      (this.diff.xpMul || 1) *
       (rule.xpMul || 1);
+
+    const homeHaste =
+      (this.char.id === "hone" && inHome ? -0.1 : 0) +
+      (this.char.id === "quant" && inHome ? -0.06 : 0);
+    const activeHaste =
+      (this.nodeHasteT > 0 ? -0.25 : 0) +
+      (this.nodeCdT > 0 ? -0.28 : 0) +
+      (this.char.id === "photon" && this.skillBuffT > 0 ? -0.3 : 0) +
+      (this.char.id === "hone" && this.skillBuffT > 0 ? -0.18 : 0);
+
     st.cd = Math.max(
-      0.36,
+      0.28,
       1 -
         0.035 * (tal.haste || 0) -
         0.1 * this.plv("clock") +
         (mod.cd || 0) +
         (prm.cd || 0) +
-        (smod.cdMul || 0),
+        (smod.cdMul || 0) * stageAmp +
+        homeHaste +
+        activeHaste,
     );
-    st.area = 1 + 0.06 * (tal.area || 0) + 0.15 * this.plv("waveguide");
-    st.crit = 0.05 + 0.03 * (tal.crit || 0) + 0.1 * this.plv("fp8") + lithoSyn + (mod.crit || 0) + (prm.crit || 0);
+    st.area = 1 + 0.06 * (tal.area || 0) + 0.15 * this.plv("waveguide") + (mod.hpToMight ? 0.08 : 0);
+    st.crit =
+      0.06 +
+      0.03 * (tal.crit || 0) +
+      0.1 * this.plv("fp8") +
+      lithoSyn +
+      (mod.crit || 0) +
+      (mas.crit || 0) +
+      (prm.crit || 0) +
+      (this.nodeHasteT > 0 ? 0.25 : 0) +
+      (this.char.id === "photon" && this.skillBuffT > 0 ? 0.35 : 0);
     st.critMul =
-      2.0 + 0.07 * (tal.crit || 0) + 0.2 * this.plv("fp8") + (prm.critDmg || 0) + (smod.critDmg || 0);
+      2.0 +
+      0.08 * (tal.crit || 0) +
+      0.22 * this.plv("fp8") +
+      (prm.critDmg || 0) +
+      (smod.critDmg || 0) * stageAmp +
+      (this.char.id === "photon" && inHome ? 0.25 : 0);
     st.dur = 1 + 0.07 * (tal.proj || 0) + 0.18 * this.plv("manifold");
-    st.pspd = 1 + 0.07 * (tal.proj || 0) + 0.14 * this.plv("manifold") + (smod.projSpeed || 0);
-    st.regen = 0.35 * (tal.regen || 0) + 0.8 * this.plv("ups");
-    st.coreMul = 1 + 0.13 * (tal.core || 0) + (smod.coreBonus || 0);
+    st.pspd =
+      1 +
+      0.07 * (tal.proj || 0) +
+      0.15 * this.plv("manifold") +
+      (mod.pspd || 0) +
+      (smod.projSpeed || 0) * stageAmp;
+    st.regen =
+      0.4 * (tal.regen || 0) +
+      1.0 * this.plv("ups") +
+      (this.char.id === "rubin" && inHome ? 1.2 : 0);
+    st.coreMul =
+      (1 +
+        0.14 * (tal.core || 0) +
+        (prm.coreBonus || 0) +
+        (smod.coreBonus || 0) * stageAmp +
+        compoundBonus) *
+      (this.diff.coreMul || 1);
     st.thorns = mod.thorns || 0;
+    st.pierceBonus = interconnectApex;
+    st.ocScale = lithoApex;
+    st.multishot = this.hasRelic("r_multishot") ? 1 : 0;
 
-    if (st.maxHp > p.maxHp && p.maxHp > 0) p.hp += st.maxHp - p.maxHp;
-    p.maxHp = st.maxHp;
-    if (p.hp > p.maxHp) p.hp = p.maxHp;
+    const skillCdr =
+      (1 - 0.08 * (tal.skill_cdr || 0) - 0.12 * this.plv("power_rail") + (prm.skillCd || 0)) *
+      (mas.skillCdMul || 1) *
+      (this.hasRelic("r_skill_cd") ? 0.68 : 1) *
+      (rule.skillCdMul || 1);
+    this.skillMaxCd = Math.max(3.5, (this.char.skillCd || 14) * Math.max(0.35, skillCdr));
+  }
+
+  // Hero Active Tactical Skill!
+  castSkill() {
+    if (this.over || this.pending || this.skillCd > 0) return false;
+    const p = this.p;
+    const st = p.st;
+    this.skillCd = this.skillMaxCd;
+    if (this.hasRelic("r_skill_cd")) this.skillPostT = 4.0;
+    if (this.rule.id === "skill_frenzy") this.coresPicked += 4;
+    this.fx && this.fx(FX_EVT.SKILL, this.char.id, p.x, p.y);
+
+    switch (this.char.id) {
+      case "hone": {
+        // Full-band dispatch pulse: clear enemy bullets, stun/knockback foes, pull all nearby XP!
+        this.wipeEB = true;
+        this.magnetT = Math.max(this.magnetT, 1.1);
+        this.skillBuffT = 4.0;
+        this.pulse(0, 36, 225 * st.area, 1.4, 480);
+        break;
+      }
+      case "rubin": {
+        // Superconducting cryo-fortress: +2 shields, freeze aura, HP-scaled frost nova!
+        p.shields = Math.min(3, p.shields + 2);
+        p.inv = Math.max(p.inv, 3.5);
+        this.skillBuffT = 3.5;
+        const burstDmg = 34 + p.maxHp * 0.35;
+        this.pulse(2, burstDmg, 195 * st.area, 2.2, 420);
+        break;
+      }
+      case "photon": {
+        // Coherent laser barrage: 4s high-crit haste + 8 piercing photon lances!
+        this.skillBuffT = 4.0;
+        const sp = 520 * st.pspd;
+        for (let n = 0; n < 8; n++) {
+          const tgt = n === 0 && this.near ? this.near : this.randNear(380);
+          const a = tgt ? Math.atan2(tgt.y - p.y, tgt.x - p.x) + (n - 3.5) * 0.06 : (n / 8) * TAU;
+          const b = this.addBullet(
+            BULLET_KIND.PRISM_MAIN,
+            WEAPON_IDX.prism,
+            p.x,
+            p.y,
+            Math.cos(a) * sp,
+            Math.sin(a) * sp,
+            10,
+            42,
+            2,
+            1.2,
+          );
+          if (b) {
+            b.split = 3;
+            b.size = 1.25;
+          }
+        }
+        break;
+      }
+      case "quant": {
+        // Nanosecond phase blink: dash forward invulnerably, dual lightning explosions!
+        const ox = p.x;
+        const oy = p.y;
+        const dx = p.moving ? p.mx : p.aimX;
+        const dy = p.moving ? p.my : p.aimY;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        this.explode(ox, oy, 88 * st.area, 38, WEAPON_IDX.bus, 220, 0);
+        p.x += ux * 148;
+        p.y += uy * 148;
+        p.inv = Math.max(p.inv, 1.1);
+        this.skillBuffT = 3.5;
+        this.fx && this.fx(FX_EVT.BOLT, ox, oy, p.x, p.y, 1);
+        this.explode(p.x, p.y, 108 * st.area, 52, WEAPON_IDX.bus, 280, 0);
+        break;
+      }
+      case "astra": {
+        // Sovereign sky-compute descent: 4.5s slow field + immediate & periodic orbital beams!
+        this.skillBuffT = 4.5;
+        this.skyTickT = 0.05;
+        for (let i = 0; i < this.nE; i++) {
+          if (!this.en[i].dead) this.en[i].slow = Math.max(this.en[i].slow, 2.5);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    this.recalc();
+    return true;
+  }
+
+  spawnSkyBeam() {
+    const p = this.p;
+    let best = null;
+    let bestHp = -1;
+    for (let i = 0; i < this.nE; i++) {
+      const e = this.en[i];
+      if (e.dead) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      if (dx * dx + dy * dy > 360 * 360) continue;
+      if (e.hp > bestHp) {
+        bestHp = e.hp;
+        best = e;
+      }
+    }
+    const tx = best ? best.x : p.x + (this.rnd() - 0.5) * 260;
+    const ty = best ? best.y : p.y + (this.rnd() - 0.5) * 260;
+    const z = this.addZone();
+    if (z) {
+      z.kind = ZONE_KIND.SKYBEAM;
+      z.x = tx;
+      z.y = ty;
+      z.r = 68 * p.st.area;
+      z.life = 0.36;
+    }
+    this.explode(tx, ty, 68 * p.st.area, 56, WEAPON_IDX.nvlink, 190, 0);
+  }
+
+  // Interactive Cleanroom Sector Node!
+  spawnSectorNode() {
+    const p = this.p;
+    // Keep at most 2 active nodes on screen
+    let activeNodes = 0;
+    for (let i = 0; i < this.nZ; i++) if (this.zn[i].kind === ZONE_KIND.NODE) activeNodes++;
+    if (activeNodes >= 2) return null;
+
+    const z = this.addZone();
+    if (!z) return null;
+    const ang = this.rnd() * TAU;
+    const dist = 145 + this.rnd() * 95;
+    z.kind = ZONE_KIND.NODE;
+    z.x = p.x + Math.cos(ang) * dist;
+    z.y = p.y + Math.sin(ang) * dist;
+    z.r = 54;
+    z.prog = 0;
+    z.life = 26;
+    z.stageIdx = this.stageIdx;
+    return z;
+  }
+
+  triggerNodeReward(z) {
+    const p = this.p;
+    const stg = STAGES[z.stageIdx] || STAGES[this.stageIdx];
+    const amp = 1 + 0.2 * (this.talents.node_boost || 0) + (this.rule.nodeFast ? 0.25 : 0);
+    this.nodesCaptured++;
+    this.fx && this.fx(FX_EVT.NODE, z.x, z.y, z.stageIdx);
+
+    switch (stg.nodeKind) {
+      case "cache_drop": {
+        const cnt = Math.round(12 * amp);
+        for (let i = 0; i < cnt; i++) this.addGem(z.x + (this.rnd() - 0.5) * 36, z.y + (this.rnd() - 0.5) * 36, 6);
+        this.coresPicked += Math.round(12 * amp);
+        this.magnetT = Math.max(this.magnetT, 0.85);
+        break;
+      }
+      case "optic_haste":
+        this.nodeHasteT = 8 * amp;
+        this.recalc();
+        break;
+      case "cpu_overclock":
+        this.skillCd = 0;
+        this.nodeCdT = 6 * amp;
+        this.recalc();
+        break;
+      case "gpu_barrage":
+        for (let i = 0; i < 6; i++) {
+          const tgt = this.randNear(320);
+          const bz = this.addZone();
+          if (!bz) break;
+          bz.kind = ZONE_KIND.TENSOR;
+          bz.k = WEAPON_IDX.tensor;
+          bz.x = tgt ? tgt.x : z.x + Math.cos((i / 6) * TAU) * 120;
+          bz.y = tgt ? tgt.y : z.y + Math.sin((i / 6) * TAU) * 120;
+          bz.arm = 0.25 + i * 0.08;
+          bz.life = bz.arm + 0.08;
+          bz.r = 82 * p.st.area;
+          bz.dmg = 64 * amp;
+        }
+        break;
+      case "wafer_heal":
+        p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.3 * amp));
+        p.shields = Math.min(3, p.shields + 1);
+        this.fx && this.fx(FX_EVT.HEAL, p.x, p.y);
+        break;
+      case "gw_surge":
+      default: {
+        let hits = 0;
+        for (let i = 0; i < this.nE && hits < 12; i++) {
+          const e = this.en[i];
+          if (e.dead) continue;
+          this.fx && this.fx(FX_EVT.BOLT, z.x, z.y, e.x, e.y, 1);
+          this.hit(e, 58 * amp, WEAPON_IDX.bus, 150, 0, 0);
+          hits++;
+        }
+        this.magnetT = Math.max(this.magnetT, 1.2);
+        break;
+      }
+    }
   }
 
   hasWeapon(id) {
@@ -325,16 +696,25 @@ export class GameWorld {
   addWeapon(id) {
     const k = WEAPON_IDX[id] ?? 0;
     const realId = WEAPONS[k].id;
+    const existing = this.hasWeapon(realId);
+    if (existing) {
+      existing.lv = Math.min(MAX_WEAPON_LV, existing.lv + 1);
+      return existing;
+    }
     const w = {
-      id: realId, k, lv: 1, evo: false, t: 0.25, ang: this.rnd() * TAU, ph: 0, on: 0, onT: 0,
-      vis: 0, bt: 0, tick: 0, extra: 0, extraT: 0, waveT: 2, pos: new Float32Array(32), np: 0,
+      id: realId, k, lv: 1, evo: false, oc: 0, t: 0.2, ang: this.rnd() * TAU, ph: 0, on: 1, onT: 0,
+      vis: 1, bt: 0, tick: 0, extra: 0, extraT: 0, waveT: 2.2, pos: new Float32Array(32), np: 0,
     };
     this.p.weapons.push(w);
     return w;
   }
 
   wslots() {
-    return this.rule.slots || DEFAULT_W_SLOTS;
+    return (this.rule.slots || DEFAULT_W_SLOTS) + (this.hasRelic("r_slots") ? 1 : 0);
+  }
+
+  pslots() {
+    return DEFAULT_P_SLOTS + (this.char.mod.extraPSlot || 0) + (this.hasRelic("r_slots") ? 1 : 0);
   }
 
   evoLv() {
@@ -345,24 +725,38 @@ export class GameWorld {
     return !w.evo && w.lv >= this.evoLv() && this.plv(WEAPONS[w.k].partner) > 0;
   }
 
+  wDmgMul(w) {
+    let m = 1;
+    if (w.oc > 0) m *= 1 + w.oc * 0.2 * (this.p.st.ocScale || 1);
+    if ((w.id === "hbm" || w.id === "bus") && this.hasSynergy("syn_bus_hbm")) m *= 1.18;
+    if ((w.id === "cache" || w.id === "drone") && this.hasSynergy("syn_cache_drone")) m *= 1.24;
+    if ((w.id === "liquid_n2" || w.id === "prism") && this.hasSynergy("syn_n2_prism")) m *= 1.2;
+    return m;
+  }
+
   buildPool() {
     const p = this.p;
     const pool = [];
     const canAddW = p.weapons.length < this.wslots();
-    const canAddP = p.passives.length < DEFAULT_P_SLOTS;
+    const canAddP = p.passives.length < this.pslots();
+    const synWeightAmp = 1 + 0.35 * (this.talents.syn_rate || 0);
 
+    // 1. Weapons & Post-Evolution Super Overclocks (★+1 ~ ★+5)
     for (let i = 0; i < WEAPONS.length; i++) {
       const def = WEAPONS[i];
       const cur = this.hasWeapon(def.id);
       if (cur) {
-        if (cur.lv < MAX_WEAPON_LV && !cur.evo) {
-          pool.push({ kind: "w", id: def.id, lv: cur.lv + 1, isNew: false, wt: 3.1 });
+        if (!cur.evo && cur.lv < MAX_WEAPON_LV) {
+          pool.push({ kind: "w", id: def.id, lv: cur.lv + 1, isNew: false, wt: 3.2 });
+        } else if (cur.evo && cur.oc < MAX_OVERCLOCK_LV) {
+          pool.push({ kind: "oc", id: def.id, lv: cur.oc + 1, isNew: false, wt: 2.3 });
         }
       } else if (canAddW) {
-        pool.push({ kind: "w", id: def.id, lv: 1, isNew: true, wt: this.plv(def.partner) > 0 ? 2.7 : 1.8 });
+        pool.push({ kind: "w", id: def.id, lv: 1, isNew: true, wt: this.plv(def.partner) > 0 ? 2.7 : 1.75 });
       }
     }
 
+    // 2. Passive Modules
     for (let i = 0; i < PASSIVES.length; i++) {
       const def = PASSIVES[i];
       const lv = this.plv(def.id);
@@ -373,7 +767,26 @@ export class GameWorld {
       if (lv > 0) {
         if (lv < def.max) pool.push({ kind: "p", id: def.id, lv: lv + 1, isNew: false, wt: 2.1 });
       } else if (canAddP) {
-        pool.push({ kind: "p", id: def.id, lv: 1, isNew: true, wt: isPartner ? 3.5 : 1.6 });
+        pool.push({ kind: "p", id: def.id, lv: 1, isNew: true, wt: isPartner ? 3.5 : 1.55 });
+      }
+    }
+
+    // 3. Cross-Weapon Synergy Protocols (Available as soon as both weapons are equipped!)
+    for (let i = 0; i < SYNERGIES.length; i++) {
+      const syn = SYNERGIES[i];
+      if (this.hasSynergy(syn.id)) continue;
+      if (this.hasWeapon(syn.req[0]) && this.hasWeapon(syn.req[1])) {
+        pool.push({ kind: "syn", id: syn.id, lv: 1, isNew: true, wt: 4.2 * synWeightAmp });
+      }
+    }
+
+    // 4. Late-Game Mythic Relics (Lv.10+, or after 1st Super Evolution, or Relic Daily!)
+    if (p.lvl >= 10 || this.evos.length > 0 || (this.rule.earlyRelic && p.lvl >= 3)) {
+      for (let i = 0; i < RELICS.length; i++) {
+        const rel = RELICS[i];
+        if (!this.hasRelic(rel.id)) {
+          pool.push({ kind: "relic", id: rel.id, lv: 1, isNew: true, wt: 2.2 * synWeightAmp });
+        }
       }
     }
     return pool;
@@ -385,6 +798,12 @@ export class GameWorld {
       const w = this.hasWeapon(c.id);
       return !!(w && this.canEvolve(w));
     }
+    if (c.kind === "oc") {
+      const w = this.hasWeapon(c.id);
+      return !!(w && w.evo && w.oc < MAX_OVERCLOCK_LV);
+    }
+    if (c.kind === "syn") return !this.hasSynergy(c.id);
+    if (c.kind === "relic") return !this.hasRelic(c.id);
     if (c.kind === "w") {
       const w = this.hasWeapon(c.id);
       if (w) return !w.evo && w.lv < MAX_WEAPON_LV;
@@ -393,7 +812,7 @@ export class GameWorld {
     if (c.kind === "p") {
       const lv = this.plv(c.id);
       if (lv > 0) return lv < PASSIVES[PASSIVE_IDX[c.id]].max;
-      return this.p.passives.length < DEFAULT_P_SLOTS;
+      return this.p.passives.length < this.pslots();
     }
     return true;
   }
@@ -402,6 +821,10 @@ export class GameWorld {
     if (c.kind === "w") {
       const w = this.hasWeapon(c.id);
       return { ...c, lv: w ? w.lv + 1 : 1, isNew: !w };
+    }
+    if (c.kind === "oc") {
+      const w = this.hasWeapon(c.id);
+      return { ...c, lv: w ? w.oc + 1 : 1, isNew: false };
     }
     if (c.kind === "p") {
       const lv = this.plv(c.id);
@@ -473,6 +896,12 @@ export class GameWorld {
       const w = this.hasWeapon(c.id);
       if (w) w.lv = Math.min(MAX_WEAPON_LV, w.lv + 1);
       else this.addWeapon(c.id);
+    } else if (c.kind === "oc") {
+      const w = this.hasWeapon(c.id);
+      if (w && w.evo) {
+        w.oc = Math.min(MAX_OVERCLOCK_LV, w.oc + 1);
+        if (w.oc > this.maxOverclock) this.maxOverclock = w.oc;
+      }
     } else if (c.kind === "p") {
       let cur = null;
       for (let i = 0; i < p.passives.length; i++) {
@@ -488,16 +917,34 @@ export class GameWorld {
         w.t = 0;
         w.on = 1;
         this.evos.push(c.id);
+        this.recalc();
         this.fx && this.fx(FX_EVT.EVO, w.k, p.x, p.y);
+      }
+    } else if (c.kind === "syn") {
+      if (!this.synergies[c.id]) {
+        this.synergies[c.id] = 1;
+        this.synergyList.push(c.id);
+        this.recalc();
+      }
+    } else if (c.kind === "relic") {
+      if (!this.relics[c.id]) {
+        this.relics[c.id] = 1;
+        this.relicList.push(c.id);
+        if (c.id === "r_shield") p.shields = Math.min(3, p.shields + 1);
+        this.recalc();
       }
     } else if (c.id === "b_might") {
       p.boosts++;
+      this.skillCd = Math.max(0, this.skillCd - 2.5);
       this.recalc();
     } else if (c.id === "b_heal") {
-      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4);
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.45);
+      p.inv = Math.max(p.inv, 2.0);
       this.fx && this.fx(FX_EVT.HEAL, p.x, p.y);
     } else if (c.id === "b_core") {
-      this.coresPicked += 18;
+      this.coresPicked += 24;
+      p.corePickBoost++;
+      this.recalc();
     }
   }
 
@@ -542,8 +989,9 @@ export class GameWorld {
         }
       }
       if (!pick) {
-        const upgrades = this.buildPool().filter((x) => !x.isNew);
-        const candidates = upgrades.length ? upgrades : this.buildPool();
+        const pool = this.buildPool();
+        const upgrades = pool.filter((x) => !x.isNew || x.kind === "syn" || x.kind === "relic");
+        const candidates = upgrades.length ? upgrades : pool;
         pick = candidates.length
           ? candidates[(this.rnd() * candidates.length) | 0]
           : { kind: "boost", id: "b_might", lv: 0, isNew: false };
@@ -574,15 +1022,32 @@ export class GameWorld {
     e.ky = 0;
     e.type = type;
     e.ai = def.ai;
-    const scale = def.boss ? Math.pow(1.65, Math.floor(this.bossIdx / 5)) : this.hpMulNow;
-    e.maxHp = e.hp = Math.round(def.hp * scale * (elite ? 12 : 1));
-    e.r = def.r * (elite ? 1.6 : 1);
-    e.sp = def.sp * (def.boss ? 1 : this.spMulNow) * (this.rule.speedAll || 1);
-    e.dmg = def.dmg * (elite ? 1.5 : 1);
-    e.xpv = def.xp * (elite ? 10 : 1);
+
+    let affixIdx = -1;
+    let affix = null;
+    if (elite && !def.boss && (this.t >= 80 || this.diff.id !== "std")) {
+      affixIdx = (this.rnd() * ELITE_AFFIXES.length) | 0;
+      affix = ELITE_AFFIXES[affixIdx];
+    }
+    e.affix = affixIdx;
+
+    const scale = def.boss ? Math.pow(1.68, Math.floor(this.bossIdx / 5)) : this.hpMulNow;
+    e.maxHp = e.hp = Math.round(
+      def.hp * scale * (this.diff.hpMul || 1) * (elite ? 12 : 1) * (affix ? affix.hpMul : 1),
+    );
+    e.r = def.r * (elite ? 1.58 : 1);
+    e.sp =
+      def.sp *
+      (def.boss ? 1 : this.spMulNow) *
+      (this.diff.spMul || 1) *
+      (this.rule.speedAll || 1) *
+      (affix ? affix.spMul : 1);
+    e.dmg = def.dmg * (elite ? 1.45 : 1) * (this.diff.dmgMul || 1) * (affix?.dmgMul || 1);
+    e.xpv = def.xp * (elite ? 11 : 1);
     e.wt = def.wt * (elite ? 4 : 1);
     e.flash = 0;
     e.slow = 0;
+    e.vuln = 0;
     e.elite = elite ? 1 : 0;
     e.boss = def.boss || 0;
     e.uid = ++this.uid;
@@ -601,7 +1066,7 @@ export class GameWorld {
     e.born = this.t;
     e.swell = 0;
     e.face = 1;
-    for (let i = 0; i < 8; i++) e.cd[i] = -9;
+    for (let i = 0; i < 12; i++) e.cd[i] = -9;
     if (def.ai === AI_TYPE.SPIT) e.stT = 1 + this.rnd() * 2;
     return e;
   }
@@ -632,7 +1097,7 @@ export class GameWorld {
   typeW(def, t) {
     let w = def.id === "packet" && t > 180 ? Math.max(2, 10 - (t - 180) * 0.025) : def.w;
     const bias = STAGES[this.stageIdx].bias;
-    if (bias && bias.indexOf(def.k) >= 0) w *= 1.85;
+    if (bias && bias.indexOf(def.k) >= 0) w *= 1.9;
     return w;
   }
 
@@ -642,13 +1107,13 @@ export class GameWorld {
     let sum = 0;
     for (let i = 0; i < 7; i++) {
       const def = ENEMIES[i];
-      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 12);
+      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 10);
       if (unlocked) sum += this.typeW(def, t);
     }
     let roll = this.rnd() * sum;
     for (let i = 0; i < 7; i++) {
       const def = ENEMIES[i];
-      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 12);
+      const unlocked = t >= def.from || (bias && bias.indexOf(i) >= 0 && t >= 10);
       if (unlocked) {
         roll -= this.typeW(def, t);
         if (roll <= 0) return i;
@@ -710,6 +1175,8 @@ export class GameWorld {
     z.slow = 0;
     z.burst = 0;
     z.arm = 0;
+    z.prog = 0;
+    z.nPts = 0;
     return z;
   }
 
@@ -748,6 +1215,8 @@ export class GameWorld {
     b.wl = 0;
     b.lane = 0;
     b.t = 0;
+    b.rays = 4;
+    b.rayLen = 100;
     b.hits.length = 0;
     return b;
   }
@@ -818,17 +1287,33 @@ export class GameWorld {
   hit(e, baseDmg, weaponK, kb, dirX, dirY) {
     if (e.dead) return 0;
     const st = this.p.st;
-    const crit = this.rnd() < st.crit ? 1 : 0;
-    const dmg = Math.max(1, Math.round(baseDmg * st.might * (crit ? st.critMul : 1)));
+    const bonusCrit =
+      (weaponK === WEAPON_IDX.prism || weaponK === WEAPON_IDX.litho) && this.hasSynergy("syn_prism_litho") ? 0.15 : 0;
+    const crit = this.rnd() < st.crit + bonusCrit ? 1 : 0;
+    let mul = st.might * (crit ? st.critMul : 1);
+    if (e.elite || e.boss) mul *= st.bossDmgMul || 1;
+    if (e.vuln > 0) mul *= 1.2;
+    if (weaponK === WEAPON_IDX.tensor && e.slow > 0 && this.hasSynergy("syn_tensor_cryo")) mul *= 1.35;
+
+    const dmg = Math.max(1, Math.round(baseDmg * mul));
     e.hp -= dmg;
     e.flash = 0.11;
+
+    if ((weaponK === WEAPON_IDX.litho || weaponK === WEAPON_IDX.prism) && this.hasSynergy("syn_prism_litho")) {
+      e.vuln = 2.5;
+    }
     if (kb > 0) {
       const f = kb / e.wt;
       e.kx += dirX * f;
       e.ky += dirY * f;
     }
-    if (weaponK >= 0) this.dmgBy[weaponK] += dmg;
+    if (weaponK >= 0 && weaponK < this.dmgBy.length) this.dmgBy[weaponK] += dmg;
     this.fx && this.fx(FX_EVT.HIT, e.x, e.y, dmg, crit, weaponK);
+
+    // Late-game Execution Threshold Relic (16% HP instant execute on non-bosses!)
+    if (!e.boss && e.hp > 0 && this.hasRelic("r_execute") && e.hp <= e.maxHp * 0.16) {
+      e.hp = 0;
+    }
     if (e.hp <= 0) this.kill(e, crit);
     return dmg;
   }
@@ -863,22 +1348,52 @@ export class GameWorld {
   }
 
   kill(e, crit) {
+    if (e.dead) return;
     e.dead = true;
-    if (e.gone) return;
     const p = this.p;
     this.kills++;
     this.killsBy[e.type]++;
     this.combo++;
-    this.comboT = 2.1;
+    this.comboT = 2.4;
     if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-    if (this.comboIdx < COMBO_STEPS.length && this.combo >= COMBO_STEPS[this.comboIdx]) {
-      this.fx && this.fx(FX_EVT.COMBO, this.combo, this.comboIdx);
+    while (this.comboIdx < COMBO_STEPS.length && this.combo >= COMBO_STEPS[this.comboIdx]) {
+      this.fx && this.fx(FX_EVT.COMBO, COMBO_STEPS[this.comboIdx], this.comboIdx);
       this.comboIdx++;
     }
+
+    // Photon Crit Refund Passive
+    if (crit && this.char.mod.critCdRefund && this.skillCd > 0) {
+      this.skillCd = Math.max(0, this.skillCd - 0.35);
+    }
+
+    // Siphon Relic: every 28 kills heals 6 HP (or pulses if full)
+    if (this.hasRelic("r_siphon")) {
+      this.siphonKills++;
+      if (this.siphonKills >= 28) {
+        this.siphonKills = 0;
+        if (p.hp < p.maxHp) {
+          p.hp = Math.min(p.maxHp, p.hp + 6);
+        } else {
+          this.pulse(0, 28, 135 * p.st.area, 0.6, 220);
+        }
+      }
+    }
+
+    // Chain Fusion Capacitor Relic: 25% chance to plasma-pop on kill
+    if (!e.boss && this.hasRelic("r_chain_pop") && this.rnd() < 0.25) {
+      this.explode(e.x, e.y, 48 * p.st.area, 22, 0, 90, 0);
+    }
+
     this.addGem(e.x, e.y, e.xpv);
     if (e.elite) {
       this.elites++;
       this.addPickup(PICK_KIND.CHEST, e.x, e.y, 1);
+      if (e.affix >= 0 && ELITE_AFFIXES[e.affix]?.split) {
+        for (let s = 0; s < 4; s++) {
+          const a = (s / 4) * TAU;
+          this.spawnEnemy(ENEMY_IDX.frag, e.x + Math.cos(a) * 14, e.y + Math.sin(a) * 14, 0);
+        }
+      }
     }
     if (e.type === ENEMY_IDX.leak) {
       for (let i = 0; i < 3; i++) {
@@ -901,15 +1416,16 @@ export class GameWorld {
         z.src = e.type;
       }
     }
+
     const roll = this.rnd();
-    if (roll < 0.013) {
+    if (roll < 0.014) {
       if (p.hp < p.maxHp * 0.92) this.addPickup(PICK_KIND.HEART, e.x, e.y, 1);
-    } else if (roll < 0.046) {
+    } else if (roll < 0.048) {
       this.addPickup(PICK_KIND.CORE, e.x, e.y, 1 + ((this.rnd() * 3) | 0));
-    } else if (roll < 0.051 && this.t - this.lastMagnet > 35) {
+    } else if (roll < 0.053 && this.t - this.lastMagnet > 35) {
       this.lastMagnet = this.t;
       this.addPickup(PICK_KIND.MAGNET, e.x, e.y, 1);
-    } else if (roll < 0.054 && this.t - this.lastNuke > 45) {
+    } else if (roll < 0.056 && this.t - this.lastNuke > 45) {
       this.lastNuke = this.t;
       this.addPickup(PICK_KIND.NUKE, e.x, e.y, 1);
     }
@@ -920,7 +1436,16 @@ export class GameWorld {
   bossDead(e) {
     this.bosses++;
     this.bossList.push(ENEMIES[e.type].id);
-    this.boss = null;
+    if (this.boss === e) {
+      this.boss = null;
+      for (let i = 0; i < this.nE; i++) {
+        if (!this.en[i].dead && this.en[i].boss) {
+          this.boss = this.en[i];
+          break;
+        }
+      }
+    }
+    this.jumpReady = true;
     this.fx && this.fx(FX_EVT.BOSSDEAD, e.x, e.y, e.boss);
     for (let i = 0; i < this.nE; i++) {
       const m = this.en[i];
@@ -938,15 +1463,25 @@ export class GameWorld {
       if (z.kind === ZONE_KIND.BLAST || z.kind === ZONE_KIND.EBEAM) z.st = 9;
     }
     this.addPickup(PICK_KIND.CHEST, e.x, e.y, 3);
-    this.magnetT = 0.65;
+    this.magnetT = 0.75;
   }
 
   hurt(rawDmg, src) {
     const p = this.p;
     if (p.inv > 0 || this.over) return;
+
+    // Energy Shield Absorption!
+    if (p.shields > 0) {
+      p.shields--;
+      p.inv = 0.85;
+      this.nova(125, 420, 20);
+      this.fx && this.fx(FX_EVT.SHIELD, p.x, p.y);
+      return;
+    }
+
     const dmg = Math.max(1, Math.round(rawDmg * this.dmgMulNow) - p.st.armor);
     p.hp -= dmg;
-    p.inv = 0.6;
+    p.inv = 0.62;
     this.lastSrc = src;
     this.hurts++;
     if (this.combo >= 10) this.fx && this.fx(FX_EVT.COMBOEND, this.combo);
@@ -954,11 +1489,12 @@ export class GameWorld {
     this.comboIdx = 0;
     this.comboT = 0;
     this.fx && this.fx(FX_EVT.HURT, dmg, p.x, p.y);
-    if (p.st.thorns) this.nova(105, 390, 16);
+    if (p.st.thorns) this.nova(115, 390, 20);
     if (p.hp <= 0) {
       if (this.revives > 0) {
         this.revives--;
         p.hp = Math.round(p.maxHp * 0.5);
+        p.shields = Math.min(3, p.shields + 1);
         p.inv = 2.5;
         this.nova(225, 620, 68);
         this.wipeEB = true;
@@ -1025,26 +1561,87 @@ export class GameWorld {
     this.dmgMulNow = CURVES.dmgMul(t);
     this.spMulNow = CURVES.spMul(t);
 
-    // Progressive Sector Pipeline Transition every STAGE_SEC (75s)
-    const stepNow = Math.floor(t / STAGE_SEC);
-    if (stepNow !== this.stageStep) {
-      this.stageStep = stepNow;
-      const nextIdx = (this.startStageIdx + stepNow) % STAGES.length;
-      if (nextIdx !== this.stageIdx) {
-        this.setStage(nextIdx);
-        this.fx && this.fx(FX_EVT.STAGE, nextIdx);
+    // Cooldowns & Buff Timers
+    if (this.skillCd > 0) this.skillCd = Math.max(0, this.skillCd - dt);
+    let needRecalc = false;
+    if (this.skillBuffT > 0) {
+      this.skillBuffT -= dt;
+      if (this.char.id === "astra") {
+        this.skyTickT -= dt;
+        if (this.skyTickT <= 0) {
+          this.skyTickT = 0.72;
+          this.spawnSkyBeam();
+        }
+      }
+      if (this.skillBuffT <= 0) {
+        this.skillBuffT = 0;
+        if (this.char.id === "rubin") {
+          this.explode(p.x, p.y, 180 * p.st.area, 40 + p.maxHp * 0.4, WEAPON_IDX.tensor, 340, 0);
+        }
+        needRecalc = true;
+      }
+    }
+    if (this.skillPostT > 0) {
+      this.skillPostT -= dt;
+      if (this.skillPostT <= 0) needRecalc = true;
+    }
+    if (this.jumpBuffT > 0) {
+      this.jumpBuffT -= dt;
+      if (this.jumpBuffT <= 0) needRecalc = true;
+    }
+    if (this.nodeHasteT > 0) {
+      this.nodeHasteT -= dt;
+      if (this.nodeHasteT <= 0) needRecalc = true;
+    }
+    if (this.nodeCdT > 0) {
+      this.nodeCdT -= dt;
+      if (this.nodeCdT <= 0) needRecalc = true;
+    }
+    if (needRecalc) this.recalc();
+
+    // Auto Shield Relic (every 15s)
+    if (this.hasRelic("r_shield") && p.shields < 2) {
+      p.shieldCd -= dt;
+      if (p.shieldCd <= 0) {
+        p.shieldCd = 15;
+        p.shields++;
+      }
+    }
+
+    // Sector Pipeline Jump Capacitor & Auto-Advance
+    if (!this.jumpReady) {
+      this.jumpCd -= dt;
+      if (this.jumpCd <= 0) {
+        this.jumpReady = true;
+        this.jumpCd = STAGE_SEC;
+        if (this.routeMode === "auto") {
+          const nextIdx = (this.stageIdx + 1) % STAGES.length;
+          this.jumpStage(nextIdx);
+        }
       }
     }
 
     const sp = p.st.speed;
-    p.x += p.mx * sp * dt;
-    p.y += p.my * sp * dt;
+    const dxMove = p.mx * sp * dt;
+    const dyMove = p.my * sp * dt;
+    p.x += dxMove;
+    p.y += dyMove;
     p.moving = p.mx * p.mx + p.my * p.my > 0.01;
     if (p.mx > 0.15) p.face = 1;
     else if (p.mx < -0.15) p.face = -1;
     if (p.inv > 0) p.inv -= dt;
     if (p.st.regen > 0 && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + p.st.regen * dt);
     if (this.magnetT > 0) this.magnetT -= dt;
+
+    // Quant Stride-Zap Passive: moving 220px discharges an auto-arc!
+    if (p.moving && this.char.mod.strideZap) {
+      p.strideAcc += Math.sqrt(dxMove * dxMove + dyMove * dyMove);
+      if (p.strideAcc >= 215 && this.near && this.nearD < 280) {
+        p.strideAcc = 0;
+        this.fx && this.fx(FX_EVT.BOLT, p.x, p.y, this.near.x, this.near.y, 0);
+        this.hit(this.near, 24, WEAPON_IDX.bus, 90, 0, 0);
+      }
+    }
 
     this.director(dt);
     this.compact();
@@ -1091,7 +1688,7 @@ export class GameWorld {
   findNear() {
     const p = this.p;
     let best = null;
-    let bestD2 = 395 * 395;
+    let bestD2 = 405 * 405;
     for (let i = 0; i < this.nE; i++) {
       const e = this.en[i];
       const dx = e.x - p.x;
@@ -1136,8 +1733,16 @@ export class GameWorld {
       this.wave = wv;
       this.onWave(wv);
     }
+
+    // Periodic Interactive Cleanroom Sector Nodes (replaces old scripted 12s ring!)
+    this.nodeTimer -= dt * (this.rule.nodeFast || 1);
+    if (this.nodeTimer <= 0) {
+      this.nodeTimer = 32;
+      this.spawnSectorNode();
+    }
+
     let target = CURVES.target(t) * countMul;
-    if (this.boss) target *= 0.62;
+    if (this.boss) target *= 0.65;
     this.spawnAcc = Math.min(8, this.spawnAcc + CURVES.rate(t) * countMul * dt);
     let loops = 0;
     while (this.spawnAcc >= 1 && loops++ < 10) {
@@ -1147,34 +1752,26 @@ export class GameWorld {
         this.spawnEnemy(this.pickType(), this.sx, this.sy, 0);
       }
     }
-    if (this.intro && !this.tutDone && t >= 12) {
-      this.tutDone = true;
-      for (let i = 0; i < 36; i++) {
-        const a = (i / 36) * TAU;
-        const r = 175 + (i % 3) * 22;
-        this.spawnEnemy(ENEMY_IDX.packet, p.x + Math.cos(a) * r, p.y + Math.sin(a) * r * 1.25, 0);
-      }
-      this.addPickup(PICK_KIND.NUKE, p.x + p.face * 34, p.y - 4, 1);
-      this.lastNuke = t;
-    }
+
     if (t >= this.nextElite) {
       const eliteMul = this.rule.eliteMul || 1;
-      this.nextElite += (t < 240 ? 95 : 38) / eliteMul;
+      this.nextElite += (t < 220 ? 82 : 34) / eliteMul;
       const pool = [ENEMY_IDX.thermal];
-      if (t >= 90) pool.push(ENEMY_IDX.crosstalk);
-      if (t >= 130) pool.push(ENEMY_IDX.surge);
-      if (t >= 165) pool.push(ENEMY_IDX.leak);
+      if (t >= 80) pool.push(ENEMY_IDX.crosstalk);
+      if (t >= 120) pool.push(ENEMY_IDX.surge);
+      if (t >= 155) pool.push(ENEMY_IDX.leak);
       this.spawnPos();
       const el = this.spawnEnemy(pool[(this.rnd() * pool.length) | 0], this.sx, this.sy, 1);
       if (el && this.fx) this.fx(FX_EVT.ELITE, el.x, el.y);
     }
+
     if (!this.bossWarned && t >= this.nextBoss - 3) {
       this.bossWarned = true;
       this.bossWarnType = this.nextBossTypeIndex();
       this.fx && this.fx(FX_EVT.BOSSWARN, this.bossWarnType - 9);
     }
     if (t >= this.nextBoss) {
-      this.nextBoss += BOSS_SEC;
+      this.nextBoss += BOSS_SEC * (this.rule.bossFast || 1);
       this.bossWarned = false;
       const bType = this.bossWarnType || this.nextBossTypeIndex();
       const b = this.spawnEnemy(bType, p.x, p.y - this.vh / 2 - 50, 0);
@@ -1185,6 +1782,15 @@ export class GameWorld {
         b.a1 = 4.5;
         this.fx && this.fx(FX_EVT.BOSS, b.x, b.y, b.boss);
       }
+      // Late-game Twin-Boss Endgame Escalation (8:00+ or Apex Tier Wave 2+)!
+      if (t >= 480 || (this.diff.id === "apex" && this.bossIdx >= 2)) {
+        const twinType = ENEMY_IDX[BOSS_IDS[(this.bossIdx + 2) % BOSS_IDS.length]];
+        const twin = this.spawnEnemy(twinType, p.x + 140, p.y + this.vh / 2 + 50, 0);
+        if (twin) {
+          twin.stT = 2.4;
+          twin.a1 = 5.0;
+        }
+      }
     }
   }
 
@@ -1194,14 +1800,14 @@ export class GameWorld {
     const p = this.p;
     const mode = w % 3;
     if (mode === 1) {
-      const cnt = Math.min(44, 12 + w * 2);
-      const tp = this.t > 140 && this.rnd() < 0.5 ? ENEMY_IDX.jitter : ENEMY_IDX.packet;
+      const cnt = Math.min(42, 11 + w * 2);
+      const tp = this.t > 130 && this.rnd() < 0.5 ? ENEMY_IDX.jitter : ENEMY_IDX.packet;
       for (let i = 0; i < cnt; i++) {
         const a = (i / cnt) * TAU;
-        this.spawnEnemy(tp, p.x + Math.cos(a) * (this.vw / 2 + 50), p.y + Math.sin(a) * (this.vw / 2 + 50) * 1.5, 0);
+        this.spawnEnemy(tp, p.x + Math.cos(a) * (this.vw / 2 + 50), p.y + Math.sin(a) * (this.vw / 2 + 50) * 1.45, 0);
       }
     } else if (mode === 2) {
-      const cnt = Math.min(30, 9 + w);
+      const cnt = Math.min(28, 8 + w);
       const dir = this.rnd() < 0.5 ? 1 : -1;
       const span = this.vh * 0.36;
       for (let i = 0; i < cnt; i++) {
@@ -1219,7 +1825,7 @@ export class GameWorld {
         }
       }
     } else {
-      const cnt = Math.min(36, 10 + Math.floor(w * 1.5));
+      const cnt = Math.min(34, 10 + Math.floor(w * 1.5));
       const ang = this.rnd() * TAU;
       const dist = this.vh / 2 + 60;
       for (let i = 0; i < cnt; i++) {
@@ -1245,6 +1851,7 @@ export class GameWorld {
       if (e.dead) continue;
       if (e.flash > 0) e.flash -= dt;
       if (e.slow > 0) e.slow -= dt;
+      if (e.vuln > 0) e.vuln -= dt;
       let dx = p.x - e.x;
       let dy = p.y - e.y;
       let dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1259,7 +1866,7 @@ export class GameWorld {
       }
       const nx = dx / dist;
       const ny = dy / dist;
-      let sp = e.sp * (e.slow > 0 ? 0.52 : 1);
+      let sp = e.sp * (e.slow > 0 ? 0.5 : 1);
       let vx = nx;
       let vy = ny;
       switch (e.ai) {
@@ -1357,7 +1964,6 @@ export class GameWorld {
     const catchup = dist > 520 ? 2.2 : 1;
     const rage = e.hp < e.maxHp * 0.42;
 
-    // Boss 1: Storage Colossus — Bad-Block Sector Wall Volleys + Leak Minions
     if (e.boss === 1) {
       e.stT -= dt;
       e.a1 -= dt;
@@ -1385,7 +1991,6 @@ export class GameWorld {
       return baseSp * (rage ? 1.32 : 1) * catchup;
     }
 
-    // Boss 2: Optical Prism — Rotating Multi-Beam Refraction + High-Speed Dash
     if (e.boss === 2) {
       e.stT -= dt;
       if (e.st === 0) {
@@ -1441,7 +2046,6 @@ export class GameWorld {
       return 430;
     }
 
-    // Boss 3: CPU Arbiter — Orthogonal Instruction-Pipeline Lock Gates + Clock Spiral
     if (e.boss === 3) {
       e.stT -= dt;
       if (e.st === 0) {
@@ -1456,7 +2060,6 @@ export class GameWorld {
         }
         if (e.stT <= 0) {
           e.st = 1;
-          e.stT = 0.4;
           const rot0 = (this.bossIdx % 2) * (Math.PI / 4);
           for (let i = 0; i < 4; i++) {
             const z = this.addZone();
@@ -1485,7 +2088,6 @@ export class GameWorld {
       return baseSp * 0.2;
     }
 
-    // Boss 4: Tensor GPU Furnace — 2×2 Thermal Matrix Tiles + Radial Barrages
     if (e.boss === 4) {
       e.stT -= dt;
       if (e.st === 0) {
@@ -1499,99 +2101,95 @@ export class GameWorld {
               z.kind = ZONE_KIND.BLAST;
               z.x = p.x + gx * step + (this.rnd() - 0.5) * 24;
               z.y = p.y + gy * step + (this.rnd() - 0.5) * 24;
-              z.r = 50;
+              z.r = 56;
               z.life = 1.05;
               z.dmg = 24;
               z.src = e.type;
             }
           }
           e.st = 1;
-          e.stT = 1.25;
-          e.swell = 0.3;
+          e.stT = rage ? 1.5 : 2.3;
         }
         return baseSp * catchup;
       }
       if (e.stT <= 0) {
-        const cnt = rage ? 16 : 12;
-        const off = this.rnd() * TAU;
-        for (let i = 0; i < cnt; i++) {
-          const a = off + (i / cnt) * TAU;
-          this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 124, 7, 14, e.type, 1);
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * TAU + e.ph;
+          this.shootE(e.x, e.y, Math.cos(a), Math.sin(a), 116, 7, 15, e.type, 0);
         }
         this.fx && this.fx(FX_EVT.ESHOT, e.x, e.y, 1);
         e.st = 0;
-        e.stT = rage ? 2.1 : 2.9;
+        e.stT = rage ? 1.9 : 2.8;
       }
-      return baseSp * 0.65 * catchup;
+      return baseSp * 0.7;
     }
 
-    // Boss 5: EUV Lithography Colossus — Reticle Crosshair Lock + Exposure Beam + Mites
+    // Boss 5: Lithography Mother-Core
     e.stT -= dt;
     if (e.st === 0) {
       if (e.stT <= 0) {
         const p = this.p;
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
           const z = this.addZone();
           if (!z) break;
-          z.kind = ZONE_KIND.BLAST;
-          z.x = p.x + (i ? (this.rnd() - 0.5) * 200 : 0);
-          z.y = p.y + (i ? (this.rnd() - 0.5) * 200 : 0);
-          z.r = 56;
-          z.life = 0.95;
+          z.kind = ZONE_KIND.EBEAM;
+          z.own = e;
+          z.x = e.x;
+          z.y = e.y;
+          z.a = Math.atan2(p.y - e.y, p.x - e.x) + (i - 0.5) * 0.42;
+          z.av = i === 0 ? 0.25 : -0.25;
+          z.len = 560;
+          z.r = 11;
+          z.life = 2.0;
+          z.arm = 0.78;
           z.dmg = 26;
           z.src = e.type;
         }
-        const zb = this.addZone();
-        if (zb) {
-          const dir = this.rnd() < 0.5 ? 1 : -1;
-          zb.kind = ZONE_KIND.EBEAM;
-          zb.own = e;
-          zb.x = e.x;
-          zb.y = e.y;
-          zb.a = Math.atan2(ny, nx) - dir * 0.9;
-          zb.av = dir * 0.92;
-          zb.len = 580;
-          zb.r = 12;
-          zb.life = 2.8;
-          zb.arm = 0.9;
-          zb.dmg = 26;
-          zb.src = e.type;
+        for (let m = 0; m < 3; m++) {
+          const z = this.addZone();
+          if (!z) break;
+          const a = (m / 3) * TAU + this.t;
+          z.kind = ZONE_KIND.BLAST;
+          z.x = p.x + Math.cos(a) * 86;
+          z.y = p.y + Math.sin(a) * 86;
+          z.r = 58;
+          z.life = 1.0;
+          z.dmg = 25;
+          z.src = e.type;
         }
         e.st = 1;
-        e.stT = 2.9;
+        e.stT = 2.2;
       }
       return baseSp * catchup;
     }
     if (e.stT <= 0) {
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * TAU;
-        this.spawnEnemy(ENEMY_IDX.frag, e.x + Math.cos(a) * 62, e.y + Math.sin(a) * 62, 0);
-      }
       e.st = 0;
-      e.stT = rage ? 1.8 : 2.6;
+      e.stT = rage ? 1.8 : 2.7;
     }
-    return baseSp * 0.45 * catchup;
+    return baseSp * 0.4;
   }
 
   separate() {
+    const en = this.en;
     const gStart = this.gStart;
     const gItems = this.gItems;
-    const en = this.en;
     for (let cy = 0; cy < GRID_H; cy++) {
+      const row = cy * GRID_W;
       for (let cx = 0; cx < GRID_W; cx++) {
-        const cell = cy * GRID_W + cx;
-        const s0 = gStart[cell];
-        const s1 = gStart[cell + 1];
-        if (s0 === s1) continue;
-        for (let i = s0; i < s1; i++) {
-          const a = en[gItems[i]];
+        const idx = row + cx;
+        const s = gStart[idx];
+        const e = gStart[idx + 1];
+        if (s === e) continue;
+        for (let i = s; i < e; i++) {
+          const ia = gItems[i];
+          const a = en[ia];
           if (a.dead || a.ai === AI_TYPE.GHOST) continue;
-          for (let j = i + 1; j < s1; j++) this.push(a, en[gItems[j]]);
+          for (let j = i + 1; j < e; j++) this.push(a, en[gItems[j]]);
           if (cx + 1 < GRID_W) {
-            for (let j = gStart[cell + 1], e2 = gStart[cell + 2]; j < e2; j++) this.push(a, en[gItems[j]]);
+            for (let j = gStart[idx + 1], e2 = gStart[idx + 2]; j < e2; j++) this.push(a, en[gItems[j]]);
           }
           if (cy + 1 < GRID_H) {
-            const below = cell + GRID_W;
+            const below = idx + GRID_W;
             for (let j = gStart[below], e2 = gStart[below + 1]; j < e2; j++) this.push(a, en[gItems[j]]);
             if (cx + 1 < GRID_W) {
               for (let j = gStart[below + 1], e2 = gStart[below + 2]; j < e2; j++) this.push(a, en[gItems[j]]);
@@ -1624,7 +2222,7 @@ export class GameWorld {
     b.y += ny * pen * wb * 2;
   }
 
-  // 8 Hardware Weapons Simulation
+  // 10 Hardware Weapons Simulation + Overclock Breakthroughs & Synergies!
   updWeapons(dt) {
     const p = this.p;
     const st = p.st;
@@ -1636,38 +2234,46 @@ export class GameWorld {
       const def = WEAPONS[w.k];
       const cfg = w.evo ? def.evo : def.lv[w.lv - 1];
       const k = w.k;
+      const wMul = this.wDmgMul(w);
+      const ocCdMul = w.oc > 0 ? Math.pow(0.94, w.oc) : 1;
+      const ocAreaMul = w.oc > 0 ? 1 + w.oc * 0.06 : 1;
+      const extraN = st.multishot || 0;
       w.t -= dt;
 
       switch (def.id) {
-        // 1. HBM Parallel Bus Packets (parallel lateral lanes, not fan cones!)
+        // 1. HBM Parallel Bus Packets
         case "hbm":
           if (w.t <= 0) {
             if (!this.near) {
               w.t = 0.1;
               break;
             }
-            w.t = cfg.cd * st.cd;
+            w.t = cfg.cd * st.cd * ocCdMul;
             const aim = Math.atan2(p.aimY, p.aimX) + (w.evo ? (this.rnd() - 0.5) * 0.16 : 0);
             const vx = Math.cos(aim);
             const vy = Math.sin(aim);
             const px = -vy;
             const py = vx;
-            const sp = 375 * st.pspd;
+            const sp = 385 * st.pspd;
+            const lanes = cfg.n + extraN;
             const laneGap = w.evo ? 10.5 : 12;
-            for (let n = 0; n < cfg.n; n++) {
-              const off = (n - (cfg.n - 1) / 2) * laneGap;
+            for (let n = 0; n < lanes; n++) {
+              const off = (n - (lanes - 1) / 2) * laneGap;
               const b = this.addBullet(
                 BULLET_KIND.HBM, k,
                 p.x + vx * 14 + px * off,
                 p.y + vy * 14 + py * off,
                 vx * sp, vy * sp,
-                w.evo ? 9 : 7.5, cfg.dmg, cfg.pierce, 1.15 * st.dur,
+                w.evo ? 9 : 7.5,
+                cfg.dmg * wMul,
+                cfg.pierce + (st.pierceBonus || 0),
+                1.15 * st.dur,
               );
               if (b) {
                 b.lane = n;
                 if (w.evo) {
-                  b.pop = cfg.pop * st.area;
-                  b.size = 1.24;
+                  b.pop = cfg.pop * st.area * ocAreaMul;
+                  b.size = 1.24 * ocAreaMul;
                 }
               }
             }
@@ -1675,17 +2281,18 @@ export class GameWorld {
           }
           break;
 
-        // 2. Silicon Photonics WDM Prism Lance (splits into 3-5 RGB/WDM sub-beams on hit!)
+        // 2. Silicon Photonics WDM Prism Lance
         case "prism":
           if (w.t <= 0) {
             if (!this.near) {
               w.t = 0.12;
               break;
             }
-            w.t = cfg.cd * st.cd;
-            const sp = 430 * st.pspd;
-            for (let n = 0; n < cfg.n; n++) {
-              const tgt = n === 0 ? this.near : this.randNear(310) || this.near;
+            w.t = cfg.cd * st.cd * ocCdMul;
+            const sp = 435 * st.pspd;
+            const shots = cfg.n + extraN;
+            for (let n = 0; n < shots; n++) {
+              const tgt = n === 0 ? this.near : this.randNear(320) || this.near;
               const a = Math.atan2(tgt.y - p.y, tgt.x - p.x) + (n > 0 ? (this.rnd() - 0.5) * 0.24 : 0);
               const vx = Math.cos(a);
               const vy = Math.sin(a);
@@ -1693,27 +2300,29 @@ export class GameWorld {
                 BULLET_KIND.PRISM_MAIN, k,
                 p.x + vx * 14, p.y + vy * 14,
                 vx * sp, vy * sp,
-                9, cfg.dmg, 0, 1.05 * st.dur,
+                9, cfg.dmg * wMul, st.pierceBonus || 0, 1.08 * st.dur,
               );
               if (b) {
                 b.split = cfg.split;
-                b.size = w.evo ? 1.3 : 1.05;
+                b.size = (w.evo ? 1.3 : 1.05) * ocAreaMul;
               }
             }
             this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
           }
           break;
 
-        // 3. Tensor 3x3 Matrix Stamp (locks onto monster cluster, snaps square grid!)
+        // 3. Tensor 3x3 Matrix Stamp
         case "tensor":
           if (w.t <= 0) {
-            if (this.nearD > 350) {
+            if (this.nearD > 360) {
               w.t = 0.18;
               break;
             }
-            w.t = cfg.cd * st.cd;
-            for (let n = 0; n < cfg.n; n++) {
-              const tgt = n === 0 ? this.near : this.randNear(290) || this.near;
+            w.t = cfg.cd * st.cd * ocCdMul;
+            const synArea = this.hasSynergy("syn_tensor_cryo") ? 1.18 : 1;
+            const count = cfg.n + extraN;
+            for (let n = 0; n < count; n++) {
+              const tgt = n === 0 ? this.near : this.randNear(300) || this.near;
               const z = this.addZone();
               if (!z) break;
               z.kind = ZONE_KIND.TENSOR;
@@ -1722,78 +2331,70 @@ export class GameWorld {
               z.oy = p.y;
               z.x = tgt ? tgt.x : p.x + p.aimX * 90;
               z.y = tgt ? tgt.y : p.y + p.aimY * 90;
-              z.arm = 0.42;
-              z.life = 0.55;
-              z.r = cfg.rad * st.area;
-              z.dmg = cfg.dmg;
+              z.arm = 0.4;
+              z.life = 0.52;
+              z.r = cfg.rad * st.area * ocAreaMul * synArea;
+              z.dmg = cfg.dmg * wMul;
               z.evo = w.evo ? cfg.mini : 0;
-              z.rMax = w.evo ? cfg.miniR * st.area : 0;
+              z.rMax = w.evo ? cfg.miniR * st.area * ocAreaMul : 0;
             }
             this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
           }
           break;
 
-        // 4. L3 Cache Silicon Die Ring
+        // 4. L3 Cache Silicon Die Ring (100% Always Active — Zero Downtime!)
         case "cache": {
-          let active = true;
-          if (!w.evo && cfg.off > 0) {
-            w.onT -= dt;
-            if (w.onT <= 0) {
-              w.on = w.on ? 0 : 1;
-              w.onT = w.on ? cfg.on * st.dur : cfg.off * st.cd;
-              if (w.on && this.fx) this.fx(FX_EVT.SHOT, k, p.x, p.y, 0);
-            }
-            active = !!w.on;
-          } else {
-            w.on = 1;
-          }
-          w.vis += ((active ? 1 : 0) - w.vis) * Math.min(1, dt * 10);
-          w.ang += 3.45 * dt;
+          w.on = 1;
+          w.vis = 1;
+          w.ang += (cfg.spin || 3.6) * dt;
           const n1 = cfg.n;
           const n2 = w.evo ? cfg.n2 : 0;
           w.np = n1 + n2;
+          const synScale = this.hasSynergy("syn_cache_drone") ? 1.18 : 1;
           for (let n = 0; n < n1 + n2; n++) {
             const inner = n < n1;
-            const a = inner ? w.ang + (n / n1) * TAU : -w.ang * 0.75 + ((n - n1) / n2) * TAU;
-            const rad = (inner ? cfg.rad : cfg.rad2) * st.area * (0.5 + 0.5 * w.vis);
+            const a = inner ? w.ang + (n / n1) * TAU : -w.ang * 0.78 + ((n - n1) / n2) * TAU;
+            const rad = (inner ? cfg.rad : cfg.rad2) * st.area * ocAreaMul;
             const sx = p.x + Math.cos(a) * rad;
             const sy = p.y + Math.sin(a) * rad;
             w.pos[n * 2] = sx;
             w.pos[n * 2 + 1] = sy;
-            if (!active) continue;
-            const cnt = this.query(sx, sy, 10);
+            const cnt = this.query(sx, sy, 11 * synScale);
             for (let j = 0; j < cnt; j++) {
               const e = en[this.q[j]];
-              if (this.t - e.cd[k] < 0.38) continue;
+              if (this.t - e.cd[k] < 0.34) continue;
               e.cd[k] = this.t;
               const dx = e.x - p.x;
               const dy = e.y - p.y;
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
-              this.hit(e, cfg.dmg, k, 275, dx / d, dy / d);
+              this.hit(e, cfg.dmg * wMul, k, 265, dx / d, dy / d);
             }
           }
-          if (w.evo) {
+          if (cfg.wave > 0) {
             w.waveT -= dt;
             if (w.waveT <= 0) {
-              w.waveT = cfg.wave * st.cd;
-              this.pulse(k, cfg.waveDmg, cfg.waveR * st.area, 0, 300);
+              w.waveT = cfg.wave * st.cd * ocCdMul;
+              this.pulse(k, cfg.waveDmg * wMul, cfg.waveR * st.area * ocAreaMul, 0, 300);
             }
           }
           break;
         }
 
-        // 5. PCB 45°/90° High-Voltage Bus Arc
+        // 5. PCB High-Voltage Bus Arc
         case "bus":
           if (w.t <= 0) {
             let fired = 0;
-            for (let n = 0; n < cfg.n; n++) {
-              let cur = n === 0 && !w.evo ? this.near : this.randNear(w.evo ? 345 : 295);
-              if (!cur || (n === 0 && this.nearD > 315 && !w.evo)) break;
+            const synBoost = this.hasSynergy("syn_nvlink_bus");
+            const chains = cfg.chain + (synBoost ? 2 : 0);
+            const arcs = cfg.n + extraN;
+            for (let n = 0; n < arcs; n++) {
+              let cur = n === 0 && !w.evo ? this.near : this.randNear(w.evo ? 355 : 305);
+              if (!cur || (n === 0 && this.nearD > 325 && !w.evo)) break;
               fired++;
               const mark = ++this.stamp;
               let sx = p.x;
               let sy = p.y;
-              for (let c = 0; c <= cfg.chain && cur; c++) {
+              for (let c = 0; c <= chains && cur; c++) {
                 cur.mark = mark;
                 const dx = cur.x - sx;
                 const dy = cur.y - sy;
@@ -1801,11 +2402,11 @@ export class GameWorld {
                 this.fx && this.fx(FX_EVT.BOLT, sx, sy, cur.x, cur.y, w.evo ? 1 : 0);
                 const tx = cur.x;
                 const ty = cur.y;
-                this.hit(cur, cfg.dmg, k, 75, dx / d, dy / d);
-                if (w.evo && c === 0) this.explode(tx, ty, cfg.boom * st.area, cfg.dmg * 0.55, k, 125, 0);
+                this.hit(cur, cfg.dmg * wMul, k, 75, dx / d, dy / d);
+                if (w.evo && c === 0) this.explode(tx, ty, cfg.boom * st.area * ocAreaMul, cfg.dmg * 0.55 * wMul, k, 125, 0);
                 sx = tx;
                 sy = ty;
-                const cnt = this.query(tx, ty, 130 * st.area);
+                const cnt = this.query(tx, ty, 138 * st.area);
                 let next = null;
                 let bestD2 = 1e9;
                 for (let j = 0; j < cnt; j++) {
@@ -1823,7 +2424,7 @@ export class GameWorld {
               }
             }
             if (fired) {
-              w.t = cfg.cd * st.cd;
+              w.t = cfg.cd * st.cd * ocCdMul * (synBoost ? 0.86 : 1);
               this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
             } else {
               w.t = 0.15;
@@ -1849,7 +2450,7 @@ export class GameWorld {
               break;
             }
             w.bt = cfg.dur * st.dur;
-            w.t = cfg.cd * st.cd + w.bt;
+            w.t = cfg.cd * st.cd * ocCdMul + w.bt;
             w.ang = Math.atan2(p.aimY, p.aimX);
             w.tick = 0;
             w.np = cfg.n;
@@ -1859,8 +2460,8 @@ export class GameWorld {
             w.tick -= dt;
             if (w.tick <= 0) {
               w.tick = 0.1;
-              const len = cfg.len * st.area;
-              const hw = cfg.wid * 0.5 * Math.sqrt(st.area);
+              const len = cfg.len * st.area * ocAreaMul;
+              const hw = cfg.wid * 0.5 * Math.sqrt(st.area * ocAreaMul);
               for (let n = 0; n < cfg.n; n++) {
                 const a = w.ang + (n / cfg.n) * TAU;
                 const ux = Math.cos(a);
@@ -1874,7 +2475,7 @@ export class GameWorld {
                   if (proj < -e.r || proj > len + e.r) continue;
                   const perp = ry * ux - rx * uy;
                   if (perp <= hw + e.r && perp >= -hw - e.r) {
-                    this.hit(e, cfg.dmg, k, 45, ux, uy);
+                    this.hit(e, cfg.dmg * wMul, k, 45, ux, uy);
                   }
                 }
               }
@@ -1883,12 +2484,13 @@ export class GameWorld {
           break;
 
         // 7. Autonomous ASIC Pursuit Drones
-        case "drone":
+        case "drone": {
+          const synDrone = this.hasSynergy("syn_cache_drone");
           if (w.evo) {
-            w.ang += 2.85 * dt;
-            w.ph += 1.25 * dt;
+            w.ang += 2.9 * dt;
+            w.ph += 1.3 * dt;
             w.np = cfg.n;
-            const hr = 13 * cfg.size * Math.sqrt(st.area);
+            const hr = 13 * cfg.size * Math.sqrt(st.area * ocAreaMul) * (synDrone ? 1.18 : 1);
             for (let n = 0; n < cfg.n; n++) {
               const a = w.ang + (n / cfg.n) * TAU;
               const rad = (cfg.rMin + (cfg.rMax - cfg.rMin) * (0.5 + 0.5 * Math.sin(w.ph + n * 1.26))) * st.area;
@@ -1899,9 +2501,9 @@ export class GameWorld {
               const cnt = this.query(wx, wy, hr);
               for (let j = 0; j < cnt; j++) {
                 const e = en[this.q[j]];
-                if (this.t - e.cd[k] >= 0.28) {
+                if (this.t - e.cd[k] >= 0.27) {
                   e.cd[k] = this.t;
-                  this.hit(e, cfg.dmg, k, 155, -Math.sin(a), Math.cos(a));
+                  this.hit(e, cfg.dmg * wMul, k, synDrone ? 240 : 155, -Math.sin(a), Math.cos(a));
                 }
               }
             }
@@ -1910,9 +2512,10 @@ export class GameWorld {
               w.t = 0.15;
               break;
             }
-            w.t = cfg.cd * st.cd;
-            for (let n = 0; n < cfg.n; n++) {
-              const tgt = n === 0 ? this.near : this.randNear(275) || this.near;
+            w.t = cfg.cd * st.cd * ocCdMul;
+            const count = cfg.n + extraN;
+            for (let n = 0; n < count; n++) {
+              const tgt = n === 0 ? this.near : this.randNear(285) || this.near;
               let dx = tgt.x - p.x;
               let dy = tgt.y - p.y;
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -1923,32 +2526,35 @@ export class GameWorld {
                 dx = Math.cos(a);
                 dy = Math.sin(a);
               }
-              const sp = 340 * st.pspd;
+              const sp = 345 * st.pspd;
               const b = this.addBullet(
                 BULLET_KIND.DRONE, k, p.x, p.y, dx * sp, dy * sp,
-                11 * cfg.size * Math.sqrt(st.area), cfg.dmg, 999, 6,
+                11 * cfg.size * Math.sqrt(st.area * ocAreaMul),
+                cfg.dmg * wMul, 999, 6,
               );
               if (b) {
                 b.t = (cfg.range * st.area) / sp;
-                b.size = cfg.size * Math.sqrt(st.area);
+                b.size = cfg.size * Math.sqrt(st.area * ocAreaMul) * (synDrone ? 1.16 : 1);
                 b.lane = n % 2 ? 1 : -1;
               }
             }
             this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, 0);
           }
           break;
+        }
 
         // 8. Immersion Cryo-Coolant Hexagonal Plates
         case "cryo":
           if (w.t <= 0) {
             let spawned = 0;
-            for (let n = 0; n < cfg.n; n++) {
-              let tgt = this.randNear(265);
+            const count = cfg.n + (w.evo ? 0 : extraN);
+            for (let n = 0; n < count; n++) {
+              let tgt = this.randNear(275);
               if (!tgt) break;
               if (w.evo) {
                 let bestDensity = -1;
                 for (let s = 0; s < 6; s++) {
-                  const cand = this.randNear(285);
+                  const cand = this.randNear(295);
                   if (!cand) break;
                   const dens = this.query(cand.x, cand.y, 85);
                   if (dens > bestDensity) {
@@ -1963,24 +2569,122 @@ export class GameWorld {
               z.k = k;
               z.x = tgt.x;
               z.y = tgt.y;
-              z.r = cfg.rad * st.area;
+              z.r = cfg.rad * st.area * ocAreaMul;
               z.life = cfg.dur * st.dur;
-              z.dmg = cfg.dmg;
+              z.dmg = cfg.dmg * wMul;
               z.evo = w.evo ? 1 : 0;
-              z.burst = w.evo ? cfg.burst : 0;
+              z.burst = w.evo ? cfg.burst * wMul : 0;
               z.a = this.rnd() * TAU;
               spawned++;
             }
             if (spawned) {
-              w.t = cfg.cd * st.cd;
+              w.t = cfg.cd * st.cd * ocCdMul;
               this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
             } else {
               w.t = 0.25;
             }
           }
           break;
+
+        // 9. NVLink Laser Mesh Matrix (Connects nearby enemies into a burning star-web!)
+        case "nvlink":
+          if (w.t <= 0) {
+            const synBoost = this.hasSynergy("syn_nvlink_bus");
+            const maxNodes = Math.min(10, cfg.nodes + (synBoost ? 2 : 0) + extraN);
+            const rad = cfg.rad * st.area * ocAreaMul;
+            const cnt = this.query(p.x, p.y, rad);
+            if (cnt < 1) {
+              w.t = 0.16;
+              break;
+            }
+            const z = this.addZone();
+            if (z) {
+              z.kind = ZONE_KIND.NVLINK;
+              z.k = k;
+              z.x = p.x;
+              z.y = p.y;
+              z.r = rad;
+              z.life = cfg.dur * st.dur;
+              z.dmg = cfg.dmg * wMul;
+              z.evo = w.evo ? 1 : 0;
+              const picked = Math.min(maxNodes, cnt);
+              z.nPts = picked;
+              const stride = Math.max(1, Math.floor(cnt / picked));
+              for (let m = 0; m < picked; m++) {
+                const e = en[this.q[(m * stride) % cnt]];
+                z.pts[m * 2] = e.x;
+                z.pts[m * 2 + 1] = e.y;
+              }
+              w.t = cfg.cd * st.cd * ocCdMul * (synBoost ? 0.86 : 1);
+              this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
+            }
+          }
+          break;
+
+        // 10. Liquid-N2 Cryo Mortar (Fires canisters that shatter into 4/8 frost cross-rails!)
+        case "liquid_n2":
+          if (w.t <= 0) {
+            if (!this.near) {
+              w.t = 0.16;
+              break;
+            }
+            w.t = cfg.cd * st.cd * ocCdMul;
+            const shots = cfg.n + extraN;
+            const sp = 330 * st.pspd;
+            for (let n = 0; n < shots; n++) {
+              const tgt = n === 0 ? this.near : this.randNear(310) || this.near;
+              const dx = tgt.x - p.x;
+              const dy = tgt.y - p.y;
+              const dist = Math.max(40, Math.sqrt(dx * dx + dy * dy));
+              const b = this.addBullet(
+                BULLET_KIND.N2_CANISTER, k,
+                p.x, p.y,
+                (dx / dist) * sp, (dy / dist) * sp,
+                10, cfg.dmg * wMul, 0, dist / sp,
+              );
+              if (b) {
+                b.rays = cfg.rays;
+                b.rayLen = cfg.rayLen * st.area * ocAreaMul;
+                b.size = (w.evo ? 1.25 : 1.0) * ocAreaMul;
+              }
+            }
+            this.fx && this.fx(FX_EVT.SHOT, k, p.x, p.y, w.evo ? 1 : 0);
+          }
+          break;
+
         default:
           break;
+      }
+    }
+  }
+
+  shatterN2Canister(b) {
+    const z = this.addZone();
+    if (z) {
+      z.kind = ZONE_KIND.FROST_RAIL;
+      z.k = b.k;
+      z.x = b.x;
+      z.y = b.y;
+      z.evo = b.rays >= 8 ? 1 : 0;
+      z.nPts = b.rays;
+      z.len = b.rayLen;
+      z.life = 0.55 * this.p.st.dur;
+      z.dmg = b.dmg;
+      z.a = b.rays >= 8 ? 0 : Math.PI / 4;
+    }
+    this.explode(b.x, b.y, 44 * b.size, b.dmg * 0.7, b.k, 140, 0);
+
+    // Synergy: Liquid-N2 + Prism shoots 4 refracted needles from frost center!
+    if (this.hasSynergy("syn_n2_prism")) {
+      const sp = 420 * this.p.st.pspd;
+      for (let s = 0; s < 4; s++) {
+        const a = (s / 4) * TAU;
+        const sub = this.addBullet(
+          BULLET_KIND.PRISM_SUB, WEAPON_IDX.prism,
+          b.x, b.y, Math.cos(a) * sp, Math.sin(a) * sp,
+          6.5, b.dmg * 0.55, 2, 0.7,
+        );
+        if (sub) sub.wl = s % 3;
       }
     }
   }
@@ -2012,7 +2716,15 @@ export class GameWorld {
       let dead = false;
       b.life -= dt;
 
-      if (b.kind === BULLET_KIND.HBM || b.kind === BULLET_KIND.PRISM_SUB) {
+      if (b.kind === BULLET_KIND.N2_CANISTER) {
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.rot += 7 * dt;
+        if (b.life <= 0) {
+          this.shatterN2Canister(b);
+          dead = true;
+        }
+      } else if (b.kind === BULLET_KIND.HBM || b.kind === BULLET_KIND.PRISM_SUB) {
         b.x += b.vx * dt;
         b.y += b.vy * dt;
         const cnt = this.query(b.x, b.y, b.r);
@@ -2022,6 +2734,24 @@ export class GameWorld {
           b.hits.push(e.uid);
           const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
           this.hit(e, b.dmg, b.k, 110, b.vx / sp, b.vy / sp);
+
+          // Synergy: HBM + PCB Bus triggers chain spark every 4th HBM hit!
+          if (b.kind === BULLET_KIND.HBM && this.hasSynergy("syn_bus_hbm")) {
+            p.hbmCounter++;
+            if (p.hbmCounter >= 4) {
+              p.hbmCounter = 0;
+              const nearCnt = this.query(e.x, e.y, 120);
+              for (let m = 0; m < nearCnt; m++) {
+                const other = en[this.q[m]];
+                if (other !== e && !other.dead) {
+                  this.fx && this.fx(FX_EVT.BOLT, e.x, e.y, other.x, other.y, 0);
+                  this.hit(other, b.dmg * 0.85, WEAPON_IDX.bus, 80, 0, 0);
+                  break;
+                }
+              }
+            }
+          }
+
           if (b.hits.length > b.pierce) dead = true;
         }
         if (b.life <= 0) dead = true;
@@ -2040,7 +2770,6 @@ export class GameWorld {
           const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
           const baseAng = Math.atan2(b.vy, b.vx);
           this.hit(e, b.dmg, b.k, 115, b.vx / sp, b.vy / sp);
-          // Refract into WDM wavelength sub-beams!
           const splits = b.split || 3;
           for (let s = 0; s < splits; s++) {
             const sa = baseAng + (s - (splits - 1) / 2) * 0.28;
@@ -2058,11 +2787,11 @@ export class GameWorld {
               sub.size = b.size * 0.9;
             }
           }
-          dead = true;
+          if (b.hits.length > b.pierce) dead = true;
         }
         if (b.life <= 0) dead = true;
       } else {
-        // BULLET_KIND.DRONE — banking curved pursuit & homing return
+        // BULLET_KIND.DRONE
         if (b.st === 0) {
           b.t -= dt;
           if (b.t <= 0) b.st = 1;
@@ -2094,7 +2823,7 @@ export class GameWorld {
           if (this.t - e.cd[b.k] < 0.3) continue;
           e.cd[b.k] = this.t;
           const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 1;
-          this.hit(e, b.dmg, b.k, 130, b.vx / sp, b.vy / sp);
+          this.hit(e, b.dmg, b.k, 135, b.vx / sp, b.vy / sp);
         }
         if (b.life <= 0) dead = true;
       }
@@ -2111,6 +2840,8 @@ export class GameWorld {
     const zn = this.zn;
     const en = this.en;
     const p = this.p;
+    const fastNode = branchPoints(this.talents, "cluster") >= TALENT_BRANCHES[3].apexMilestone ? 1.38 : 1;
+
     for (let i = this.nZ - 1; i >= 0; i--) {
       const z = zn[i];
       let dead = false;
@@ -2120,6 +2851,65 @@ export class GameWorld {
         continue;
       }
       switch (z.kind) {
+        case ZONE_KIND.NODE: {
+          const dx = p.x - z.x;
+          const dy = p.y - z.y;
+          if (dx * dx + dy * dy <= (z.r + p.r) * (z.r + p.r)) {
+            z.prog += (dt / 1.85) * fastNode;
+            if (z.prog >= 1) {
+              this.triggerNodeReward(z);
+              dead = true;
+              break;
+            }
+          } else if (z.prog > 0) {
+            z.prog = Math.max(0, z.prog - dt * 0.2);
+          }
+          if (z.t >= z.life) dead = true;
+          break;
+        }
+        case ZONE_KIND.SKYBEAM:
+          if (z.t >= z.life) dead = true;
+          break;
+        case ZONE_KIND.NVLINK: {
+          z.tickT -= dt;
+          if (z.tickT <= 0) {
+            z.tickT = 0.26;
+            const cnt = this.query(z.x, z.y, z.r);
+            for (let j = 0; j < cnt; j++) {
+              const e = en[this.q[j]];
+              if (z.evo) e.slow = Math.max(e.slow, 0.45);
+              this.hit(e, z.dmg, z.k, 25, 0, 0);
+            }
+          }
+          if (z.t >= z.life) dead = true;
+          break;
+        }
+        case ZONE_KIND.FROST_RAIL: {
+          if (z.st === 0) {
+            z.st = 1;
+            const rays = z.nPts || 4;
+            for (let r = 0; r < rays; r++) {
+              const a = z.a + (r / rays) * TAU;
+              const ux = Math.cos(a);
+              const uy = Math.sin(a);
+              const cnt = this.query(z.x, z.y, z.len + 20);
+              for (let j = 0; j < cnt; j++) {
+                const e = en[this.q[j]];
+                const rx = e.x - z.x;
+                const ry = e.y - z.y;
+                const proj = rx * ux + ry * uy;
+                if (proj < -10 || proj > z.len + e.r) continue;
+                const perp = Math.abs(ry * ux - rx * uy);
+                if (perp <= 16 + e.r) {
+                  e.slow = Math.max(e.slow, 1.4);
+                  this.hit(e, z.dmg, z.k, 110, ux, uy);
+                }
+              }
+            }
+          }
+          if (z.t >= z.life) dead = true;
+          break;
+        }
         case ZONE_KIND.PULSE: {
           z.x = p.x;
           z.y = p.y;
@@ -2136,7 +2926,7 @@ export class GameWorld {
             const dx = e.x - z.x;
             const dy = e.y - z.y;
             const d = Math.sqrt(dx * dx + dy * dy) || 1;
-            if (z.slow) e.slow = z.slow;
+            if (z.slow) e.slow = Math.max(e.slow, z.slow);
             this.hit(e, z.dmg, z.k, z.len, dx / d, dy / d);
           }
           break;
@@ -2176,7 +2966,7 @@ export class GameWorld {
             const pull = z.evo ? 160 : 75;
             for (let j = 0; j < cnt; j++) {
               const e = en[this.q[j]];
-              e.slow = Math.max(e.slow, 0.55);
+              e.slow = Math.max(e.slow, 0.65);
               const dx = z.x - e.x;
               const dy = z.y - e.y;
               const d = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -2215,19 +3005,15 @@ export class GameWorld {
             const rx = p.x - z.x;
             const ry = p.y - z.y;
             const proj = rx * ux + ry * uy;
-            if (z.tickT > 0) z.tickT -= dt;
-            else if (proj > 0 && proj < z.len) {
-              const perp = ry * ux - rx * uy;
-              if (perp < z.r + 7 && perp > -z.r - 7 && p.inv <= 0) {
-                this.hurt(z.dmg, z.src);
-                z.tickT = 1;
-              }
+            if (proj > 0 && proj < z.len) {
+              const perp = Math.abs(ry * ux - rx * uy);
+              if (perp < z.r + p.r - 3) this.hurt(z.dmg, z.src);
             }
           }
           break;
         }
         default:
-          dead = true;
+          break;
       }
       if (dead) this.rmZone(i);
     }
@@ -2237,23 +3023,23 @@ export class GameWorld {
     const eb = this.eb;
     const p = this.p;
     if (this.wipeEB) {
-      this.nEB = 0;
       this.wipeEB = false;
+      this.nEB = 0;
+      return;
     }
-    for (let i = this.nEB - 1; i >= 0 && !this.wipeEB; i--) {
+    for (let i = this.nEB - 1; i >= 0; i--) {
       const b = eb[i];
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
-      const dx = b.x - p.x;
-      const dy = b.y - p.y;
-      const rr = b.r + p.r * 0.62;
-      let dead = b.life <= 0;
-      if (dx * dx + dy * dy < rr * rr) {
-        if (p.inv <= 0) this.hurt(b.dmg, b.src);
-        dead = true;
+      const dx = p.x - b.x;
+      const dy = p.y - b.y;
+      const rr = p.r + b.r - 3;
+      if (dx * dx + dy * dy <= rr * rr) {
+        this.hurt(b.dmg, b.src);
+        b.life = 0;
       }
-      if (dead) {
+      if (b.life <= 0) {
         const last = --this.nEB;
         eb[i] = eb[last];
         eb[last] = b;
@@ -2273,7 +3059,7 @@ export class GameWorld {
       const dy = p.y - g.y;
       const d2 = dx * dx + dy * dy;
       if (g.st === 0) {
-        if (g.t < 0.3) {
+        if (g.t < 0.25) {
           g.x += g.vx * dt;
           g.y += g.vy * dt;
           g.vx *= 0.86;
@@ -2285,7 +3071,7 @@ export class GameWorld {
         }
       } else {
         const d = Math.sqrt(d2) || 1;
-        g.sp += 1150 * dt;
+        g.sp += 1180 * dt;
         const step = g.sp * dt;
         if (step >= d - 10) {
           p.xp += g.v * p.st.xpMul;
@@ -2295,6 +3081,7 @@ export class GameWorld {
             p.lvl++;
             p.need = CURVES.xpNeed(p.lvl);
             this.pendLv++;
+            if (this.hasRelic("r_compound")) this.recalc();
           }
           const last = --this.nG;
           gm[i] = gm[last];
@@ -2331,7 +3118,7 @@ export class GameWorld {
         pk[i] = pk[last];
         pk[last] = item;
         this.fx && this.fx(FX_EVT.PICK, kind, ix, iy, n);
-        if (kind === PICK_KIND.HEART) p.hp = Math.min(p.maxHp, p.hp + 30);
+        if (kind === PICK_KIND.HEART) p.hp = Math.min(p.maxHp, p.hp + 32);
         else if (kind === PICK_KIND.MAGNET) {
           this.magnetT = 0.85;
           this.fx && this.fx(FX_EVT.MAGNET, p.x, p.y);
@@ -2346,7 +3133,10 @@ export class GameWorld {
   }
 
   cores() {
-    return Math.floor((this.t * 0.3 + this.kills * 0.07 + this.elites * 6 + this.coresPicked) * this.p.st.coreMul);
+    return Math.floor(
+      (this.t * 0.34 + this.kills * 0.075 + this.elites * 7 + this.nodesCaptured * 5 + this.coresPicked) *
+        this.p.st.coreMul,
+    );
   }
 
   summary() {
@@ -2364,10 +3154,17 @@ export class GameWorld {
       bosses: this.bosses,
       bossList: this.bossList.slice(),
       elites: this.elites,
+      nodesCaptured: this.nodesCaptured,
+      synergies: this.synergyList.length,
+      synergyList: this.synergyList.slice(),
+      relicList: this.relicList.slice(),
+      maxOverclock: this.maxOverclock,
+      diff: this.diff.id,
       weapons: p.weapons.map((w) => ({
         id: w.id,
         lv: w.lv,
         evo: w.evo,
+        oc: w.oc || 0,
         dmg: Math.round(this.dmgBy[w.k]),
       })),
       passives: p.passives.map((ps) => ({ id: ps.id, lv: ps.lv })),
@@ -2389,7 +3186,7 @@ export class GameWorld {
 }
 
 export function createAutoBot(smart = 1, rnd = Math.random) {
-  const state = { mx: 0, my: 0, think: 0 };
+  const state = { mx: 0, my: 0, think: 0, skillT: 3 };
   const dangerR = smart ? 200 : 105;
   const stepDist = smart ? 44 : 28;
   const DIRS = 16;
@@ -2397,6 +3194,23 @@ export function createAutoBot(smart = 1, rnd = Math.random) {
   function dir(world) {
     const p = world.p;
     let gx = 0, gy = 0, gWeight = 0, bestGoal = 1e18;
+
+    // Prioritize Interactive Cleanroom Sector Nodes too!
+    for (let i = 0; i < world.nZ; i++) {
+      const z = world.zn[i];
+      if (z.kind !== ZONE_KIND.NODE) continue;
+      const dx = z.x - p.x;
+      const dy = z.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 360 * 360 && d2 < bestGoal) {
+        bestGoal = d2 * 0.25;
+        const d = Math.sqrt(d2) || 1;
+        gx = dx / d;
+        gy = dy / d;
+        gWeight = 2.8;
+      }
+    }
+
     for (let i = 0; i < world.nPK; i++) {
       const pk = world.pk[i];
       const dx = pk.x - p.x;
@@ -2457,12 +3271,6 @@ export function createAutoBot(smart = 1, rnd = Math.random) {
         let dist = Math.sqrt(dx * dx + dy * dy) - e.r - 12;
         if (dist < 4) dist = 4;
         if (dist < dangerR) sc -= ((e.boss ? 6 : e.elite ? 2.5 : 1) * 700) / (dist * dist);
-        if (e.tele > 0 && smart) {
-          const rx = tx - e.x;
-          const ry = ty - e.y;
-          const proj = rx * e.ax + ry * e.ay;
-          if (proj > -20 && proj < e.tele + 40 && Math.abs(ry * e.ax - rx * e.ay) < e.r + 26) sc -= 3;
-        }
       }
       for (let i = 0; i < world.nEB; i++) {
         const eb = world.eb[i];
@@ -2503,6 +3311,11 @@ export function createAutoBot(smart = 1, rnd = Math.random) {
   return {
     move(world, dt) {
       state.think -= dt;
+      state.skillT -= dt;
+      if (state.skillT <= 0 && world.nE >= 8 && world.skillCd <= 0) {
+        state.skillT = 5;
+        world.castSkill();
+      }
       if (state.think <= 0) {
         state.think = smart ? 0.05 : 0.12;
         const [tx, ty] = dir(world);
@@ -2517,13 +3330,16 @@ export function createAutoBot(smart = 1, rnd = Math.random) {
       for (let i = 0; i < choices.length; i++) {
         const c = choices[i];
         let v = 0;
-        if (c.kind === "evo") v = 10;
+        if (c.kind === "evo") v = 12;
+        else if (c.kind === "syn") v = 9;
+        else if (c.kind === "relic") v = 8;
         else if (c.kind === "w" && !c.isNew) v = 5 + c.lv * 0.5;
-        else if (c.kind === "w") v = 4.2;
+        else if (c.kind === "oc") v = 5.5;
+        else if (c.kind === "w") v = 4.5;
         else if (c.kind === "p") {
           v = 2.5;
           for (let j = 0; j < world.p.weapons.length; j++) {
-            if (WEAPONS[world.p.weapons[j].k].partner === c.id) v = 6;
+            if (WEAPONS[world.p.weapons[j].k].partner === c.id) v = 6.5;
           }
         } else {
           v = 1;

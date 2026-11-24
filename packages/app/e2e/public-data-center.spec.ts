@@ -196,8 +196,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
       () => Boolean((window as unknown as { __honeAdventure?: { state: () => { sheetLoaded: boolean; mode: string } } }).__honeAdventure?.state().sheetLoaded),
     );
     expect(await gamePage.evaluate(() => window.opener === null)).toBe(true);
+    expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { version: string; state: () => { mode: string } } }).__honeAdventure.version)).toBe("3.0.0");
     expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { state: () => { mode: string } } }).__honeAdventure.state().mode)).toBe("home");
     await expect(gamePage.locator('.home a.home-pill[href="/"]')).toBeVisible();
+    await expect(gamePage.locator(".home .diff-pill")).toBeVisible();
+    await expect(gamePage.locator(".home .gift")).toHaveCount(0);
     await gamePage.locator('.st-pill[data-stage="gpu"]').click();
     expect(await gamePage.evaluate(() => (window as unknown as { __honeAdventure: { state: () => { stage: string } } }).__honeAdventure.state().stage)).toBe("gpu");
     expect(gameErrors).toEqual([]);

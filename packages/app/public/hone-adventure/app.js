@@ -1,4 +1,4 @@
-// HONE Adventure V2 — Cleanroom AI Data Center Shell, 6-Stage Switcher, Promotion Roadmap & GitHub Star CTA
+// HONE Adventure V3 — Cleanroom AI Data Center Workbench, Deep Agent Loadout, Sector Jump Gate, Synergies & Relics
 
 import {
   ACHIEVEMENTS,
@@ -6,17 +6,23 @@ import {
   BOSS_IDS,
   CODEX_ENEMY_IDS,
   COMBO_CALLOUTS,
+  DIFFICULTIES,
+  DIFF_IDX,
   ENEMIES,
   ENEMY_IDX,
   HEROES,
   HERO_IDX,
   HONECLAW_GITHUB_URL,
   HONECLAW_REPO_LABEL,
+  MASTERY_COSTS,
+  MASTERY_PERKS,
   PASSIVES,
   PASSIVE_IDX,
+  RELICS,
   RULES,
   STAGES,
   STAGE_IDX,
+  SYNERGIES,
   TALENTS,
   TALENT_BRANCHES,
   TITLES,
@@ -29,8 +35,8 @@ import {
   getDailyChallenge,
   getNextTitle,
   getTitle,
-} from "./data.js?v=2.0.2";
-import { GameWorld, createAutoBot } from "./world.js?v=2.0.2";
+} from "./data.js?v=3.0.0";
+import { GameWorld, createAutoBot } from "./world.js?v=3.0.0";
 import {
   ART_STATE,
   SPRITE_DEFS,
@@ -43,19 +49,20 @@ import {
   makeFallbackFloor,
   makeQuantOverlay,
   renderIconCanvas,
-} from "./art.js?v=2.0.2";
+} from "./art.js?v=3.0.0";
 import {
   playSfx,
   setAudioPrefs,
   setBgmIntensity,
+  setBgmStage,
   startBgm,
   stopBgm,
   tickBgm,
   vibrate,
   warmAudioStep,
-} from "./audio.js?v=2.0.2";
-import { ZONES, cloneZone, createFxSystem, lerpZone, pickZoneKey, renderWorld } from "./fx.js?v=2.0.2";
-import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./poster.js?v=2.0.2";
+} from "./audio.js?v=3.0.0";
+import { cloneZone, createFxSystem, lerpZone, pickZoneKey, renderWorld } from "./fx.js?v=3.0.0";
+import { copyPosterToClipboard, downloadPoster, renderBattlePoster } from "./poster.js?v=3.0.0";
 
 const SAVE_KEY = "hone_adventure_save_v2";
 const GITHUB_API_URL = "https://api.github.com/repos/B-M-Capital-Research/honeclaw";
@@ -114,26 +121,30 @@ function refreshGithubStars() {
 
 function defaultSave() {
   return {
-    v: 2,
+    v: 3,
     t: 0,
     cores: 0,
     talents: {},
     chars: { hone: 1 },
+    mastery: { hone: 1 },
+    loadout: {},
     sel: "hone",
     stage: "storage",
+    diff: "std",
+    routeMode: "auto",
     stageClear: {},
+    stageStars: {},
     promoClaimed: 1,
     skins: {},
     skin: "",
     ach: {},
-    codex: { w: {}, evo: {}, e: {} },
-    best: { time: 0, kills: 0, level: 0, combo: 0 },
+    codex: { w: { hbm: 1 }, evo: {}, e: {}, syn: {}, relic: {} },
+    best: { time: 0, kills: 0, level: 0, combo: 0, synergies: 0, maxOverclock: 0, nodesCaptured: 0 },
     stats: { runs: 0, kills: 0, time: 0, bosses: 0, evos: 0, dailyDone: 0, bestTime: 0 },
     daily: {},
     streak: { n: 0, last: "" },
     hof: [],
     set: { sfx: 1, music: 1, vib: 1, shake: 1 },
-    gift: 0,
     starred: 0,
   };
 }
@@ -146,10 +157,24 @@ function loadSave() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return base;
     const out = Object.assign(base, parsed);
-    ["talents", "chars", "skins", "ach", "best", "stats", "streak", "set", "daily", "stageClear"].forEach((k) => {
+    [
+      "talents",
+      "chars",
+      "mastery",
+      "loadout",
+      "skins",
+      "ach",
+      "best",
+      "stats",
+      "streak",
+      "set",
+      "daily",
+      "stageClear",
+      "stageStars",
+    ].forEach((k) => {
       out[k] = Object.assign(defaultSave()[k], parsed[k] && typeof parsed[k] === "object" ? parsed[k] : {});
     });
-    const cleanW = {}, cleanEvo = {}, cleanE = {};
+    const cleanW = { hbm: 1 }, cleanEvo = {}, cleanE = {}, cleanSyn = {}, cleanRel = {};
     if (parsed.codex && parsed.codex.w) {
       for (const k of Object.keys(parsed.codex.w)) if (WEAPON_IDX[k] != null) cleanW[k] = 1;
     }
@@ -159,14 +184,20 @@ function loadSave() {
     if (parsed.codex && parsed.codex.e) {
       for (const k of Object.keys(parsed.codex.e)) if (ENEMY_IDX[k] != null) cleanE[k] = parsed.codex.e[k];
     }
-    out.codex = { w: cleanW, evo: cleanEvo, e: cleanE };
+    if (parsed.codex && parsed.codex.syn) Object.assign(cleanSyn, parsed.codex.syn);
+    if (parsed.codex && parsed.codex.relic) Object.assign(cleanRel, parsed.codex.relic);
+    out.codex = { w: cleanW, evo: cleanEvo, e: cleanE, syn: cleanSyn, relic: cleanRel };
     out.hof = Array.isArray(parsed.hof) ? parsed.hof.slice(0, 10) : [];
     out.chars.hone = 1;
+    if (out.starred || out.skins.gold) out.chars.astra = 1;
     if (!out.chars[out.sel]) out.sel = "hone";
     if (STAGE_IDX[out.stage] == null) out.stage = "storage";
+    if (DIFF_IDX[out.diff] == null) out.diff = "std";
+    if (out.routeMode !== "lock") out.routeMode = "auto";
     if (out.skin && !out.skins[out.skin]) out.skin = "";
     out.cores = Math.max(0, Math.floor(+out.cores || 0));
     out.promoClaimed = Math.max(1, Math.floor(+out.promoClaimed || 1));
+    out.v = 3;
     return out;
   } catch {
     return base;
@@ -206,11 +237,18 @@ function iconImg(id, cls = "", sz = 96) {
   return img;
 }
 
-function heroUrl(id, sz = 160, locked = false, suffix = "", portrait = false) {
-  const sprKey = (portrait ? "P_" : "h_") + id + (portrait ? "" : suffix);
+function heroSpriteKey(charId, save = G.S) {
+  if (charId === "hone" && save && save.skin === "gold" && save.skins?.gold) return "gold";
+  const def = HEROES[HERO_IDX[charId]];
+  return def ? def.sprite || def.id : charId;
+}
+
+function heroUrl(charOrSpr, sz = 160, locked = false, suffix = "", portrait = false) {
+  const resolved = HERO_IDX[charOrSpr] != null ? heroSpriteKey(charOrSpr) : charOrSpr;
+  const sprKey = (portrait ? "P_" : "h_") + resolved + (portrait ? "" : suffix);
   const cacheKey = `hero:${sprKey}@${sz}${locked ? ":lk" : ""}`;
   if (!iconCache[cacheKey]) {
-    const def = SPRITE_DEFS[SPR_IDX[sprKey] ?? SPR_IDX["h_" + id]];
+    const def = SPRITE_DEFS[SPR_IDX[sprKey] ?? SPR_IDX["h_" + resolved] ?? SPR_IDX.h_hone];
     const c = document.createElement("canvas");
     c.width = sz;
     c.height = sz;
@@ -266,10 +304,12 @@ function showToast(msg, dur = 1900) {
 }
 
 function bindTap(node, fn, opts = {}) {
+  node.dataset.tap = "1";
   let down = null;
   let lastFire = 0;
+  const isNestedTap = (e) => e && e.target && e.target.closest && e.target.closest("[data-tap]") !== node;
   node.addEventListener("pointerdown", (e) => {
-    if (e.button > 0) return;
+    if (e.button > 0 || isNestedTap(e)) return;
     down = { x: e.clientX, y: e.clientY };
     node.classList.add("press");
   });
@@ -290,7 +330,7 @@ function bindTap(node, fn, opts = {}) {
     }
   });
   node.addEventListener("click", (e) => {
-    if (Date.now() - lastFire < 550) return;
+    if (isNestedTap(e) || Date.now() - lastFire < 550) return;
     lastFire = Date.now();
     if (!opts.quiet) playSfx("tap");
     fn && fn(e);
@@ -361,6 +401,16 @@ function closeAllModals() {
   openModals.slice().forEach((m) => m.close());
 }
 
+function effectiveStarterWeapon(save, heroId) {
+  const hero = HEROES[HERO_IDX[heroId]] || HEROES[0];
+  const mLv = save.mastery[hero.id] || 1;
+  const picked = save.loadout[hero.id];
+  if (mLv >= 2 && picked && WEAPON_IDX[picked] != null && (save.codex.w[picked] || picked === hero.weapon)) {
+    return picked;
+  }
+  return hero.weapon;
+}
+
 // Progression & Settlement Helpers
 function achProgress(save, ach) {
   if (ach.stat) return [save.stats[ach.stat] || 0, ach.n];
@@ -368,7 +418,10 @@ function achProgress(save, ach) {
     const val =
       ach.run === "time" ? Math.floor(save.best.time) :
       ach.run === "kills" ? save.best.kills :
-      ach.run === "level" ? save.best.level : save.best.combo;
+      ach.run === "level" ? save.best.level :
+      ach.run === "synergies" ? save.best.synergies || 0 :
+      ach.run === "maxOverclock" ? save.best.maxOverclock || 0 :
+      ach.run === "nodesCaptured" ? save.best.nodesCaptured || 0 : save.best.combo;
     return [val, ach.n];
   }
   if (ach.codex) return [save.codex.e[ach.codex] ? 1 : 0, 1];
@@ -404,7 +457,7 @@ function nextGoalInfo(save) {
       return { text: `晶核充足，升级「${tal.name}」`, cur: 1, n: 1, ratio: 1, go: "talent" };
     }
   }
-  return { text: "已达首席算力官！冲击荣耀殿堂新纪录", cur: 1, n: 1, ratio: 1, go: "rank" };
+  return { text: "已达首席算力官！挑战「极限流片」集齐产线三星", cur: 1, n: 1, ratio: 1, go: "rank" };
 }
 
 function settleRun(save, sum) {
@@ -426,8 +479,20 @@ function settleRun(save, sum) {
   save.stats.bosses += sum.bosses;
   save.stats.evos += sum.evos.length;
 
-  if (sum.time >= 60 && sum.stage) {
-    save.stageClear[sum.stage] = Math.max(save.stageClear[sum.stage] || 0, Math.floor(sum.time));
+  // Sector Clearance Stars (★1: survive 90s / Boss; ★2: Overclock C2 + Boss; ★3: Apex C3 + Boss)
+  if (sum.stage) {
+    if (sum.time >= 60) {
+      save.stageClear[sum.stage] = Math.max(save.stageClear[sum.stage] || 0, Math.floor(sum.time));
+    }
+    let earnedStar = 0;
+    if (sum.bosses >= 1 || sum.time >= 95) {
+      earnedStar = sum.diff === "apex" ? 3 : sum.diff === "oc" ? 2 : 1;
+    }
+    const prevStar = save.stageStars[sum.stage] || 0;
+    if (earnedStar > prevStar) {
+      save.stageStars[sum.stage] = earnedStar;
+      res.bonus.push({ label: `产线首通 ★${earnedStar}`, n: earnedStar * 45 });
+    }
   }
 
   if (sum.time > save.best.time) {
@@ -440,6 +505,9 @@ function settleRun(save, sum) {
   }
   if (sum.level > save.best.level) save.best.level = sum.level;
   if (sum.maxCombo > save.best.combo) save.best.combo = sum.maxCombo;
+  if ((sum.synergies || 0) > (save.best.synergies || 0)) save.best.synergies = sum.synergies;
+  if ((sum.maxOverclock || 0) > (save.best.maxOverclock || 0)) save.best.maxOverclock = sum.maxOverclock;
+  if ((sum.nodesCaptured || 0) > (save.best.nodesCaptured || 0)) save.best.nodesCaptured = sum.nodesCaptured;
   save.stats.bestTime = save.best.time;
 
   sum.weapons.forEach((w) => {
@@ -451,6 +519,8 @@ function settleRun(save, sum) {
   sum.evos.forEach((id) => {
     if (WEAPON_IDX[id] != null) save.codex.evo[id] = 1;
   });
+  (sum.synergyList || []).forEach((id) => { save.codex.syn[id] = 1; });
+  (sum.relicList || []).forEach((id) => { save.codex.relic[id] = 1; });
   sum.killsBy.forEach((cnt, idx) => {
     if (cnt > 0 && ENEMIES[idx] && !ENEMIES[idx].hide) {
       const id = ENEMIES[idx].id;
@@ -458,7 +528,8 @@ function settleRun(save, sum) {
     }
   });
 
-  if (sum.bosses > 0) res.bonus.push({ label: `击破产线巨兽 ×${sum.bosses}`, n: 40 * sum.bosses });
+  if (sum.bosses > 0) res.bonus.push({ label: `击败产线巨兽 ×${sum.bosses}`, n: 45 * sum.bosses });
+  if ((sum.nodesCaptured || 0) >= 2) res.bonus.push({ label: `激活产线基站 ×${sum.nodesCaptured}`, n: 8 * sum.nodesCaptured });
 
   if (sum.daily) {
     const dk = dateKey();
@@ -471,8 +542,8 @@ function settleRun(save, sum) {
       const yest = dateKey(new Date(Date.now() - 86400000));
       save.streak.n = save.streak.last === yest ? save.streak.n + 1 : 1;
       save.streak.last = dk;
-      res.bonus.push({ label: "每日集群达标", n: 120 });
-      if (save.streak.n > 1) res.bonus.push({ label: `连续值班 ${save.streak.n} 天`, n: Math.min(120, save.streak.n * 15) });
+      res.bonus.push({ label: "每日集群达标", n: 130 });
+      if (save.streak.n > 1) res.bonus.push({ label: `连续值班 ${save.streak.n} 天`, n: Math.min(140, save.streak.n * 18) });
     }
   }
 
@@ -487,7 +558,7 @@ function settleRun(save, sum) {
       }
     }
     save.promoClaimed = Math.max(save.promoClaimed || 1, nextTitle.rank);
-    if (promoCores > 0) res.bonus.push({ label: `职级晋升奖励`, n: promoCores });
+    if (promoCores > 0) res.bonus.push({ label: "职级晋升奖励", n: promoCores });
   }
 
   for (const a of ACHIEVEMENTS) {
@@ -504,6 +575,7 @@ function settleRun(save, sum) {
     const [cur, need] = heroProgress(save, h);
     if (cur >= need) {
       save.chars[h.id] = 1;
+      save.mastery[h.id] = save.mastery[h.id] || 1;
       res.unlocked.push(h);
     }
   }
@@ -516,6 +588,7 @@ function settleRun(save, sum) {
     level: sum.level,
     char: sum.char,
     stage: stg.short,
+    diff: sum.diff || "std",
     top: topWeapon && WEAPONS[WEAPON_IDX[topWeapon.id]]
       ? (topWeapon.evo ? WEAPONS[WEAPON_IDX[topWeapon.id]].evoName : WEAPONS[WEAPON_IDX[topWeapon.id]].name)
       : "HBM 带宽飞梭",
@@ -571,16 +644,13 @@ const G = {
   perf: { ms: 0, fps: 60, n: 0, acc: 0, accMs: 0, low: 0, high: 0 },
 };
 
-function activeHeroSkin(charId) {
-  return charId === "hone" && G.S.skin === "gold" && G.S.skins.gold ? "gold" : charId;
-}
-
 let homeEl, resultEl, hudEl, stageEl;
 let homeRefs = {};
 let hudRefs = {};
 let levelModal = null;
 let chestModal = null;
 let pauseModal = null;
+let jumpModal = null;
 
 function selectStage(stageId) {
   if (STAGE_IDX[stageId] == null) return false;
@@ -594,13 +664,36 @@ function selectStage(stageId) {
   return true;
 }
 
+function cycleDifficulty() {
+  const idx = (DIFF_IDX[G.S.diff || "std"] + 1) % DIFFICULTIES.length;
+  const next = DIFFICULTIES[idx];
+  G.S.diff = next.id;
+  persistSave(G.S);
+  playSfx("select");
+  showToast(`已切换工况难度：${next.name}（${next.desc}）`, 2200);
+  refreshHomeUI();
+}
+
+function toggleRouteMode() {
+  G.S.routeMode = G.S.routeMode === "lock" ? "auto" : "lock";
+  persistSave(G.S);
+  playSfx("select");
+  showToast(
+    G.S.routeMode === "auto"
+      ? "路线模式：全产线自动轮换（每 70 秒跃迁下一产线）"
+      : "路线模式：驻守本产线（可随时在局内手动选择跃迁门）",
+    2200,
+  );
+  refreshHomeUI();
+}
+
 function buildHomeUI() {
   homeEl = el("div", "home hide");
   homeEl.innerHTML = `
     <div class="h-top">
       <div class="h-top-left"></div>
       <div class="h-top-right">
-        <div class="gift"></div>
+        <div class="diff-pill" title="切换机房负载难度"></div>
         <div class="chip cores"><img alt=""><b>0</b></div>
         <div class="hb gear" title="系统设置"></div>
       </div>
@@ -608,11 +701,18 @@ function buildHomeUI() {
     <div class="logo">
       <div class="lg-badge">HONE CLEANROOM · AI DATA CENTER</div>
       <div class="lg1">HONE <i>历险记</i></div>
-      <div class="lg2">穿梭算力产线 · 横扫硬件瓶颈</div>
+      <div class="lg2">穿梭六大算力产线 · 构筑硬件超武协同</div>
     </div>
     <div class="h-bot">
-      <div class="sec-head"><b>算力产线关卡切换</b><span class="st-sub"></span></div>
+      <div class="sec-head">
+        <b>算力产线选择</b>
+        <div class="route-btn"></div>
+      </div>
       <div class="stage-strip"></div>
+      <div class="stage-dossier">
+        <span class="sd-main"></span>
+        <span class="sd-home"></span>
+      </div>
       <div class="promo-bar">
         <div class="pb-l">
           <div class="pb-top"><span class="pb-rk"></span><span class="pb-goal"></span></div>
@@ -633,9 +733,11 @@ function buildHomeUI() {
 
   homeRefs = {
     cores: $(".cores b", homeEl),
-    gift: $(".gift", homeEl),
-    stSub: $(".st-sub", homeEl),
+    diff: $(".diff-pill", homeEl),
+    routeBtn: $(".route-btn", homeEl),
     stStrip: $(".stage-strip", homeEl),
+    sdMain: $(".sd-main", homeEl),
+    sdHome: $(".sd-home", homeEl),
     pbRk: $(".pb-rk", homeEl),
     pbGoal: $(".pb-goal", homeEl),
     pbBar: $(".promo-bar .g-bar i", homeEl),
@@ -647,13 +749,15 @@ function buildHomeUI() {
 
   $(".cores img", homeEl).src = iconUrl("core", 64);
   bindTap($(".cores", homeEl), openTalents);
+  bindTap(homeRefs.diff, cycleDifficulty, { quiet: true });
+  bindTap(homeRefs.routeBtn, toggleRouteMode, { quiet: true });
 
   const gear = $(".gear", homeEl);
   gear.appendChild(iconImg("ui_gear", "", 48));
   bindTap(gear, openSettings);
 
   STAGES.forEach((st) => {
-    const pill = el("div", "st-pill", `<small>${st.code.replace("SECTOR-", "S")}</small><b>${st.short}</b>`);
+    const pill = el("div", "st-pill", `<small>${st.code.replace("SECTOR-", "S")}</small><b>${st.short}</b><span class="st-stars"></span>`);
     pill.dataset.stage = st.id;
     bindTap(pill, () => {
       selectStage(st.id);
@@ -677,7 +781,7 @@ function buildHomeUI() {
     ["晋升", "ui_rank", openPromotionModal, "n-pm"],
     ["图鉴", "ui_book", openCodex, "n-cx"],
     ["勋章", "ui_medal", openAchievements, "n-ac"],
-    ["殿堂", "ui_medal", openHallOfFame, "n-rk"],
+    ["殿堂", "ui_star", openHallOfFame, "n-rk"],
   ].forEach(([label, ic, fn, cls]) => {
     const nb = el("div", "nb " + cls);
     nb.appendChild(iconImg(ic, "", 64));
@@ -687,28 +791,6 @@ function buildHomeUI() {
     homeRefs.nav.appendChild(nb);
   });
 
-  bindTap(homeRefs.gift, () => {
-    if (!G.S.skins.gold) {
-      G.S.gift = 1;
-      G.S.skins.gold = 1;
-      G.S.skin = "gold";
-      G.S.sel = "hone";
-      persistSave(G.S);
-      playSfx("evo");
-      showToast("已领取限定传说涂装「曜金小砺」！", 2400);
-      G.hero = activeHeroSkin(G.S.sel);
-      refreshHomeUI();
-    } else {
-      G.S.skin = G.S.skin === "gold" ? "" : "gold";
-      G.S.sel = "hone";
-      persistSave(G.S);
-      playSfx("select");
-      G.hero = activeHeroSkin(G.S.sel);
-      showToast(G.S.skin === "gold" ? "已穿戴「曜金小砺」" : "已切换为标准「小砺」");
-      refreshHomeUI();
-    }
-  }, { quiet: true });
-
   resultEl = el("div", "result hide");
   document.body.appendChild(resultEl);
 }
@@ -716,35 +798,52 @@ function buildHomeUI() {
 function refreshHomeUI() {
   const S = G.S;
   const g = nextGoalInfo(S);
-  const hero = HEROES[HERO_IDX[S.sel]];
+  const hero = HEROES[HERO_IDX[S.sel]] || HEROES[0];
   const curStage = STAGES[STAGE_IDX[S.stage]] || STAGES[0];
+  const curDiff = DIFFICULTIES[DIFF_IDX[S.diff || "std"]] || DIFFICULTIES[0];
   const curTitle = getTitle(S.best.time);
+  const startWId = effectiveStarterWeapon(S, hero.id);
+  const startW = WEAPONS[WEAPON_IDX[startWId]] || WEAPONS[0];
 
   homeRefs.cores.textContent = S.cores;
-  homeRefs.stSub.textContent = `${curStage.name} · ${curStage.sub.split(" · ")[1] || curStage.sub}`;
+
+  homeRefs.diff.className = `diff-pill d-${curDiff.id}`;
+  homeRefs.diff.innerHTML = `<span>工况</span><em>${curDiff.short}</em>`;
+
+  homeRefs.routeBtn.className = "route-btn" + (S.routeMode === "lock" ? " lock" : "");
+  homeRefs.routeBtn.textContent = S.routeMode === "lock" ? "驻守本关 · 点击切轮换" : "全产线轮换 · 点击切驻守";
 
   homeRefs.stStrip.querySelectorAll(".st-pill").forEach((node) => {
-    node.classList.toggle("on", node.dataset.stage === curStage.id);
+    const sid = node.dataset.stage;
+    node.classList.toggle("on", sid === curStage.id);
+    const stars = S.stageStars[sid] || 0;
+    const starEl = $(".st-stars", node);
+    if (starEl) {
+      let sHtml = "";
+      for (let i = 1; i <= 3; i++) sHtml += i <= stars ? "<i>★</i>" : "★";
+      starEl.innerHTML = sHtml;
+    }
   });
+
+  homeRefs.sdMain.textContent = `${curStage.sub}`;
+  const isHome = hero.homeStages && hero.homeStages.indexOf(curStage.id) >= 0;
+  const recNames = (curStage.homeHeroes || []).map((id) => HEROES[HERO_IDX[id]]?.name).filter(Boolean).join("/");
+  homeRefs.sdHome.className = "sd-home" + (isHome ? " on" : "");
+  homeRefs.sdHome.textContent = isHome ? `✓ ${hero.name}主场加成` : `主场特工：${recNames}`;
 
   homeRefs.pbRk.textContent = curTitle.name;
   homeRefs.pbGoal.textContent = g.text;
   homeRefs.pbBar.style.transform = `scaleX(${Math.max(0.04, Math.min(1, g.ratio))})`;
 
-  homeRefs.ctaS.textContent = `${curStage.short} · ${hero.name}（${WEAPONS[WEAPON_IDX[hero.weapon]].name}）`;
-  homeRefs.ctaH.src = heroUrl(activeHeroSkin(S.sel), 160);
-
-  homeRefs.gift.classList.toggle("claimed", !!S.skins.gold);
-  homeRefs.gift.innerHTML = `<img class="gf-i" alt="" src="${heroUrl("gold", 96)}"><div class="gf-t"><b>${
-    S.skins.gold ? (S.skin === "gold" ? "曜金出战" : "换曜金皮") : "领曜金皮"
-  }</b><small>${S.skins.gold ? "点击切换" : "免费解锁"}</small></div>`;
+  homeRefs.ctaS.textContent = `${curStage.short}（${curDiff.name}）· ${hero.name} · ${startW.name}`;
+  homeRefs.ctaH.src = heroUrl(S.sel, 160);
 
   const d = getDailyChallenge(dateKey());
   const dRec = S.daily[d.key];
-  const rule = RULES.find((r) => r.id === d.rule);
+  const rule = RULES.find((r) => r.id === d.rule) || RULES[0];
   const dStg = STAGES[STAGE_IDX[d.stage]] || STAGES[0];
   homeRefs.daily.innerHTML = `<img alt="" src="${iconUrl("ui_cal", 64)}"><div class="d-t"><b>每日「${rule.name}」</b><small>${
-    dRec && dRec.rewarded ? `今日已达标 · ${fmtTime(dRec.time)}` : `${dStg.short} · 满 2 分钟 +120 晶核`
+    dRec && dRec.rewarded ? `今日已达标 · ${fmtTime(dRec.time)}` : `${dStg.short} · 满 2 分钟 +130 晶核`
   }</small></div>`;
   homeRefs.daily.classList.toggle("done", !!(dRec && dRec.rewarded));
 
@@ -756,15 +855,21 @@ function refreshHomeUI() {
   $(".n-up", homeEl).classList.toggle("has", canUp);
 
   let canHero = false;
-  for (const h of HEROES) if (!S.chars[h.id] && S.cores >= h.price) canHero = true;
+  for (const h of HEROES) {
+    if (!S.chars[h.id] && S.cores >= h.price) canHero = true;
+    if (S.chars[h.id]) {
+      const mLv = S.mastery[h.id] || 1;
+      if (mLv < 5 && S.cores >= MASTERY_COSTS[mLv]) canHero = true;
+    }
+  }
   $(".n-ch", homeEl).classList.toggle("has", canHero);
 }
 
-// 4-Pillar × 3-Node = 12-Node AI Infrastructure Upgrade Matrix Modal
+// 4-Pillar × 4-Node = 16-Node AI Infrastructure Upgrade Matrix Modal
 function openTalents() {
   const S = G.S;
   let activeBranch = "interconnect";
-  const m = createModal({ cls: "panel talents", title: "四维算力基建升级矩阵", dismiss: true, onClose: refreshHomeUI });
+  const m = createModal({ cls: "panel talents", title: "四维十六节点算力基建矩阵", dismiss: true, onClose: refreshHomeUI });
   const top = el("div", "p-cores");
   const tabs = el("div", "btabs");
   const syn = el("div", "b-syn");
@@ -772,7 +877,7 @@ function openTalents() {
   m.body.append(top, tabs, syn, list);
 
   const render = () => {
-    top.innerHTML = `<img alt="" src="${iconUrl("core", 64)}"><b>${S.cores}</b><span>算力晶核 · 清除产线异常均可收获</span>`;
+    top.innerHTML = `<img alt="" src="${iconUrl("core", 64)}"><b>${S.cores}</b><span>算力晶核 · 每局巡检、激活基站与达成勋章均可获取</span>`;
     tabs.innerHTML = "";
     TALENT_BRANCHES.forEach((b) => {
       const pts = branchPoints(S.talents, b.id);
@@ -786,9 +891,12 @@ function openTalents() {
 
     const curB = TALENT_BRANCHES.find((b) => b.id === activeBranch);
     const pts = branchPoints(S.talents, activeBranch);
+    const unlockedApex = pts >= curB.apexMilestone;
     const unlockedSyn = pts >= curB.milestone;
     syn.className = "b-syn" + (unlockedSyn ? " active" : "");
-    syn.innerHTML = `<span>${curB.sub}</span><b>${unlockedSyn ? "✓ 已激活" : `${pts} / ${curB.milestone}`}</b>`;
+    syn.innerHTML = `<span>${curB.sub}</span><b>${
+      unlockedApex ? "★ 二阶全激活" : unlockedSyn ? `✓ 一阶已激活 (${pts}/${curB.apexMilestone})` : `${pts} / ${curB.milestone}`
+    }</b>`;
 
     list.innerHTML = "";
     TALENTS.filter((t) => t.branch === activeBranch).forEach((t) => {
@@ -821,11 +929,11 @@ function openTalents() {
   render();
 }
 
-// 10-Tier AI Compute Architect Promotion Roadmap Modal
+// 12-Tier AI Compute Architect Promotion Roadmap Modal
 function openPromotionModal() {
   const S = G.S;
   const cur = getTitle(S.best.time);
-  const m = createModal({ cls: "panel promo", title: "十阶算力架构师晋升路线", dismiss: true });
+  const m = createModal({ cls: "panel promo", title: "十二阶算力架构师晋升路线", dismiss: true });
 
   const heroBox = el("div", "rk-hero");
   heroBox.innerHTML = `
@@ -845,50 +953,111 @@ function openPromotionModal() {
         <b>${item.name.replace(/^L\d+\s*·\s*/, "")}${isCur ? " · 当前职级" : ""}</b>
         <small>${item.perk}${item.reward ? ` · 首达奖励 +${item.reward} 晶核` : ""}</small>
       </div>
-      <div class="pm-req">${unlocked ? "✓ 已达成" : `需坚守 ${fmtTime(item.t)}`}</div>
+      <div class="pm-req">${unlocked ? "✓ 已达成" : `需坚持 ${fmtTime(item.t)}`}</div>
     `;
     m.body.appendChild(row);
   });
 }
 
+// Deep Agent Command Deck (5 Agents + Active Skills + Mastery Lv.1-5 + Custom Starter Weapon!)
 function openHeroes() {
   const S = G.S;
   const m = createModal({
     cls: "panel chars",
-    title: "HONE 算力特工编队",
+    title: "HONE 算力特工编队与专精",
     dismiss: true,
     onClose: () => {
-      G.hero = activeHeroSkin(S.sel);
+      G.hero = heroSpriteKey(S.sel, S);
       if (G.mode === "home") startHomeDemo();
       refreshHomeUI();
     },
   });
+  const topCores = el("div", "p-cores");
   const list = el("div", "clist");
-  m.body.appendChild(list);
+  m.body.append(topCores, list);
+
+  const unlockedWeaponIds = () =>
+    WEAPONS.map((w) => w.id).filter((id) => S.codex.w[id] || id === "hbm");
 
   const render = () => {
+    topCores.innerHTML = `<img alt="" src="${iconUrl("core", 64)}"><b>${S.cores}</b><span>升级特工专精至 Lv.2 即可自由挂载任意已点亮起手主武器</span>`;
     list.innerHTML = "";
     HEROES.forEach((h) => {
       const owned = !!S.chars[h.id];
       const sel = S.sel === h.id;
-      const visId = h.id === "hone" && S.skin === "gold" && S.skins.gold ? "gold" : h.id;
+      const mLv = S.mastery[h.id] || 1;
+      const curWId = effectiveStarterWeapon(S, h.id);
       const card = el("div", "ccard" + (sel ? " sel" : "") + (owned ? "" : " lock"));
       const av = el("img", "c-av");
       av.alt = "";
-      av.src = heroUrl(visId, 192, !owned);
+      av.src = heroUrl(h.id, 192, !owned);
       card.appendChild(av);
 
       const tx = el(
         "div",
         "c-tx",
-        `<b>${h.name}<small>${h.kind}</small></b><span>${h.trait}</span><span class="wp"><img alt="" src="${iconUrl(h.weapon, 48)}">起手硬件：${WEAPONS[WEAPON_IDX[h.weapon]].name}</span>`,
+        `<b>${h.name}<small>${h.kind}${owned ? ` · 专精 Lv.${mLv}` : ""}</small></b>
+         <span>${h.trait}</span>
+         <div class="c-skill"><b>⚡ 主动大招「${h.skillName}」(${h.skillCd}秒)</b>：${h.skillDesc}</div>
+         <div class="c-home">★ ${h.homeBonusDesc}</div>`,
       );
       card.appendChild(tx);
 
       if (owned) {
+        // Mastery Upgrade Bar
+        const masRow = el("div", "c-mas");
+        const nextCost = mLv < 5 ? MASTERY_COSTS[mLv] : -1;
+        const canMas = nextCost > 0 && S.cores >= nextCost;
+        masRow.innerHTML = `<span>${mLv < 5 ? `下一阶：${MASTERY_PERKS[mLv]}` : "★ 已达满阶专精 Lv.5"}</span>`;
+        if (nextCost > 0) {
+          const upBtn = el("div", "m-up" + (canMas ? "" : " off"), `<img alt="" src="${iconUrl("core", 36)}">${nextCost} 升专精`);
+          bindTap(upBtn, (e) => {
+            e.stopPropagation();
+            if (S.cores < nextCost) {
+              playSfx("err");
+              showToast(`升级专精还差 ${nextCost - S.cores} 枚晶核`);
+              return;
+            }
+            S.cores -= nextCost;
+            S.mastery[h.id] = mLv + 1;
+            S.sel = h.id;
+            persistSave(S);
+            playSfx("buy");
+            showToast(`「${h.name}」晋升至专精 Lv.${mLv + 1}！`);
+            render();
+          }, { quiet: true });
+          masRow.appendChild(upBtn);
+        }
+        tx.appendChild(masRow);
+
+        // Starter Weapon Loadout Selector
+        if (mLv >= 2) {
+          const wRow = el("div", "w-loadout");
+          const wPool = unlockedWeaponIds();
+          if (wPool.indexOf(h.weapon) < 0) wPool.unshift(h.weapon);
+          wPool.forEach((wid) => {
+            const wDef = WEAPONS[WEAPON_IDX[wid]];
+            const chip = el("div", "wl-chip" + (curWId === wid ? " on" : ""), `<img alt="" src="${iconUrl(wid, 48)}">${wDef.name}`);
+            bindTap(chip, (e) => {
+              e.stopPropagation();
+              S.loadout[h.id] = wid;
+              S.sel = h.id;
+              persistSave(S);
+              playSfx("select");
+              render();
+            }, { quiet: true });
+            wRow.appendChild(chip);
+          });
+          tx.appendChild(wRow);
+        } else {
+          tx.appendChild(
+            el("span", "wp", `<img alt="" src="${iconUrl(curWId, 48)}">默认起手：${WEAPONS[WEAPON_IDX[curWId]].name}（专精 Lv.2 可自由换武器）`),
+          );
+        }
+
         card.appendChild(el("div", "c-st", sel ? "执勤中" : "派遣"));
         bindTap(card, (e) => {
-          if (e && e.target && e.target.closest && e.target.closest(".skins")) return;
+          if (e && e.target && e.target.closest && e.target.closest(".m-up, .w-loadout")) return;
           if (S.sel !== h.id) {
             S.sel = h.id;
             persistSave(S);
@@ -896,22 +1065,6 @@ function openHeroes() {
             render();
           }
         }, { quiet: true });
-
-        if (h.id === "hone" && S.skins.gold) {
-          const skRow = el("div", "skins");
-          [["", "标准涂装"], ["gold", "曜金传说"]].forEach(([val, label]) => {
-            const chip = el("div", "sk" + (S.skin === val ? " on" : ""), label);
-            bindTap(chip, () => {
-              S.skin = val;
-              S.sel = "hone";
-              persistSave(S);
-              playSfx("select");
-              render();
-            }, { quiet: true });
-            skRow.appendChild(chip);
-          });
-          tx.appendChild(skRow);
-        }
       } else {
         const [cur, need] = heroProgress(S, h);
         const afford = S.cores >= h.price;
@@ -928,11 +1081,12 @@ function openHeroes() {
         bindTap(card, () => {
           if (!afford) {
             playSfx("err");
-            showToast(`达成里程碑可免费解锁；直接招募还差 ${h.price - S.cores} 晶核`);
+            showToast(`达成条件可免费解锁；直接招募还差 ${h.price - S.cores} 晶核`);
             return;
           }
           S.cores -= h.price;
           S.chars[h.id] = 1;
+          S.mastery[h.id] = 1;
           S.sel = h.id;
           persistSave(S);
           playSfx("buy");
@@ -951,10 +1105,16 @@ function openCodex() {
   const gotW = Object.keys(S.codex.w).length;
   const gotE = Object.keys(S.codex.evo).length;
   const gotM = Object.keys(S.codex.e).filter((k) => S.codex.e[k] > 0).length;
-  const total = WEAPONS.length * 2 + CODEX_ENEMY_IDS.length + BOSS_IDS.length;
-  const m = createModal({ cls: "panel codex", title: `硬件与异常图鉴 ${gotW + gotE + gotM} / ${total}`, dismiss: true });
+  const gotSyn = Object.keys(S.codex.syn || {}).length;
+  const gotRel = Object.keys(S.codex.relic || {}).length;
+  const total = WEAPONS.length * 2 + SYNERGIES.length + RELICS.length + CODEX_ENEMY_IDS.length + BOSS_IDS.length;
+  const m = createModal({
+    cls: "panel codex",
+    title: `全栈硬件与圣物图鉴 ${gotW + gotE + gotSyn + gotRel + gotM} / ${total}`,
+    dismiss: true,
+  });
 
-  m.body.appendChild(el("div", "sec", "硬件武装与超维流片进化"));
+  m.body.appendChild(el("div", "sec", "十大硬件主武器与超武进化（Lv.5 + 搭档被动进化，进化后还可突破 ★+1~+5）"));
   const wlist = el("div", "wlist");
   WEAPONS.forEach((w) => {
     const seenW = !!S.codex.w[w.id];
@@ -963,14 +1123,36 @@ function openCodex() {
     const row = el("div", "wrow" + (seenW ? "" : " un"));
     row.innerHTML = `
       <div class="w-a"><img alt="" src="${iconUrl(w.id, 96)}"></div>
-      <div class="w-t"><b>${seenW ? w.name : "？？？"}</b><small>${seenW ? w.desc : "尚未装配过"}</small></div>
+      <div class="w-t"><b>${seenW ? w.name : "？？？"}</b><small>${seenW ? w.desc : "尚未在局内装配"}</small></div>
       <div class="w-p"><img alt="" src="${iconUrl(w.partner, 64)}"><small>+${partner.name}</small></div>
       <div class="w-a evo${seenEvo ? "" : " un"}"><img alt="" src="${iconUrl(w.id, 96)}"></div>
-      <div class="w-t"><b>${seenEvo ? w.evoName : "？？？"}</b><small>${seenEvo ? w.evoDesc : "Lv.5 + 搭档模块流片"}</small></div>
+      <div class="w-t"><b>${seenEvo ? w.evoName : "？？？"}</b><small>${seenEvo ? w.evoDesc : "Lv.5 + 搭档模块进化"}</small></div>
     `;
     wlist.appendChild(row);
   });
   m.body.appendChild(wlist);
+
+  m.body.appendChild(el("div", "sec", "六大双武器协同协议（同时持有两把对应主武器即可刷出）"));
+  SYNERGIES.forEach((syn) => {
+    const w1 = WEAPONS[WEAPON_IDX[syn.req[0]]].name;
+    const w2 = WEAPONS[WEAPON_IDX[syn.req[1]]].name;
+    const row = el("div", "arow" + (S.codex.syn?.[syn.id] ? " done" : ""));
+    row.innerHTML = `
+      <div class="a-m"><img alt="" src="${iconUrl(syn.icon, 64)}"></div>
+      <div class="a-t"><b>${syn.name} <small style="display:inline;color:#2563eb">(${w1} + ${w2})</small></b><small>${syn.desc}</small></div>
+    `;
+    m.body.appendChild(row);
+  });
+
+  m.body.appendChild(el("div", "sec", "八大终局架构圣物（Lv.10 后或进化首把超武后解锁抽取）"));
+  RELICS.forEach((rel) => {
+    const row = el("div", "arow" + (S.codex.relic?.[rel.id] ? " done" : ""));
+    row.innerHTML = `
+      <div class="a-m"><img alt="" src="${iconUrl(rel.icon, 64)}"></div>
+      <div class="a-t"><b>${rel.name}</b><small>${rel.desc}</small></div>
+    `;
+    m.body.appendChild(row);
+  });
 
   m.body.appendChild(el("div", "sec", "机房故障体与五大产线巨兽 Boss"));
   const egrid = el("div", "egrid");
@@ -1049,8 +1231,8 @@ function openHallOfFame() {
 function openDailyModal() {
   const S = G.S;
   const d = getDailyChallenge(dateKey());
-  const rule = RULES.find((r) => r.id === d.rule);
-  const hero = HEROES[HERO_IDX[d.char]];
+  const rule = RULES.find((r) => r.id === d.rule) || RULES[0];
+  const hero = HEROES[HERO_IDX[d.char]] || HEROES[0];
   const stg = STAGES[STAGE_IDX[d.stage]] || STAGES[0];
   const rec = S.daily[d.key];
   const m = createModal({ cls: "panel dailyp", title: "每日同种子集群挑战", dismiss: true });
@@ -1066,11 +1248,13 @@ function openDailyModal() {
   m.body.appendChild(top);
 
   const info = el("div", "dp-info");
-  info.innerHTML = `
-    <div><img alt="" src="${heroUrl(d.char, 96)}"><span>指定特工</span><b>${hero.name}${S.chars[d.char] ? "" : "（限免）"}</b></div>
-    <div><img alt="" src="${iconUrl(d.weapon, 96)}"><span>起手硬件</span><b>${WEAPONS[WEAPON_IDX[d.weapon]].name}</b></div>
-    <div><img alt="" src="${iconUrl("core", 96)}"><span>运行 2 分钟</span><b>${rec && rec.rewarded ? "已领取" : "+120 晶核"}</b></div>
-  `;
+  [
+    ["出战特工", hero.name],
+    ["起手硬件", WEAPONS[WEAPON_IDX[d.weapon]].name],
+    ["达标奖励", "满 2 分钟 +130 晶核"],
+  ].forEach(([k, v]) => {
+    info.appendChild(el("div", "", `<small style="display:block;font-size:10.5px;color:#64748b">${k}</small><b style="font-size:13px">${v}</b>`));
+  });
   m.body.appendChild(info);
 
   m.body.appendChild(
@@ -1124,6 +1308,46 @@ function openSettings() {
   );
 }
 
+// In-Run Sector Jump Gate Modal (Player-Controlled Stage Switching Mid-Run!)
+function openSectorJumpModal() {
+  const w = G.world;
+  if (!w || G.mode !== "play" || w.over || jumpModal) return;
+  G.paused = true;
+  const m = (jumpModal = createModal({
+    cls: "panel jump-m",
+    title: "⚡ 选择下一条跃迁算力产线",
+    dismiss: true,
+    onClose: () => {
+      jumpModal = null;
+      if (!pauseModal) {
+        G.paused = false;
+        G.last = performance.now();
+      }
+    },
+  }));
+  m.body.appendChild(
+    el("div", "lu-s", "跃迁后立即获得 10 秒「跨产线超频」（全伤害 +22% · 移速 +18% · 自动吸经验）"),
+  );
+  const grid = el("div", "j-grid");
+  STAGES.forEach((st) => {
+    const isCur = STAGES[w.stageIdx].id === st.id;
+    const isHome = w.char.homeStages && w.char.homeStages.indexOf(st.id) >= 0;
+    const card = el("div", "j-card" + (isCur ? " cur" : "") + (isHome ? " rec" : ""));
+    card.innerHTML = `
+      <b>${st.code.replace("SECTOR-", "S")} · ${st.name}${isCur ? "（当前）" : ""}</b>
+      <small>${st.sub}</small>
+      ${isHome ? `<em>★ ${w.char.name}主场加成激活</em>` : `<em>专属基站：${st.nodeName}</em>`}
+    `;
+    bindTap(card, () => {
+      w.jumpStage(st.id);
+      setBgmStage(w.stageIdx);
+      m.close();
+    });
+    grid.appendChild(card);
+  });
+  m.body.appendChild(grid);
+}
+
 // HUD & In-Run Modals
 function buildHudUI() {
   hudEl = el("div", "hud hide");
@@ -1136,6 +1360,7 @@ function buildHudUI() {
       <div class="hrow-center">
         <div class="timer">00:00</div>
         <div class="stage-tag">SECTOR-01 · 存储阵列</div>
+        <div class="jump-pill hide">⚡ 跃迁产线就绪 · 点击自选下一关</div>
       </div>
       <div class="kills"><img class="ki" alt=""><span class="kn">0</span></div>
     </div>
@@ -1144,7 +1369,12 @@ function buildHudUI() {
     <div class="combo hide"><b>0</b><small>连击</small></div>
     <div class="wavetag"></div>
     <div class="banner"></div>
-    <div class="hint hide">按住屏幕拖动或按 WASD 走位 · 硬件武器自动索敌发射</div>
+    <div class="skill-btn">
+      <img class="sk-ic" alt="">
+      <div class="sk-tx"><b class="sk-nm">战术大招</b><small class="sk-st">就绪</small></div>
+      <span class="sk-key">空格</span>
+    </div>
+    <div class="hint hide">拖动或 WASD 走位 · 按空格放主动大招 · 踩蓝色基站圈领强力增益</div>
   `;
   document.body.appendChild(hudEl);
   $(".hrow-left", hudEl).appendChild(makeHomepageLink());
@@ -1155,6 +1385,7 @@ function buildHudUI() {
     lv: $(".lv", hudEl),
     timer: $(".timer", hudEl),
     stageTag: $(".stage-tag", hudEl),
+    jumpPill: $(".jump-pill", hudEl),
     kn: $(".kn", hudEl),
     slots: $(".slots", hudEl),
     boss: $(".bossbar", hudEl),
@@ -1164,21 +1395,49 @@ function buildHudUI() {
     comboB: $(".combo b", hudEl),
     wave: $(".wavetag", hudEl),
     banner: $(".banner", hudEl),
+    skillBtn: $(".skill-btn", hudEl),
+    skillNm: $(".sk-nm", hudEl),
+    skillSt: $(".sk-st", hudEl),
     hint: $(".hint", hudEl),
   };
   $(".ki", hudEl).src = spriteUrl("e_packet", 48);
+  $(".sk-ic", hudEl).src = iconUrl("ui_skill", 64);
+
+  bindTap(hudRefs.skillBtn, (e) => {
+    e && e.stopPropagation && e.stopPropagation();
+    if (G.world && G.mode === "play" && !G.paused) {
+      if (!G.world.castSkill()) playSfx("err");
+    }
+  }, { quiet: true });
+
+  bindTap(hudRefs.jumpPill, (e) => {
+    e && e.stopPropagation && e.stopPropagation();
+    openSectorJumpModal();
+  });
+
+  bindTap(hudRefs.stageTag, (e) => {
+    e && e.stopPropagation && e.stopPropagation();
+    if (G.world && G.world.jumpReady) openSectorJumpModal();
+    else if (G.world) {
+      showToast(`产线跃迁充能中：还需 ${Math.ceil(G.world.jumpCd)} 秒（击败 Boss 可立即跃迁）`, 1600);
+    }
+  });
+
   const pauseBtn = $(".pause", hudEl);
   pauseBtn.appendChild(iconImg("ui_pause", "", 48));
   bindTap(pauseBtn, pauseGame);
 }
 
-const hudCache = { sec: -1, kills: -1, lv: -1, slots: "", boss: -2, combo: -1, xp: -1, stage: -1 };
+const hudCache = {
+  sec: -1, kills: -1, lv: -1, slots: "", boss: -2, combo: -1, xp: -1, stage: -1, jump: -1, skCd: -1,
+};
 function resetHudCache() {
-  hudCache.sec = hudCache.kills = hudCache.lv = hudCache.combo = hudCache.xp = hudCache.stage = -1;
+  hudCache.sec = hudCache.kills = hudCache.lv = hudCache.combo = hudCache.xp = hudCache.stage = hudCache.jump = hudCache.skCd = -1;
   hudCache.boss = -2;
   hudCache.slots = "";
   hudRefs.boss.classList.add("hide");
   hudRefs.combo.classList.add("hide");
+  hudRefs.jumpPill.classList.add("hide");
   hudRefs.banner.innerHTML = "";
   hudRefs.wave.textContent = "";
 }
@@ -1196,7 +1455,22 @@ function updateHud() {
     hudCache.stage = w.stageIdx;
     const stg = STAGES[w.stageIdx] || STAGES[0];
     hudRefs.stageTag.textContent = `${stg.code} · ${stg.short}`;
+    setBgmStage(w.stageIdx);
   }
+  const jFlag = w.jumpReady ? 1 : 0;
+  if (jFlag !== hudCache.jump) {
+    hudCache.jump = jFlag;
+    hudRefs.jumpPill.classList.toggle("hide", !jFlag);
+  }
+
+  const cdSec = w.skillCd > 0 ? Math.ceil(w.skillCd * 2) : 0;
+  if (cdSec !== hudCache.skCd) {
+    hudCache.skCd = cdSec;
+    hudRefs.skillNm.textContent = w.char.skillName;
+    hudRefs.skillBtn.classList.toggle("cd", cdSec > 0);
+    hudRefs.skillSt.textContent = cdSec > 0 ? `冷却 ${(cdSec / 2).toFixed(1)}s` : "点击释放";
+  }
+
   if (w.kills !== hudCache.kills) {
     hudCache.kills = w.kills;
     hudRefs.kn.textContent = w.kills;
@@ -1214,16 +1488,20 @@ function updateHud() {
   hudRefs.xpBox.classList.toggle("glow", G.fx.gemGlow > 0.5);
 
   let sig = "";
-  for (let i = 0; i < p.weapons.length; i++) sig += p.weapons[i].id + p.weapons[i].lv + (p.weapons[i].evo ? "e" : "") + ",";
+  for (let i = 0; i < p.weapons.length; i++) {
+    const wp = p.weapons[i];
+    sig += wp.id + wp.lv + (wp.evo ? "e" + wp.oc : "") + ",";
+  }
   sig += "|";
   for (let i = 0; i < p.passives.length; i++) sig += p.passives[i].id + p.passives[i].lv + ",";
+  sig += "|" + w.synergyList.length + "|" + w.relicList.length;
   if (sig !== hudCache.slots) {
     hudCache.slots = sig;
     hudRefs.slots.innerHTML = "";
     p.weapons.forEach((wp) => {
-      const s = el("div", "slot" + (wp.evo ? " evo" : ""));
+      const s = el("div", "slot" + (wp.evo ? " evo" : "") + (wp.oc > 0 ? " oc" : ""));
       s.appendChild(iconImg(wp.id, "", 64));
-      s.appendChild(el("em", "", wp.evo ? "★" : String(wp.lv)));
+      s.appendChild(el("em", "", wp.evo ? (wp.oc > 0 ? `★+${wp.oc}` : "★") : String(wp.lv)));
       hudRefs.slots.appendChild(s);
     });
     p.passives.forEach((ps) => {
@@ -1256,7 +1534,7 @@ function updateHud() {
       hudRefs.combo.classList.add("hide");
     }
   }
-  setBgmIntensity(boss ? 3 : w.t > 120 ? 2 : w.t > 35 ? 1 : 0);
+  setBgmIntensity(boss || w.t > 360 ? 3 : w.t > 120 ? 2 : w.t > 30 ? 1 : 0);
 }
 
 function announce(text, kind, extra) {
@@ -1271,7 +1549,7 @@ function announce(text, kind, extra) {
   if (kind === "combo") text = `${text}  ${COMBO_CALLOUTS[Math.min(COMBO_CALLOUTS.length - 1, extra || 0)]}`;
   if (kind === "warn") {
     const bDef = ENEMIES[9 + (extra || 0)] || ENEMIES[9];
-    text = `⚠ 产线巨兽「${bDef.name}」即将切入`;
+    text = `⚠ 产线巨兽「${bDef.name}」即将降临`;
   }
   const item = el("div", "bn-i k-" + kind, text);
   while (hudRefs.banner.children.length > 1) hudRefs.banner.removeChild(hudRefs.banner.firstChild);
@@ -1286,10 +1564,21 @@ function describeChoice(world, c) {
     return {
       icon: c.id,
       name: w.name,
-      tag: c.isNew ? "新硬件" : "Lv." + c.lv,
+      tag: c.isNew ? "新主武器" : "Lv." + c.lv,
       cls: "w",
       desc: c.isNew ? w.desc : w.up[c.lv - 1],
-      hint: world.plv(w.partner) > 0 ? `已装「${p.name}」，满级即可超维流片` : `流片搭档：「${p.name}」`,
+      hint: world.plv(w.partner) > 0 ? `✓ 已配齐「${p.name}」，升到 Lv.5 即可进化超武` : `进化搭档：「${p.name}」`,
+    };
+  }
+  if (c.kind === "oc") {
+    const w = WEAPONS[WEAPON_IDX[c.id]];
+    return {
+      icon: c.id,
+      name: w.evoName,
+      tag: `超武突破 ★+${c.lv}`,
+      cls: "oc",
+      desc: "该超武伤害直接 +20%，攻击范围 +6%，冷却再缩短 6%",
+      hint: `后期深度突破（上限 ★+5）`,
     };
   }
   if (c.kind === "p") {
@@ -1297,15 +1586,25 @@ function describeChoice(world, c) {
     let hint = "";
     for (let i = 0; i < world.p.weapons.length; i++) {
       const ow = world.p.weapons[i];
-      if (WEAPONS[ow.k].partner === c.id && !ow.evo) hint = `★「${WEAPONS[ow.k].name}」的超维流片搭档`;
+      if (WEAPONS[ow.k].partner === c.id && !ow.evo) hint = `★「${WEAPONS[ow.k].name}」进化超武必备搭档`;
     }
-    return { icon: c.id, name: p.name, tag: c.isNew ? "新模块" : "Lv." + c.lv, cls: "p", desc: p.desc, hint };
+    return { icon: c.id, name: p.name, tag: c.isNew ? "新被动" : "Lv." + c.lv, cls: "p", desc: p.desc, hint };
   }
   if (c.kind === "evo") {
     const w = WEAPONS[WEAPON_IDX[c.id]];
-    return { icon: c.id, name: w.evoName, tag: "超维流片", cls: "evo", desc: w.evoDesc, hint: `${w.name} → ${w.evoName}` };
+    return { icon: c.id, name: w.evoName, tag: "★ 超武进化", cls: "evo", desc: w.evoDesc, hint: `${w.name} → ${w.evoName}` };
   }
-  const b = BOOSTS.find((x) => x.id === c.id);
+  if (c.kind === "syn") {
+    const syn = SYNERGIES.find((s) => s.id === c.id) || SYNERGIES[0];
+    const w1 = WEAPONS[WEAPON_IDX[syn.req[0]]].name;
+    const w2 = WEAPONS[WEAPON_IDX[syn.req[1]]].name;
+    return { icon: syn.icon, name: syn.name, tag: "⚡ 双武联动", cls: "syn", desc: syn.desc, hint: `${w1} × ${w2} 专属协同` };
+  }
+  if (c.kind === "relic") {
+    const rel = RELICS.find((r) => r.id === c.id) || RELICS[0];
+    return { icon: rel.icon, name: rel.name, tag: "✦ 终局圣物", cls: "relic", desc: rel.desc, hint: "全局永久生效 · 仅可获取一次" };
+  }
+  const b = BOOSTS.find((x) => x.id === c.id) || BOOSTS[0];
   return { icon: c.id, name: b.name, tag: "应急补给", cls: "b", desc: b.desc, hint: "" };
 }
 
@@ -1328,7 +1627,7 @@ function renderChoiceCard(world, c, allowPin = false, onPin = null) {
   card.appendChild(tx);
   if (allowPin) {
     const pin = el("div", "c-pin");
-    pin.title = "锁定此模块（重筛或下次升级保留）";
+    pin.title = "锁定此卡（重筛或下次升级保留）";
     pin.appendChild(iconImg("ui_pin", "", 48));
     bindTap(pin, (e) => {
       e.stopPropagation();
@@ -1351,9 +1650,9 @@ function openLevelModal() {
   av.alt = "";
   av.src = heroUrl(G.hero, 220, false, "_joy");
   head.appendChild(av);
-  head.appendChild(el("div", "lu-t", `<small>集群算力扩容</small><b>Lv.${world.pending.lvl}</b>`));
+  head.appendChild(el("div", "lu-t", `<small>算力构筑升级</small><b>Lv.${world.pending.lvl}</b>`));
   m.body.appendChild(head);
-  m.body.appendChild(el("div", "lu-s", "选择一项硬件模块装配（点右侧锁扣可保留心仪卡）"));
+  m.body.appendChild(el("div", "lu-s", "选择一项武器、联动协议或终局圣物（点右侧锁扣可锁卡保留）"));
 
   const cardsWrap = el("div", "cards");
   m.body.appendChild(cardsWrap);
@@ -1361,7 +1660,8 @@ function openLevelModal() {
   const pickIdx = (idx) => {
     if (Date.now() - openedAt < 240 || !levelModal) return;
     const picked = world.pending.choices[idx];
-    playSfx(picked && picked.kind === "evo" ? "evo" : "select", 0, picked && picked.kind === "evo" ? 1.1 : 1);
+    const bigPick = picked && (picked.kind === "evo" || picked.kind === "syn" || picked.kind === "relic");
+    playSfx(bigPick ? "evo" : "select", 0, bigPick ? 1.1 : 1);
     if (G.S.set.vib) vibrate("light");
     world.choose(idx);
     m.close();
@@ -1421,7 +1721,7 @@ function openChestModal() {
 
   const top = el("div", "ch-top");
   top.appendChild(iconImg("chest", "ch-ic", 192));
-  top.appendChild(el("div", "ch-t", items.length > 1 ? `量子超算金库！连获 ${items.length} 项模块` : "量子金库！免费升级 1 项模块"));
+  top.appendChild(el("div", "ch-t", items.length > 1 ? `量子超算金库！连获 ${items.length} 项模块` : "量子金库！免费获得 1 项模块"));
   m.body.appendChild(top);
 
   const cards = el("div", "cards");
@@ -1458,14 +1758,15 @@ function pauseGame() {
   const stg = STAGES[w.stageIdx] || STAGES[0];
   const m = (pauseModal = createModal({ cls: "pause", title: "产线巡检已暂停", noClose: true }));
   m.body.appendChild(
-    el("div", "p-info", `<span>${stg.short}</span><span>${fmtTime(w.t)}</span><span>清除 ${w.kills}</span><span>Lv.${w.p.lvl}</span>`),
+    el("div", "p-info", `<span>${stg.short}（${w.diff.name}）</span><span>${fmtTime(w.t)}</span><span>清除 ${w.kills}</span><span>Lv.${w.p.lvl}</span>`),
   );
 
   const build = el("div", "p-build");
   w.p.weapons.forEach((wp) => {
     const s = el("div", "slot big" + (wp.evo ? " evo" : ""));
     s.appendChild(iconImg(wp.id, "", 96));
-    s.appendChild(el("span", "", wp.evo ? WEAPONS[wp.k].evoName : `${WEAPONS[wp.k].name} Lv.${wp.lv}`));
+    const label = wp.evo ? `${WEAPONS[wp.k].evoName}${wp.oc > 0 ? ` ★+${wp.oc}` : ""}` : `${WEAPONS[wp.k].name} Lv.${wp.lv}`;
+    s.appendChild(el("span", "", label));
     build.appendChild(s);
   });
   w.p.passives.forEach((ps) => {
@@ -1478,16 +1779,20 @@ function pauseGame() {
 
   m.body.appendChild(makeBtn("primary", "继续巡检", resumeGame));
   const row = el("div", "row2");
+  row.appendChild(makeBtn("ghost", "切换跃迁产线", () => {
+    closePause();
+    openSectorJumpModal();
+  }));
   row.appendChild(makeBtn("ghost", "重新部署", () => {
     closePause();
     startRun({ daily: w.daily });
   }));
-  row.appendChild(makeBtn("ghost", "切换产线大厅", () => {
+  m.body.appendChild(row);
+  const rowHome = el("div", "row2");
+  rowHome.appendChild(makeBtn("ghost", "返回特工大厅", () => {
     closePause();
     goHome();
   }));
-  m.body.appendChild(row);
-  const rowHome = el("div", "row2");
   rowHome.appendChild(makeBtn("ghost", "← 回到 HONE 首页", () => {
     window.location.href = "/";
   }));
@@ -1518,7 +1823,6 @@ function showResultScreen(sum, res) {
   let posterJpg = null;
   const getPosterDataUrl = () => posterJpg || (posterJpg = posterCanvas.toDataURL("image/jpeg", 0.92));
 
-  // Top bar with "回到首页" on top-left
   const topbar = el("div", "r-topbar");
   topbar.appendChild(makeHomepageLink());
   const coresBadge = el("div", "chip cores", `<img alt="" src="${iconUrl("core", 48)}"><b>${S.cores}</b>`);
@@ -1531,11 +1835,10 @@ function showResultScreen(sum, res) {
   wrap.appendChild(card);
   resultEl.appendChild(wrap);
 
-  const visHero = activeHeroSkin(sum.char);
   const stg = STAGES[STAGE_IDX[sum.endStage || sum.stage || "storage"]] || STAGES[0];
   const head = el("div", "r-head");
   head.innerHTML = `
-    <img class="r-hero" alt="" src="${heroUrl(visHero, 220, false, "_hurt")}">
+    <img class="r-hero" alt="" src="${heroUrl(sum.char, 220, false, "_hurt")}">
     <div class="r-ht">
       <small>${sum.daily ? "每日集群挑战" : stg.name}${res.bestTime ? "<em>新纪录</em>" : ""}</small>
       <b>${fmtTime(sum.time)}</b>
@@ -1558,10 +1861,10 @@ function showResultScreen(sum, res) {
   `;
   const buildRow = el("div", "r-build");
   sum.weapons.forEach((wp) => {
-    const s = el("div", "slot" + (wp.evo ? " evo" : ""));
-    s.appendChild(iconImg(wp.id, "", 64));
-    s.appendChild(el("em", "", wp.evo ? "★" : String(wp.lv)));
-    buildRow.appendChild(s);
+    const sl = el("div", "slot" + (wp.evo ? " evo" : "") + (wp.oc > 0 ? " oc" : ""));
+    sl.appendChild(iconImg(wp.id, "", 64));
+    sl.appendChild(el("em", "", wp.evo ? (wp.oc > 0 ? `★+${wp.oc}` : "★") : String(wp.lv)));
+    buildRow.appendChild(sl);
   });
   stats.appendChild(buildRow);
   mid.appendChild(stats);
@@ -1570,8 +1873,10 @@ function showResultScreen(sum, res) {
   const rew = el("div", "r-rew");
   rew.innerHTML = `<div class="rw-main"><img alt="" src="${iconUrl("core", 64)}"><b>+${res.total}</b><span>算力晶核</span></div>`;
   const chips = el("div", "rw-chips");
-  res.bonus.slice(0, 3).forEach((b) => chips.appendChild(el("span", "chip2", `${b.label} +${b.n}`)));
-  res.unlocked.forEach((h) => chips.appendChild(el("span", "chip2", `新特工「${h.name}」已解锁`)));
+  res.bonus.slice(0, 4).forEach((b) => {
+    chips.appendChild(el("span", "chip2", `${b.label} +${b.n}`));
+  });
+  if (res.unlocked.length) chips.appendChild(el("span", "chip2", `新特工「${res.unlocked[0].name}」已解锁`));
   if (res.titleUp) chips.appendChild(el("span", "chip2", `晋升「${res.titleUp}」`));
   if (chips.children.length) rew.appendChild(chips);
   card.appendChild(rew);
@@ -1591,12 +1896,14 @@ function showResultScreen(sum, res) {
   ghCard.addEventListener("click", () => {
     if (!S.starred) {
       S.starred = 1;
-      S.cores += 88;
+      S.cores += 100;
+      S.chars.astra = 1;
+      S.mastery.astra = S.mastery.astra || 1;
       S.skins.gold = 1;
       persistSave(S);
       const badgeB = $("b", coresBadge);
       if (badgeB) badgeB.textContent = S.cores;
-      showToast("感谢支持开源 honeclaw！已赠送 +88 算力晶核与曜金涂装！", 2800);
+      showToast("感谢支持开源 honeclaw！已赠送 +100 晶核并解锁主权特工「星枢」！", 3000);
     }
   });
   card.appendChild(ghCard);
@@ -1633,7 +1940,7 @@ function showResultScreen(sum, res) {
   const links = el("div", "r-links");
   [
     ["升级基建", openTalents],
-    ["晋升路线", openPromotionModal],
+    ["特工专精", openHeroes],
     ["切换关卡", goHome],
     ["荣耀殿堂", openHallOfFame],
   ].forEach(([lbl, fn]) => {
@@ -1653,44 +1960,34 @@ function viewWorldDims() {
 
 function startHomeDemo() {
   const [vw, vh] = viewWorldDims();
-  G.hero = activeHeroSkin(G.S.sel);
+  G.hero = heroSpriteKey(G.S.sel, G.S);
   G.fx.clear();
   G.fx.quiet = true;
   G.world = new GameWorld({
-    seed: (Math.random() * 1e9) | 0,
+    seed: (Date.now() & 0xfffffff) ^ 0x5a3c91,
     char: G.S.sel,
+    masteryLv: G.S.mastery[G.S.sel] || 1,
+    weapon: effectiveStarterWeapon(G.S, G.S.sel),
     stage: G.S.stage || "storage",
-    talents: { might: 3, hp: 4, speed: 2, pickup: 3 },
-    bestTime: G.S.best.time || 0,
+    routeMode: "lock",
     vw,
     vh,
     fx: G.fx.on,
   });
-  G.world.t = 32;
-  G.world.wave = 1;
-  G.world.nextElite = 75;
+  const demoSecond = ["drone", "nvlink", "prism", "bus"][(Math.random() * 4) | 0];
+  if (demoSecond !== G.world.p.weapons[0].id) G.world.addWeapon(demoSecond);
   G.bot = createAutoBot(1);
-  for (let i = 0; i < 180 && !G.world.over; i++) {
-    if (G.world.pending) {
-      if (G.world.pending.type === "level") G.world.choose(G.bot.pick(G.world, G.world.pending.choices));
-      else G.world.closeChest();
-      continue;
-    }
-    G.bot.move(G.world, 1 / 30);
-    G.world.update(1 / 30);
-  }
-  // keep selected stage active on home demo
-  G.world.setStage(G.S.stage || "storage");
-  G.fx.clear();
-  G.camX = G.world.p.x;
-  G.camY = G.world.p.y + 24;
+  G.camX = 0;
+  G.camY = 24;
+  G.zone = cloneZone(G.S.stage || "storage");
+  G.zoneId = G.S.stage || "storage";
 }
 
 function startRun(opts = {}) {
   const S = G.S;
   const [vw, vh] = viewWorldDims();
   closeAllModals();
-  levelModal = chestModal = pauseModal = null;
+  levelModal = chestModal = pauseModal = jumpModal = null;
   homeEl.classList.add("hide");
   resultEl.classList.add("hide");
   resultEl.innerHTML = "";
@@ -1698,21 +1995,24 @@ function startRun(opts = {}) {
   const dailyCfg = opts.daily ? getDailyChallenge(dateKey()) : null;
   const charId = dailyCfg ? dailyCfg.char : S.sel;
   const stageId = dailyCfg ? dailyCfg.stage : opts.stage || S.stage || "storage";
-  G.hero = activeHeroSkin(charId);
+  const starterW = dailyCfg ? dailyCfg.weapon : effectiveStarterWeapon(S, charId);
+  G.hero = heroSpriteKey(charId, S);
   G.fx.clear();
   G.fx.quiet = false;
 
   G.world = new GameWorld({
     seed: dailyCfg ? dailyCfg.seed : (Math.random() * 1e9) | 0,
     char: charId,
+    masteryLv: dailyCfg ? 2 : S.mastery[charId] || 1,
+    diff: dailyCfg ? "oc" : S.diff || "std",
+    routeMode: dailyCfg ? "auto" : S.routeMode || "auto",
     stage: stageId,
     talents: S.talents,
     bestTime: S.best.time || 0,
     rule: dailyCfg ? dailyCfg.rule : null,
-    weapon: dailyCfg ? dailyCfg.weapon : null,
+    weapon: starterW,
     daily: !!dailyCfg,
     manualLevel: true,
-    intro: !dailyCfg && S.stats.runs < 3,
     vw,
     vh,
     fx: G.fx.on,
@@ -1729,16 +2029,16 @@ function startRun(opts = {}) {
   G.resumeT = 0;
   G.camX = 0;
   G.camY = 0;
-  G.zoom = 0;
-  G.joy.on = false;
-  G.joy.mx = 0;
-  G.joy.my = 0;
+  G.zone = cloneZone(stageId);
+  G.zoneId = stageId;
 
   resetHudCache();
+  updateHud();
   hudEl.classList.remove("hide");
-  hudRefs.hint.classList.toggle("hide", S.stats.runs >= 2);
+  hudRefs.hint.classList.toggle("hide", S.stats.runs >= 3);
   const stg = STAGES[STAGE_IDX[stageId]] || STAGES[0];
   announce(dailyCfg ? `今日工况「${G.world.rule.name}」` : `进入${stg.name}`, "big");
+  setBgmStage(G.world.stageIdx);
   startBgm();
   G.last = performance.now();
 }
@@ -1756,7 +2056,7 @@ function finishRun() {
 
 function goHome() {
   closeAllModals();
-  levelModal = chestModal = pauseModal = null;
+  levelModal = chestModal = pauseModal = jumpModal = null;
   resultEl.classList.add("hide");
   resultEl.innerHTML = "";
   hudEl.classList.add("hide");
@@ -2038,8 +2338,8 @@ async function boot() {
   const params = new URLSearchParams(location.search);
   const noArt = params.get("noart") === "1";
   const [sprImg, flrImg] = await Promise.all([
-    noArt ? null : loadImage("./sprites.webp?v=2.0.2", 7000),
-    noArt ? null : loadImage("./floor.webp?v=2.0.2", 7000),
+    noArt ? null : loadImage("./sprites.webp?v=3.0.0", 7000),
+    noArt ? null : loadImage("./floor.webp?v=3.0.0", 7000),
   ]);
 
   if (sprImg) bindSpriteSheet(sprImg);
@@ -2052,8 +2352,8 @@ async function boot() {
   G.dpr = G.R.kind === "webgl" ? Math.min(devDpr, 1.5) : 1;
 
   G.fx = createFxSystem({
-    hitstop: (d) => { if (G.mode === "play" && d > G.hitstop) G.hitstop = d; },
-    slowmo: (s, d) => { if (G.mode === "play") { G.slowS = s; G.slowT = d; } },
+    hitstop: (t) => { G.hitstop = Math.max(G.hitstop, t); },
+    slowmo: (s, t) => { G.slowS = s; G.slowT = Math.max(G.slowT, t); },
     vibrate: (k) => { if (G.mode === "play" && G.S && G.S.set.vib) vibrate(k); },
     combo: () => (G.world ? G.world.combo : 0),
     camX: () => G.camX,
@@ -2078,6 +2378,13 @@ async function boot() {
   window.addEventListener("keydown", (e) => {
     const k = keyMap[e.key];
     if (k) G.keys[k] = 1;
+    if ((e.key === " " || e.code === "Space" || e.key === "e" || e.key === "E") && G.mode === "play" && !G.paused && G.world && !G.world.pending) {
+      e.preventDefault();
+      G.world.castSkill();
+    }
+    if ((e.key === "j" || e.key === "J") && G.mode === "play" && !G.paused && G.world && G.world.jumpReady) {
+      openSectorJumpModal();
+    }
     if (e.key === "Escape" || e.key === "p" || e.key === "P") {
       if (G.mode === "play") G.paused ? resumeGame() : pauseGame();
     }
@@ -2136,6 +2443,9 @@ window.__honeAdventure = {
   startRun,
   goHome,
   selectStage,
+  cycleDifficulty,
+  toggleRouteMode,
+  openSectorJumpModal,
   openTalents,
   openPromotionModal,
   openHeroes,
@@ -2147,18 +2457,23 @@ window.__honeAdventure = {
       mode: G.mode,
       paused: G.paused,
       stage: w ? STAGES[w.stageIdx].id : G.S ? G.S.stage : "storage",
+      diff: G.S ? G.S.diff : "std",
+      routeMode: G.S ? G.S.routeMode : "auto",
       t: w ? w.t : 0,
       kills: w ? w.kills : 0,
       lvl: w ? w.p.lvl : 0,
       hp: w ? w.p.hp : 0,
       maxHp: w ? w.p.maxHp : 0,
+      shields: w ? w.p.shields : 0,
+      skillCd: w ? w.skillCd : 0,
+      jumpReady: w ? w.jumpReady : false,
       over: w ? w.over : false,
       pending: w && w.pending ? w.pending.type : "",
       nE: w ? w.nE : 0,
       cores: G.S ? G.S.cores : 0,
       renderer: G.R ? G.R.kind : "",
       sheetLoaded: ART_STATE.sheet,
-      weapons: w ? w.p.weapons.map((x) => x.id + x.lv + (x.evo ? "*" : "")) : [],
+      weapons: w ? w.p.weapons.map((x) => x.id + x.lv + (x.evo ? "*" + (x.oc || "") : "")) : [],
     };
   },
 };

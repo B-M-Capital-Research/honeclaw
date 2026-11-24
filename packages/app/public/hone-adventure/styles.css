@@ -473,7 +473,7 @@ a {
   position: absolute;
   left: 50%;
   transform: translate(-50%);
-  top: calc(var(--top) + 86px);
+  top: calc(var(--top) + 96px);
   width: min(460px, calc(100vw - 32px));
   padding: 5px 10px 7px;
   border-radius: 9px;
@@ -1363,14 +1363,20 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 8px 11px;
   border-radius: 9px;
   background: #f8fafc;
   border: 1px solid #cbd5e1;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--dim);
   margin-bottom: 9px;
+}
+
+.b-syn b {
+  flex: none;
+  white-space: nowrap;
 }
 
 .b-syn.active {
@@ -2404,5 +2410,426 @@ a {
   }
   .cta {
     height: 48px;
+  }
+}
+
+
+/* ============================================================================
+   V3 Deep Gameplay Extensions — Difficulty Tier, Sector Dossier, Active Skill,
+   In-Run Sector Jump Gate, Agent Mastery & Starter Loadout, Synergies & Relics
+   ============================================================================ */
+.diff-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  font-size: 12.5px;
+  font-weight: 900;
+  color: var(--txt);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.diff-pill em {
+  font-style: normal;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 10.5px;
+  font-weight: 900;
+}
+
+.diff-pill.d-oc {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.diff-pill.d-oc em {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.diff-pill.d-apex {
+  border-color: #7c3aed;
+  background: #f5f3ff;
+}
+.diff-pill.d-apex em {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.route-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.route-btn.lock {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.st-pill .st-stars {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #cbd5e1;
+  line-height: 1;
+}
+
+.st-pill .st-stars i {
+  font-style: normal;
+  color: #f59e0b;
+}
+
+.stage-dossier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 9px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.stage-dossier .sd-main {
+  flex: 1;
+  min-width: 0;
+  color: #334155;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-dossier .sd-home {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.stage-dossier .sd-home.on {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+/* HUD Active Tactical Skill Button (Bottom-Right) & In-Run Sector Jump Gate */
+.skill-btn {
+  position: absolute;
+  right: 18px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px 9px 10px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1d4ed8, #0284c7);
+  border: 2px solid #93c5fd;
+  box-shadow: 0 8px 22px rgba(29, 78, 216, 0.28);
+  color: #ffffff;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s, opacity 0.15s;
+}
+
+.skill-btn:active {
+  transform: scale(0.95);
+}
+
+.skill-btn img {
+  width: 26px;
+  height: 26px;
+}
+
+.skill-btn .sk-tx b {
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.skill-btn .sk-tx small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.skill-btn .sk-key {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(15, 23, 42, 0.35);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.skill-btn.cd {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #cbd5e1;
+  color: #475569;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.skill-btn.cd .sk-key {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.jump-pill {
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #0891b2);
+  border: 1px solid #93c5fd;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: jpulse 1.5s infinite ease-in-out;
+}
+
+@keyframes jpulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); }
+  50% { box-shadow: 0 4px 20px rgba(8, 145, 178, 0.52); }
+}
+
+/* Late-Game Cards: Overclock (★+N), Synergy Protocols & Mythic Relics */
+.card.oc {
+  border-color: #d97706;
+  background: linear-gradient(180deg, #ffffff, #fffbeb);
+}
+.card.oc .c-n em {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.card.syn {
+  border-color: #0284c7;
+  background: linear-gradient(180deg, #ffffff, #f0f9ff);
+}
+.card.syn .c-n em {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.card.relic {
+  border-color: #7c3aed;
+  background: linear-gradient(180deg, #ffffff, #f5f3ff);
+}
+.card.relic .c-n em {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.slot.oc em {
+  background: #7c3aed;
+  color: #ffffff;
+}
+
+/* Agent Mastery & Custom Starter Weapon Loadout */
+.c-skill {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 11px;
+  color: #1e3a8a;
+  line-height: 1.35;
+}
+
+.c-skill b {
+  display: inline !important;
+  font-size: 11.5px !important;
+  color: #1d4ed8;
+}
+
+.c-home {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #047857;
+}
+
+.c-mas {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.c-mas span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #334155;
+}
+
+.c-mas .m-up {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.c-mas .m-up.off {
+  background: #cbd5e1;
+  color: #64748b;
+}
+
+.c-mas .m-up img {
+  width: 13px;
+  height: 13px;
+}
+
+.w-loadout {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.wl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #475569;
+  cursor: pointer;
+}
+
+.wl-chip img {
+  width: 14px;
+  height: 14px;
+}
+
+.wl-chip.on {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1e3a8a;
+}
+
+/* In-Run Sector Jump Gate Grid */
+.j-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.j-card {
+  padding: 10px;
+  border-radius: 11px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.j-card.cur {
+  border-color: #94a3b8;
+  opacity: 0.72;
+}
+
+.j-card.rec {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.j-card b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 900;
+  color: var(--txt);
+}
+
+.j-card small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.35;
+}
+
+.j-card em {
+  display: inline-block;
+  margin-top: 4px;
+  font-style: normal;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 540px) {
+  .home-pill {
+    padding: 0 9px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .h-top-left, .h-top-right {
+    gap: 5px;
+  }
+  .diff-pill {
+    padding: 0 7px;
+  }
+  .diff-pill > span {
+    display: none;
+  }
+  .cores {
+    padding: 0 9px 0 7px;
+  }
+  .skill-btn .sk-key {
+    display: none;
+  }
+  .j-grid {
+    grid-template-columns: 1fr;
   }
 }

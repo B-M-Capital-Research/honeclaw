@@ -1,9 +1,9 @@
 // HONE Adventure V2 — Cleanroom AI Data Center Renderer, PCB Trace FX & High-Contrast Projectiles
 
-import { AI_TYPE, ENEMIES, STAGES, WEAPONS } from "./data.js?v=2.0.2";
-import { BULLET_KIND, FX_EVT, PICK_KIND, ZONE_KIND } from "./world.js?v=2.0.2";
-import { SPR_IDX } from "./art.js?v=2.0.2";
-import { playGemChime, playKillPop, playSfx } from "./audio.js?v=2.0.2";
+import { AI_TYPE, ELITE_AFFIXES, ENEMIES, HEROES, HERO_IDX, STAGES, WEAPONS } from "./data.js?v=3.0.0";
+import { BULLET_KIND, FX_EVT, PICK_KIND, ZONE_KIND } from "./world.js?v=3.0.0";
+import { SPR_IDX } from "./art.js?v=3.0.0";
+import { playGemChime, playKillPop, playSfx } from "./audio.js?v=3.0.0";
 
 const MAX_PARTS = 950;
 const MAX_NUMS = 120;
@@ -176,6 +176,8 @@ export function createFxSystem(hooks) {
         else if (wid === "litho") sfx("beam", b, 0.85);
         else if (wid === "drone") sfx("star", b, 0.96 + Math.random() * 0.1);
         else if (wid === "cryo") sfx("whirl", b, d ? 0.82 : 1);
+        else if (wid === "nvlink") sfx("beam", b, 1.32, 0.72);
+        else if (wid === "liquid_n2") sfx("drop", b, 1.15, 0.85);
         break;
       }
 
@@ -357,6 +359,30 @@ export function createFxSystem(hooks) {
 
       case FX_EVT.NOVA:
         addRing(a, b, 14, c, 0.34, S.ring, 0.8);
+        break;
+
+      case FX_EVT.SKILL: {
+        const hero = HEROES[HERO_IDX[a]] || HEROES[0];
+        sfx("skill", b);
+        addRing(b, c, 18, 240, 0.48, S.ring_gold, 0.92);
+        addRing(b, c, 14, 175, 0.36, S.ring, 0.85);
+        burstChips(b, c, 12, 210, 0.95, 0.4);
+        hooks.announce(`⚡ 战术大招 · ${hero.skillName}！`, "big");
+        break;
+      }
+
+      case FX_EVT.NODE: {
+        const stg = STAGES[c] || STAGES[0];
+        sfx("node", a);
+        addRing(a, b, 18, 210, 0.48, S.ring2, 0.92);
+        burstChips(a, b, 14, 195, 0.95, 0.45);
+        hooks.announce(`✓ 已激活「${stg.nodeName}」`, "evo");
+        break;
+      }
+
+      case FX_EVT.SHIELD:
+        sfx("shield", a);
+        addRing(a, b, 14, 120, 0.32, S.ring, 0.9);
         break;
 
       default:
@@ -623,10 +649,59 @@ export function renderWorld(R, world, fx, view) {
     }
   }
 
-  // 4. Ground Zones (Cryo Hex Plate, Tensor 3x3 Matrix, Hazard Blast Reticle, Boss Laser)
+  // 4. Ground Zones (Interactive Nodes, Cryo Plate, Tensor Matrix, NVLink Mesh, Frost Rails, Hazard Blast, Boss Laser)
   for (let i = 0; i < world.nZ; i++) {
     const z = world.zn[i];
-    if (z.kind === ZONE_KIND.CRYO) {
+    if (z.kind === ZONE_KIND.NODE) {
+      const pulse = 1 + 0.04 * Math.sin(t * 5);
+      const scN = (z.r / 52) * pulse;
+      R.spr(S.p_node_ring, z.x, z.y, scN, scN, t * 0.45, 0.9, 0xffffff, 0, 0);
+      R.spr(S.d_crystal, z.x, z.y - 4 + Math.sin(t * 4) * 2.5, 0.52, 0.52, 0, 0.95, 0xffffff, 0, 0);
+      if (z.prog > 0.01) {
+        R.spr(S.ring_gold, z.x, z.y, (z.r * z.prog) / 54, (z.r * z.prog) / 54, -t * 1.6, 0.92, 0xffffff, 0, 0);
+      }
+      // Capture progress bar below cleanroom beacon
+      R.spr(S.px, z.x, z.y + z.r + 10, 9.2, 1.0, 0, 0.85, 0x0f172a, 0, 0);
+      R.spr(S.px, z.x - 26 * (1 - z.prog), z.y + z.r + 10, Math.max(0.4, 8.6 * z.prog), 0.62, 0, 1, 0x10b981, 0, 0);
+    } else if (z.kind === ZONE_KIND.NVLINK) {
+      const fade = Math.min(1, z.t * 6, (z.life - z.t) * 4);
+      const nPts = z.nPts || 0;
+      for (let m = 0; m < nPts; m++) {
+        const nx = z.pts[m * 2];
+        const ny = z.pts[m * 2 + 1];
+        const dx = nx - p.x;
+        const dy = ny - p.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 4) {
+          R.spr(S.p_nvlink, (p.x + nx) * 0.5, (p.y + ny) * 0.5, len / 64, z.evo ? 1.05 : 0.82, Math.atan2(dy, dx), 0.78 * fade, 0xffffff, 0, 0);
+        }
+        if (nPts > 1) {
+          const nx2 = z.pts[((m + 1) % nPts) * 2];
+          const ny2 = z.pts[((m + 1) % nPts) * 2 + 1];
+          const dx2 = nx2 - nx;
+          const dy2 = ny2 - ny;
+          const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+          if (len2 > 4 && len2 < 340) {
+            R.spr(S.p_nvlink, (nx + nx2) * 0.5, (ny + ny2) * 0.5, len2 / 64, 0.65, Math.atan2(dy2, dx2), 0.58 * fade, 0xffffff, 0, 0);
+          }
+        }
+        R.spr(S.p_nvnode, nx, ny, 0.95, 0.95, t * 3 + m, 0.92 * fade, 0xffffff, 0, 0);
+      }
+    } else if (z.kind === ZONE_KIND.FROST_RAIL) {
+      const fade = Math.min(1, (z.life - z.t) * 4.5);
+      const rays = z.nPts || 4;
+      for (let r = 0; r < rays; r++) {
+        const a = z.a + (r / rays) * TAU;
+        const ux = Math.cos(a);
+        const uy = Math.sin(a);
+        R.spr(S.p_frost_rail, z.x + ux * (z.len * 0.5), z.y + uy * (z.len * 0.5), z.len / 64, 0.95, a, 0.88 * fade, 0xffffff, 0, 0);
+      }
+      R.spr(S.via, z.x, z.y, 1.1, 1.1, 0, 0.9 * fade, 0xffffff, 0, 0);
+    } else if (z.kind === ZONE_KIND.SKYBEAM) {
+      const fade = Math.min(1, (z.life - z.t) * 5);
+      R.spr(S.ring_gold, z.x, z.y, z.r / 54, z.r / 54, t * 2, 0.88 * fade, 0xffffff, 0, 0);
+      R.spr(S.p_skybeam, z.x, z.y - 160, 1.4, 2.8, 0, 0.88 * fade, 0xffffff, 0, 0);
+    } else if (z.kind === ZONE_KIND.CRYO) {
       const k = Math.min(1, z.t * 4, (z.life - z.t) * 3);
       const scZ = z.r / 56;
       R.spr(S.p_cryo, z.x, z.y, scZ, scZ, z.a * 0.35, 0.92 * k, 0xffffff, 0, 0);
@@ -716,7 +791,8 @@ export function renderWorld(R, world, fx, view) {
     const alpha = Math.min(1, (world.t - e.born) * 4 + 0.2);
 
     if (e.elite) {
-      R.spr(S.ring_gold, e.x, e.y, e.r / 34, e.r / 34, t * 1.1, 0.75, 0xffffff, 0, 0);
+      const afxCol = e.affix >= 0 && ELITE_AFFIXES[e.affix] ? ELITE_AFFIXES[e.affix].tint : 0xffffff;
+      R.spr(S.ring_gold, e.x, e.y, e.r / 34, e.r / 34, t * 1.1, 0.78, afxCol, 0, 0);
     }
 
     if (e.ai === AI_TYPE.DART) {
@@ -824,6 +900,9 @@ export function renderWorld(R, world, fx, view) {
       sy *= 1 - 0.08 * view.hurt;
     }
     R.spr(S.shadow, p.x, p.y + 22, 1.15, 0.95, 0, 0.8, 0xffffff, 0, 0);
+    if (p.shields > 0) {
+      R.spr(S.p_shield, p.x, p.y + bob * 0.5, 0.95 + 0.04 * Math.sin(t * 6), 0.95 + 0.04 * Math.sin(t * 6), t * 0.6, 0.88, 0xffffff, 0, 0);
+    }
     const invA = !view.dim && p.inv > 0 && !world.pending && view.state !== "_joy" ? (Math.sin(t * 38) > 0 ? 1 : 0.55) : 1;
     R.spr(
       sprId, p.x + jx, p.y + bob, p.face * sx, sy, tilt, invA, 0xffffff, 0,
@@ -831,7 +910,7 @@ export function renderWorld(R, world, fx, view) {
     );
   }
 
-  // 11. V2 Hardware Projectiles (HBM Bus Packets, WDM Prism Lances, ASIC Drones)
+  // 11. V3 Hardware Projectiles (HBM Bus Packets, WDM Prism Lances, Liquid-N2 Canisters, ASIC Drones)
   for (let i = 0; i < world.nB; i++) {
     const b = world.bl[i];
     const ang = Math.atan2(b.vy, b.vx);
@@ -846,6 +925,10 @@ export function renderWorld(R, world, fx, view) {
     } else if (b.kind === BULLET_KIND.PRISM_SUB) {
       const scB = b.size;
       R.spr(WDM_SPRS[b.wl % 3], b.x, b.y, scB, scB, ang, 1, 0xffffff, 0, 0);
+    } else if (b.kind === BULLET_KIND.N2_CANISTER) {
+      const scB = b.size;
+      R.spr(S.streak, b.x - Math.cos(ang) * 12, b.y - Math.sin(ang) * 12, 0.6 * scB, 0.9 * scB, ang, 0.68, 0xffffff, 0, 0);
+      R.spr(S.p_n2, b.x, b.y, scB, scB, b.rot, 1, 0xffffff, 0, 0);
     } else {
       // BULLET_KIND.DRONE
       const dAng = b.rot || ang;
@@ -864,12 +947,15 @@ export function renderWorld(R, world, fx, view) {
 
   fx.draw(R);
 
-  // 13. Player Overhead HP Bar (Crisp Dark Frame on Light Floor)
+  // 13. Player Overhead HP Bar + Shield Pips
   if (!world.over && !view.dim) {
     const hpR = Math.max(0, p.hp / p.maxHp);
     const hcol = hpR > 0.5 ? 0x10b981 : hpR > 0.25 ? 0xf59e0b : 0xe11d48;
     R.spr(S.px, p.x, p.y + 30, 6.8, 1.15, 0, 0.92, 0x0f172a, 0, 0);
     R.spr(S.px, p.x - 18 * (1 - hpR), p.y + 30, 6 * hpR, 0.7, 0, 1, hcol, 0, 0);
+    for (let s = 0; s < (p.shields || 0); s++) {
+      R.spr(S.px, p.x - 12 + s * 12, p.y + 37, 1.4, 0.65, 0, 0.95, 0x0284c7, 0, 0);
+    }
   }
 
   fx.drawNums(R);

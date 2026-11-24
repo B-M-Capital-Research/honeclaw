@@ -1,6 +1,17 @@
 # Archive Index
 
-Last updated: 2026-11-21
+Last updated: 2026-11-24
+
+## 2026-11-24
+
+### HONE 历险记 V3：彻底去模板化、后期深度构筑玩法、通俗化描述与特工/产线深度交互上线
+
+- Status: done / deployed on Cloudflare Pages (`https://hone-claw.com/hone-adventure/`).
+- Plan: `docs/archive/plans/hone-adventure-v3-deep-overhaul.md`
+- Handoff: `docs/handoffs/2026-11-24-hone-adventure-v3.md`
+- Verification: `bun run typecheck:web`、`bun run test:web`、`bun run build:web:public`、Playwright `public-data-center.spec.ts`、无头 Chromium 10 场景桌面/移动截图巡检及线上 `https://hone-claw.com/hone-adventure/` 探针通过。
+- Conclusion: 完成《HONE 历险记》V3.0.0 全量深度改造与去模板化：移除右上角领金皮挂件、12 秒圆环白送核弹、L3 环刃间歇熄火与旧 130 BPM 4 小节配乐；保留 AI 硬件武器标题并将全部武器/超武/被动/联动/圣物说明改写为直观通俗中文；扩充至 10 把主武器×10 超武、5+5 槽位、6 项双武联动、超武突破 `★+1~+5`、8 张终局圣物、4 类词条精英与双巨兽终局压测；重构 5 名特工专属主动战术大招、Lv.1~Lv.5 专精与自由更换起手主武器，以及 6 大产线专属地图交互基站、3 档工况难度与局内自选产线跃迁门。
+- Next entry: `packages/app/public/hone-adventure/`、`packages/app/src/lib/hone-adventure.test.ts`。
 
 ## 2026-11-21
 

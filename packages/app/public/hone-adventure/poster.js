@@ -1,7 +1,7 @@
 // HONE Adventure V2 — 1080x1440 (3:4) Light Cleanroom AI Data Center Battle Report Poster
 
-import { HONECLAW_REPO_LABEL, RULES, STAGES, STAGE_IDX, WEAPONS, WEAPON_IDX, fmtTime, getTitle } from "./data.js?v=2.0.2";
-import { ICON_DRAWERS, drawSprite2D, makeFallbackFloor, makeQuantOverlay, roundRectPath } from "./art.js?v=2.0.2";
+import { HEROES, HERO_IDX, HONECLAW_REPO_LABEL, RULES, STAGES, STAGE_IDX, WEAPONS, WEAPON_IDX, fmtTime, getTitle } from "./data.js?v=3.0.0";
+import { ICON_DRAWERS, drawSprite2D, makeFallbackFloor, makeQuantOverlay, roundRectPath } from "./art.js?v=3.0.0";
 
 const FONT = '"Avenir Next", -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif';
 let bgFloor = null;
@@ -68,7 +68,8 @@ export function renderBattlePoster(sum, save, floorImg) {
     ctx.stroke();
   }
 
-  const heroKey = sum.char === "hone" && save.skin === "gold" && save.skins.gold ? "gold" : sum.char;
+  const heroDef = HEROES[HERO_IDX[sum.char]] || HEROES[0];
+  const heroKey = sum.char === "hone" && save.skin === "gold" && save.skins?.gold ? "gold" : heroDef.sprite || sum.char;
   ctx.imageSmoothingQuality = "high";
   drawSprite2D(ctx, "shadow", 540, 700, 8.0, 0, false);
   drawSprite2D(ctx, "P_" + heroKey, 540, 505, 8.5, 0, false);

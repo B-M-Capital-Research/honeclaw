@@ -1,6 +1,6 @@
 // HONE Adventure V2 — Cleanroom AI Data Center Sprite Atlas, Hardware Projectiles, Icons & Dual Renderer
 
-import { SHEET_FRAMES } from "./atlas-coords.js?v=2.0.2";
+import { SHEET_FRAMES } from "./atlas-coords.js?v=3.0.0";
 
 const TAU = Math.PI * 2;
 
@@ -357,6 +357,85 @@ defSpr("p_cryo", 128, 128, (ctx) => {
   ctx.fill();
   ctx.strokeStyle = "#0f172a";
   ctx.stroke();
+});
+
+// 9. NVLink Laser Mesh Beam & Optical Node
+defSpr("p_nvlink", 64, 12, (ctx) => {
+  ctx.fillStyle = "#4c0519";
+  ctx.fillRect(-32, -4.2, 64, 8.4);
+  ctx.fillStyle = linGrad(ctx, 0, -2.8, 0, 2.8, [0, "#f472b6", 0.5, "#fff1f2", 1, "#db2777"]);
+  ctx.fillRect(-32, -2.6, 64, 5.2);
+});
+
+defSpr("p_nvnode", 22, 22, (ctx) => {
+  poly(ctx, 0, 0, 6, 8, 0);
+  ctx.fillStyle = "#ec4899";
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  circle(ctx, 0, 0, 3);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+});
+
+// 10. Liquid Nitrogen Cryo-Mortar Canister & Frost Cross Rail
+defSpr("p_n2", 34, 24, (ctx) => {
+  roundRectPath(ctx, -12, -8, 24, 16, 5);
+  ctx.fillStyle = linGrad(ctx, -12, -8, 12, 8, [0, "#e0f2fe", 0.5, "#0284c7", 1, "#0c4a6e"]);
+  ctx.fill();
+  ctx.strokeStyle = "#0f172a";
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillRect(-5, -4, 10, 8);
+});
+
+defSpr("p_frost_rail", 64, 16, (ctx) => {
+  ctx.fillStyle = "#082f49";
+  ctx.fillRect(-32, -5.2, 64, 10.4);
+  ctx.fillStyle = linGrad(ctx, 0, -3.5, 0, 3.5, [0, "#7dd3fc", 0.5, "#ffffff", 1, "#0284c7"]);
+  ctx.fillRect(-32, -3.5, 64, 7);
+});
+
+// Cleanroom Interactive Sector Node Ring & Energy Forcefield Shield
+defSpr("p_node_ring", 128, 128, (ctx) => {
+  circle(ctx, 0, 0, 52);
+  ctx.fillStyle = "rgba(37, 99, 235, 0.06)";
+  ctx.fill();
+  ctx.strokeStyle = "#1d4ed8";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([12, 6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  poly(ctx, 0, 0, 6, 38, 0);
+  ctx.strokeStyle = "rgba(15, 23, 42, 0.45)";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+});
+
+defSpr("p_shield", 84, 84, (ctx) => {
+  poly(ctx, 0, 0, 6, 36, Math.PI / 6);
+  ctx.fillStyle = "rgba(56, 189, 248, 0.11)";
+  ctx.fill();
+  ctx.strokeStyle = "#0284c7";
+  ctx.lineWidth = 2.8;
+  ctx.stroke();
+  poly(ctx, 0, 0, 6, 32, Math.PI / 6);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+});
+
+defSpr("p_skybeam", 44, 128, (ctx) => {
+  ctx.fillStyle = linGrad(ctx, -18, 0, 18, 0, [
+    0, "rgba(245, 158, 11, 0)",
+    0.2, "rgba(217, 119, 6, 0.72)",
+    0.5, "rgba(254, 243, 199, 0.96)",
+    0.8, "rgba(217, 119, 6, 0.72)",
+    1, "rgba(245, 158, 11, 0)",
+  ]);
+  ctx.fillRect(-18, -64, 36, 128);
 });
 
 // Enemy Hazard Projectiles & Cleanroom Warning Reticles
@@ -982,6 +1061,77 @@ export const ICON_DRAWERS = {
   },
   drone: (ctx, sc) => drawSprFit(ctx, sc, "p_drone", 54, 0, 0, -0.45),
   cryo: (ctx, sc) => drawSprFit(ctx, sc, "p_cryo", 56),
+  nvlink: (ctx) => {
+    const pts = [[0, -18], [18, 10], [-18, 10], [0, 3]];
+    strokeStyle(ctx, 4.5, "#0f172a");
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(18, 10); ctx.lineTo(-18, 10); ctx.closePath();
+    ctx.moveTo(0, -18); ctx.lineTo(0, 3); ctx.lineTo(18, 10); ctx.moveTo(0, 3); ctx.lineTo(-18, 10);
+    ctx.stroke();
+    strokeStyle(ctx, 2.5, "#ec4899");
+    ctx.stroke();
+    for (const [nx, ny] of pts) {
+      ctx.fillStyle = "#fdf2f8";
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 2;
+      circle(ctx, nx, ny, 4.5);
+      ctx.fill();
+      ctx.stroke();
+    }
+  },
+  liquid_n2: (ctx) => {
+    strokeStyle(ctx, 4.5, "#0f172a");
+    ctx.beginPath();
+    ctx.moveTo(-22, 0); ctx.lineTo(22, 0); ctx.moveTo(0, -22); ctx.lineTo(0, 22);
+    ctx.stroke();
+    strokeStyle(ctx, 2.5, "#38bdf8");
+    ctx.stroke();
+    roundRectPath(ctx, -10, -12, 20, 24, 5);
+    ctx.fillStyle = "#0284c7";
+    ctx.fill();
+    strokeStyle(ctx, 2.2, "#0f172a");
+    ctx.stroke();
+    ctx.fillStyle = "#e0f2fe";
+    ctx.fillRect(-5, -5, 10, 10);
+  },
+  power_rail: (ctx) => {
+    roundRectPath(ctx, -20, -13, 40, 9, 3);
+    ctx.fillStyle = "#0284c7";
+    ctx.fill();
+    strokeStyle(ctx, 2.2, "#0f172a");
+    ctx.stroke();
+    roundRectPath(ctx, -20, 4, 40, 9, 3);
+    ctx.fillStyle = "#f59e0b";
+    ctx.fill();
+    ctx.stroke();
+  },
+  ui_skill: (ctx) => {
+    ctx.fillStyle = "#f59e0b";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(4, -22);
+    ctx.lineTo(-14, 2);
+    ctx.lineTo(-1, 2);
+    ctx.lineTo(-6, 22);
+    ctx.lineTo(14, -3);
+    ctx.lineTo(1, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  },
+  ui_jump: (ctx) => {
+    strokeStyle(ctx, 3.8, "#2563eb");
+    circle(ctx, 0, 0, 18);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-7, 6);
+    ctx.lineTo(6, -7);
+    ctx.moveTo(-3, -7);
+    ctx.lineTo(6, -7);
+    ctx.lineTo(6, 2);
+    ctx.stroke();
+  },
 
   clock: (ctx) => {
     strokeStyle(ctx, 3.6, "#2563eb");
