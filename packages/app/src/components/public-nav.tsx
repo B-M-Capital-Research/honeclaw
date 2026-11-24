@@ -229,6 +229,20 @@ export function PublicNav(
                 </A>
               )}
             </For>
+            <a
+              href="/hone-adventure/"
+              rel="external"
+              class="pub-nav-link"
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                setMenuOpen(false);
+                setMoreOpen(false);
+                window.location.assign("/hone-adventure/");
+              }}
+            >
+              {C.hone_adventure}
+            </a>
           </div>
 
           <div class="pub-nav-actions">
@@ -256,6 +270,22 @@ export function PublicNav(
                   aria-label={C.more}
                 >
                   <div class="pub-nav-more-links">
+                    <a
+                      href="/hone-adventure/"
+                      rel="external"
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        setMenuOpen(false);
+                        setMoreOpen(false);
+                        window.location.assign("/hone-adventure/");
+                      }}
+                    >
+                      <span>{C.hone_adventure}</span><small>↗</small>
+                    </a>
+                    <A href="/data-center" onClick={() => closeAfterNavigation("/data-center")}>
+                      <span>{C.data_center}</span><small>→</small>
+                    </A>
                     <A href="/roadmap" onClick={() => closeAfterNavigation("/roadmap")}>
                       <span>{C.roadmap}</span><small>→</small>
                     </A>
@@ -322,6 +352,28 @@ export function PublicNav(
         />
         <section id="pub-mobile-menu" class="pub-mobile-menu" aria-label={C.menu_aria}>
           <div class="pub-mobile-menu-links">
+            <a
+              href="/hone-adventure/"
+              rel="external"
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                setMenuOpen(false);
+                window.location.assign("/hone-adventure/");
+              }}
+            >
+              <span>{C.hone_adventure}</span>
+              <small aria-hidden="true">↗</small>
+            </a>
+            <A
+              href="/data-center"
+              onClick={() => closeAfterNavigation("/data-center")}
+              classList={{ "is-active": isActive("/data-center") }}
+              aria-current={isActive("/data-center") ? "page" : undefined}
+            >
+              <span>{C.data_center}</span>
+              <small aria-hidden="true">→</small>
+            </A>
             <For
               each={[
                 { labelKey: "research" as const, path: "/research" },

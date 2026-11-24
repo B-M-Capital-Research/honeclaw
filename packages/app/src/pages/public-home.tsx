@@ -210,6 +210,19 @@ export default function PublicHomePage() {
                   <span>{L.cta_primary}</span>
                   <Icon.Arrow />
                 </a>
+                <a
+                  class="hone-home-cta is-secondary"
+                  href="/hone-adventure/"
+                  rel="external"
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+                    event.preventDefault()
+                    window.location.assign("/hone-adventure/")
+                  }}
+                >
+                  <span>{L.cta_game}</span>
+                  <Icon.UpRight />
+                </a>
                 <a class="hone-home-cta is-secondary" href="/plan" onClick={go("/plan")}>
                   <span>{L.cta_member}</span>
                 </a>

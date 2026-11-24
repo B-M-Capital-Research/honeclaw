@@ -11,6 +11,11 @@ import { BULLET_KIND, FX_EVT, GameWorld, PICK_KIND, ZONE_KIND } from "../../publ
 import { createFxSystem } from "../../public/hone-adventure/fx.js?v=3.0.0";
 
 const chatSource = readFileSync(new URL("../pages/chat.tsx", import.meta.url), "utf8");
+const homeSource = readFileSync(new URL("../pages/public-home.tsx", import.meta.url), "utf8");
+const navSource = readFileSync(new URL("../components/public-nav.tsx", import.meta.url), "utf8");
+const loginSource = readFileSync(new URL("../components/public-login-form.tsx", import.meta.url), "utf8");
+const dataCenterSource = readFileSync(new URL("../pages/public-data-center.tsx", import.meta.url), "utf8");
+const workerSource = readFileSync(new URL("../../public/_worker.js", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../public/hone-adventure/app.js", import.meta.url), "utf8");
 const worldSource = readFileSync(new URL("../../public/hone-adventure/world.js", import.meta.url), "utf8");
 const audioSource = readFileSync(new URL("../../public/hone-adventure/audio.js", import.meta.url), "utf8");
@@ -230,5 +235,16 @@ describe("HONE Adventure V3 deep progression, clean de-templating, stage nodes &
     expect(d1).toEqual(d2);
     expect(STAGES.some((s: { id: string }) => s.id === d1.stage)).toBe(true);
     expect(d1.seed).not.toBe(d3.seed);
+  });
+
+  it("exposes direct zero-login game links on public home, top nav, logged-out login card, and /data-center", () => {
+    expect(homeSource).toContain('href="/hone-adventure/"');
+    expect(navSource).toContain('href="/hone-adventure/"');
+    expect(loginSource).toContain('href="/hone-adventure/"');
+    expect(dataCenterSource).toContain('href="/hone-adventure/"');
+    expect(workerSource).toContain("url.pathname === '/hone-adventure'");
+    // Game bundle itself never touches auth APIs
+    expect(appSource).not.toContain("/api/public/auth");
+    expect(appSource).not.toContain("PublicLoginForm");
   });
 });

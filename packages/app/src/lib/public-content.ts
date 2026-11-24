@@ -30,6 +30,8 @@ const CONTENT_ZH = {
     me: "个人",
     chat: "对话",
     plan: "定价",
+    hone_adventure: "HONE 历险记",
+    data_center: "3D 数据中心",
     buy: "购买完整服务",
     more: "更多",
     back_home: "返回首页",
@@ -67,6 +69,7 @@ const CONTENT_ZH = {
     description:
       "围绕 10 大 AI 基础设施板块与 64 家核心公司构建研究本体，打通机构级财务估值数据、15 分钟全球产业情报与确定性量化回测——让每一次提问、研判与复盘都建立在可核验的证据之上。",
     cta_primary: "进入投资助手",
+    cta_game: "HONE 历险记 · 免登录畅玩",
     cta_member: "了解完整会员",
     license_badge: "MIT 开源架构",
     zoom_cta: "放大预览",
@@ -2199,6 +2202,9 @@ const CONTENT_ZH = {
       dev_login_loading: "正在进入…",
       dev_login_hint: "仅本地开发环境可用，不需要手机号或验证码。",
       or_sms: "或使用验证码登录",
+      open_demos_label: "免登录公开体验",
+      open_game: "HONE 历险记",
+      open_datacenter: "3D 数据中心",
     },
     tos: {
       prefix: "我已阅读并同意",
@@ -2793,6 +2799,8 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     me: "Account",
     chat: "Chat",
     plan: "Pricing",
+    hone_adventure: "HONE Adventure",
+    data_center: "3D Data Center",
     buy: "Get Full Access",
     more: "More",
     back_home: "Home",
@@ -2830,6 +2838,7 @@ const CONTENT_EN: typeof CONTENT_ZH = {
     description:
       "Built on a researcher-maintained ontology of 10 AI infrastructure sectors and 64 core companies, uniting institutional financials, 15-minute global intelligence and deterministic quant backtesting—so every thesis rests on verifiable evidence.",
     cta_primary: "Open Research Assistant",
+    cta_game: "Play HONE Adventure (Free)",
     cta_member: "Explore Membership",
     license_badge: "MIT Open Source",
     zoom_cta: "Zoom preview",
@@ -4997,6 +5006,9 @@ const CONTENT_EN: typeof CONTENT_ZH = {
       dev_login_hint:
         "Available only in local development; no phone or code required.",
       or_sms: "or sign in with a code",
+      open_demos_label: "Open demos · No sign-in required",
+      open_game: "HONE Adventure",
+      open_datacenter: "3D Data Center",
     },
     tos: {
       prefix: "I have read and agree to the ",

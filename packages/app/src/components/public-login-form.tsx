@@ -521,6 +521,85 @@ export function PublicLoginForm(props: Props) {
               使用邮箱开通或恢复权益
             </a>
           </p>
+
+          <div
+            class="public-login-open-demos"
+            style={{
+              "margin-top": "16px",
+              "padding-top": "14px",
+              "border-top": "1px solid var(--hone-line-strong)",
+            }}
+          >
+            <div
+              style={{
+                "font-size": "11.5px",
+                "font-weight": "600",
+                color: "var(--hone-ink-600)",
+                "text-align": "center",
+                "margin-bottom": "9px",
+              }}
+            >
+              {CONTENT.auth.login.open_demos_label}
+            </div>
+            <div
+              style={{
+                display: "grid",
+                "grid-template-columns": "repeat(2, minmax(0, 1fr))",
+                gap: "8px",
+              }}
+            >
+              <a
+                href="/hone-adventure/"
+                rel="external"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  window.location.assign("/hone-adventure/");
+                }}
+                style={{
+                  display: "inline-flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  gap: "6px",
+                  "min-height": "38px",
+                  padding: "0 10px",
+                  "border-radius": "var(--hone-radius-sm)",
+                  border: "1px solid var(--hone-line-strong)",
+                  background: "var(--hone-control-surface)",
+                  color: "var(--hone-ink-950)",
+                  "font-size": "13px",
+                  "font-weight": "700",
+                  "text-decoration": "none",
+                }}
+              >
+                <span>{CONTENT.auth.login.open_game}</span>
+                <span aria-hidden="true">↗</span>
+              </a>
+              <a
+                href="https://b-m-capital-research.github.io/nexus-datacenter-ceo/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  gap: "6px",
+                  "min-height": "38px",
+                  padding: "0 10px",
+                  "border-radius": "var(--hone-radius-sm)",
+                  border: "1px solid var(--hone-line-strong)",
+                  background: "var(--hone-control-surface)",
+                  color: "var(--hone-ink-950)",
+                  "font-size": "13px",
+                  "font-weight": "700",
+                  "text-decoration": "none",
+                }}
+              >
+                <span>{CONTENT.auth.login.open_datacenter}</span>
+                <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </div>

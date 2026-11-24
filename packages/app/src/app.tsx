@@ -3,7 +3,7 @@ import { MarkedProvider } from "@hone-financial/ui/context/marked"
 import { ToastProvider } from "@hone-financial/ui/context/toast"
 import { MetaProvider, Title } from "@solidjs/meta"
 import { Navigate, Route, Router, useLocation } from "@solidjs/router"
-import { ErrorBoundary, Suspense, createEffect, createSignal, lazy, type ParentProps } from "solid-js"
+import { ErrorBoundary, Suspense, createEffect, createSignal, lazy, onMount, type ParentProps } from "solid-js"
 import { BackendProvider } from "@/context/backend"
 import { ConsoleProvider } from "@/context/console"
 import { SessionsProvider } from "@/context/sessions"
@@ -169,6 +169,13 @@ function PublicSurface() {
             <Route path="/privacy" component={PublicSitePrivacyPage} />
             <Route path="/chat" component={PublicChatPage} />
             <Route path="/__share-preview" component={SharePreviewPage} />
+            <Route
+              path="/hone-adventure/*rest"
+              component={() => {
+                onMount(() => window.location.replace("/hone-adventure/"))
+                return <Loading />
+              }}
+            />
             <Route path="*" component={() => <Navigate href="/" />} />
           </Router>
         </Suspense>

@@ -82,11 +82,21 @@ export default function PublicDataCenterPage() {
               </h1>
               <p>走进一座 AI 数据中心，看懂算力背后的产业连接。</p>
             </div>
-            <Show when={isAdmin()}>
-              <A href="/industry-map" class="dc-all-industries">
-                完整行业分析 <span aria-hidden="true">↗</span>
-              </A>
-            </Show>
+            <div class="dc-header-actions">
+              <a
+                href="/hone-adventure/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="dc-adventure-link"
+              >
+                HONE 历险记 <span aria-hidden="true">↗</span>
+              </a>
+              <Show when={isAdmin()}>
+                <A href="/industry-map" class="dc-all-industries">
+                  完整行业分析 <span aria-hidden="true">↗</span>
+                </A>
+              </Show>
+            </div>
           </header>
           <DataCenterScene selected={selected()} onSelect={select} />
           <section class="dc-explore" aria-labelledby="dc-explore-title">

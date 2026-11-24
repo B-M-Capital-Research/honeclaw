@@ -53,10 +53,17 @@
   line-height: 1.7;
   margin: 12px 0 0;
 }
-.dc-all-industries {
+.dc-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.dc-all-industries,
+.dc-adventure-link {
   flex-shrink: 0;
   display: flex;
-  gap: 22px;
+  gap: 12px;
   align-items: center;
   min-height: 42px;
   padding: 0 16px;
@@ -67,7 +74,8 @@
   text-decoration: none;
   background: var(--hone-surface-raised);
 }
-.dc-all-industries:hover {
+.dc-all-industries:hover,
+.dc-adventure-link:hover {
   border-color: var(--dc-muted);
 }
 .dc-scene-wrap {
@@ -566,10 +574,11 @@
     font-size: 12px;
     margin-top: 10px;
   }
-  .dc-all-industries {
+  .dc-all-industries,
+  .dc-adventure-link {
     font-size: 11px;
     min-height: 38px;
-    gap: 15px;
+    gap: 10px;
   }
   .dc-scene-wrap {
     border-radius: 11px;

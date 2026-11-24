@@ -136,6 +136,12 @@ export default {
       return withSecurityHeaders(response, url.pathname);
     }
 
+    if (url.pathname === '/hone-adventure') {
+      const target = new URL('/hone-adventure/', url);
+      target.search = url.search;
+      return withSecurityHeaders(Response.redirect(target.toString(), 308));
+    }
+
     if (url.pathname.startsWith('/hone-adventure/')) {
       const entry = HONE_ADVENTURE_ENTRIES.has(url.pathname);
       if (response.status === 404 || (!entry && responseLooksLikeHtml(response))) {

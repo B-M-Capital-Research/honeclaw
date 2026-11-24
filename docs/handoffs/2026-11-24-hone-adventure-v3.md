@@ -5,7 +5,7 @@
 - created_at: 2026-11-24
 - updated_at: 2026-11-24
 - owner: Antigravity
-- related_files: packages/app/public/hone-adventure/index.html, packages/app/public/hone-adventure/data.js, packages/app/public/hone-adventure/world.js, packages/app/public/hone-adventure/art.js, packages/app/public/hone-adventure/fx.js, packages/app/public/hone-adventure/audio.js, packages/app/public/hone-adventure/poster.js, packages/app/public/hone-adventure/app.js, packages/app/public/hone-adventure/styles.css, packages/app/src/lib/hone-adventure.test.ts, packages/app/e2e/public-data-center.spec.ts
+- related_files: packages/app/public/hone-adventure/index.html, packages/app/public/hone-adventure/data.js, packages/app/public/hone-adventure/world.js, packages/app/public/hone-adventure/art.js, packages/app/public/hone-adventure/fx.js, packages/app/public/hone-adventure/audio.js, packages/app/public/hone-adventure/poster.js, packages/app/public/hone-adventure/app.js, packages/app/public/hone-adventure/styles.css, packages/app/public/_worker.js, packages/app/src/lib/public-content.ts, packages/app/src/components/public-nav.tsx, packages/app/src/pages/public-home.tsx, packages/app/src/components/public-login-form.tsx, packages/app/src/pages/public-data-center.tsx, packages/app/src/pages/public-data-center.css, packages/app/src/lib/hone-adventure.test.ts, packages/app/e2e/public-data-center.spec.ts
 - related_docs: docs/repo-map.md, docs/archive/plans/hone-adventure-v3-deep-overhaul.md, docs/handoffs/2026-11-21-hone-adventure-game.md
 - related_prs: direct push to `main` (Cloudflare Pages production deployment)
 
@@ -27,6 +27,15 @@
 - **特工编队与产线切换深度交互**：
   - 5 名特工（`小砺`、`芯核`、`光瞳`、`量闪`、`星枢`）均配备独立**主动战术大招**（`Space`/`E` 或右下角按钮释放）、成长型被动、主场产线加成、**专精等级 Lv.1~Lv.5**，且专精达 Lv.2 后可自由切换任意已点亮武器作为开局主武器。
   - 大厅支持 **全产线轮换 / 驻守本关** 切换、产线星级评定（`★~★★★`）与主场特工提示；局内实装 **6 大产线专属交互基站** 与 **HUD 可控产线跃迁门**（击败 Boss 或充能完成后可在局内自选下一条产线跃迁，立即获得 10 秒跨产线超频增益）。
+
+### 阶段节点 2：全站免登录直达入口开放（2026-11-24）
+
+- **问题根因**：`/hone-adventure/` 游戏页面本身不校验登录态，但此前站内唯一可见入口挂在已登录 `/chat` 输入框工具栏内；未登录访客从官网 `/` 点击进入 `/chat` 或 `/research` 时会被 `PublicLoginForm` 登录页拦截，导致外部用户无法免登录找到入口。
+- **修复方案**：
+  - 官网首页（`public-home.tsx`）Hero 主行动区新增原生 `<a href="/hone-adventure/">HONE 历险记 · 免登录畅玩</a>` 按钮。
+  - 全站顶部公开导航与移动端抽屉菜单（`public-nav.tsx`）新增原生 `/hone-adventure/` 免登录直达链接（绕开 SPA 通配路由回跳）。
+  - 未登录验证码卡片（`public-login-form.tsx`，覆盖未登录访问 `/chat`、`/research`、`/me`）底部新增「免登录公开体验」快捷栏，一键直达 `HONE 历险记` 与 `3D 数据中心`。
+  - 公开免登录页面 `/data-center`（`public-data-center.tsx`）头部同步提供 `HONE 历险记 ↗` 姊妹入口；`_worker.js` 显式保证 `/hone-adventure`（无尾斜杠）308 跳转 `/hone-adventure/`。
 
 ## Verification
 

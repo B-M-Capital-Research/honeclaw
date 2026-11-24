@@ -447,3 +447,39 @@ for (const expiredAt of ["auth", "industry"] as const) {
     expect(state.edits).toBe(0);
   });
 }
+
+test("logged-out visitors can enter and play HONE Adventure directly from /, /chat, and /data-center without signing in", async ({ page }) => {
+  await installPublicMocks(page, { authStatus: 401 });
+
+  await page.goto("/");
+  await expect(page.locator('.pub-nav a[href="/hone-adventure/"]').first()).toBeVisible();
+  const homeCta = page.locator('.hone-home-actions a[href="/hone-adventure/"]');
+  await expect(homeCta).toBeVisible();
+  await homeCta.click();
+  await expect(page).toHaveURL(/\/hone-adventure\/$/);
+  await page.waitForFunction(
+    () => Boolean((window as unknown as { __honeAdventure?: { state: () => { sheetLoaded: boolean; mode: string } } }).__honeAdventure?.state().sheetLoaded),
+  );
+  // Top-left 回到首页 returns cleanly to /
+  await page.locator('.home a.home-pill[href="/"]').click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.goto("/data-center");
+  await expect(page.locator('a.dc-adventure-link[href="/hone-adventure/"]')).toBeVisible();
+
+  await page.goto("/chat");
+  const openGameFromLogin = page.locator('.public-login-open-demos a[href="/hone-adventure/"]');
+  await expect(openGameFromLogin).toBeVisible();
+  await openGameFromLogin.click();
+
+  await expect(page).toHaveURL(/\/hone-adventure\/$/);
+  await page.waitForFunction(
+    () => Boolean((window as unknown as { __honeAdventure?: { state: () => { sheetLoaded: boolean; mode: string } } }).__honeAdventure?.state().sheetLoaded),
+  );
+  await page.locator(".home .cta").click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __honeAdventure: { state: () => { mode: string } } }).__honeAdventure.state().mode,
+    ),
+  ).toBe("play");
+});
